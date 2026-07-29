@@ -388,7 +388,7 @@ struct ReplayPlayerView: View {
                             controller: controller,
                             duration: duration,
                             buffered: loader.bufferedSeconds,
-                            onScrubCommitted: seek(to:)
+                            onScrubCommitted: { seek(to: $0) }
                         )
                         streamingFootnote
                     }

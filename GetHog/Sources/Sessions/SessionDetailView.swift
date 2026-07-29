@@ -40,7 +40,7 @@ struct SessionDetailView: View {
                     loader: loader,
                     controller: player,
                     onOpenInPostHog: openInPostHog,
-                    onRetry: retryReplay
+                    onRetry: { retryReplay() }
                 )
 
                 watchInPostHogCard
