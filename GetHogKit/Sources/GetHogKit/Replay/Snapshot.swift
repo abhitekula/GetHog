@@ -106,7 +106,7 @@ public enum SnapshotParser {
                   let windowID = pair[0].stringValue
             else { continue }
 
-            let event = pair[1]
+            let event = decoded(pair[1], decoder: decoder)
             guard let type = event["type"]?.intValue,
                   let timestamp = event["timestamp"]?.doubleValue
             else { continue }
@@ -116,5 +116,27 @@ public enum SnapshotParser {
             )
         }
         return events
+    }
+
+    /// Expands a partially-compressed event into plain rrweb form.
+    ///
+    /// PostHog stores some payloads — full snapshots in particular — as a gzip
+    /// stream embedded in the JSON string, while leaving incremental events as
+    /// plain objects. This is the "we do not return vanilla rrweb-compatible
+    /// JSON" caveat in their docs, and it is not optional: handing rrweb the raw
+    /// string leaves the iframe permanently empty. The player still runs and the
+    /// clock still advances, so the failure looks like a blank video rather than
+    /// an error.
+    static func decoded(_ event: JSONValue, decoder: JSONDecoder) -> JSONValue {
+        guard case .object(var fields) = event,
+              case .string(let encoded)? = fields["data"],
+              let bytes = encoded.latin1Bytes,
+              Gunzip.isGzip(bytes),
+              let inflated = Gunzip.decompress(bytes),
+              let payload = try? decoder.decode(JSONValue.self, from: inflated)
+        else { return event }
+
+        fields["data"] = payload
+        return .object(fields)
     }
 }
