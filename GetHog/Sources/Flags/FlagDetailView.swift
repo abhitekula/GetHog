@@ -1,0 +1,333 @@
+import GetHogKit
+import SwiftUI
+
+/// The only place in the app where a feature flag can be changed.
+///
+/// Everything dangerous is concentrated here on purpose: reaching the switch
+/// costs a deliberate tap into a flag, the switch itself does nothing until a
+/// confirmation dialog is answered, and an optional device-owner check can sit
+/// in front of that.
+struct FlagDetailView: View {
+    let flag: FeatureFlag
+    let controller: FlagToggleController
+
+    @Environment(AppModel.self) private var model
+
+    /// Direction of the change being confirmed. Never cleared on dismissal, so
+    /// the dialog's wording doesn't flicker while it animates away.
+    @State private var requestedActivation = false
+    @State private var isConfirming = false
+    @State private var allowsQuickToggle: Bool
+
+    init(flag: FeatureFlag, controller: FlagToggleController) {
+        self.flag = flag
+        self.controller = controller
+        _allowsQuickToggle = State(initialValue: FlagQuickToggle.isAllowed(flagID: flag.id))
+    }
+
+    private var isActive: Bool { controller.effectiveActive(flag) }
+    private var isBusy: Bool { controller.isBusy(flag) }
+
+    var body: some View {
+        List {
+            identitySection
+            toggleSection
+            quickToggleSection
+            releaseConditionsSection
+            if flag.isMultivariate { variantsSection }
+        }
+        .navigationTitle(flag.key)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let url = model.webURL(path: "feature_flags/\(flag.id)") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Link(destination: url) {
+                        Image(systemName: "arrow.up.forward.square")
+                    }
+                    .accessibilityLabel("Open this flag in PostHog")
+                }
+            }
+        }
+        .confirmationDialog(
+            requestedActivation ? "Enable \(flag.key)?" : "Disable \(flag.key)?",
+            isPresented: $isConfirming,
+            titleVisibility: .visible
+        ) {
+            Button(
+                requestedActivation ? "Enable for live users" : "Disable for live users",
+                role: .destructive
+            ) {
+                commit(requestedActivation)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(confirmationDetail)
+        }
+        .sensoryFeedback(.success, trigger: controller.successCount)
+        .sensoryFeedback(.error, trigger: controller.failureCount)
+    }
+
+    // MARK: - Sections
+
+    private var identitySection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(flag.key)
+                    .font(.body.monospaced())
+                    .textSelection(.enabled)
+
+                HStack(spacing: 8) {
+                    StatusPill(text: statusText, tint: statusTint)
+                    if flag.archived && !isActive {
+                        StatusPill(text: "Archived", tint: Color.secondary)
+                    }
+                }
+
+                if let name = flag.name, !name.isEmpty, name != flag.key {
+                    Text(name)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var toggleSection: some View {
+        Section {
+            HStack {
+                Toggle(isOn: activationRequest) {
+                    Text("Flag enabled")
+                }
+                .disabled(isBusy)
+
+                if isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Saving change")
+                }
+            }
+
+            if let message = controller.message {
+                ToggleMessageView(message: message) { controller.dismissMessage() }
+            }
+        } header: {
+            Text("Live state")
+        } footer: {
+            Text(
+                "Changing this writes to PostHog straight away and affects users in production. You'll be asked to confirm first."
+            )
+        }
+    }
+
+    private var quickToggleSection: some View {
+        Section {
+            Toggle("Allow quick toggle", isOn: $allowsQuickToggle)
+                .onChange(of: allowsQuickToggle) { _, allowed in
+                    FlagQuickToggle.setAllowed(allowed, flagID: flag.id)
+                }
+        } footer: {
+            Text(
+                "Off by default. Turning this on exposes \(flag.key) to Control Center and widgets, where it can be flipped without opening the app — and without the confirmation step above."
+            )
+        }
+    }
+
+    private var releaseConditionsSection: some View {
+        Section("Release conditions") {
+            let groups = flag.filters?.groups ?? []
+            if groups.isEmpty {
+                Text("No conditions set. This flag applies to everyone it's evaluated for.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                    ReleaseConditionRow(index: index, group: group)
+                }
+            }
+        }
+    }
+
+    private var variantsSection: some View {
+        Section("Variants") {
+            VariantDistributionBar(variants: flag.variants)
+                .listRowSeparator(.hidden)
+
+            ForEach(Array(flag.variants.enumerated()), id: \.element.id) { index, variant in
+                VariantRow(index: index, variant: variant)
+            }
+        }
+    }
+
+    // MARK: - Toggling
+
+    /// Reflects the server (or our own in-flight override), and treats a tap as
+    /// a *request* rather than a change: the switch springs back and only moves
+    /// for real once the dialog — and any biometric gate — is satisfied.
+    private var activationRequest: Binding<Bool> {
+        Binding(
+            get: { isActive },
+            set: { desired in
+                guard desired != isActive else { return }
+                requestedActivation = desired
+                isConfirming = true
+            }
+        )
+    }
+
+    private var confirmationDetail: String {
+        let target = model.selectedProject.map { " in \($0.name)" } ?? ""
+        let direction = requestedActivation
+            ? "Everyone matching its release conditions will start getting it."
+            : "Everyone currently getting it will stop."
+        return "This affects live users\(target) immediately. \(direction)"
+    }
+
+    private func commit(_ desired: Bool) {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        Task {
+            await controller.setActive(
+                desired, flag: flag, client: client, projectID: projectID
+            )
+        }
+    }
+
+    // MARK: - Status
+
+    private var statusText: String {
+        if flag.archived && !isActive { return "Disabled" }
+        return isActive ? "Enabled" : "Disabled"
+    }
+
+    private var statusTint: Color {
+        isActive ? Theme.Status.good : Color.secondary
+    }
+}
+
+/// One release condition group, rendered as a sentence plus its filters.
+private struct ReleaseConditionRow: View {
+    let index: Int
+    let group: FlagGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Set \(index + 1)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            // A missing rollout percentage means "no cap", not "nobody".
+            Text("Rolled out to \(FlagFormat.percent(group.rolloutPercentage ?? 100)) of matching users")
+                .font(.subheadline)
+
+            let properties = group.properties ?? []
+            if properties.isEmpty {
+                Text("Matches everyone")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(properties.enumerated()), id: \.offset) { _, property in
+                    Label(property.summary, systemImage: "line.3.horizontal.decrease")
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Proportional split across variants.
+///
+/// Decorative: it is hidden from VoiceOver because the exact percentages are
+/// listed underneath, where they are readable at any Dynamic Type size.
+private struct VariantDistributionBar: View {
+    let variants: [FlagVariant]
+
+    private var weights: [Double] {
+        let raw = variants.map { $0.rolloutPercentage ?? 0 }
+        let total = raw.reduce(0, +)
+        guard total > 0 else {
+            return Array(repeating: 1 / Double(max(variants.count, 1)), count: variants.count)
+        }
+        return raw.map { $0 / total }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                ForEach(Array(weights.enumerated()), id: \.offset) { index, weight in
+                    SeriesPalette.color(at: index)
+                        .frame(width: max(0, proxy.size.width * weight))
+                }
+            }
+        }
+        .frame(height: 12)
+        .clipShape(.rect(cornerRadius: 6))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct VariantRow: View {
+    let index: Int
+    let variant: FlagVariant
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Symbol as well as colour, so a variant is identifiable without hue.
+            Image(systemName: SeriesPalette.symbol(at: index))
+                .font(.caption2)
+                .foregroundStyle(SeriesPalette.color(at: index))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(variant.key)
+                    .font(.subheadline.monospaced())
+                if let name = variant.name, !name.isEmpty, name != variant.key {
+                    Text(name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Text(FlagFormat.percent(variant.rolloutPercentage ?? 0))
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(variant.key), \(FlagFormat.percent(variant.rolloutPercentage ?? 0)) of traffic"
+        )
+    }
+}
+
+/// Inline outcome of the last write attempt.
+private struct ToggleMessageView: View {
+    let message: FlagToggleMessage
+    var onDismiss: () -> Void
+
+    private var isFailure: Bool { message.kind == .failure }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isFailure ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .foregroundStyle(isFailure ? Theme.Status.critical : Color.secondary)
+                .accessibilityHidden(true)
+
+            Text(message.text)
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .accessibilityLabel("Dismiss message")
+        }
+        .padding(.vertical, 2)
+    }
+}

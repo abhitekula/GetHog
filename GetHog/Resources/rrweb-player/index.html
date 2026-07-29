@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Replay</title>
+<!-- Both assets are bundled. Nothing here may reference the network: the app is
+     expected to replay a downloaded session on a plane. -->
+<link rel="stylesheet" href="rrweb-player.css">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The transport bar is native SwiftUI, outside the web view. rrweb's own
+     chrome is disabled by `showController: false`; this is belt-and-braces so a
+     future version of the library can't sneak a second set of controls in. */
+  .rr-controller { display: none !important; }
+  .rr-player {
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    float: none !important;
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="rrweb-player.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var stage = document.getElementById("stage");
+  var player = null;
+  // rrweb-player only exposes a *toggle* for skip-inactive, so the absolute
+  // value the native switch is bound to has to be mirrored here.
+  var skipInactive = false;
+
+  function post(message) {
+    try {
+      window.webkit.messageHandlers.player.postMessage(message);
+    } catch (e) {
+      // Opened outside the app (e.g. a browser); nothing to report to.
+    }
+  }
+
+  function fail(where, err) {
+    post({ type: "error", message: where + ": " + String((err && err.message) || err) });
+  }
+
+  window.addEventListener("error", function (event) {
+    post({ type: "error", message: String(event.message || "script error") });
+  });
+
+  function stageSize() {
+    return {
+      width: Math.max(1, Math.floor(document.documentElement.clientWidth)),
+      height: Math.max(1, Math.floor(document.documentElement.clientHeight))
+    };
+  }
+
+  /** The UMD bundle exposes the Svelte component as `default` (and `Player`). */
+  function playerClass() {
+    var ns = window.rrwebPlayer;
+    if (!ns) return null;
+    return ns.default || ns.Player || (typeof ns === "function" ? ns : null);
+  }
+
+  function postMeta(extra) {
+    if (!player) return;
+    try {
+      var meta = player.getMetaData();
+      var message = { type: "meta", totalTime: meta.totalTime };
+      if (extra) { for (var k in extra) { message[k] = extra[k]; } }
+      post(message);
+    } catch (e) {
+      fail("meta", e);
+    }
+  }
+
+  var api = {
+    /** Builds the player from the first loaded chunk of a session. */
+    boot: function (events, options) {
+      try {
+        options = options || {};
+        var Player = playerClass();
+        if (!Player) {
+          post({ type: "error", message: "rrweb-player asset failed to load" });
+          return;
+        }
+        // rrweb needs a meta + full-snapshot pair before it can render anything.
+        if (!events || events.length < 2) {
+          post({ type: "error", message: "Not enough snapshot data to replay" });
+          return;
+        }
+        if (player) { api.teardown(); }
+
+        var size = stageSize();
+        skipInactive = !!options.skipInactive;
+
+        player = new Player({
+          target: stage,
+          props: {
+            events: events,
+            width: size.width,
+            height: size.height,
+            autoPlay: false,
+            showController: false,
+            speed: options.speed || 1,
+            skipInactive: skipInactive,
+            // Honours Reduce Motion: the cursor trail is decorative movement.
+            mouseTail: options.mouseTail === false
+              ? false
+              : { strokeStyle: options.tailColor || "#3EC5CE" }
+          }
+        });
+
+        player.addEventListener("ui-update-current-time", function (detail) {
+          post({ type: "time", currentTime: detail.payload });
+        });
+        player.addEventListener("ui-update-player-state", function (detail) {
+          post({ type: "state", state: detail.payload });
+        });
+        player.addEventListener("finish", function () {
+          post({ type: "finish" });
+        });
+
+        postMeta({ type: "ready" });
+      } catch (e) {
+        player = null;
+        fail("boot", e);
+      }
+    },
+
+    /** Appends a progressively-fetched chunk without disturbing playback. */
+    append: function (events) {
+      if (!player || !events || !events.length) return;
+      try {
+        for (var i = 0; i < events.length; i++) {
+          player.addEvent(events[i]);
+        }
+        postMeta(null);
+      } catch (e) {
+        fail("append", e);
+      }
+    },
+
+    play: function () { if (player) { try { player.play(); } catch (e) { fail("play", e); } } },
+    pause: function () { if (player) { try { player.pause(); } catch (e) { fail("pause", e); } } },
+
+    seek: function (timeOffset, resume) {
+      if (!player) return;
+      try { player.goto(timeOffset, !!resume); } catch (e) { fail("seek", e); }
+    },
+
+    setSpeed: function (speed) {
+      if (!player) return;
+      try { player.setSpeed(speed); } catch (e) { fail("speed", e); }
+    },
+
+    setSkipInactive: function (value) {
+      if (!player) return;
+      value = !!value;
+      if (value === skipInactive) return;
+      try {
+        player.toggleSkipInactive();
+        skipInactive = value;
+      } catch (e) {
+        fail("skipInactive", e);
+      }
+    },
+
+    resize: function () {
+      if (!player) return;
+      try {
+        var size = stageSize();
+        player.$set({ width: size.width, height: size.height });
+        player.triggerResize();
+      } catch (e) {
+        fail("resize", e);
+      }
+    },
+
+    teardown: function () {
+      if (!player) return;
+      try { player.pause(); } catch (e) { /* already stopped */ }
+      try { player.$destroy(); } catch (e) { /* already gone */ }
+      player = null;
+      stage.innerHTML = "";
+    }
+  };
+
+  var resizeTimer = null;
+  window.addEventListener("resize", function () {
+    if (resizeTimer) { clearTimeout(resizeTimer); }
+    resizeTimer = setTimeout(function () { api.resize(); }, 80);
+  });
+
+  window.GetHogReplay = api;
+  post({ type: "loaded", hasPlayerAsset: !!playerClass() });
+})();
+</script>
+</body>
+</html>

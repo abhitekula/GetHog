@@ -172,7 +172,130 @@ public enum PostHogAPI {
         )
     }
 
+    // MARK: - Web analytics
+
+    public static func webOverview(projectID: Int, dateFrom: String = "-7d") -> Endpoint {
+        queryEndpoint(projectID: projectID, query: [
+            "kind": "WebOverviewQuery",
+            "dateRange": ["date_from": dateFrom],
+            "properties": [],
+        ])
+    }
+
+    /// `breakdownBy` accepts PostHog's web-stats dimensions, e.g. `Page`,
+    /// `InitialReferringDomain`, `DeviceType`, `Country`.
+    public static func webStats(
+        projectID: Int,
+        breakdownBy: String = "Page",
+        dateFrom: String = "-7d",
+        limit: Int = 50
+    ) -> Endpoint {
+        queryEndpoint(projectID: projectID, query: [
+            "kind": "WebStatsTableQuery",
+            "breakdownBy": breakdownBy,
+            "dateRange": ["date_from": dateFrom],
+            "properties": [],
+            "limit": limit,
+        ])
+    }
+
+    // MARK: - Error tracking
+
+    public static func errorTrackingIssues(
+        projectID: Int,
+        dateFrom: String = "-7d",
+        orderBy: String = "users",
+        limit: Int = 50
+    ) -> Endpoint {
+        queryEndpoint(projectID: projectID, query: [
+            "kind": "ErrorTrackingQuery",
+            "dateRange": ["date_from": dateFrom],
+            "orderBy": orderBy,
+            "limit": limit,
+            // Required: omitting it returns HTTP 400 with a pydantic
+            // "Field required" validation error.
+            "volumeResolution": 0,
+        ])
+    }
+
+    // MARK: - Directory resources
+
+    public static func persons(projectID: Int, limit: Int = 50, search: String? = nil) -> Endpoint {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let search, !search.isEmpty {
+            query.append(URLQueryItem(name: "search", value: search))
+        }
+        return Endpoint(path: "/api/projects/\(projectID)/persons/", query: query, category: .analytics)
+    }
+
+    public static func cohorts(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/cohorts/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    public static func surveys(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/surveys/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    public static func experiments(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/experiments/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    public static func insights(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/insights/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    public static func insight(projectID: Int, insightID: Int, refresh: Bool = false) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/insights/\(insightID)/",
+            query: [URLQueryItem(name: "refresh", value: refresh ? "lazy_async" : "force_cache")],
+            category: .analytics
+        )
+    }
+
+    public static func annotations(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/annotations/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    public static func actions(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/actions/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
     // MARK: - Helpers
+
+    /// Wraps an arbitrary typed query node for `POST /query/`.
+    static func queryEndpoint(projectID: Int, query: [String: Any]) -> Endpoint {
+        let body = try? JSONSerialization.data(withJSONObject: ["query": query])
+        return Endpoint(
+            path: "/api/projects/\(projectID)/query/",
+            method: "POST",
+            body: body,
+            category: .query
+        )
+    }
 
     /// Escapes a value for interpolation into HogQL string literals.
     static func escape(_ value: String) -> String {
