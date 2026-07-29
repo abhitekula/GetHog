@@ -27,43 +27,103 @@ struct OnboardingView: View {
                 case .key: keyEntry
                 }
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             .frame(maxWidth: 560)
             .frame(maxWidth: .infinity)
+            // Cards use the grouped card colour, which is white in light mode —
+            // without the grouped page behind them the whole flow reads as flat.
+            .background(Theme.pageBackground)
+            .toolbar {
+                if step != .welcome {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            withAnimation(.snappy) { step = step == .key ? .region : .welcome }
+                        } label: {
+                            Label("Back", systemImage: "chevron.left")
+                        }
+                    }
+                }
+            }
+            .animation(.snappy, value: step)
         }
     }
 
     // MARK: - Welcome
 
     private var welcome: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Image(systemName: "chart.xyaxis.line")
-                .font(.system(size: 56))
-                .foregroundStyle(Theme.accent)
+        VStack(spacing: 0) {
+            Spacer(minLength: 24)
 
-            VStack(spacing: 8) {
-                Text("GetHog")
-                    .font(.largeTitle.bold())
-                Text("Your PostHog dashboards, events, sessions, and feature flags — native on iPhone and iPad.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            VStack(spacing: 20) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 52, weight: .medium))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 104, height: 104)
+                    .background(Theme.accent.opacity(0.12), in: .rect(cornerRadius: 26))
+
+                VStack(spacing: 10) {
+                    Text("GetHog")
+                        .font(.largeTitle.bold())
+                    Text("Your PostHog dashboards, events, sessions, and feature flags — native on iPhone and iPad.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
             }
 
-            Spacer()
+            Spacer(minLength: 24)
 
-            // Trademark distance, stated up front rather than buried.
-            Text("GetHog is a third-party app and operates independently from PostHog.")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 16) {
+                ForEach(Self.highlights, id: \.title) { item in
+                    HStack(spacing: 14) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 30, height: 30)
+                            .background(Theme.accent.opacity(0.12), in: .circle)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.subheadline.weight(.semibold))
+                            Text(item.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
 
-            Button("Get started") { step = .region }
+            Spacer(minLength: 24)
+
+            VStack(spacing: 14) {
+                // Trademark distance, stated up front rather than buried.
+                Text("GetHog is a third-party app and operates independently from PostHog.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    step = .region
+                } label: {
+                    Text("Get started").frame(maxWidth: .infinity)
+                }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+            }
         }
     }
+
+    private static let highlights: [(icon: String, title: String, detail: String)] = [
+        ("square.grid.2x2", "Your real dashboards",
+         "Saved tiles rendered natively — not rebuilt metric by metric."),
+        ("rectangle.stack", "Session replay",
+         "Watch web sessions and read the full event timeline."),
+        ("lock.shield", "Stays on your device",
+         "Your key lives in the Keychain. There's no backend."),
+    ]
 
     // MARK: - Region
 

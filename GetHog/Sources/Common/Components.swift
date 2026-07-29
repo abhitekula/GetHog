@@ -92,6 +92,10 @@ struct LockedCapabilityView: View {
 }
 
 /// A rounded card that hosts a dashboard tile or detail block.
+///
+/// Carries a hairline stroke as well as a fill: the grouped-background card
+/// colour is pure white in light mode, so on any screen that isn't itself using
+/// the grouped background the fill alone renders the card invisible.
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
 
@@ -100,6 +104,41 @@ struct Card<Content: View>: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.cardBackground, in: .rect(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Theme.hairline, lineWidth: 0.5)
+            }
+    }
+}
+
+/// A selectable option row used in onboarding and pickers.
+struct SelectableRow<Content: View>: View {
+    let isSelected: Bool
+    let action: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                content
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? Theme.accent : Color(.tertiaryLabel))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(14)
+            .background(Theme.cardBackground, in: .rect(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        isSelected ? Theme.accent.opacity(0.6) : Theme.hairline,
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 

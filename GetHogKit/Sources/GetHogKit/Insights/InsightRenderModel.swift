@@ -127,10 +127,27 @@ public struct Series: Sendable, Equatable {
 public struct Point: Sendable, Equatable {
     public let day: String
     public let value: Double
+    /// Parsed from `day`. Charts need a real `Date` on the x-axis so the axis can
+    /// thin its own labels — plotting the day strings categorically forces a
+    /// label per category and turns a month of data into unreadable overlap.
+    public let date: Date?
 
     public init(day: String, value: Double) {
         self.day = day
         self.value = value
+        self.date = PostHogDate.parseDay(day)
+    }
+}
+
+public extension Series {
+    /// Points with usable dates, or `nil` when the labels aren't dates at all
+    /// (some breakdowns are plain strings), in which case the caller falls back
+    /// to a categorical axis.
+    var datedPoints: [(date: Date, value: Double)]? {
+        let dated = points.compactMap { point in
+            point.date.map { (date: $0, value: point.value) }
+        }
+        return dated.count == points.count && !dated.isEmpty ? dated : nil
     }
 }
 

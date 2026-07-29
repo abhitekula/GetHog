@@ -175,34 +175,53 @@ struct TimeSeriesChart: View {
     var style: TimeSeriesStyle = .line
     var compact: Bool
 
-    @State private var selectedDay: String?
+    @State private var selectedDate: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var height: CGFloat { compact ? 160 : 280 }
+    private var height: CGFloat { compact ? 170 : 280 }
 
-    private var selectedPoints: [(series: Series, point: Point, index: Int)] {
-        guard let selectedDay else { return [] }
+    /// True when every series has parseable dates, which lets Swift Charts own
+    /// the axis and thin its labels. Plotting day strings categorically forces a
+    /// label per category and turns a month of data into unreadable overlap.
+    private var usesDateAxis: Bool {
+        series.allSatisfy { $0.datedPoints != nil }
+    }
+
+    /// The point nearest the scrub position, per series.
+    private var selectedPoints: [(series: Series, value: Double, index: Int)] {
+        guard let selectedDate else { return [] }
         return series.enumerated().compactMap { index, s in
-            s.points.first { $0.day == selectedDay }.map { (s, $0, index) }
+            guard let dated = s.datedPoints,
+                  let nearest = dated.min(by: {
+                      abs($0.date.timeIntervalSince(selectedDate))
+                          < abs($1.date.timeIntervalSince(selectedDate))
+                  })
+            else { return nil }
+            return (s, nearest.value, index)
         }
+    }
+
+    private var selectedLabel: String {
+        selectedDate?.formatted(.dateTime.month(.abbreviated).day()) ?? ""
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !selectedPoints.isEmpty {
-                scrubReadout
-            }
+            // Reserve the row unconditionally so the chart never shifts when a
+            // scrub begins.
+            scrubReadout
+                .opacity(selectedPoints.isEmpty ? 0 : 1)
 
             Chart {
                 ForEach(Array(series.enumerated()), id: \.offset) { _, s in
-                    ForEach(s.points, id: \.day) { point in
+                    ForEach(Array((s.datedPoints ?? []).enumerated()), id: \.offset) { _, point in
                         // The insight's own display type decides the mark. Drawing
                         // a stacked-bar insight as overlapping lines would read as
                         // a completely different result.
                         switch style {
                         case .line, .area:
                             LineMark(
-                                x: .value("Day", point.day),
+                                x: .value("Date", point.date),
                                 y: .value("Value", point.value)
                             )
                             .lineStyle(StrokeStyle(lineWidth: 2))
@@ -210,48 +229,58 @@ struct TimeSeriesChart: View {
                             // between points and would misrepresent the data.
                             .interpolationMethod(.monotone)
                             .foregroundStyle(by: .value("Series", s.label))
-                            .symbol(by: .value("Series", s.label))
 
                             if style == .area {
                                 AreaMark(
-                                    x: .value("Day", point.day),
+                                    x: .value("Date", point.date),
                                     y: .value("Value", point.value)
                                 )
                                 .interpolationMethod(.monotone)
                                 .foregroundStyle(by: .value("Series", s.label))
-                                .opacity(0.15)
+                                .opacity(0.12)
                             }
 
                         case .bar, .stackedBar:
                             // Swift Charts stacks same-x BarMarks by default, which
-                            // is exactly stackedBar; for plain bars we position
-                            // them side by side instead.
+                            // is exactly stackedBar; plain bars sit side by side.
                             BarMark(
-                                x: .value("Day", point.day),
+                                x: .value("Date", point.date, unit: .day),
                                 y: .value("Value", point.value)
                             )
                             .foregroundStyle(by: .value("Series", s.label))
                             .position(by: style == .bar ? .value("Series", s.label) : .value("Series", ""))
-                            .cornerRadius(3)
+                            .cornerRadius(2)
                         }
                     }
                 }
 
-                if let selectedDay {
-                    RuleMark(x: .value("Day", selectedDay))
+                if let selectedDate {
+                    RuleMark(x: .value("Date", selectedDate))
                         .foregroundStyle(.secondary.opacity(0.35))
                         .lineStyle(StrokeStyle(lineWidth: 1))
                 }
             }
             .chartForegroundStyleScale(range: paletteRange)
-            .chartSymbolScale(range: symbolRange)
             .chartLegend(series.count > 1 ? .visible : .hidden)
-            .chartXAxis { AxisMarks(preset: .aligned, values: .automatic(desiredCount: compact ? 3 : 6)) }
-            .chartYAxis { AxisMarks(position: .leading) }
-            .chartXSelection(value: $selectedDay)
+            .chartXAxis {
+                // Let the axis choose its own tick count and format; a fixed
+                // categorical axis is what produced overlapping labels.
+                AxisMarks(preset: .aligned, values: .automatic(desiredCount: compact ? 3 : 5)) { value in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                        .font(.caption2)
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
+                    AxisGridLine()
+                    AxisValueLabel().font(.caption2)
+                }
+            }
+            .chartXSelection(value: $selectedDate)
             .frame(height: height)
-            .sensoryFeedback(.selection, trigger: selectedDay)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedDay)
+            .sensoryFeedback(.selection, trigger: selectedDate)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedDate)
             .accessibilityChartDescriptor(TimeSeriesDescriptor(series: series))
         }
     }
@@ -260,31 +289,28 @@ struct TimeSeriesChart: View {
         series.indices.map { SeriesPalette.color(at: $0) }
     }
 
-    private var symbolRange: [BasicChartSymbolShape] {
-        let shapes: [BasicChartSymbolShape] = [.circle, .square, .triangle, .diamond,
-                                               .pentagon, .plus, .cross, .asterisk]
-        return series.indices.map { shapes[$0 % shapes.count] }
-    }
-
+    /// Floats over the chart while scrubbing rather than sitting above it, so the
+    /// plot doesn't jump the moment a finger lands on it.
     private var scrubReadout: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(selectedDay ?? "")
-                .font(.caption.weight(.semibold))
+        HStack(spacing: 10) {
+            Text(selectedLabel)
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(selectedPoints, id: \.index) { entry in
-                HStack(spacing: 6) {
-                    Image(systemName: SeriesPalette.symbol(at: entry.index))
-                        .font(.system(size: 7))
-                        .foregroundStyle(SeriesPalette.color(at: entry.index))
-                    Text(entry.series.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(entry.point.value.compactFormatted)
-                        .font(.caption.weight(.semibold).monospacedDigit())
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(SeriesPalette.color(at: entry.index))
+                        .frame(width: 6, height: 6)
+                    Text(entry.value.compactFormatted)
+                        .font(.caption2.weight(.semibold).monospacedDigit())
                 }
             }
+            Spacer(minLength: 0)
         }
-        .transition(.opacity)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.thinMaterial, in: .capsule)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
     }
 }
 

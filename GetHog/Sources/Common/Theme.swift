@@ -17,6 +17,10 @@ enum Theme {
     static let cardBackground = Color(.secondarySystemGroupedBackground)
     static let pageBackground = Color(.systemGroupedBackground)
 
+    /// Separator-weight border. Cards need this because the grouped card colour
+    /// is pure white in light mode and would otherwise vanish into the page.
+    static let hairline = Color(.separator)
+
     enum Status {
         static let good = Color(
             light: Color(red: 0.0, green: 0.514, blue: 0.0),
