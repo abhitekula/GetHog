@@ -351,10 +351,12 @@ struct ReplayPlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pendingSeek: TimeInterval?
 
-    /// The recording's own duration is the honest total; the player only knows
-    /// about what has been streamed so far.
+    /// The recording's own duration is the honest total. The other two are
+    /// fallbacks for the rare recording that reports no duration: the player and
+    /// the buffer both only know about what has been streamed so far, so the
+    /// scrubber grows rather than lying about a short session.
     private var duration: TimeInterval {
-        max(recording.recordingDuration ?? 0, controller.playerDuration)
+        max(recording.recordingDuration ?? 0, max(controller.playerDuration, loader.bufferedSeconds))
     }
 
     var body: some View {

@@ -36,9 +36,16 @@ final class PeopleStore {
     /// opens must not cost a request on every project switch.
     private var hasLoadedCohorts = false
 
+    /// Stale data is discarded here rather than from a separate `.task`, so the
+    /// reset can never land *after* a concurrent load has already populated the
+    /// list. Two tasks racing over the same state is a bug waiting for a slow
+    /// network to expose it.
+    private var loadedProjectID: Int?
+
     private let pageSize = 50
 
     func loadPersons(client: PostHogClient, projectID: Int, search: String?) async {
+        discardIfProjectChanged(to: projectID)
         isLoadingPersons = true
         defer { isLoadingPersons = false }
         do {
@@ -56,6 +63,7 @@ final class PeopleStore {
     }
 
     func loadCohorts(client: PostHogClient, projectID: Int, force: Bool = false) async {
+        discardIfProjectChanged(to: projectID)
         guard force || !hasLoadedCohorts else { return }
         isLoadingCohorts = true
         defer { isLoadingCohorts = false }
@@ -76,7 +84,9 @@ final class PeopleStore {
     }
 
     /// A different project means different people; nothing carries over.
-    func resetForProjectChange() {
+    private func discardIfProjectChanged(to projectID: Int) {
+        guard loadedProjectID != projectID else { return }
+        loadedProjectID = projectID
         persons = []
         personsTotal = nil
         personsError = nil
@@ -143,7 +153,6 @@ struct PeopleRoot: View {
             await loadPersons()
         }
         .task(id: model.projectID) {
-            store.resetForProjectChange()
             if segment == .cohorts { await loadCohorts() }
         }
         .onChange(of: segment) { _, new in

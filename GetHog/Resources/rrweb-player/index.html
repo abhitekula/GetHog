@@ -154,7 +154,10 @@
         for (var i = 0; i < events.length; i++) {
           player.addEvent(events[i]);
         }
-        postMeta(null);
+        // `addEvent` reaches the replayer's state machine through a microtask,
+        // and the player refreshes its metadata through another, so reading the
+        // new duration synchronously would report the pre-append total.
+        setTimeout(function () { postMeta(null); }, 0);
       } catch (e) {
         fail("append", e);
       }

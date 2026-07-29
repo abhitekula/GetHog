@@ -1,0 +1,289 @@
+import GetHogKit
+import SwiftUI
+
+@MainActor
+@Observable
+final class SurveysStore {
+    var surveys: [Survey] = []
+    var isLoading = false
+    var error: String?
+    var loadedAt: Date?
+
+    /// Lifecycle order, not alphabetical: what is live matters most, what is
+    /// archived matters least.
+    private static let statusOrder = ["Running", "Draft", "Stopped", "Archived"]
+
+    func load(client: PostHogClient, projectID: Int) async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let page: Page<Survey> = try await client.send(
+                PostHogAPI.surveys(projectID: projectID)
+            )
+            surveys = page.results
+            loadedAt = Date()
+            error = nil
+        } catch {
+            self.error = (error as? PostHogError)?.localizedDescription
+                ?? error.localizedDescription
+        }
+    }
+
+    var groups: [(status: String, surveys: [Survey])] {
+        let grouped = Dictionary(grouping: surveys, by: \.statusText)
+        var result: [(status: String, surveys: [Survey])] = Self.statusOrder.compactMap { status in
+            guard let items = grouped[status], !items.isEmpty else { return nil }
+            let sorted = items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            return (status: status, surveys: sorted)
+        }
+        // Anything PostHog starts reporting that we don't know about still shows
+        // up rather than silently disappearing from the list.
+        for status in grouped.keys.sorted() where !Self.statusOrder.contains(status) {
+            result.append((status, grouped[status] ?? []))
+        }
+        return result
+    }
+}
+
+struct SurveysRoot: View {
+    @Environment(AppModel.self) private var model
+    @State private var store = SurveysStore()
+    @State private var selected: Survey?
+
+    var body: some View {
+        // A NavigationStack rather than a split view: the detail is a sheet,
+        // because response analysis lives on the web and there is nothing to
+        // keep persistently open in a second column.
+        NavigationStack {
+            content
+                .navigationTitle("Surveys")
+                .toolbar { ProjectSwitcher() }
+                .refreshable { await load() }
+                .task(id: model.projectID) { await load() }
+        }
+        .sheet(item: $selected) { survey in
+            SurveyDetailSheet(
+                survey: survey,
+                webURL: model.webURL(path: "surveys/\(survey.id)")
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if !model.isAvailable(.dashboards) {
+            LockedCapabilityView(
+                capability: .dashboards,
+                scope: model.lockedScope(for: .dashboards)
+            ) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.error, store.surveys.isEmpty {
+            ContentUnavailableView {
+                Label("Couldn't load surveys", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(error)
+            } actions: {
+                Button("Try again") { Task { await load() } }
+            }
+        } else if store.surveys.isEmpty && !store.isLoading {
+            ContentUnavailableView(
+                "No surveys",
+                systemImage: "text.bubble",
+                description: Text("This project doesn't have any surveys yet.")
+            )
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
+        List {
+            ForEach(store.groups, id: \.status) { group in
+                Section(group.status) {
+                    ForEach(group.surveys) { survey in
+                        Button {
+                            selected = survey
+                        } label: {
+                            SurveyRowView(survey: survey)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Shows the survey's questions")
+                    }
+                }
+            }
+
+            FreshnessLabel(date: store.loadedAt)
+                .listRowBackground(Color.clear)
+        }
+        .skeleton(store.isLoading && store.surveys.isEmpty)
+    }
+
+    private func load() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.load(client: client, projectID: projectID)
+    }
+}
+
+struct SurveyRowView: View {
+    let survey: Survey
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(survey.name)
+                .font(.body)
+                .lineLimit(2)
+
+            HStack(spacing: 6) {
+                StatusPill(text: surveyTypeLabel(survey.type), tint: Theme.accent)
+                Text(questionCount)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(surveyRangeText(start: survey.startDate, end: survey.endDate))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(.rect)
+    }
+
+    private var questionCount: String {
+        survey.questions.count == 1 ? "1 question" : "\(survey.questions.count) questions"
+    }
+}
+
+// MARK: - Detail
+
+struct SurveyDetailSheet: View {
+    let survey: Survey
+    let webURL: URL?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Status") { Text(survey.statusText) }
+                    LabeledContent("Type") { Text(surveyTypeLabel(survey.type)) }
+                    if let start = survey.startDate {
+                        LabeledContent("Launched") {
+                            Text(start, format: .dateTime.year().month().day())
+                        }
+                    }
+                    if let end = survey.endDate {
+                        LabeledContent("Stopped") {
+                            Text(end, format: .dateTime.year().month().day())
+                        }
+                    }
+                }
+
+                if let description = survey.description, !description.isEmpty {
+                    Section("Description") {
+                        Text(description).font(.callout)
+                    }
+                }
+
+                Section("Questions (\(survey.questions.count))") {
+                    if survey.questions.isEmpty {
+                        Text("This survey has no questions defined.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(survey.questions.enumerated()), id: \.offset) { index, question in
+                            SurveyQuestionRowView(index: index, question: question)
+                        }
+                    }
+                }
+
+                if let webURL {
+                    Section {
+                        Link(destination: webURL) {
+                            Label("Open in PostHog", systemImage: "arrow.up.forward.square")
+                        }
+                    } footer: {
+                        // Being blunt beats implying the app shows results it
+                        // has never fetched.
+                        Text("GetHog shows a survey's configuration. Responses and their breakdowns are only on the PostHog web console.")
+                    }
+                }
+            }
+            .navigationTitle(survey.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+struct SurveyQuestionRowView: View {
+    let index: Int
+    let question: SurveyQuestion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(index + 1). \(question.question ?? "Untitled question")")
+                .font(.callout)
+
+            if let type = question.type {
+                StatusPill(text: questionTypeLabel(type), tint: .secondary)
+            }
+
+            if let choices = question.choices, !choices.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(choices, id: \.self) { choice in
+                        Text(choice)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.leading, 12)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Choices: \(choices.joined(separator: ", "))")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func questionTypeLabel(_ type: String) -> String {
+        switch type {
+        case "open": "Open text"
+        case "single_choice": "Single choice"
+        case "multiple_choice": "Multiple choice"
+        case "rating": "Rating"
+        case "link": "Link"
+        default: type.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+// MARK: - Formatting
+//
+// File-private so concurrent work on other screens can't collide with these
+// names; they are three lines each and not worth a shared surface.
+
+private func surveyTypeLabel(_ type: String) -> String {
+    switch type {
+    case "popover": "Popover"
+    case "widget": "Widget"
+    case "api": "API"
+    case "external_survey": "External"
+    default: type.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+}
+
+private func surveyRangeText(start: Date?, end: Date?) -> String {
+    let format = Date.FormatStyle.dateTime.year().month(.abbreviated).day()
+    switch (start, end) {
+    case (nil, _):
+        return "Never launched"
+    case (let start?, nil):
+        return "Since \(start.formatted(format))"
+    case (let start?, let end?):
+        return "\(start.formatted(format)) – \(end.formatted(format))"
+    }
+}
