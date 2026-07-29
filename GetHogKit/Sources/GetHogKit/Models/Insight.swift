@@ -39,14 +39,20 @@ public struct Insight: Sendable, Decodable, Identifiable {
     public var renderModel: InsightRenderModel {
         switch sourceKind {
         case "TrendsQuery":
-            switch query?.source?.trendsFilter?.display {
+            let display = query?.source?.trendsFilter?.display
+            switch display {
+            // Aggregated displays have no time axis: the figure is in
+            // `aggregated_value` and `data` is empty.
             case "ActionsBarValue", "ActionsPie", "ActionsTable":
                 return .barValue(result.seriesDTOs.map(\.asBarValue))
             case "BoldNumber":
                 guard let first = result.seriesDTOs.first else { return .unsupported(kind: sourceKind) }
                 return .bigNumber(BigNumber(label: first.label ?? "", value: first.headlineValue))
             default:
-                return .timeSeries(result.seriesDTOs.map(\.asSeries))
+                return .timeSeries(
+                    result.seriesDTOs.map(\.asSeries),
+                    style: TimeSeriesStyle(display: display)
+                )
             }
 
         case "FunnelsQuery":

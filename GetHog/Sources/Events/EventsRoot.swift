@@ -239,15 +239,15 @@ final class LiveTailController {
         isRunning = true
         secondsRemaining = maxDuration
 
+        // The task inherits this type's main-actor isolation, so state reads and
+        // writes below need no hops.
         task = Task { [weak self] in
-            while let self, await self.isRunning, await self.secondsRemaining > 0 {
+            while let self, self.isRunning, self.secondsRemaining > 0 {
                 try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled else { return }
                 await refresh()
-                await MainActor.run {
-                    self.secondsRemaining = max(0, self.secondsRemaining - self.interval)
-                    if self.secondsRemaining == 0 { self.stop() }
-                }
+                self.secondsRemaining = max(0, self.secondsRemaining - self.interval)
+                if self.secondsRemaining == 0 { self.stop() }
             }
         }
     }

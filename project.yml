@@ -31,6 +31,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
         PRODUCT_NAME: GetHog
+        GENERATE_INFOPLIST_FILE: YES
+        # Required: iOS terminates an app that evaluates Face ID without a
+        # purpose string. Used before revealing the stored API key and,
+        # optionally, before toggling a live feature flag.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "GetHog asks for Face ID before revealing your PostHog API key or changing a live feature flag."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
@@ -50,6 +55,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTests
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   GetHog:

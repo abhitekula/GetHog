@@ -45,9 +45,9 @@ enum BiometricGate {
         case denied(String)
     }
 
-    /// `nonisolated` and self-contained on purpose: `LAContext` is not
-    /// `Sendable`, so it is created, used and discarded inside one isolation
-    /// domain rather than being handed across an actor boundary.
+    /// Deliberately actor-free and self-contained: `LAContext` is not
+    /// `Sendable`, so it is created, used and discarded inside a single
+    /// isolation domain rather than being handed across an actor boundary.
     static func evaluate() async -> Outcome {
         let context = LAContext()
         var probeError: NSError?

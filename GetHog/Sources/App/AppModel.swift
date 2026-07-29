@@ -139,11 +139,3 @@ final class AppModel {
         return id == 0 ? nil : id
     }
 }
-
-extension PostHogClient {
-    /// Non-isolated host access for URL building on the main actor.
-    nonisolated var regionHost: URL {
-        // `region` is derived from immutable auth configuration.
-        MainActor.assumeIsolated { self.cachedHost }
-    }
-}

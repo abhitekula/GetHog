@@ -14,8 +14,8 @@ struct InsightChartView: View {
 
     var body: some View {
         switch model {
-        case .timeSeries(let series):
-            TimeSeriesChart(series: series, compact: compact)
+        case .timeSeries(let series, let style):
+            TimeSeriesChart(series: series, style: style, compact: compact)
         case .barValue(let bars):
             BarValueChart(bars: bars, compact: compact)
         case .bigNumber(let number):
@@ -172,6 +172,7 @@ struct RetentionCell: View {
 
 struct TimeSeriesChart: View {
     let series: [Series]
+    var style: TimeSeriesStyle = .line
     var compact: Bool
 
     @State private var selectedDay: String?
@@ -193,19 +194,46 @@ struct TimeSeriesChart: View {
             }
 
             Chart {
-                ForEach(Array(series.enumerated()), id: \.offset) { index, s in
+                ForEach(Array(series.enumerated()), id: \.offset) { _, s in
                     ForEach(s.points, id: \.day) { point in
-                        LineMark(
-                            x: .value("Day", point.day),
-                            y: .value(s.label, point.value)
-                        )
-                        .foregroundStyle(SeriesPalette.color(at: index))
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        // Monotone, not catmullRom: catmullRom overshoots between
-                        // points, which would misrepresent the data.
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(by: .value("Series", s.label))
-                        .symbol(by: .value("Series", s.label))
+                        // The insight's own display type decides the mark. Drawing
+                        // a stacked-bar insight as overlapping lines would read as
+                        // a completely different result.
+                        switch style {
+                        case .line, .area:
+                            LineMark(
+                                x: .value("Day", point.day),
+                                y: .value("Value", point.value)
+                            )
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            // Monotone, not catmullRom: catmullRom overshoots
+                            // between points and would misrepresent the data.
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(by: .value("Series", s.label))
+                            .symbol(by: .value("Series", s.label))
+
+                            if style == .area {
+                                AreaMark(
+                                    x: .value("Day", point.day),
+                                    y: .value("Value", point.value)
+                                )
+                                .interpolationMethod(.monotone)
+                                .foregroundStyle(by: .value("Series", s.label))
+                                .opacity(0.15)
+                            }
+
+                        case .bar, .stackedBar:
+                            // Swift Charts stacks same-x BarMarks by default, which
+                            // is exactly stackedBar; for plain bars we position
+                            // them side by side instead.
+                            BarMark(
+                                x: .value("Day", point.day),
+                                y: .value("Value", point.value)
+                            )
+                            .foregroundStyle(by: .value("Series", s.label))
+                            .position(by: style == .bar ? .value("Series", s.label) : .value("Series", ""))
+                            .cornerRadius(3)
+                        }
                     }
                 }
 

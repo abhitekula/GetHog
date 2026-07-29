@@ -77,12 +77,18 @@ struct FlagDetailView: View {
                     .textSelection(.enabled)
 
                 HStack(spacing: 8) {
-                    StatusPill(text: statusText, tint: statusTint)
-                    if flag.archived && !isActive {
+                    StatusPill(
+                        text: isActive ? "Enabled" : "Disabled",
+                        tint: isActive ? Theme.Status.good : Color.secondary
+                    )
+                    // Archived is orthogonal to on/off, and an archived flag
+                    // that is still enabled is exactly the case worth naming.
+                    if flag.archived {
                         StatusPill(text: "Archived", tint: Color.secondary)
                     }
                 }
 
+                // The full description, not the row's truncated `displayName`.
                 if let name = flag.name, !name.isEmpty, name != flag.key {
                     Text(name)
                         .font(.subheadline)
@@ -96,18 +102,19 @@ struct FlagDetailView: View {
 
     private var toggleSection: some View {
         Section {
-            HStack {
-                Toggle(isOn: activationRequest) {
+            Toggle(isOn: activationRequest) {
+                // The spinner rides in the label so the switch itself never
+                // moves while a write is in flight.
+                HStack(spacing: 8) {
                     Text("Flag enabled")
-                }
-                .disabled(isBusy)
-
-                if isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Saving change")
+                    if isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Saving change")
+                    }
                 }
             }
+            .disabled(isBusy)
 
             if let message = controller.message {
                 ToggleMessageView(message: message) { controller.dismissMessage() }
@@ -191,17 +198,6 @@ struct FlagDetailView: View {
                 desired, flag: flag, client: client, projectID: projectID
             )
         }
-    }
-
-    // MARK: - Status
-
-    private var statusText: String {
-        if flag.archived && !isActive { return "Disabled" }
-        return isActive ? "Enabled" : "Disabled"
-    }
-
-    private var statusTint: Color {
-        isActive ? Theme.Status.good : Color.secondary
     }
 }
 

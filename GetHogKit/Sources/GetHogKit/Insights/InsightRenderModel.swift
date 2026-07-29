@@ -6,8 +6,8 @@ import Foundation
 /// render. Anything outside this set decodes to `.unsupported`, which renders as
 /// an honest card linking to the web console rather than a broken chart.
 public enum InsightRenderModel: Sendable, Equatable {
-    /// Trends over time — line, bar, or area.
-    case timeSeries([Series])
+    /// Trends over time, drawn in the style the insight actually specifies.
+    case timeSeries([Series], style: TimeSeriesStyle)
     /// Trends aggregated per breakdown value (`ActionsBarValue`); no time axis.
     case barValue([BarValue])
     /// A single headline figure (`BoldNumber`).
@@ -20,6 +20,26 @@ public enum InsightRenderModel: Sendable, Equatable {
     case retention(RetentionGrid)
     /// Recognised, but deliberately not drawn on mobile yet.
     case unsupported(kind: String)
+}
+
+/// How a trends insight should be drawn.
+///
+/// PostHog stores this per insight; ignoring it would render a stacked-bar
+/// insight as overlapping lines, which reads as a completely different result.
+public enum TimeSeriesStyle: Sendable, Equatable {
+    case line
+    case area
+    case bar
+    case stackedBar
+
+    init(display: String?) {
+        switch display {
+        case "ActionsAreaGraph": self = .area
+        case "ActionsBar": self = .bar
+        case "ActionsStackedBar": self = .stackedBar
+        default: self = .line
+        }
+    }
 }
 
 public enum LifecycleStatus: String, Sendable, CaseIterable {
