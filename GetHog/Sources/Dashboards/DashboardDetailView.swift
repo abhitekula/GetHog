@@ -150,7 +150,7 @@ struct InsightDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 InsightChartView(model: tile.renderModel, compact: false, webURL: webURL)
 
-                if case .timeSeries(let series) = tile.renderModel {
+                if case .timeSeries(let series, _) = tile.renderModel {
                     SeriesLegend(series: series)
                 }
 

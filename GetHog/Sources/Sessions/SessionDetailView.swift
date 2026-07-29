@@ -260,11 +260,18 @@ struct SessionHeaderCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Text(row.value ?? "—")
-                .font(.caption)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(3)
-                .textSelection(row.selectable ? .enabled : .disabled)
+            // `.enabled` and `.disabled` are distinct types, so this cannot be a
+            // ternary — the modifier has to be applied conditionally instead.
+            Group {
+                if row.selectable {
+                    Text(row.value ?? "—").textSelection(.enabled)
+                } else {
+                    Text(row.value ?? "—")
+                }
+            }
+            .font(.caption)
+            .multilineTextAlignment(.trailing)
+            .lineLimit(3)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.label), \(row.value ?? "unknown")")
