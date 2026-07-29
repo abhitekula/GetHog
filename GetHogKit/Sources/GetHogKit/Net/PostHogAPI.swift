@@ -1,0 +1,193 @@
+import Foundation
+
+/// The endpoint catalog. Every URL GetHog knows how to call lives here, so
+/// paths, rate-limit categories, and refresh policy are decided in one place.
+public enum PostHogAPI {
+
+    // MARK: - Identity
+
+    public static func me() -> Endpoint {
+        Endpoint(path: "/api/users/@me/", category: .crud)
+    }
+
+    // MARK: - Dashboards & insights
+
+    public static func dashboards(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/dashboards/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    /// Tile results arrive inline, so a whole dashboard costs one request.
+    ///
+    /// Defaults to PostHog's cached results; only an explicit user refresh
+    /// escalates to recomputation, because the budget is organisation-wide.
+    public static func dashboard(
+        projectID: Int,
+        dashboardID: Int,
+        refresh: Bool = false
+    ) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/dashboards/\(dashboardID)/",
+            query: [
+                URLQueryItem(name: "refresh", value: refresh ? "lazy_async" : "force_cache")
+            ],
+            category: .analytics
+        )
+    }
+
+    // MARK: - Events
+
+    public static func events(
+        projectID: Int,
+        limit: Int = 50,
+        before cursor: Date? = nil,
+        search: String? = nil,
+        eventName: String? = nil
+    ) -> Endpoint {
+        var clauses: [String] = []
+
+        if let cursor {
+            // Keyset paging: PostHog rejects OFFSET for personal API keys.
+            clauses.append("timestamp < toDateTime64('\(Self.sqlTimestamp(cursor))', 6)")
+        }
+        if let eventName, !eventName.isEmpty {
+            clauses.append("event = '\(Self.escape(eventName))'")
+        }
+        if let search, !search.isEmpty {
+            let term = Self.escape(search)
+            clauses.append("(event ILIKE '%\(term)%' OR distinct_id ILIKE '%\(term)%')")
+        }
+
+        let whereClause = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        let sql = """
+            SELECT uuid, event, timestamp, distinct_id, properties.$current_url, properties
+            FROM events
+            \(whereClause)
+            ORDER BY timestamp DESC
+            LIMIT \(limit)
+            """
+
+        return hogql(projectID: projectID, sql: sql)
+    }
+
+    public static func sessionEvents(
+        projectID: Int,
+        sessionID: String,
+        limit: Int = 500
+    ) -> Endpoint {
+        let sql = """
+            SELECT uuid, event, timestamp, distinct_id, properties.$current_url, properties
+            FROM events
+            WHERE properties.$session_id = '\(escape(sessionID))'
+            ORDER BY timestamp ASC
+            LIMIT \(limit)
+            """
+        return hogql(projectID: projectID, sql: sql)
+    }
+
+    public static func hogql(projectID: Int, sql: String) -> Endpoint {
+        let payload: [String: Any] = ["query": ["kind": "HogQLQuery", "query": sql]]
+        let body = try? JSONSerialization.data(withJSONObject: payload)
+        return Endpoint(
+            path: "/api/projects/\(projectID)/query/",
+            method: "POST",
+            body: body,
+            category: .query
+        )
+    }
+
+    // MARK: - Session recordings
+
+    public static func sessionRecordings(
+        projectID: Int,
+        limit: Int = 50,
+        offset: Int = 0
+    ) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/session_recordings/",
+            query: [
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "offset", value: String(offset)),
+            ],
+            category: .analytics
+        )
+    }
+
+    public static func sessionRecording(projectID: Int, recordingID: String) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/session_recordings/\(recordingID)/",
+            category: .analytics
+        )
+    }
+
+    // MARK: - Replay snapshots
+    //
+    // These live under `/environments/`, not `/projects/`, and PostHog documents
+    // them as internal and subject to change. Everything that touches them is
+    // isolated so a break degrades the player and nothing else.
+
+    public static func snapshotSources(projectID: Int, recordingID: String) -> Endpoint {
+        Endpoint(
+            path: "/api/environments/\(projectID)/session_recordings/\(recordingID)/snapshots",
+            category: .analytics
+        )
+    }
+
+    public static func snapshotBlobs(
+        projectID: Int,
+        recordingID: String,
+        range: BlobRange
+    ) -> Endpoint {
+        Endpoint(
+            path: "/api/environments/\(projectID)/session_recordings/\(recordingID)/snapshots",
+            query: [
+                URLQueryItem(name: "source", value: "blob_v2"),
+                URLQueryItem(name: "start_blob_key", value: range.start),
+                URLQueryItem(name: "end_blob_key", value: range.end),
+            ],
+            category: .analytics
+        )
+    }
+
+    // MARK: - Feature flags
+
+    public static func featureFlags(projectID: Int, limit: Int = 100) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/feature_flags/",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            category: .crud
+        )
+    }
+
+    public static func setFlagActive(projectID: Int, flagID: Int, active: Bool) -> Endpoint {
+        let body = try? JSONSerialization.data(withJSONObject: ["active": active])
+        return Endpoint(
+            path: "/api/projects/\(projectID)/feature_flags/\(flagID)/",
+            method: "PATCH",
+            body: body,
+            category: .crud
+        )
+    }
+
+    // MARK: - Helpers
+
+    /// Escapes a value for interpolation into HogQL string literals.
+    static func escape(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+    }
+
+    static func sqlTimestamp(_ date: Date) -> String {
+        date.formatted(
+            .verbatim(
+                "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits).\(secondFraction: .fractional(6))",
+                timeZone: TimeZone(identifier: "UTC")!,
+                calendar: Calendar(identifier: .gregorian)
+            )
+        )
+    }
+}

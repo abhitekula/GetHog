@@ -1,0 +1,62 @@
+name: GetHog
+options:
+  bundleIdPrefix: app.gethog
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+packages:
+  GetHogKit:
+    path: GetHogKit
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  GetHog:
+    type: application
+    platform: iOS
+    sources:
+      - path: GetHog/Sources
+      - path: GetHog/Resources
+        buildPhase: resources
+    dependencies:
+      - package: GetHogKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
+        PRODUCT_NAME: GetHog
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: GetHog
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: YES
+
+  GetHogTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - GetHog/Tests
+    dependencies:
+      - target: GetHog
+      - package: GetHogKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTests
+
+schemes:
+  GetHog:
+    build:
+      targets:
+        GetHog: all
+        GetHogTests: [test]
+    test:
+      targets:
+        - GetHogTests

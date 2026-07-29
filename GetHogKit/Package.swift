@@ -1,0 +1,32 @@
+// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "GetHogKit",
+    platforms: [
+        .iOS(.v18),
+        .macOS(.v15), // so `swift test` runs from the CLI without a simulator
+    ],
+    products: [
+        .library(name: "GetHogKit", targets: ["GetHogKit"]),
+    ],
+    targets: [
+        .target(
+            name: "GetHogKit",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .testTarget(
+            name: "GetHogKitTests",
+            dependencies: ["GetHogKit"],
+            resources: [
+                // Real API responses captured from project [REMOVED PRIVATE DATA] during Phase 0.
+                .copy("Fixtures")
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+    ]
+)
