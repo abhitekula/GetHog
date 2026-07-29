@@ -54,6 +54,39 @@ struct TimeSeriesDescriptor: AXChartDescriptorRepresentable {
     }
 }
 
+struct LifecycleDescriptor: AXChartDescriptorRepresentable {
+    let series: [LifecycleSeries]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let allValues = series.flatMap { $0.points.map(\.value) }
+        let days = series.first?.points.map(\.day) ?? []
+
+        let xAxis = AXCategoricalDataAxisDescriptor(title: "Date", categoryOrder: days)
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Users",
+            range: (allValues.min() ?? 0)...(max(allValues.max() ?? 1, 1)),
+            gridlinePositions: []
+        ) { $0.formatted(.number.precision(.fractionLength(0))) }
+
+        return AXChartDescriptor(
+            title: "User lifecycle",
+            summary: series
+                .map { "\($0.status.title) \($0.total.formatted())" }
+                .joined(separator: ", "),
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: series.map { s in
+                AXDataSeriesDescriptor(
+                    name: s.status.title,
+                    isContinuous: false,
+                    dataPoints: s.points.map { AXDataPoint(x: $0.day, y: $0.value) }
+                )
+            }
+        )
+    }
+}
+
 struct BarValueDescriptor: AXChartDescriptorRepresentable {
     let bars: [BarValue]
 

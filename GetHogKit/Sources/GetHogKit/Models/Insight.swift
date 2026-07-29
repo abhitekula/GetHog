@@ -53,6 +53,14 @@ public struct Insight: Sendable, Decodable, Identifiable {
             let groups = result.funnelGroups
             return groups.isEmpty ? .unsupported(kind: sourceKind) : .funnel(groups)
 
+        case "LifecycleQuery":
+            let series = result.seriesDTOs.map(\.asLifecycleSeries)
+            return series.isEmpty ? .unsupported(kind: sourceKind) : .lifecycle(series)
+
+        case "RetentionQuery":
+            let cohorts = result.retentionCohorts
+            return cohorts.isEmpty ? .unsupported(kind: sourceKind) : .retention(RetentionGrid(cohorts: cohorts))
+
         default:
             return .unsupported(kind: sourceKind)
         }
@@ -82,9 +90,16 @@ enum RawResult: Sendable, Decodable {
     case series([TrendsSeriesDTO])
     case funnelGroups([[FunnelStepDTO]])
     case funnelSteps([FunnelStepDTO])
+    case retention([RetentionCohortDTO])
     case unknown
 
     init(from decoder: any Decoder) throws {
+        // Retention is checked before trends: its cohorts carry `values`, which
+        // no other shape has, so this is unambiguous.
+        if let cohorts = try? [RetentionCohortDTO](from: decoder),
+           cohorts.contains(where: { $0.values != nil }) {
+            self = .retention(cohorts); return
+        }
         if let groups = try? [[FunnelStepDTO]](from: decoder), !groups.isEmpty {
             self = .funnelGroups(groups); return
         }
@@ -120,6 +135,30 @@ enum RawResult: Sendable, Decodable {
             return []
         }
     }
+
+    var retentionCohorts: [RetentionCohort] {
+        guard case .retention(let dtos) = self else { return [] }
+        return dtos.map(\.asCohort)
+    }
+}
+
+struct RetentionCohortDTO: Sendable, Decodable {
+    let label: String?
+    let date: String?
+    let values: [RetentionValueDTO]?
+
+    var asCohort: RetentionCohort {
+        RetentionCohort(
+            label: label ?? "",
+            date: date.flatMap(PostHogDate.parse),
+            counts: (values ?? []).map { $0.count ?? 0 }
+        )
+    }
+}
+
+struct RetentionValueDTO: Sendable, Decodable {
+    let count: Double?
+    let label: String?
 }
 
 struct TrendsSeriesDTO: Sendable, Decodable {
@@ -128,10 +167,37 @@ struct TrendsSeriesDTO: Sendable, Decodable {
     let data: [Double]?
     let days: [String]?
     let aggregatedValue: Double?
+    /// Present only on lifecycle results.
+    let status: String?
+
+    init(
+        label: String?, count: Double?, data: [Double]?, days: [String]?,
+        aggregatedValue: Double?, status: String?
+    ) {
+        self.label = label
+        self.count = count
+        self.data = data
+        self.days = days
+        self.aggregatedValue = aggregatedValue
+        self.status = status
+    }
 
     enum CodingKeys: String, CodingKey {
-        case label, count, data, days
+        case label, count, data, days, status
         case aggregatedValue = "aggregated_value"
+    }
+
+    var lifecycleStatus: LifecycleStatus {
+        LifecycleStatus(rawValue: (status ?? "").lowercased()) ?? .other
+    }
+
+    var asLifecycleSeries: LifecycleSeries {
+        LifecycleSeries(
+            status: lifecycleStatus,
+            label: label ?? "",
+            total: count ?? 0,
+            points: asSeries.points
+        )
     }
 
     var looksLikeTrends: Bool { days != nil || aggregatedValue != nil }

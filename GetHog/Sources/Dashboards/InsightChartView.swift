@@ -22,8 +22,148 @@ struct InsightChartView: View {
             BigNumberView(number: number)
         case .funnel(let groups):
             FunnelChart(groups: groups, compact: compact)
+        case .lifecycle(let series):
+            LifecycleChart(series: series, compact: compact)
+        case .retention(let grid):
+            RetentionGridView(grid: grid, compact: compact)
         case .unsupported(let kind):
             UnsupportedInsightCard(kind: kind, webURL: webURL)
+        }
+    }
+}
+
+// MARK: - Lifecycle
+
+struct LifecycleChart: View {
+    let series: [LifecycleSeries]
+    var compact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Chart {
+                ForEach(series, id: \.status) { s in
+                    ForEach(s.points, id: \.day) { point in
+                        BarMark(
+                            x: .value("Day", point.day),
+                            y: .value("Users", point.value)
+                        )
+                        .foregroundStyle(by: .value("Status", s.status.title))
+                    }
+                }
+                // Dormant is drawn below zero, so the axis line is the reference
+                // between growth and churn rather than decoration.
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(.secondary.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+            }
+            .chartForegroundStyleScale(
+                domain: series.map(\.status.title),
+                range: series.map { SeriesPalette.color(at: $0.status.paletteSlot) }
+            )
+            .chartXAxis { AxisMarks(values: .automatic(desiredCount: compact ? 3 : 6)) }
+            .chartYAxis { AxisMarks(position: .leading) }
+            .chartLegend(.visible)
+            .frame(height: compact ? 170 : 280)
+            .accessibilityChartDescriptor(LifecycleDescriptor(series: series))
+
+            if !compact {
+                ForEach(series, id: \.status) { s in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(SeriesPalette.color(at: s.status.paletteSlot))
+                            .frame(width: 8, height: 8)
+                        Text(s.status.title).font(.caption)
+                        Spacer()
+                        Text(s.total.compactFormatted)
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            // Churn reads as a loss, so it is signed, not absolute.
+                            .foregroundStyle(s.status.isNegative ? Theme.Status.critical : .primary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(s.status.title): \(s.total.formatted()) users")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Retention
+
+struct RetentionGridView: View {
+    let grid: RetentionGrid
+    var compact: Bool
+
+    private var visibleIntervals: Int {
+        min(grid.intervalCount, compact ? 6 : 12)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Column headers
+            HStack(spacing: 2) {
+                Text("Cohort")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 62, alignment: .leading)
+                ForEach(0..<visibleIntervals, id: \.self) { index in
+                    Text("\(index)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            ForEach(grid.cohorts) { cohort in
+                HStack(spacing: 2) {
+                    Text(cohort.label)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .frame(width: 62, alignment: .leading)
+
+                    ForEach(0..<visibleIntervals, id: \.self) { index in
+                        RetentionCell(
+                            rate: index < cohort.counts.count ? cohort.rate(at: index) : nil,
+                            count: index < cohort.counts.count ? cohort.counts[index] : nil
+                        )
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel(for: cohort))
+            }
+        }
+    }
+
+    private func accessibilityLabel(for cohort: RetentionCohort) -> String {
+        let rates = (0..<min(visibleIntervals, cohort.counts.count)).map { index in
+            "interval \(index): \(cohort.rate(at: index).formatted(.percent.precision(.fractionLength(0))))"
+        }
+        return "\(cohort.label), \(rates.joined(separator: ", "))"
+    }
+}
+
+/// A single retention cell.
+///
+/// Sequential magnitude, so it is one hue light→dark rather than a rainbow, and
+/// the percentage is always printed — intensity alone is not readable enough,
+/// and printing it is also the relief the light palette's contrast rule requires.
+struct RetentionCell: View {
+    let rate: Double?
+    let count: Double?
+
+    var body: some View {
+        Group {
+            if let rate {
+                Text(rate, format: .percent.precision(.fractionLength(0)))
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(rate > 0.55 ? Color.white : Color.primary)
+                    .frame(maxWidth: .infinity, minHeight: 22)
+                    .background(
+                        SeriesPalette.color(at: 0).opacity(0.1 + 0.75 * rate),
+                        in: .rect(cornerRadius: 3)
+                    )
+            } else {
+                Color.clear.frame(maxWidth: .infinity, minHeight: 22)
+            }
         }
     }
 }
