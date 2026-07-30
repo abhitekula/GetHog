@@ -108,6 +108,12 @@ enum PostHogLinkParser {
         ("annotations", .annotations),
         ("notebooks", .notebooks),
         ("max", .max),
+        // The console puts Support at `/support/tickets`, *not* under
+        // `/conversations` — the shared prefix is an API-side accident and the
+        // web routes keep the two products apart. `max` above is the other half
+        // of the same pair, and mapping either one to `conversations` would send
+        // a link to the wrong product.
+        ("support", .support),
         // No console page of its own — the console's own search is a palette,
         // not a URL — but the scheme needs a way to name the app's fifth tab,
         // which is where a quick action for "find anything" has to land.
@@ -140,7 +146,12 @@ enum PostHogLinkParser {
     /// has been opted in to; it cannot create a dashboard. Quietly landing on
     /// the list would answer a request to make something with a request to look
     /// at what already exists, so those are refused and say so.
-    private static let listPages: Set<String> = ["recent", "home", "playlists", "templates"]
+    /// `tickets` joins them because the console's Support inbox lives one
+    /// segment down at `/support/tickets` — the section on its own is the
+    /// product's landing page, and the list is where a shared link points.
+    private static let listPages: Set<String> = [
+        "recent", "home", "playlists", "templates", "tickets",
+    ]
 
     /// The destination a URL names, or nil when there isn't one.
     ///

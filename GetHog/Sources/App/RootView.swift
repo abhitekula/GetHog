@@ -5,7 +5,7 @@ enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     case webAnalytics, clickmap, people, sql
     case errorTracking, tracing, logs
-    case inbox, signals, health, ingestion
+    case support, inbox, signals, health, ingestion
     case experiments, surveys, earlyAccess
     case llm, warehouse, pipelines, automation, actions, annotations
     case notebooks, max, renders, templates
@@ -48,6 +48,11 @@ enum AppTab: String, Hashable, CaseIterable {
         case .errorTracking: "Errors"
         case .tracing: "Tracing"
         case .logs: "Logs"
+        // "Support", the name PostHog's own console gives the product at
+        // `/support/tickets`. Deliberately not "Conversations", which is the API
+        // prefix it shares with Max — two products, one namespace, and the tab
+        // bar is the last place to reproduce that ambiguity.
+        case .support: "Support"
         case .inbox: "Inbox"
         case .signals: "Signals"
         case .health: "Health"
@@ -93,6 +98,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .errorTracking: "exclamationmark.triangle"
         case .tracing: "point.3.connected.trianglepath.dotted"
         case .logs: "text.alignleft"
+        case .support: "lifepreserver"
         case .inbox: "tray.full"
         case .signals: "antenna.radiowaves.left.and.right"
         case .health: "stethoscope"
@@ -168,7 +174,23 @@ extension AppTab {
             // "is my instrumentation working", which is a monitoring question,
             // and Health's own `ingestion_warning` issue kind is the summary
             // this screen is the detail of.
-            tabs: [.errorTracking, .llm, .tracing, .logs, .inbox, .signals, .health, .ingestion]
+            // Support sits beside Inbox rather than in Workspace with Max, and
+            // the two placements are the same decision made twice. Monitor is
+            // the "what needs my attention now" group — Errors is what the
+            // machines noticed, Inbox is what the agents filed, Signals is what
+            // the scouts found. A support ticket is the same question asked by a
+            // *person*, with a deadline attached, and it is read in the same
+            // posture: a triage pass, usually not at a desk.
+            //
+            // Max stays in Workspace, which is where things you read at leisure
+            // live. Keeping the two `conversations`-prefixed products in
+            // different sections is a bonus rather than the reason, but it is a
+            // real one: the sidebar is where a reader would otherwise most
+            // easily confuse them.
+            tabs: [
+                .errorTracking, .llm, .tracing, .logs,
+                .support, .inbox, .signals, .health, .ingestion,
+            ]
         ),
         AppTabSection(
             title: "Data",
@@ -215,6 +237,7 @@ struct TabRootView: View {
         case .llm: LLMAnalyticsRoot()
         case .tracing: TracingRoot()
         case .logs: LogsRoot()
+        case .support: SupportRoot()
         case .inbox: InboxRoot()
         case .signals: SignalsRoot()
         case .health: HealthRoot()
