@@ -3,6 +3,15 @@ import SwiftUI
 
 enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
+    /// The saved-insight library.
+    ///
+    /// A screen of its own rather than a corner of Dashboards, because the two
+    /// collections are not the same size and never were: the project this was
+    /// built against holds 140 saved insights against 14 dashboards, and an
+    /// insight saved from the console's own editor belongs to no dashboard at
+    /// all — so before this tab existed, the app could not reach it by any
+    /// route.
+    case insights
     case webAnalytics, clickmap, people, sql
     case errorTracking, sessionSummaries, tracing, logs
     case support, inbox, signals, health, ingestion
@@ -38,6 +47,10 @@ enum AppTab: String, Hashable, CaseIterable {
         // never be played at all.
         case .sessions: "Sessions"
         case .flags: "Flags"
+        // "Insights", the console's own word for the collection. Deliberately
+        // not "Charts": a saved insight is a saved *question*, and five of this
+        // project's are HogQL queries this app draws no chart for at all.
+        case .insights: "Insights"
         case .webAnalytics: "Web"
         // "Clickmap", not "Heatmap" — and the reason has changed, so the old one
         // is not left standing. It used to be that no page screenshot existed to
@@ -101,6 +114,11 @@ enum AppTab: String, Hashable, CaseIterable {
         case .events: "bolt"
         case .sessions: "rectangle.stack"
         case .flags: "flag"
+        // The same glyph a line-chart tile carries in `TileStyle`, which is what
+        // 48 of this project's 128 trends insights render as. Checked against
+        // `UIImage(systemName:)` by `SymbolNameTests`, like every other name
+        // here — this switch is where three invented symbol names once shipped.
+        case .insights: "chart.xyaxis.line"
         case .webAnalytics: "globe"
         case .clickmap: "cursorarrow.click.2"
         case .people: "person.2"
@@ -143,14 +161,14 @@ enum AppTab: String, Hashable, CaseIterable {
 
     /// Whether the screen brings a navigation container of its own.
     ///
-    /// The six list-and-detail screens are `NavigationSplitView`s, which *are* a
+    /// The seven list-and-detail screens are `NavigationSplitView`s, which *are* a
     /// navigation container: wrapping one in a `NavigationStack` puts a second,
     /// empty navigation bar above it on iPhone and breaks the two-column layout
     /// on iPad. Everything else is stack-less and gets its stack from whatever
     /// is showing it — a `Tab` in `RootView`, or the index behind "More".
     var ownsNavigationContainer: Bool {
         switch self {
-        case .dashboards, .events, .sessions, .flags, .people, .errorTracking: true
+        case .dashboards, .events, .sessions, .flags, .people, .errorTracking, .insights: true
         default: false
         }
     }
@@ -185,7 +203,16 @@ extension AppTab {
     /// would drift the first time a screen was added to one and not the other,
     /// and the difference would only ever show up on one of the two devices.
     static let sections: [AppTabSection] = [
-        AppTabSection(title: "Analyze", tabs: [.webAnalytics, .clickmap, .people, .groups, .sql]),
+        // Insights leads Analyze rather than sitting beside the saved artefacts
+        // in Workspace: a saved insight is a live analysis surface — it is
+        // recomputed on open, scrubbed and exported — where a render or a
+        // dashboard template is a file somebody kept. It sits first in the group
+        // because it is the direct neighbour of the Dashboards tab above it, and
+        // the two answer the same question at different granularities.
+        AppTabSection(
+            title: "Analyze",
+            tabs: [.insights, .webAnalytics, .clickmap, .people, .groups, .sql]
+        ),
         AppTabSection(
             title: "Monitor",
             // Ingestion sits beside Health rather than under Data: it answers
@@ -248,6 +275,7 @@ struct TabRootView: View {
     var body: some View {
         switch tab {
         case .dashboards: DashboardsRoot()
+        case .insights: InsightsRoot()
         case .events: EventsRoot()
         case .sessions: SessionsRoot()
         case .flags: FlagsRoot()
@@ -594,12 +622,23 @@ struct RootView: View {
         // Pressing a control labelled with a *metric* and landing on Settings is
         // the control silently failing at the only job it has.
         //
-        // This app draws an insight only as a tile on the dashboard it belongs
-        // to and has no screen for one on its own — the same limit the link
-        // parser states when it refuses `/insights/{id}`. So the deepest honest
-        // landing is that dashboard, and the snapshot records which one it was
-        // at write time (`SharedSnapshot.Metric.dashboardID`), where the answer
-        // was already in hand. Nothing is inferred here and nothing is fetched.
+        // The landing is the dashboard the metric was read from, and it stays
+        // that way now that `.insight` opens in the app.
+        //
+        // The old reasoning here was that this app had no screen for a lone
+        // insight, so a dashboard was the deepest it could go. That reason is
+        // gone — `InsightsRoot` and `SavedInsightDetailView` exist and
+        // `PostHogLink.insight.opensInApp` is now true — but the destination is
+        // unchanged, for a reason that was always the better one and was
+        // previously hidden behind the limitation:
+        //
+        // `SharedSnapshot.Metric` records the *dashboard* id at write time
+        // because that is what the widget's writer had in hand; it has never
+        // carried an insight id, and it still doesn't. Routing to an insight
+        // would mean inventing one from the metric's title, which is a guess.
+        // A control labelled with a metric landing on the dashboard that
+        // contains it is honest; landing on some other project object that
+        // happens to share a name is not.
         //
         // Falls back to the dashboards home whenever the id is unknown — a
         // snapshot written by an older build, or a metric that has since left

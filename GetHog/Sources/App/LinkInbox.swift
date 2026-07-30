@@ -131,13 +131,20 @@ struct LinkNotice {
     }
 
     /// An object this app has no screen for.
+    ///
+    /// **Currently unreachable, and kept anyway.** Every `PostHogLink` case now
+    /// returns `true` from `opensInApp` — insight was the last exception, and it
+    /// has a screen — so `RootView.open(_:)` has no branch left that produces
+    /// this. It used to carry a paragraph explaining that an insight was only
+    /// ever drawn as a dashboard tile; that paragraph is deleted rather than
+    /// left standing, because a refusal that names a limitation the app no
+    /// longer has is worse than no refusal at all.
+    ///
+    /// The function stays because the guard it serves stays: the next case added
+    /// to `PostHogLink` has to answer `opensInApp` for itself, and this is what
+    /// it says when the answer is no.
     static func noScreen(link: PostHogLink, webURL: URL?) -> LinkNotice {
-        let message = switch link {
-        case .insight:
-            "GetHog draws an insight as a tile on the dashboard it sits on and has no screen for one on its own."
-        default:
-            "GetHog has no screen for this kind of object."
-        }
+        let message = "GetHog has no screen for this kind of object."
         return LinkNotice(
             title: "No screen for that",
             message: webURL == nil ? message : "\(message) It opens in the PostHog console.",

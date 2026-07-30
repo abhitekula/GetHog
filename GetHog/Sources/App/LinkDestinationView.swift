@@ -24,10 +24,15 @@ struct LinkDestinationView: View {
                 .navigationBarTitleDisplayMode(.inline)
         case .errorIssue(let id):
             ErrorIssueLinkDestination(issueID: id)
-        case .screen, .insight:
-            // Neither is ever pushed — a screen goes through `RootView.open(_:)`
-            // and an insight has no screen at all, so it is refused before it
-            // gets here. This branch exists to keep the switch honest.
+        case .insight(let shortID):
+            // Resolves itself from the handle, and says "not found" in its own
+            // words when the insight has been deleted since the link was
+            // written — which for an insight is a normal outcome, not an error.
+            SavedInsightDetailView(identifier: shortID)
+        case .screen:
+            // Never pushed: a screen goes through `RootView.open(_:)`, which
+            // selects a tab rather than putting a destination on a stack. This
+            // branch exists to keep the switch honest.
             EmptyStateView(
                 title: "Nothing to show",
                 systemImage: "questionmark.square.dashed",
@@ -53,6 +58,11 @@ struct ErrorIssueLinkDestination: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @State private var store = ErrorTrackingStore()
+    /// Its own, not the Errors screen's. This destination owns its own list of
+    /// one issue, so the optimistic overrides a write leaves behind belong to it
+    /// too — sharing a controller across two independent stores would let one
+    /// screen's refresh reconcile away the other's in-flight write.
+    @State private var triage = ErrorTriageController()
 
     /// The widest window the query offers. A link is usually followed long after
     /// it was written, so the narrow windows the Errors screen defaults to would
@@ -64,7 +74,7 @@ struct ErrorIssueLinkDestination: View {
     var body: some View {
         Group {
             if let issue {
-                ErrorIssueDetailView(issue: issue)
+                ErrorIssueDetailView(issue: issue, triage: triage)
             } else if store.isLoading {
                 ProgressView().controlSize(.large)
             } else if !model.isAvailable(.events) {

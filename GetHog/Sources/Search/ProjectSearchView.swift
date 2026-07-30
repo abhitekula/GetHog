@@ -67,6 +67,12 @@ struct ProjectSearchView: View {
             switch push {
             case .dashboard(let id, let name):
                 DashboardDetailView(dashboardID: id, title: name)
+            case .insight(let shortID, _):
+                // The name is not passed on: unlike a dashboard, an insight's
+                // own fetch is a single request that returns the title with
+                // everything else, so seeding it would only risk showing the
+                // index's stale copy of a renamed insight.
+                SavedInsightDetailView(identifier: shortID)
             case .featureFlag(let id, let name):
                 FlagSearchDestination(flagID: id, key: name)
             }

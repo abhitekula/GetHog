@@ -27,6 +27,16 @@ enum ProjectSearchRoute: Hashable {
     /// `DashboardDetailView` already resolves itself from an id, which is
     /// exactly what a `file_system` row carries.
     case dashboard(id: Int)
+    /// A saved insight, by the console handle the index row already carries.
+    ///
+    /// This was `.web` until the insight library shipped, and it was the single
+    /// largest thing on this screen leaving the app: insights are 140 of the 200
+    /// rows PostHog's index returns for this project. `ref` on an insight row is
+    /// the `short_id` — verified against both the live index and the demo
+    /// fixture, where every insight row reads `"ref": "COaW8hFP"` beside
+    /// `"href": "/insights/COaW8hFP"` — which is exactly what
+    /// `SavedInsightDetailView` resolves from.
+    case insight(shortID: String)
     case featureFlag(id: Int)
     /// A sheet, not a push: `SurveyDetailSheet` brings its own navigation stack
     /// and is presented modally everywhere else in the app.
@@ -41,7 +51,7 @@ enum ProjectSearchRoute: Hashable {
     /// Reinforcement only — a row that leaves the app says so in words too.
     var opensInApp: Bool {
         switch self {
-        case .dashboard, .featureFlag, .survey: true
+        case .dashboard, .insight, .featureFlag, .survey: true
         case .web, .unavailable: false
         }
     }
@@ -50,6 +60,7 @@ enum ProjectSearchRoute: Hashable {
     func push(named name: String) -> ProjectSearchPush? {
         switch self {
         case .dashboard(let id): .dashboard(id: id, name: name)
+        case .insight(let shortID): .insight(shortID: shortID, name: name)
         case .featureFlag(let id): .featureFlag(id: id, name: name)
         case .survey, .web, .unavailable: nil
         }
@@ -63,6 +74,7 @@ enum ProjectSearchRoute: Hashable {
 /// `navigationDestination` and land the user on a blank screen.
 enum ProjectSearchPush: Hashable {
     case dashboard(id: Int, name: String)
+    case insight(shortID: String, name: String)
     case featureFlag(id: Int, name: String)
 }
 
@@ -178,12 +190,17 @@ enum ProjectSearchIndex {
             // `ref` is the dashboard's own numeric id, which is precisely what
             // `DashboardDetailView` restores a torn-off window from.
             if let id = entry.ref.flatMap(Int.init) { return .dashboard(id: id) }
+        case .insight:
+            // An 8-character console handle, not a number — and deliberately not
+            // coerced to one. `SavedInsightDetailView` accepts either spelling
+            // and resolves them by different routes.
+            if let ref = entry.ref, !ref.isEmpty { return .insight(shortID: ref) }
         case .featureFlag:
             if let id = entry.ref.flatMap(Int.init) { return .featureFlag(id: id) }
         case .survey:
             // A UUID string here, not a number.
             if let ref = entry.ref, !ref.isEmpty { return .survey(id: ref) }
-        case .insight, .cohort, .sessionRecordingPlaylist, .hogFunction, .folder, .unknown:
+        case .cohort, .sessionRecordingPlaylist, .hogFunction, .folder, .unknown:
             break
         }
         return webRoute(for: entry)
@@ -209,8 +226,23 @@ enum ProjectSearchIndex {
     /// them to a browser.
     static func webFallbackNote(for type: FileSystemItemType) -> String {
         switch type {
+        // Insights no longer fall back at all — `route(for:)` sends them to
+        // `SavedInsightDetailView` — so this arm is unreachable from the screen,
+        // which only renders a note for a group whose rows leave the app.
+        //
+        // It used to read "GetHog draws an insight as part of the dashboard
+        // it sits on, so a saved insight found here opens in PostHog", which was
+        // the app's largest self-imposed limit stated to the user on its most
+        // general screen. That sentence is gone rather than softened; a note
+        // explaining a fallback that no longer happens would be a confident
+        // false claim about the app's own behaviour.
+        //
+        // The arm itself stays because the switch must be exhaustive over a type
+        // this app does not own, and because `webRoute(for:)` is still the
+        // fallback for an insight row with no `ref` — a row the index cannot
+        // name, which is a real if rare shape.
         case .insight:
-            "GetHog draws an insight as part of the dashboard it sits on, so a saved insight found here opens in PostHog."
+            "This insight row carries no id GetHog can open, so it opens in PostHog."
         case .cohort:
             "GetHog lists cohorts under People but has no screen for a single one, so these open in PostHog."
         case .sessionRecordingPlaylist:

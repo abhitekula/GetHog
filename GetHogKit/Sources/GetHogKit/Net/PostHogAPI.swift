@@ -403,10 +403,65 @@ public enum PostHogAPI {
         )
     }
 
-    public static func insights(projectID: Int, limit: Int = 100) -> Endpoint {
-        Endpoint(
+    /// One page of the saved-insight collection.
+    ///
+    /// Filtering and paging are **server-side on every axis**, which is not the
+    /// arrangement the rest of this app uses and is deliberate here. The project
+    /// index behind the search screen fetches once and filters in memory because
+    /// it is 200 small rows; an insights page is not — each row carries the
+    /// insight's whole saved `query` subtree, and the 140 rows in the project
+    /// this was measured against are 375,505 bytes. Pulling all of them on every
+    /// launch to answer a question one query parameter already answers is the
+    /// trade the search screen can afford and this one cannot.
+    ///
+    /// Measured against project [REMOVED PRIVATE DATA] on `us.posthog.com`:
+    /// - `?limit=&offset=` pages cleanly; `count` is 140 and `next` goes null on
+    ///   the last page.
+    /// - `?search=` matches names server-side (`search=task` → 1 of 140).
+    /// - `?insight=TRENDS` → 128, `FUNNELS` → 2, `SQL` → 5, `LIFECYCLE` → 3,
+    ///   `RETENTION` → 1, `PATHS` → 1, `STICKINESS` → 0. They sum to 140, so the
+    ///   filter partitions the collection rather than overlapping it.
+    /// - `?insight=GARBAGE` → 0 rather than an error, which is why `InsightKind`
+    ///   is a closed enum: an unrecognised value fails silently and empty.
+    /// - `?favorited=true` → 0 here. The field is real and per-user; this
+    ///   project simply has no starred insights, so the app must not treat an
+    ///   empty favourites section as a bug.
+    ///
+    /// `basic=true` is *not* sent, and that is a cost knowingly paid: measured at
+    /// `limit=50` it returns 79,266 bytes against the full row's 119,389, a 34%
+    /// saving. What it drops is `deleted` and `is_cached`. Neither is decorative
+    /// here — `deleted` is what stops a tombstone being offered as a row, and
+    /// `is_cached` is half of what `FreshnessLabel` states — and the alternative
+    /// is one `Insight` type whose fields are populated or empty depending on
+    /// which endpoint filled it, which is precisely the class of bug that is
+    /// invisible until a screen shows a blank where another screen shows a date.
+    /// One shape, 40 KB a page.
+    public static func insights(
+        projectID: Int,
+        limit: Int = 100,
+        offset: Int = 0,
+        search: String? = nil,
+        kind: InsightKind? = nil,
+        favoritedOnly: Bool = false
+    ) -> Endpoint {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        // Omitted at zero rather than sent as `offset=0`, so the first page's URL
+        // is byte-identical to the one `ResponseCache` may already hold.
+        if offset > 0 {
+            query.append(URLQueryItem(name: "offset", value: String(offset)))
+        }
+        if let search, !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            query.append(URLQueryItem(name: "search", value: search))
+        }
+        if let kind {
+            query.append(URLQueryItem(name: "insight", value: kind.apiValue))
+        }
+        if favoritedOnly {
+            query.append(URLQueryItem(name: "favorited", value: "true"))
+        }
+        return Endpoint(
             path: "/api/projects/\(projectID)/insights/",
-            query: [URLQueryItem(name: "limit", value: String(limit))],
+            query: query,
             category: .crud
         )
     }
@@ -416,6 +471,50 @@ public enum PostHogAPI {
             path: "/api/projects/\(projectID)/insights/\(insightID)/",
             query: [URLQueryItem(name: "refresh", value: refresh ? "lazy_async" : "force_cache")],
             category: .analytics
+        )
+    }
+
+    /// One insight, computing it now rather than accepting whatever is cached.
+    ///
+    /// Separate from `insight(projectID:insightID:refresh:)` because it is a
+    /// different promise, not a different parameter. That one's `refresh: true`
+    /// sends `lazy_async`, which returns immediately with a `query_status` and a
+    /// null `result` and expects the caller to poll — right for an App Intent
+    /// that can come back later, wrong for a screen the user is looking at.
+    ///
+    /// `blocking` waits and returns the numbers. Measured against project [REMOVED PRIVATE DATA]:
+    /// `GET /insights/[REMOVED PRIVATE DATA]/?refresh=blocking` returned a populated `result`
+    /// in 0.75s where `force_cache` had returned `null`. It is charged to the
+    /// organisation-wide budget, so it is only ever reached from an explicit user
+    /// action — never from opening a screen.
+    public static func computeInsight(projectID: Int, insightID: Int) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/insights/\(insightID)/",
+            query: [URLQueryItem(name: "refresh", value: "blocking")],
+            category: .analytics
+        )
+    }
+
+    /// One insight named by its console handle rather than its numeric id.
+    ///
+    /// A collection request filtered to one row, not `/insights/<short_id>/`.
+    /// The path form does work — verified live, `/insights/COaW8hFP/` returns
+    /// the same object as `/insights/[REMOVED PRIVATE DATA]/` and a bogus handle 404s — but the
+    /// filter is the documented spelling, and the numeric path is the one this
+    /// app already depends on. Overloading a single path segment with two id
+    /// namespaces would mean a short id that happened to be all digits silently
+    /// selecting a different insight.
+    ///
+    /// Returns a `Page<Insight>`; an unknown handle is an empty page, not a 404,
+    /// so the caller distinguishes "no such insight" from "the request failed".
+    public static func insight(projectID: Int, shortID: String) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/insights/",
+            query: [
+                URLQueryItem(name: "short_id", value: shortID),
+                URLQueryItem(name: "limit", value: "1"),
+            ],
+            category: .crud
         )
     }
 

@@ -6,6 +6,50 @@ public struct Insight: Sendable, Decodable, Identifiable {
     public let derivedName: String?
     public let query: InsightQuery?
 
+    /// PostHog's own 8-character handle, e.g. `COaW8hFP`.
+    ///
+    /// The console's URLs are built on this rather than on `id` — `/insights/id`
+    /// works too, but every link a user is given carries the short id — and so is
+    /// `file_system`'s `ref` for an insight row. Optional because a tile embedded
+    /// in a dashboard response is not guaranteed to carry one.
+    public let shortID: String?
+
+    /// The author's own one-line explanation. Present on 95 of this project's
+    /// 140 insights, and the only thing on a list row that says what a chart is
+    /// *for* rather than what it draws.
+    public let description: String?
+
+    /// PostHog's per-user star.
+    ///
+    /// Read-only here — this app never writes it — and false rather than nil
+    /// when absent, because "not starred" is what an absent flag means and the
+    /// list has no third state to draw.
+    public let favorited: Bool
+
+    /// When the insight's *definition* last changed, which is not when its data
+    /// was last computed. The list sorts on this because it is the only one of
+    /// the two that every row has: `lastRefresh` is null on all 140 insights in
+    /// the project this was measured against.
+    public let lastModifiedAt: Date?
+    public let createdAt: Date?
+
+    /// When PostHog last computed `result`, and whether what arrived came from
+    /// its cache. Both feed `FreshnessLabel`, which is how every data surface in
+    /// this app avoids showing stale numbers silently.
+    public let lastRefresh: Date?
+    public let isCached: Bool
+
+    /// Ids of the dashboards this insight is a tile on. Empty is normal: an
+    /// insight saved from the console's own editor belongs to no dashboard, and
+    /// those are exactly the ones the dashboard screens could never reach.
+    public let dashboards: [Int]
+
+    public let tags: [String]
+
+    /// Soft-deleted insights stay in the collection. Listing one would offer a
+    /// row whose detail can only ever be a tombstone.
+    public let deleted: Bool
+
     /// The `query` subtree exactly as PostHog sent it.
     ///
     /// `InsightQuery` keeps only what rendering needs — the kind and the display
@@ -20,8 +64,13 @@ public struct Insight: Sendable, Decodable, Identifiable {
     let result: RawResult
 
     enum CodingKeys: String, CodingKey {
-        case id, name, query, result
+        case id, name, query, result, description, favorited, tags, dashboards, deleted
         case derivedName = "derived_name"
+        case shortID = "short_id"
+        case lastModifiedAt = "last_modified_at"
+        case createdAt = "created_at"
+        case lastRefresh = "last_refresh"
+        case isCached = "is_cached"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -32,6 +81,30 @@ public struct Insight: Sendable, Decodable, Identifiable {
         query = try? c.decodeIfPresent(InsightQuery.self, forKey: .query)
         rawQuery = try? c.decodeIfPresent(JSONValue.self, forKey: .query)
         result = (try? c.decodeIfPresent(RawResult.self, forKey: .result)) ?? .unknown
+
+        // Every one of these is `try?`-and-default rather than required. A saved
+        // insight arrives from three different endpoints in this app — the
+        // collection, the single-insight route, and nested inside a dashboard
+        // tile — and the tile form omits most of them. Making any of them
+        // load-bearing would fail a whole dashboard to decode a field only the
+        // library screen reads.
+        shortID = try? c.decodeIfPresent(String.self, forKey: .shortID)
+        description = try? c.decodeIfPresent(String.self, forKey: .description)
+        favorited = (try? c.decodeIfPresent(Bool.self, forKey: .favorited)) ?? false
+        deleted = (try? c.decodeIfPresent(Bool.self, forKey: .deleted)) ?? false
+        isCached = (try? c.decodeIfPresent(Bool.self, forKey: .isCached)) ?? false
+        tags = (try? c.decodeIfPresent([String].self, forKey: .tags)) ?? []
+        dashboards = (try? c.decodeIfPresent([Int].self, forKey: .dashboards)) ?? []
+        // Parsed through `PostHogDate` rather than a `dateDecodingStrategy`: the
+        // client decodes every model with one plain `JSONDecoder`, and PostHog
+        // mixes fractional-second and whole-second ISO 8601 in one payload.
+        func date(_ key: CodingKeys) -> Date? {
+            guard let raw = try? c.decodeIfPresent(String.self, forKey: key) else { return nil }
+            return PostHogDate.parse(raw)
+        }
+        lastModifiedAt = date(.lastModifiedAt)
+        createdAt = date(.createdAt)
+        lastRefresh = date(.lastRefresh)
     }
 
     public var title: String {
@@ -117,6 +190,76 @@ public struct Insight: Sendable, Decodable, Identifiable {
         default:
             return .unsupported(kind: sourceKind)
         }
+    }
+}
+
+public extension Insight {
+    /// The kind this insight would be filtered under, or `nil` for a query shape
+    /// PostHog's own filter has no name for.
+    var kind: InsightKind? { InsightKind(sourceKind: sourceKind) }
+
+    /// The handle the console builds its URLs from, falling back to the numeric
+    /// id, which the console also resolves.
+    ///
+    /// Both forms are live-verified against `us.posthog.com`: `/insights/COaW8hFP/`
+    /// and `/insights/[REMOVED PRIVATE DATA]/` return the same object. The short id is preferred
+    /// because it is what every link a user is *given* contains, so a link this
+    /// app generates matches one they already have.
+    var linkID: String { shortID ?? String(id) }
+}
+
+/// The insight kinds PostHog's collection endpoint can filter on.
+///
+/// The raw values are the app's own; `apiValue` is what `?insight=` takes. The
+/// two are kept apart because the filter's vocabulary is PostHog's — `SQL` for
+/// what the query itself calls `HogQLQuery` — and a screen should not have to
+/// know that to name a segment.
+///
+/// Verified against project [REMOVED PRIVATE DATA], whose 140 insights partition exactly:
+/// TRENDS 128, SQL 5, LIFECYCLE 3, FUNNELS 2, RETENTION 1, PATHS 1,
+/// STICKINESS 0. `STICKINESS` is kept despite being empty there — an empty
+/// filter is a fact about one project, not about the API.
+public enum InsightKind: String, Sendable, CaseIterable, Identifiable, Hashable {
+    case trends, funnels, retention, paths, lifecycle, stickiness, sql
+
+    public var id: String { rawValue }
+
+    /// The value `GET /insights/?insight=` accepts.
+    public var apiValue: String { rawValue.uppercased() }
+
+    /// The `query.source.kind` this filter selects, which is the string
+    /// `Insight.renderModel` dispatches on.
+    public var sourceKind: String {
+        switch self {
+        case .trends: "TrendsQuery"
+        case .funnels: "FunnelsQuery"
+        case .retention: "RetentionQuery"
+        case .paths: "PathsQuery"
+        case .lifecycle: "LifecycleQuery"
+        case .stickiness: "StickinessQuery"
+        // The one place the two vocabularies genuinely differ: PostHog's filter
+        // says `SQL`, the saved query says `HogQLQuery`.
+        case .sql: "HogQLQuery"
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .trends: "Trends"
+        case .funnels: "Funnels"
+        case .retention: "Retention"
+        case .paths: "Paths"
+        case .lifecycle: "Lifecycle"
+        case .stickiness: "Stickiness"
+        case .sql: "SQL"
+        }
+    }
+
+    public init?(sourceKind: String) {
+        guard let match = Self.allCases.first(where: { $0.sourceKind == sourceKind }) else {
+            return nil
+        }
+        self = match
     }
 }
 

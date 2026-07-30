@@ -24,8 +24,9 @@ import Foundation
 
 /// What a link points at.
 ///
-/// Every case is something the app can actually do something honest with —
-/// including `insight`, which it can only hand to the console, and says so.
+/// Every case is something the app can actually do something honest with, and
+/// every case now opens in the app. `insight` was the exception for as long as
+/// there was no screen behind it; `SavedInsightDetailView` is that screen.
 enum PostHogLink: Hashable, Sendable {
     /// One of the app's own screens, with no particular object selected.
     case screen(AppTab)
@@ -33,17 +34,32 @@ enum PostHogLink: Hashable, Sendable {
     case featureFlag(id: Int)
     case sessionRecording(id: String)
     case errorIssue(id: String)
-    /// A saved insight. GetHog draws an insight as a tile on the dashboard it
-    /// sits on and has no screen for one on its own — the same limit
-    /// `ProjectSearchIndex.webFallbackNote` states on the search screen — so this
-    /// resolves to the console rather than to a screen that doesn't exist.
+    /// A saved insight, named the way the console names it.
+    ///
+    /// The payload is `shortID` because that is what a console URL carries — an
+    /// 8-character handle like `COaW8hFP`, which is also `file_system`'s `ref`
+    /// for an insight row. It is a `String` rather than an `Int` for the same
+    /// reason a session id is: it is not a number and parsing it as one would
+    /// drop every real link.
+    ///
+    /// It is nonetheless permitted to *contain* a number. This app's own
+    /// widgets and intents carry the numeric id — see
+    /// `IntentNavigationTarget.linkTarget` — and PostHog resolves either form.
+    /// `SavedInsightStore.resolve` decides which spelling it has been given
+    /// without guessing: a string that parses as an `Int` is only ever looked up
+    /// as a numeric id, so a handle that happened to be all digits can never
+    /// silently select a different insight.
     case insight(shortID: String)
 
     /// Whether the app has a screen for this, or has to hand it to a browser.
+    ///
+    /// Every case is `true`. The property stays because it is the gate
+    /// `RootView.open(_:)` checks before pushing, and deleting it would mean the
+    /// next case added to this enum is pushed by default and lands on a blank
+    /// screen — the answer has to keep being *stated* rather than assumed.
     var opensInApp: Bool {
         switch self {
-        case .screen, .dashboard, .featureFlag, .sessionRecording, .errorIssue: true
-        case .insight: false
+        case .screen, .dashboard, .featureFlag, .sessionRecording, .errorIssue, .insight: true
         }
     }
 
@@ -89,6 +105,12 @@ enum PostHogLinkParser {
     /// the console's aliases follow it.
     private static let sections: [(path: String, tab: AppTab)] = [
         ("dashboard", .dashboards),
+        // Added when the saved-insight library shipped. Before it, `/insights`
+        // was deliberately absent from this table and the parser refused the
+        // bare path — there was no list to send anyone to. There is now, so the
+        // section resolves like every other one and only the object below it
+        // needs special handling.
+        ("insights", .insights),
         ("activity", .events),
         ("events", .events),
         ("replay", .sessions),
@@ -255,9 +277,12 @@ enum PostHogLinkParser {
         case "error_tracking":
             return .errorIssue(id: identifier)
         case "insights":
-            // Not in `sections`: the app has no insights list either, so
-            // `/insights` on its own is refused while a single insight resolves
-            // to something the app can at least be honest about.
+            // The identifier is kept verbatim rather than parsed. A console
+            // handle is an 8-character base-62 string; this app's own widgets
+            // and intents write the numeric id into the same slot. Both are
+            // valid, PostHog resolves both, and deciding which is which is
+            // `SavedInsightStore.resolve`'s job — not this parser's, which must
+            // not throw away a link it cannot classify.
             return .insight(shortID: identifier)
         default:
             return nil
