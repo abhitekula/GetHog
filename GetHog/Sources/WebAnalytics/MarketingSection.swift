@@ -54,11 +54,11 @@ struct MarketingSection: View {
     let columns: [String]
     let rows: [MarketingRow]
     let isLoading: Bool
-    let error: String?
+    let error: WebLoadFailure?
     let onRetry: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "Marketing", systemImage: "megaphone")
 
             if rows.isEmpty && !isLoading {
@@ -69,26 +69,28 @@ struct MarketingSection: View {
         }
     }
 
+    /// Compact, because this is the last of several sections on one scrolling
+    /// screen — a full `ContentUnavailableView` here is a screen's worth of
+    /// treatment spent on a section that is legitimately, permanently empty for
+    /// any project with no ad source connected.
     @ViewBuilder
     private var emptyOrError: some View {
         if let error {
-            EmptyStateView(
-                title: "Couldn't load marketing",
+            SectionEmptyState(
+                text: error.summary,
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                detail: error.detail,
                 actionTitle: "Try again",
                 action: onRetry
             )
         } else {
-            EmptyStateView(
-                title: "No campaign data",
-                systemImage: "megaphone",
-                message: """
+            SectionEmptyState(
+                text: """
                     PostHog builds this from ad spend synced by a connected advertising source. \
                     Connect one in Data pipelines to see campaigns, cost and return here.
-                    """
+                    """,
+                systemImage: "megaphone"
             )
-            .frame(maxWidth: .infinity)
         }
     }
 

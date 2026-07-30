@@ -91,6 +91,111 @@ struct LockedCapabilityView: View {
     }
 }
 
+/// Shown when one *section* of a screen has nothing in it.
+///
+/// `EmptyStateView` wraps `ContentUnavailableView`, which centres a large glyph
+/// over two lines of prose and takes every point of height it is offered. That
+/// is the right answer when a whole screen is empty and the wrong one for a
+/// section of a scrolling report: measured on iPad, the Web screen stacked three
+/// of them — "Nothing notable", "No pages", "Couldn't load vitals" — and they
+/// filled most of the canvas; on iPhone they pushed the breakdown tables below
+/// the fold. This states the same honest thing in roughly a line, so the
+/// sections that *do* have data stay on screen.
+///
+/// So: `EmptyStateView` when the screen is empty, this when a section is.
+struct SectionEmptyState: View {
+    /// Shorter than the full state's wording, never vaguer — the compactness is
+    /// in the layout, not in what the app is willing to say.
+    let text: String
+    var systemImage: String = "tray"
+    /// The verbatim fault behind a failure, when there is one. Disclosed rather
+    /// than dropped: see `FailureDetail`.
+    var detail: String?
+    var actionTitle: String?
+    var action: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            // One line for as long as a line holds it. A sentence and a button
+            // cannot share a phone's width at accessibility sizes, and squeezing
+            // the button to a stub is worse than spending a second row on it.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                    line
+                    Spacer(minLength: Theme.Space.s)
+                    actionButton
+                }
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    line
+                    actionButton
+                }
+            }
+
+            if let detail {
+                FailureDetail(text: detail)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, Theme.Space.s)
+    }
+
+    private var line: some View {
+        Label {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                // Wraps rather than truncates: the wording names a precondition,
+                // and half of a precondition is not one.
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private var actionButton: some View {
+        if let actionTitle, let action {
+            Button(actionTitle, action: action)
+                .font(.subheadline.weight(.medium))
+                .buttonStyle(.borderless)
+        }
+    }
+}
+
+/// The verbatim fault, kept out of the reader's way but never dropped.
+///
+/// Measured on the Web screen: a `DecodingError` description — four lines naming
+/// a coding key — was rendered as the user-facing message for "Couldn't load
+/// vitals". Nobody can act on that, but somebody has to be able to read it. The
+/// sentence above states what failed; this keeps what actually broke, for the
+/// person who can use it, and makes it selectable so it can be pasted into a
+/// report.
+struct FailureDetail: View {
+    let text: String
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            Text(text)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, Theme.Space.xs)
+        } label: {
+            Text("Details")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .tint(Theme.accent)
+        .accessibilityHint("Shows the technical detail of the failure")
+    }
+}
+
 /// A rounded card that hosts a dashboard tile or detail block.
 ///
 /// Three things stack to make it read as a surface rather than a rectangle: a

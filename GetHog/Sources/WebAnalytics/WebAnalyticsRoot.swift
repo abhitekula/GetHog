@@ -77,6 +77,19 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// A failed load, split into what the screen says and what it keeps.
+///
+/// Measured: the vitals section put a raw `DecodingError` description on screen
+/// — four lines naming a coding key — as its user-facing message. A reader can
+/// do nothing with that, and the app cannot honestly claim to know why PostHog's
+/// payload differed. So the summary names *what* failed and stops there, and the
+/// underlying text travels alongside it rather than being thrown away.
+struct WebLoadFailure: Equatable {
+    let summary: String
+    /// The verbatim fault, when the underlying error carried one worth keeping.
+    var detail: String?
+}
+
 @MainActor
 @Observable
 final class WebAnalyticsStore {
@@ -93,12 +106,12 @@ final class WebAnalyticsStore {
     var isLoadingClicks = false
     var isLoadingVitals = false
     var isLoadingMarketing = false
-    var overviewError: String?
-    var rowsError: String?
-    var changesError: String?
-    var clicksError: String?
-    var vitalsError: String?
-    var marketingError: String?
+    var overviewError: WebLoadFailure?
+    var rowsError: WebLoadFailure?
+    var changesError: WebLoadFailure?
+    var clicksError: WebLoadFailure?
+    var vitalsError: WebLoadFailure?
+    var marketingError: WebLoadFailure?
     var loadedAt: Date?
 
     var isLoading: Bool {
@@ -114,7 +127,7 @@ final class WebAnalyticsStore {
     /// Any failure at all, for the case where nothing loaded and the screen has
     /// to say why. Per-section errors stay separate so one failing query only
     /// costs its own section.
-    var anyError: String? {
+    var anyError: WebLoadFailure? {
         overviewError ?? rowsError ?? changesError ?? clicksError ?? vitalsError ?? marketingError
     }
 
@@ -129,7 +142,7 @@ final class WebAnalyticsStore {
             loadedAt = Date()
             overviewError = nil
         } catch {
-            overviewError = Self.message(for: error)
+            overviewError = Self.failure(for: error, loading: "overview")
         }
     }
 
@@ -153,7 +166,7 @@ final class WebAnalyticsStore {
             loadedAt = Date()
             rowsError = nil
         } catch {
-            rowsError = Self.message(for: error)
+            rowsError = Self.failure(for: error, loading: "breakdown")
         }
     }
 
@@ -168,7 +181,7 @@ final class WebAnalyticsStore {
             loadedAt = Date()
             changesError = nil
         } catch {
-            changesError = Self.message(for: error)
+            changesError = Self.failure(for: error, loading: "notable-changes")
         }
     }
 
@@ -183,7 +196,7 @@ final class WebAnalyticsStore {
             loadedAt = Date()
             clicksError = nil
         } catch {
-            clicksError = Self.message(for: error)
+            clicksError = Self.failure(for: error, loading: "outbound-clicks")
         }
     }
 
@@ -209,7 +222,7 @@ final class WebAnalyticsStore {
             loadedAt = Date()
             vitalsError = nil
         } catch {
-            vitalsError = Self.message(for: error)
+            vitalsError = Self.failure(for: error, loading: "vitals")
         }
     }
 
@@ -225,7 +238,7 @@ final class WebAnalyticsStore {
             loadedAt = Date()
             marketingError = nil
         } catch {
-            marketingError = Self.message(for: error)
+            marketingError = Self.failure(for: error, loading: "marketing")
         }
     }
 
@@ -233,8 +246,36 @@ final class WebAnalyticsStore {
     /// so searching narrows the list without silently re-scaling every bar.
     var peakVisitors: Double { rows.map(\.visitors).max() ?? 0 }
 
-    private static func message(for error: any Error) -> String {
-        (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
+    /// `subject` names the query that failed, so a decoding summary can say
+    /// which response it means without the reader inferring it from whichever
+    /// section went blank.
+    private static func failure(for error: any Error, loading subject: String) -> WebLoadFailure {
+        // A decoding failure is the one case where the error text is written for
+        // a compiler, not a person: `PostHogError.decoding` carries a
+        // `DecodingError` description, and passing that through put four lines
+        // of coding keys under "Couldn't load vitals". The app knows exactly one
+        // true thing here — the payload was not the shape it expected — so that
+        // is what it says, and the rest is kept for whoever can act on it.
+        if let posthog = error as? PostHogError {
+            if case .decoding(let detail) = posthog {
+                return WebLoadFailure(summary: unreadableResponse(subject), detail: detail)
+            }
+            return WebLoadFailure(summary: posthog.localizedDescription)
+        }
+        // Belt and braces: a `DecodingError` thrown outside the client would
+        // otherwise reach the screen through `localizedDescription`, which is
+        // the same unactionable dump by another route.
+        if let decoding = error as? DecodingError {
+            return WebLoadFailure(
+                summary: unreadableResponse(subject),
+                detail: String(describing: decoding)
+            )
+        }
+        return WebLoadFailure(summary: error.localizedDescription)
+    }
+
+    private static func unreadableResponse(_ subject: String) -> String {
+        "PostHog's \(subject) response wasn't in a shape this app could read."
     }
 }
 
@@ -318,14 +359,23 @@ struct WebAnalyticsRoot: View {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let error = store.anyError, store.isEmpty {
-            EmptyStateView(
-                title: "Couldn't load web analytics",
-                systemImage: "exclamationmark.triangle",
-                message: error,
-                actionTitle: "Try again",
-                action: { Task { await reloadAll() } }
-            )
+        } else if let failure = store.anyError, store.isEmpty {
+            // Screen-level emptiness, so this one keeps the full treatment. The
+            // detail sits under it rather than inside the message: a decoding
+            // dump is what the compact states were built to stop putting there.
+            VStack(spacing: Theme.Space.m) {
+                EmptyStateView(
+                    title: "Couldn't load web analytics",
+                    systemImage: "exclamationmark.triangle",
+                    message: failure.summary,
+                    actionTitle: "Try again",
+                    action: { Task { await reloadAll() } }
+                )
+                if let detail = failure.detail {
+                    FailureDetail(text: detail)
+                        .padding(.horizontal, Theme.Space.l)
+                }
+            }
         } else if store.isEmpty && !store.isLoading {
             EmptyStateView(
                 title: "No web traffic",
@@ -338,11 +388,16 @@ struct WebAnalyticsRoot: View {
     }
 
     /// Each section owns its horizontal inset rather than inheriting one from
-    /// the stack, so the KPI strip can scroll edge to edge while everything else
-    /// stays on the page margin.
+    /// the stack, because `GlassFilterBar` insets itself and would otherwise sit
+    /// on a doubled margin.
+    ///
+    /// The gap between sections is one step above the gap inside them, not two:
+    /// at `xl` there was roughly 100pt of dead ground between the overview and
+    /// "Where to look first" on iPhone, which cost more than the separation was
+    /// worth. The small-caps section headers already do most of the dividing.
     private var report: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.xl) {
+            VStack(alignment: .leading, spacing: Theme.Space.l) {
                 GlassFilterBar { windowPicker }
                 overviewSection
                 // Between the totals and the detail: the headline figures give
@@ -406,46 +461,82 @@ struct WebAnalyticsRoot: View {
     private var overviewSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "Overview", systemImage: "chart.bar.xaxis")
-                .padding(.horizontal, Theme.Space.l)
 
-            // A scrolling strip rather than a reflowing grid: a tile squeezed
-            // until its figure truncates has stopped being a metric, and the
-            // grid did exactly that at large text sizes.
-            StatStrip {
-                ForEach(store.metrics) { metric in
-                    WebKPITile(metric: metric)
-                }
-            }
-            .skeleton(store.isLoadingOverview && store.metrics.isEmpty)
+            overviewFigures
 
             if let error = store.overviewError, !store.metrics.isEmpty {
-                staleNote("These figures are from an earlier load. \(error)")
-                    .padding(.horizontal, Theme.Space.l)
+                staleNote(
+                    "These figures are from an earlier load. \(error.summary)",
+                    detail: error.detail
+                )
+            }
+        }
+        .padding(.horizontal, Theme.Space.l)
+    }
+
+    /// Wraps to as many rows as the width needs, rather than running off the
+    /// edge.
+    ///
+    /// Measured on iPhone at default text size: three captioned tiles do not fit
+    /// 402pt, so the horizontal strip cut the third one's caption to
+    /// "No prior p…" — and with the scroll indicators hidden, nothing said the
+    /// remaining stats were there at all. Wrapping keeps every figure present
+    /// and comparable; showing fewer in compact would hide the numbers the
+    /// screen exists for. The widest arrangement that fits wins, so iPad keeps
+    /// its single row of five, and accessibility sizes fall all the way to one
+    /// tile per row instead of squeezing a metric until it truncates.
+    private var overviewFigures: some View {
+        ViewThatFits(in: .horizontal) {
+            metricGrid(columns: store.metrics.count)
+            metricGrid(columns: (store.metrics.count + 1) / 2)
+            metricGrid(columns: 2)
+            metricGrid(columns: 1)
+        }
+        .skeleton(store.isLoadingOverview && store.metrics.isEmpty)
+    }
+
+    private func metricGrid(columns: Int) -> some View {
+        let width = max(columns, 1)
+        let chunks = stride(from: 0, to: store.metrics.count, by: width).map { start in
+            Array(store.metrics[start..<min(start + width, store.metrics.count)])
+        }
+        return Grid(
+            alignment: .topLeading,
+            horizontalSpacing: Theme.Space.xl,
+            verticalSpacing: Theme.Space.l
+        ) {
+            ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
+                GridRow {
+                    ForEach(chunk) { metric in
+                        WebKPITile(metric: metric)
+                    }
+                }
             }
         }
     }
 
     private var breakdownSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "Breakdown", systemImage: "list.number")
 
             dimensionPicker
 
             if filteredRows.isEmpty && !store.isLoadingRows {
-                EmptyStateView(
-                    title: search.isEmpty ? "No \(dimension.pluralTitle)" : "No matches",
-                    systemImage: "magnifyingglass",
-                    message: search.isEmpty
+                SectionEmptyState(
+                    text: search.isEmpty
                         ? "PostHog returned no \(dimension.pluralTitle) for this period."
-                        : "No \(dimension.pluralTitle) matched “\(search)”."
+                        : "No \(dimension.pluralTitle) matched “\(search)”.",
+                    systemImage: "magnifyingglass"
                 )
-                .frame(maxWidth: .infinity)
             } else {
                 breakdownTable
             }
 
             if let error = store.rowsError, !store.rows.isEmpty {
-                staleNote("This table is from an earlier load. \(error)")
+                staleNote(
+                    "This table is from an earlier load. \(error.summary)",
+                    detail: error.detail
+                )
             }
         }
     }
@@ -474,7 +565,7 @@ struct WebAnalyticsRoot: View {
     }
 
     private var notableChangesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             sectionHeader(
                 "Where to look first",
                 systemImage: "sparkles",
@@ -482,12 +573,10 @@ struct WebAnalyticsRoot: View {
             )
 
             if store.notableChanges.isEmpty && !store.isLoadingChanges {
-                EmptyStateView(
-                    title: "Nothing notable",
-                    systemImage: "sparkles",
-                    message: "PostHog flagged no standout dimensions in the \(window.spokenTitle.lowercased())."
+                SectionEmptyState(
+                    text: "PostHog flagged no standout dimensions in the \(window.spokenTitle.lowercased()).",
+                    systemImage: "sparkles"
                 )
-                .frame(maxWidth: .infinity)
             } else {
                 Card {
                     VStack(spacing: 0) {
@@ -509,13 +598,16 @@ struct WebAnalyticsRoot: View {
             }
 
             if let error = store.changesError, !store.notableChanges.isEmpty {
-                staleNote("This ranking is from an earlier load. \(error)")
+                staleNote(
+                    "This ranking is from an earlier load. \(error.summary)",
+                    detail: error.detail
+                )
             }
         }
     }
 
     private var outboundSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             sectionHeader(
                 "Outbound links",
                 systemImage: "arrow.up.forward.square",
@@ -523,15 +615,13 @@ struct WebAnalyticsRoot: View {
             )
 
             if topExternalClicks.isEmpty && !store.isLoadingClicks {
-                EmptyStateView(
-                    title: "No outbound clicks",
-                    systemImage: "arrow.up.forward.square",
-                    message: """
+                SectionEmptyState(
+                    text: """
                         Nothing led off the site in the \(window.spokenTitle.lowercased()). \
                         PostHog only records these when external link tracking is switched on.
-                        """
+                        """,
+                    systemImage: "arrow.up.forward.square"
                 )
-                .frame(maxWidth: .infinity)
             } else {
                 Card {
                     VStack(spacing: 0) {
@@ -547,7 +637,10 @@ struct WebAnalyticsRoot: View {
             }
 
             if let error = store.clicksError, !store.externalClicks.isEmpty {
-                staleNote("This list is from an earlier load. \(error)")
+                staleNote(
+                    "This list is from an earlier load. \(error.summary)",
+                    detail: error.detail
+                )
             }
         }
     }
@@ -599,10 +692,18 @@ struct WebAnalyticsRoot: View {
             """
     }
 
-    private func staleNote(_ text: String) -> some View {
-        Label(text, systemImage: "exclamationmark.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    /// Stale data still owes the reader the reason it is stale — and, when the
+    /// reason was a decoding fault, the fault itself rather than a summary that
+    /// quietly loses it.
+    private func staleNote(_ text: String, detail: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Label(text, systemImage: "exclamationmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let detail {
+                FailureDetail(text: detail)
+            }
+        }
     }
 
     // MARK: - Data
@@ -693,8 +794,11 @@ struct WebKPITile: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        // A floor rather than a fixed width: tiles stay comparable down the
-        // strip without clipping a long metric name.
+        // A floor rather than a fixed width: tiles stay comparable across the
+        // row without clipping a long metric name. It is also what makes the
+        // grid's fit test honest — without it a tile would claim to fit any
+        // width and go back to truncating its own caption, which is the failure
+        // this replaced.
         .frame(minWidth: 132, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)

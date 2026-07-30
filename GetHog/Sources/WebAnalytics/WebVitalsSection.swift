@@ -48,7 +48,7 @@ struct WebVitalsSection: View {
     @Binding var percentile: WebVitalPercentile
     let breakdown: WebVitalsBreakdown?
     let isLoading: Bool
-    let error: String?
+    let error: WebLoadFailure?
     let onRetry: () -> Void
 
     private var entries: [WebVitalEntry] { breakdown?.allEntries ?? [] }
@@ -57,7 +57,7 @@ struct WebVitalsSection: View {
     private var visibleEntries: [WebVitalEntry] { Array(entries.prefix(15)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "Core Web Vitals", systemImage: "gauge.with.needle")
 
             pickers
@@ -135,26 +135,28 @@ struct WebVitalsSection: View {
 
     // MARK: States
 
+    /// One section of a long report, not a screen: both of these are compact
+    /// states. Measured on iPad, this section's full-screen error treatment —
+    /// large triangle, four-line decoder message, a button — stacked with two
+    /// more like it and left most of the canvas to empty prose.
     @ViewBuilder
     private var emptyOrError: some View {
         if let error {
-            EmptyStateView(
-                title: "Couldn't load vitals",
+            SectionEmptyState(
+                text: error.summary,
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                detail: error.detail,
                 actionTitle: "Try again",
                 action: onRetry
             )
         } else {
-            EmptyStateView(
-                title: "No \(metric.rawValue) data",
-                systemImage: "gauge.with.needle",
-                message: """
+            SectionEmptyState(
+                text: """
                     No pages reported \(metric.title) in this window. \
                     Core Web Vitals need performance capture switched on in the PostHog browser SDK.
-                    """
+                    """,
+                systemImage: "gauge.with.needle"
             )
-            .frame(maxWidth: .infinity)
         }
     }
 

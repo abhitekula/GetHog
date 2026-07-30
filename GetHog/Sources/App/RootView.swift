@@ -11,10 +11,23 @@ enum AppTab: String, Hashable, CaseIterable {
     case notebooks, max, renders
     case groups, taxonomy
     case settings
-    /// The index of everything the phone's tab bar cannot hold. A container,
-    /// not a product surface, and never selectable in regular width — the
-    /// sidebar gives every destination a row of its own there.
-    case more
+    /// One field over everything: the app's own screens, and every object in the
+    /// project via PostHog's index.
+    ///
+    /// This is the fifth tab, and it is also the index of everything the phone's
+    /// tab bar cannot hold — the two used to be separate and could not both fit.
+    /// A phone's bar holds five items; four are product surfaces and the fifth
+    /// has to be the way to the other 24 screens. Declaring search as a sixth
+    /// `Tab` — even with `TabRole.search`, which reads as though it sits outside
+    /// the bar — simply did not appear on iPhone 17 running iOS 26: the bar drew
+    /// `Dashboards · Events · Sessions · Flags · More` and search was nowhere.
+    ///
+    /// So they are one surface. The index already had a search field over 24
+    /// screen names; it now searches the project's objects in the same breath,
+    /// which is one field where there were two and costs no product surface its
+    /// slot. In regular width the sidebar lists every screen itself, so only the
+    /// object half is shown there.
+    case search
 
     var title: String {
         switch self {
@@ -56,7 +69,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .groups: "Groups"
         case .taxonomy: "Taxonomy"
         case .settings: "Settings"
-        case .more: "More"
+        case .search: "Search"
         }
     }
 
@@ -91,7 +104,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .groups: "building.2"
         case .taxonomy: "list.bullet.indent"
         case .settings: "gearshape"
-        case .more: "ellipsis"
+        case .search: "magnifyingglass"
         }
     }
 
@@ -124,6 +137,13 @@ extension AppTab {
     /// directly, which is what keeps the surface growable without crowding the
     /// phone.
     static let primary: [AppTab] = [.dashboards, .events, .sessions, .flags]
+
+    /// Everything with a tab of its own at *both* widths — the five a phone's
+    /// bar can hold.
+    ///
+    /// Search is separate from `primary` because it is not a product surface:
+    /// it is the fifth slot, and it is where the other 24 screens are reached.
+    static let alwaysVisible: [AppTab] = primary + [.search]
 
     /// Everything else, grouped.
     ///
@@ -195,9 +215,11 @@ struct TabRootView: View {
         case .max: ConversationsRoot()
         case .renders: RendersRoot()
         case .settings: SettingsRoot()
-        case .more:
-            // A container, not a destination: nothing ever pushes `.more`.
-            EmptyView()
+        case .search:
+            // Reached through `RootView.searchTab`, which owns the stack this
+            // screen's own rows push into. Nothing ever pushes `.search` itself,
+            // so this case exists only to keep the switch honest.
+            ProjectSearchView()
         }
     }
 }
@@ -206,10 +228,11 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
-    /// The index's stack. Heterogeneous — the index pushes an `AppTab`, and the
-    /// root it lands on then pushes its own issues, logs and traces into the
-    /// same stack — so a typed `[AppTab]` path cannot hold it.
-    @State private var morePath = NavigationPath()
+    /// The search tab's stack. Heterogeneous — a screen result pushes an
+    /// `AppTab`, the root it lands on then pushes its own issues, logs and
+    /// traces into the same stack, and an object result pushes a dashboard or a
+    /// flag — so no typed path can hold it.
+    @State private var searchPath = NavigationPath()
     @State private var hasAppliedDebugTab = false
 
     var body: some View {
@@ -255,11 +278,11 @@ struct RootView: View {
                 // multitasking both cross the size-class boundary while running,
                 // which moves a destination between the sidebar and the index.
                 .onChange(of: sizeClass) { _, _ in restorePushedTab() }
-                .onChange(of: morePath.isEmpty) { _, isEmpty in
+                .onChange(of: searchPath.isEmpty) { _, isEmpty in
                     // Popping back leaves `selectedTab` naming a screen that is no
                     // longer showing, which the sidebar would then restore on the
-                    // next rotation into regular width. At the index it is `.more`.
-                    if isEmpty { selectedTab = .more }
+                    // next rotation into regular width. At the root it is `.search`.
+                    if isEmpty { selectedTab = .search }
                 }
         }
     }
@@ -276,11 +299,35 @@ struct RootView: View {
         TabView(selection: tabSelection) {
             tabItems(for: AppTab.primary)
 
-            if sizeClass == .compact {
-                moreTab
-            } else {
+            searchTab
+
+            if sizeClass != .compact {
                 sidebarSections
                 tabItems(for: AppTab.utility)
+            }
+        }
+    }
+
+    /// The fifth tab, at both widths: an ordinary `Tab`, because that is the only
+    /// arrangement observed to actually draw on iPhone.
+    ///
+    /// It owns the stack, our list, our chrome. SwiftUI's generated "More" list
+    /// is what this replaces; `ScreenIndexSections` records what that list cost.
+    private var searchTab: some TabContent<AppTab> {
+        Tab(
+            AppTab.search.title,
+            systemImage: AppTab.search.systemImage,
+            value: AppTab.search
+        ) {
+            NavigationStack(path: $searchPath) {
+                ProjectSearchView()
+                    .navigationDestination(for: AppTab.self) { tab in
+                        TabRootView(tab: tab)
+                            // Which destination is showing, for the sidebar to
+                            // select if this scene becomes regular width, and for
+                            // scene restoration. The stack cannot be read back.
+                            .onAppear { selectedTab = tab }
+                    }
             }
         }
     }
@@ -294,25 +341,9 @@ struct RootView: View {
         }
     }
 
-    /// One tab, our list, our stack. SwiftUI's generated "More" list is what
-    /// this replaces; `MoreIndexView` records what that list cost.
-    private var moreTab: some TabContent<AppTab> {
-        Tab(AppTab.more.title, systemImage: AppTab.more.systemImage, value: AppTab.more) {
-            NavigationStack(path: $morePath) {
-                MoreIndexView()
-                    .navigationDestination(for: AppTab.self) { tab in
-                        TabRootView(tab: tab)
-                            // Which destination is showing, for the sidebar to
-                            // select if this scene becomes regular width, and for
-                            // scene restoration. The stack cannot be read back.
-                            .onAppear { selectedTab = tab }
-                    }
-            }
-        }
-    }
-
     /// `.sidebarAdaptable` turns these into the iPad sidebar. That arrangement
-    /// is good and must stay; only compact width swaps them for the index.
+    /// is good and must stay; only compact width swaps them for the index inside
+    /// the search tab.
     @TabContentBuilder<AppTab>
     private var sidebarSections: some TabContent<AppTab> {
         ForEach(AppTab.sections) { section in
@@ -346,14 +377,14 @@ struct RootView: View {
         Binding(
             get: {
                 if sizeClass == .compact {
-                    // Nothing past the fourth has a tab of its own on a phone;
-                    // those destinations sit on the index's stack, and the index
-                    // is the tab that is selected while one of them is showing.
-                    AppTab.primary.contains(selectedTab) ? selectedTab : .more
+                    // Nothing past the fifth has a tab of its own on a phone;
+                    // those destinations sit on the search tab's stack, and
+                    // search is the tab selected while one of them is showing.
+                    AppTab.alwaysVisible.contains(selectedTab) ? selectedTab : .search
                 } else {
-                    // The index does not exist in regular width, and selecting a
-                    // tab that isn't there leaves the whole detail area blank.
-                    selectedTab == .more ? .dashboards : selectedTab
+                    // Every tab has a sidebar row of its own in regular width,
+                    // search included, so nothing needs translating here.
+                    selectedTab
                 }
             },
             set: { selectedTab = $0 }
@@ -362,29 +393,37 @@ struct RootView: View {
 
     /// Goes to a destination by name, from a keyboard shortcut or `GETHOG_TAB`.
     ///
-    /// In compact width that means selecting the index *and* pushing, and it
-    /// replaces whatever the index had pushed before rather than landing behind
+    /// In compact width a secondary destination means selecting search *and*
+    /// pushing, replacing whatever was pushed before rather than landing behind
     /// it: `⌘,` has to reach Settings from anywhere.
     private func open(_ tab: AppTab) {
         selectedTab = tab
-        guard sizeClass == .compact, AppTab.secondary.contains(tab) else { return }
-        var path = NavigationPath()
-        path.append(tab)
-        morePath = path
+        guard sizeClass == .compact else { return }
+        if AppTab.secondary.contains(tab) {
+            var path = NavigationPath()
+            path.append(tab)
+            searchPath = path
+        } else if tab == .search {
+            // `GETHOG_TAB=search` means the field, so it has to clear anything
+            // standing in front of it — search is this stack's *root*, and
+            // leaving a pushed screen there would show that screen instead, under
+            // a second navigation bar.
+            searchPath = NavigationPath()
+        }
     }
 
-    /// Puts a secondary destination back on the index's stack.
+    /// Puts a secondary destination back on the search tab's stack.
     ///
     /// `selectedTab` is scene storage and survives a relaunch; the stack is
     /// `@State` and does not. Without this, `GETHOG_TAB=errorTracking` — and
-    /// a restored scene — would select the index and stop there instead of
-    /// landing on the screen.
+    /// a restored scene — would select search and stop there instead of landing
+    /// on the screen.
     private func restorePushedTab() {
         guard sizeClass == .compact,
-              morePath.isEmpty,
+              searchPath.isEmpty,
               AppTab.secondary.contains(selectedTab)
         else { return }
-        morePath.append(selectedTab)
+        searchPath.append(selectedTab)
     }
 }
 
