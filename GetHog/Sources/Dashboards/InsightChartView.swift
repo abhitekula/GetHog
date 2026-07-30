@@ -219,42 +219,7 @@ struct TimeSeriesChart: View {
             Chart {
                 ForEach(Array(series.enumerated()), id: \.offset) { _, s in
                     ForEach(Array((s.datedPoints ?? []).enumerated()), id: \.offset) { _, point in
-                        // The insight's own display type decides the mark. Drawing
-                        // a stacked-bar insight as overlapping lines would read as
-                        // a completely different result.
-                        switch style {
-                        case .line, .area:
-                            LineMark(
-                                x: .value("Date", point.date),
-                                y: .value("Value", point.value)
-                            )
-                            .lineStyle(StrokeStyle(lineWidth: 2))
-                            // Monotone, not catmullRom: catmullRom overshoots
-                            // between points and would misrepresent the data.
-                            .interpolationMethod(.monotone)
-                            .foregroundStyle(by: .value("Series", s.label))
-
-                            if style == .area {
-                                AreaMark(
-                                    x: .value("Date", point.date),
-                                    y: .value("Value", point.value)
-                                )
-                                .interpolationMethod(.monotone)
-                                .foregroundStyle(by: .value("Series", s.label))
-                                .opacity(0.12)
-                            }
-
-                        case .bar, .stackedBar:
-                            // Swift Charts stacks same-x BarMarks by default, which
-                            // is exactly stackedBar; plain bars sit side by side.
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value("Value", point.value)
-                            )
-                            .foregroundStyle(by: .value("Series", s.label))
-                            .position(by: style == .bar ? .value("Series", s.label) : .value("Series", ""))
-                            .cornerRadius(2)
-                        }
+                        marks(for: point, in: s)
                     }
                 }
 
@@ -282,11 +247,73 @@ struct TimeSeriesChart: View {
                 }
             }
             .chartXSelection(value: $selectedDate)
+            // Scrubbing is the one chart interaction nothing on screen hints at,
+            // so it gets the tip. Only on the full-size chart: firing this over
+            // every tile in a dashboard grid at once would be an infestation.
+            .popoverTip(compact ? nil : ChartScrubTip())
             .frame(height: height)
             .sensoryFeedback(.selection, trigger: selectedDate)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedDate)
             .accessibilityChartDescriptor(TimeSeriesDescriptor(series: series))
         }
+    }
+
+    /// The marks for one point.
+    ///
+    /// Extracted from the `Chart` builder purely because the type checker gave
+    /// up on the combined expression once the gradient branch was added; it is
+    /// the same content it always was.
+    @ChartContentBuilder
+    private func marks(for point: (date: Date, value: Double), in s: Series) -> some ChartContent {
+        // The insight's own display type decides the mark. Drawing a stacked-bar
+        // insight as overlapping lines would read as a different result.
+        switch style {
+        case .line, .area:
+            LineMark(
+                x: .value("Date", point.date),
+                y: .value("Value", point.value)
+            )
+            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+            // Monotone, not catmullRom: catmullRom overshoots between points and
+            // would misrepresent the data.
+            .interpolationMethod(.monotone)
+            .foregroundStyle(by: .value("Series", s.label))
+
+            // A single series gets a gradient beneath it. A bare stroke on a
+            // white card is what made these read as wireframes, and with one
+            // series there is no ambiguity about whose area it is. Two or more
+            // stay unfilled — overlapping washes obscure exactly the crossings
+            // the reader came to look at.
+            if series.count == 1 {
+                AreaMark(
+                    x: .value("Date", point.date),
+                    y: .value("Value", point.value)
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Self.areaFill(SeriesPalette.color(at: 0)))
+            }
+
+        case .bar, .stackedBar:
+            // Swift Charts stacks same-x BarMarks by default, which is exactly
+            // stackedBar; plain bars sit side by side.
+            BarMark(
+                x: .value("Date", point.date, unit: .day),
+                y: .value("Value", point.value)
+            )
+            .foregroundStyle(by: .value("Series", s.label))
+            .position(by: style == .bar ? .value("Series", s.label) : .value("Series", ""))
+            .cornerRadius(3)
+        }
+    }
+
+    /// Fades to nothing at the baseline so the fill reads as depth under the
+    /// line rather than as a second, solid series.
+    static func areaFill(_ color: Color) -> LinearGradient {
+        LinearGradient(
+            colors: [color.opacity(0.28), color.opacity(0.02)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var paletteRange: [Color] {

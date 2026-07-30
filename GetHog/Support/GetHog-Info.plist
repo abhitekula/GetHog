@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the generated Info.plist. Only the keys that the
+     INFOPLIST_KEY_* build settings cannot express live here.
+
+     Xcode's INFOPLIST_KEY_* mechanism only understands keys it has a schema
+     for. An unrecognised one is dropped in silence: no warning, no key, and a
+     feature that simply never works. Verified on this project — all three keys
+     below were written as INFOPLIST_KEY_* settings first and none of them
+     reached the built plist. -->
+<plist version="1.0">
+<dict>
+	<!-- BGTaskScheduler refuses to register an identifier that is not declared
+	     here, and it refuses at launch, before any refresh can be attempted. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>app.gethog.refresh.snapshot</string>
+	</array>
+
+	<!-- Required for BGAppRefreshTask. Without it the scheduler accepts the
+	     request and the system never runs it. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+
+	<!-- Handoff ignores an activity whose type is not declared, so the
+	     `.handoff` modifier advertises nothing without this. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>app.gethog.browsing</string>
+	</array>
+</dict>
+</plist>

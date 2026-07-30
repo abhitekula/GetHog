@@ -109,26 +109,45 @@ final class AppModel {
     /// widgets each fetching would multiply request volume against a budget that
     /// isn't ours. Everything they show is computed here, once, and written to
     /// the App Group container.
-    func publishWidgetSnapshot() async {
-        guard let client, let project = selectedProject else { return }
+    ///
+    /// Returns whether anything was actually fetched, which is what a background
+    /// wake reports back to `BGTaskScheduler`.
+    @discardableResult
+    func publishWidgetSnapshot() async -> Bool {
+        guard let client, let project = selectedProject else { return false }
+        return await publish(using: client, projectID: project.id, projectName: project.name)
+    }
 
+    /// The fetch itself, decoupled from the session so a background wake can run
+    /// it against a client it built for one call without disturbing `phase`,
+    /// `selectedProject`, or anything else the UI observes.
+    private func publish(
+        using client: PostHogClient,
+        projectID: Int,
+        projectName: String
+    ) async -> Bool {
         var metrics: [SharedSnapshot.Metric] = []
         var flags: [SharedSnapshot.Flag] = []
+        var reachedTheAPI = false
 
         // Reuse the dashboard the user pinned; its tiles already carry results,
         // so this costs one request rather than one per metric.
         if let summaries: Page<DashboardSummary> = try? await client.send(
-            PostHogAPI.dashboards(projectID: project.id, limit: 50)
-        ), let pinned = summaries.results.first(where: \.pinned) ?? summaries.results.first,
-           let dashboard: Dashboard = try? await client.send(
-               PostHogAPI.dashboard(projectID: project.id, dashboardID: pinned.id)
-           ) {
-            metrics = dashboard.tiles.compactMap(Self.metric(from:))
+            PostHogAPI.dashboards(projectID: projectID, limit: 50)
+        ) {
+            reachedTheAPI = true
+            if let pinned = summaries.results.first(where: \.pinned) ?? summaries.results.first,
+               let dashboard: Dashboard = try? await client.send(
+                   PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id)
+               ) {
+                metrics = dashboard.tiles.compactMap(Self.metric(from:))
+            }
         }
 
         if let page: Page<FeatureFlag> = try? await client.send(
-            PostHogAPI.featureFlags(projectID: project.id, limit: 100)
+            PostHogAPI.featureFlags(projectID: projectID, limit: 100)
         ) {
+            reachedTheAPI = true
             flags = page.results
                 .filter { !$0.deleted && !$0.archived }
                 .map {
@@ -143,15 +162,80 @@ final class AppModel {
                 }
         }
 
+        // A wake that found no network must not overwrite a good snapshot with
+        // an empty one: the widget would go blank and claim to be current,
+        // which is worse than showing older numbers with an honest age on them.
+        guard reachedTheAPI || SharedSnapshotStore.shared.loadOrNil() == nil else { return false }
+
         let snapshot = SharedSnapshot(
-            projectID: project.id,
-            projectName: project.name,
+            projectID: projectID,
+            projectName: projectName,
             metrics: metrics,
             flags: flags,
             capturedAt: Date()
         )
         try? SharedSnapshotStore.shared.write(snapshot)
         WidgetCenter.shared.reloadAllTimelines()
+        return reachedTheAPI
+    }
+
+    // MARK: - Background refresh
+
+    /// Whether a background wake is worth scheduling at all.
+    var hasStoredCredential: Bool { (try? store.load()) != nil }
+
+    /// When the widgets' data was last written, wherever it was written from.
+    ///
+    /// The snapshot is its own record of freshness, so the refresh cadence needs
+    /// no separate bookkeeping that could disagree with it.
+    var lastSnapshotDate: Date? { SharedSnapshotStore.shared.loadOrNil()?.capturedAt }
+
+    /// One coalesced refresh for a background wake.
+    ///
+    /// *One* refresh per wake, not one per widget: a single dashboard fetch
+    /// feeds every metric the extensions render, exactly as it does in the
+    /// foreground, and everything still passes the rate-limit governor.
+    ///
+    /// A background launch is a fresh process with no session, and rebuilding
+    /// one the way `bootstrap()` does would cost an identity request plus four
+    /// scope probes before the first useful byte. None of that tells a wake
+    /// anything: the last snapshot already names the project, so the client is
+    /// rebuilt from the stored credential alone and the wake costs exactly the
+    /// three requests the refresh needs.
+    func performBackgroundRefresh(now: Date = Date()) async -> Bool {
+        let lastRefreshedAt = lastSnapshotDate
+
+        // The app may have been in the foreground minutes ago and published a
+        // snapshot itself. Then this wake has nothing to add, and the cheapest
+        // correct thing it can do is nothing.
+        guard BackgroundRefreshPolicy.isDue(lastRefreshedAt: lastRefreshedAt, now: now) else {
+            return true
+        }
+
+        if let client, let project = selectedProject {
+            return await publish(using: client, projectID: project.id, projectName: project.name)
+        }
+
+        guard let credential = try? store.load() else { return false }
+        // Without a previous snapshot there is no project to refresh and no
+        // widget showing anything to correct. Discovering one would cost six
+        // requests to learn what the next foreground launch learns for free.
+        guard let previous = SharedSnapshotStore.shared.loadOrNil() else { return false }
+
+        // Built here rather than stored: the wake must not leave a half-started
+        // session behind for the next foreground launch to inherit. It shares
+        // this model's governor, so background traffic counts against the same
+        // budget and shows up in the Settings meter like everything else.
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region),
+            transport: transport,
+            governor: governor
+        )
+        return await publish(
+            using: client,
+            projectID: previous.projectID,
+            projectName: previous.projectName
+        )
     }
 
     /// Reduces a dashboard tile to a single headline figure, when it has one.
@@ -210,6 +294,9 @@ final class AppModel {
 
     func signOut() {
         try? store.clear()
+        // A pending wake would otherwise launch the app in the background with
+        // nothing to authenticate as, teaching iOS that its requests are futile.
+        BackgroundRefresh.cancel()
         Task { await cache.clear() }
         client = nil
         me = nil

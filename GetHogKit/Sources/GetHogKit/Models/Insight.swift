@@ -6,6 +6,15 @@ public struct Insight: Sendable, Decodable, Identifiable {
     public let derivedName: String?
     public let query: InsightQuery?
 
+    /// The `query` subtree exactly as PostHog sent it.
+    ///
+    /// `InsightQuery` keeps only what rendering needs — the kind and the display
+    /// type. Rebuilding a request from that would drop the series definitions,
+    /// property filters and breakdowns, and return a different insight's numbers
+    /// under the user's title. Re-running over a new date range therefore edits
+    /// this verbatim copy instead.
+    public let rawQuery: JSONValue?
+
     /// Raw, shape-tolerant result payload. All polymorphism lives here so the
     /// rest of the codebase only ever sees `InsightRenderModel`.
     let result: RawResult
@@ -21,6 +30,7 @@ public struct Insight: Sendable, Decodable, Identifiable {
         name = try c.decodeIfPresent(String.self, forKey: .name)
         derivedName = try c.decodeIfPresent(String.self, forKey: .derivedName)
         query = try? c.decodeIfPresent(InsightQuery.self, forKey: .query)
+        rawQuery = try? c.decodeIfPresent(JSONValue.self, forKey: .query)
         result = (try? c.decodeIfPresent(RawResult.self, forKey: .result)) ?? .unknown
     }
 
@@ -33,13 +43,42 @@ public struct Insight: Sendable, Decodable, Identifiable {
     /// The insight kind as PostHog names it, e.g. `TrendsQuery`.
     public var sourceKind: String { query?.source?.kind ?? "Unknown" }
 
+    /// The runnable node inside the saved query.
+    ///
+    /// A saved insight is wrapped in an `InsightVizNode`, which `/query/` will
+    /// not execute; the `source` beneath it is the query proper.
+    public var rawSource: JSONValue? {
+        guard case .object(let fields)? = rawQuery else { return nil }
+        return fields["source"]
+    }
+
     /// Dispatch is on the declared query kind, never on the result's shape:
     /// lifecycle results carry `data`/`days` exactly like trends, so shape
     /// sniffing would silently draw a wrong chart.
     public var renderModel: InsightRenderModel {
+        Self.renderModel(result: result, sourceKind: sourceKind, display: displayType)
+    }
+
+    /// The stored display type, e.g. `ActionsBarValue`.
+    ///
+    /// Exposed because re-running the insight over a new date range has to draw
+    /// it the same way; the response alone cannot say whether a trends result
+    /// was meant to be a line, a bar or a single bold number.
+    public var displayType: String? { query?.source?.trendsFilter?.display }
+
+    /// Shared by the saved result and by a re-run over a different window, so
+    /// the two can never diverge in how they interpret the same payload.
+    ///
+    /// Dispatch is on the declared query kind, never on the result's shape:
+    /// lifecycle results carry `data`/`days` exactly like trends, so shape
+    /// sniffing would silently draw a wrong chart.
+    static func renderModel(
+        result: RawResult,
+        sourceKind: String,
+        display: String?
+    ) -> InsightRenderModel {
         switch sourceKind {
         case "TrendsQuery":
-            let display = query?.source?.trendsFilter?.display
             switch display {
             // Aggregated displays have no time axis: the figure is in
             // `aggregated_value` and `data` is empty.

@@ -39,12 +39,17 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
         PRODUCT_NAME: GetHog
         GENERATE_INFOPLIST_FILE: YES
+        # Base plist merged with the generated keys below. Required for
+        # BGTaskSchedulerPermittedIdentifiers, UIBackgroundModes and
+        # NSUserActivityTypes: INFOPLIST_KEY_* only understands keys Xcode has a
+        # schema for and drops the rest without a warning. Verified — all three
+        # were INFOPLIST_KEY_* settings first and none reached the built app.
+        INFOPLIST_FILE: GetHog/Support/GetHog-Info.plist
         CODE_SIGN_ENTITLEMENTS: GetHog/Support/GetHog.entitlements
         # Required: iOS terminates an app that evaluates Face ID without a
         # purpose string. Used before revealing the stored API key and,
         # optionally, before toggling a live feature flag.
         INFOPLIST_KEY_NSFaceIDUsageDescription: "GetHog asks for Face ID before revealing your PostHog API key or changing a live feature flag."
-        INFOPLIST_KEY_NSUserActivityTypes: app.gethog.browsing
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: GetHog

@@ -4,10 +4,11 @@ import SwiftUI
 enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     case webAnalytics, clickmap, people, sql
-    case errorTracking
+    case errorTracking, tracing, logs
     case experiments, surveys, earlyAccess
     case llm, warehouse, pipelines, automation, actions, annotations
     case notebooks, max
+    case groups, taxonomy
     case settings
 
     var title: String {
@@ -27,6 +28,8 @@ enum AppTab: String, Hashable, CaseIterable {
         case .people: "People"
         case .sql: "SQL"
         case .errorTracking: "Errors"
+        case .tracing: "Tracing"
+        case .logs: "Logs"
         case .experiments: "Experiments"
         case .surveys: "Surveys"
         case .earlyAccess: "Early access"
@@ -38,6 +41,8 @@ enum AppTab: String, Hashable, CaseIterable {
         case .annotations: "Annotations"
         case .notebooks: "Notebooks"
         case .max: "Max"
+        case .groups: "Groups"
+        case .taxonomy: "Taxonomy"
         case .settings: "Settings"
         }
     }
@@ -53,6 +58,8 @@ enum AppTab: String, Hashable, CaseIterable {
         case .people: "person.2"
         case .sql: "terminal"
         case .errorTracking: "exclamationmark.triangle"
+        case .tracing: "point.3.connected.trianglepath.dotted"
+        case .logs: "text.alignleft"
         case .experiments: "flask"
         case .surveys: "list.clipboard"
         case .earlyAccess: "sparkles"
@@ -64,6 +71,8 @@ enum AppTab: String, Hashable, CaseIterable {
         case .annotations: "note.text"
         case .notebooks: "book"
         case .max: "bubble.left.and.bubble.right"
+        case .groups: "building.2"
+        case .taxonomy: "list.bullet.indent"
         case .settings: "gearshape"
         }
     }
@@ -115,6 +124,9 @@ struct RootView: View {
                     Tab(AppTab.people.title, systemImage: AppTab.people.systemImage, value: AppTab.people) {
                         PeopleRoot()
                     }
+                    Tab(AppTab.groups.title, systemImage: AppTab.groups.systemImage, value: AppTab.groups) {
+                        GroupsRoot()
+                    }
                     Tab(AppTab.sql.title, systemImage: AppTab.sql.systemImage, value: AppTab.sql) {
                         SQLConsoleRoot()
                     }
@@ -126,6 +138,12 @@ struct RootView: View {
                     }
                     Tab(AppTab.llm.title, systemImage: AppTab.llm.systemImage, value: AppTab.llm) {
                         LLMAnalyticsRoot()
+                    }
+                    Tab(AppTab.tracing.title, systemImage: AppTab.tracing.systemImage, value: AppTab.tracing) {
+                        TracingRoot()
+                    }
+                    Tab(AppTab.logs.title, systemImage: AppTab.logs.systemImage, value: AppTab.logs) {
+                        LogsRoot()
                     }
                 }
 
@@ -144,6 +162,9 @@ struct RootView: View {
                     }
                     Tab(AppTab.annotations.title, systemImage: AppTab.annotations.systemImage, value: AppTab.annotations) {
                         AnnotationsRoot()
+                    }
+                    Tab(AppTab.taxonomy.title, systemImage: AppTab.taxonomy.systemImage, value: AppTab.taxonomy) {
+                        TaxonomyRoot()
                     }
                 }
 

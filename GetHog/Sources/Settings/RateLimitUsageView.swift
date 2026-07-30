@@ -22,6 +22,14 @@ struct RateLimitUsageView: View {
             ForEach(RateLimitGovernor.Category.allCases, id: \.self) { category in
                 meter(for: category)
             }
+
+            // The one part of this consumption nobody is present for. Naming its
+            // ceiling is the same honesty the meters above are for: unattended
+            // spending should be the easiest number in the app to find.
+            Text(backgroundCost)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Background refresh. \(backgroundCost)")
         }
         .padding(.vertical, 4)
         .task { await poll() }
@@ -67,6 +75,15 @@ struct RateLimitUsageView: View {
     }
 
     // MARK: - Copy
+
+    private var backgroundCost: String {
+        let hours = Int(BackgroundRefreshPolicy.minimumInterval / 3_600)
+        return """
+            Background refresh runs at most once every \(hours) hours, and each run \
+            costs \(BackgroundRefreshPolicy.requestsPerRefresh) requests — \
+            \(BackgroundRefreshPolicy.maximumRequestsPerDay) a day at the very most.
+            """
+    }
 
     /// Named for what the user sees in the app, not for the endpoint families
     /// PostHog groups them into.

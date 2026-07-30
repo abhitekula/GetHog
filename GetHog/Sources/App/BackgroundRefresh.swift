@@ -1,0 +1,122 @@
+import BackgroundTasks
+import Foundation
+import GetHogKit
+import os
+
+/// The `BGAppRefreshTask` that keeps the widget snapshot from going stale.
+///
+/// The cadence and the "is this wake worth spending requests on" decision live
+/// in `BackgroundRefreshPolicy`, where they are pure and tested. Everything here
+/// is the part that can only be exercised by iOS: registration, submission, and
+/// the expiration handshake.
+///
+/// The shape follows the same rule as the widgets themselves — one coalesced
+/// refresh per wake, feeding every metric from a single dashboard fetch, through
+/// the same rate-limit governor as every other request. Background traffic is
+/// the least supervised thing this app does, so it gets the strictest budget.
+@MainActor
+enum BackgroundRefresh {
+
+    /// Must match `BGTaskSchedulerPermittedIdentifiers` in the app's Info.plist.
+    /// `BGTaskScheduler` rejects an identifier that is not declared there, and it
+    /// does so at registration, before any of this can run.
+    static let taskIdentifier = "app.gethog.refresh.snapshot"
+
+    private static let log = Logger(subsystem: "app.gethog", category: "background-refresh")
+
+    // MARK: - Registration
+
+    /// Registers the launch handler.
+    ///
+    /// Has to happen before the app finishes launching — `BGTaskScheduler`
+    /// traps on a task identifier it was handed after that point — which is why
+    /// this is called from `GetHogApp.init` rather than from a `.task`.
+    static func register(model: AppModel) {
+        let registered = BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: taskIdentifier,
+            using: nil
+        ) { task in
+            guard let task = task as? BGAppRefreshTask else { return }
+            // The scheduler hands this task to exactly one launch handler and
+            // never touches it again, so moving it to the main actor is safe;
+            // `BGTask` simply predates `Sendable` and cannot say so itself.
+            let handoff = UncheckedSendable(task)
+            Task { @MainActor in handle(handoff.value, model: model) }
+        }
+
+        if !registered {
+            // Almost always a missing or misspelled Info.plist identifier, which
+            // is silent otherwise: the app runs, and simply never refreshes.
+            log.error("Could not register \(taskIdentifier, privacy: .public)")
+        }
+    }
+
+    // MARK: - Scheduling
+
+    /// Asks for the next wake.
+    ///
+    /// Called when the app leaves the foreground and again from every completed
+    /// wake. There is no repeat mode in `BGTaskScheduler`: a run that forgets to
+    /// submit the next request is the last one the app ever gets.
+    static func schedule(model: AppModel, refreshedAt: Date?, now: Date = Date()) {
+        guard BackgroundRefreshPolicy.shouldSchedule(hasCredential: model.hasStoredCredential) else {
+            cancel()
+            return
+        }
+
+        let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
+        request.earliestBeginDate = BackgroundRefreshPolicy.earliestBeginDate(
+            lastRefreshedAt: refreshedAt, now: now
+        )
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // Expected and harmless in several ordinary situations — Low Power
+            // Mode, background refresh switched off for the app, a simulator
+            // without the entitlement. The app keeps working; it just refreshes
+            // when the user opens it.
+            log.notice("Could not submit refresh request: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    static func cancel() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: taskIdentifier)
+    }
+
+    // MARK: - Running
+
+    static func handle(_ task: BGAppRefreshTask, model: AppModel, now: Date = Date()) {
+        // Submitted before the work starts, not after it succeeds. A wake that
+        // crashes, is expired, or is killed mid-flight would otherwise leave no
+        // pending request and the app would silently stop refreshing forever.
+        // Dated from now rather than from the last snapshot, so a failed wake
+        // waits a full interval instead of retrying against a budget that is not
+        // ours to spend.
+        schedule(model: model, refreshedAt: now, now: now)
+
+        let work = Task { @MainActor in
+            let refreshed = await model.performBackgroundRefresh(now: now)
+            // The expiration handler has already completed the task; calling
+            // `setTaskCompleted` twice traps.
+            guard !Task.isCancelled else { return }
+            task.setTaskCompleted(success: refreshed)
+        }
+
+        task.expirationHandler = {
+            // Seconds from termination. Cancellation unwinds the in-flight
+            // request, and the wake is reported as unsuccessful rather than left
+            // hanging — an unfinished task costs the app its future wakes.
+            work.cancel()
+            task.setTaskCompleted(success: false)
+        }
+    }
+}
+
+/// A value the compiler cannot prove is safe to move between isolation domains,
+/// vouched for at the one call site that knows it is.
+private struct UncheckedSendable<T>: @unchecked Sendable {
+    let value: T
+
+    init(_ value: T) { self.value = value }
+}

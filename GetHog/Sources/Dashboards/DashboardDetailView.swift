@@ -1,12 +1,52 @@
 import GetHogKit
 import SwiftUI
 
+/// A dashboard-wide time window.
+///
+/// `.saved` is not "no filter" — it is each insight's own stored range, which
+/// differs per tile. That distinction is why this is an explicit case rather
+/// than an optional: a dashboard showing a 30-day chart beside a 14-day one is
+/// correct until the user asks for one window, and the control has to be able to
+/// say so.
+enum DashboardRange: String, CaseIterable, Identifiable {
+    case saved, day, week, month, quarter
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .saved: "Saved"
+        case .day: "24h"
+        case .week: "7d"
+        case .month: "30d"
+        case .quarter: "90d"
+        }
+    }
+
+    /// `nil` for `.saved`, which runs nothing and shows the stored results.
+    var dateFrom: String? {
+        switch self {
+        case .saved: nil
+        case .day: "-24h"
+        case .week: "-7d"
+        case .month: "-30d"
+        case .quarter: "-90d"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class DashboardDetailStore {
     var dashboard: Dashboard?
     var isLoading = false
     var error: String?
+
+    /// Results for tiles re-run over an overridden window, keyed by tile id.
+    /// Absent means "show the saved result".
+    private(set) var overrides: [Int: InsightRenderModel] = [:]
+    private(set) var isApplyingRange = false
+    private(set) var rangeError: String?
 
     func load(client: PostHogClient, projectID: Int, dashboardID: Int, refresh: Bool) async {
         isLoading = true
@@ -19,6 +59,62 @@ final class DashboardDetailStore {
         } catch {
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
+    }
+
+    func clearOverrides() {
+        overrides = [:]
+        rangeError = nil
+    }
+
+    /// Re-runs every tile over `range`.
+    ///
+    /// Costs one `/query/` request per tile, because the dashboard endpoint
+    /// cannot do this — see `InsightRerun`, where the silent no-op is documented.
+    /// That price is why this is only ever called from an explicit choice, never
+    /// from a gesture or a scroll.
+    func apply(
+        range: DashboardRange,
+        compare: Bool,
+        client: PostHogClient,
+        projectID: Int
+    ) async {
+        guard let dateFrom = range.dateFrom, let tiles = dashboard?.tiles else {
+            clearOverrides()
+            return
+        }
+
+        isApplyingRange = true
+        defer { isApplyingRange = false }
+
+        var results: [Int: InsightRenderModel] = [:]
+        var failures = 0
+
+        for tile in tiles {
+            guard let insight = tile.insight, let source = insight.rawSource else { continue }
+            let rebuilt = InsightRerun.source(source, dateFrom: dateFrom, compare: compare)
+            do {
+                let data = try await client.data(
+                    for: PostHogAPI.runQuery(projectID: projectID, source: rebuilt)
+                )
+                if let model = InsightRerun.renderModel(
+                    from: data,
+                    sourceKind: insight.sourceKind,
+                    display: insight.displayType
+                ) {
+                    results[tile.id] = model
+                }
+            } catch {
+                failures += 1
+            }
+        }
+
+        overrides = results
+        // Named rather than swallowed: a tile silently showing its saved range
+        // while the control claims 7 days is exactly the lie this feature exists
+        // to avoid.
+        rangeError = failures == 0
+            ? nil
+            : "\(failures) of \(tiles.count) tiles kept their saved range."
     }
 }
 
@@ -42,19 +138,22 @@ struct DashboardDetailView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var store = DashboardDetailStore()
     @State private var selectedTile: Tile?
+    @State private var range: DashboardRange = .saved
+    @State private var compare = false
 
     private var title: String {
         store.dashboard?.title ?? providedTitle ?? "Dashboard"
     }
 
-    private var columns: [GridItem] {
-        guard sizeClass == .regular else { return [GridItem(.flexible())] }
-        // With the panel open the grid keeps about a third of the iPad, where an
-        // adaptive minimum yields one column centred between two dead margins.
-        // A flexible column fills that space instead.
-        return selectedTile == nil
-            ? [GridItem(.adaptive(minimum: 280), spacing: 16)]
-            : [GridItem(.flexible())]
+    /// Column count, chosen so a tile is never narrower than a chart needs.
+    ///
+    /// Four columns on a large iPad looks tidy and reads badly: axis labels
+    /// collide and every card becomes a postage stamp. Two wide columns beat
+    /// three narrow ones, and with the panel open the grid keeps roughly a third
+    /// of the canvas, which is one column's worth.
+    private var columnCount: Int {
+        guard sizeClass == .regular else { return 1 }
+        return selectedTile == nil ? 2 : 1
     }
 
     var body: some View {
@@ -70,11 +169,19 @@ struct DashboardDetailView: View {
                 }
             ])
             .refreshable { await load(refresh: false) }
+            // Keyed on both, so toggling compare re-runs rather than leaving the
+            // grid showing figures that no longer match the control.
+            .task(id: RangeSelection(range: range, compare: compare)) {
+                await applyRange()
+            }
             // Keyed on the project, not bare: a window restored at cold launch
             // appears before `bootstrap()` has produced a client, and a plain
             // `.task` would run once against nothing and leave the window
             // permanently empty.
             .task(id: model.projectID) {
+                // Without this, a launch that lands on Dashboards leaves the
+                // scrub tip's availability rule false and it never fires.
+                AppTips.refresh(from: model)
                 await load(refresh: false)
                 #if DEBUG
                 if let index = DebugLaunch.tileIndex, orderedTiles.indices.contains(index) {
@@ -84,8 +191,56 @@ struct DashboardDetailView: View {
             }
     }
 
+    /// Time window + compare, above the grid.
+    ///
+    /// Applying a window costs one request per tile, so it commits on release
+    /// rather than continuously, and the compare toggle only appears once a
+    /// window is chosen — comparing "each insight's own saved range" against a
+    /// previous period is not a question with one answer.
+    private var rangeBar: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            HStack(spacing: Theme.Space.s) {
+                Picker("Time range", selection: $range) {
+                    ForEach(DashboardRange.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                // Capped rather than stretched: a segmented control spanning a
+                // 13-inch iPad puts five words a hand's width apart and reads as
+                // a toolbar, not a choice.
+                .frame(maxWidth: 420, alignment: .leading)
+
+                if store.isApplyingRange {
+                    ProgressView().controlSize(.small)
+                }
+            }
+
+            HStack(spacing: Theme.Space.m) {
+                if range != .saved {
+                    Toggle("Compare to previous", isOn: $compare)
+                        .toggleStyle(.button)
+                        .buttonStyle(.bordered)
+                        .font(.caption)
+                        .accessibilityLabel("Compare to the previous period")
+                }
+
+                if let rangeError = store.rangeError {
+                    Label(rangeError, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(Theme.Status.critical)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Space.l)
+        .padding(.top, Theme.Space.s)
+    }
+
     private var grid: some View {
         ScrollView {
+            rangeBar
+                .padding(.bottom, Theme.Space.xs)
+
             if let error = store.error, store.dashboard == nil {
                 ContentUnavailableView {
                     Label("Couldn't load this dashboard", systemImage: "exclamationmark.triangle")
@@ -96,14 +251,23 @@ struct DashboardDetailView: View {
                 }
                 .padding(.top, 60)
             } else {
-                LazyVGrid(columns: columns, spacing: 16) {
+                MasonryLayout(columns: columnCount, spacing: Theme.Space.l) {
                     ForEach(orderedTiles) { tile in
-                        TileCard(tile: tile, webURL: tileWebURL(tile))
-                            .pointerHighlight()
-                            .onTapGesture { selectedTile = tile }
+                        TileCard(
+                            tile: tile,
+                            model: store.overrides[tile.id] ?? tile.renderModel,
+                            webURL: tileWebURL(tile)
+                        )
+                        .pointerHighlight()
+                        .onTapGesture { selectedTile = tile }
+                        .tileSpan(
+                            TileStyle.preferredColumns(
+                                for: store.overrides[tile.id] ?? tile.renderModel
+                            )
+                        )
                     }
                 }
-                .padding(16)
+                .padding(Theme.Space.l)
                 .skeleton(store.isLoading && store.dashboard == nil)
             }
         }
@@ -150,6 +314,21 @@ struct DashboardDetailView: View {
         return model.webURL(path: "insights/\(insight.id)")
     }
 
+    /// One value so a change to either field re-runs exactly once.
+    private struct RangeSelection: Equatable {
+        let range: DashboardRange
+        let compare: Bool
+    }
+
+    private func applyRange() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        guard range != .saved else {
+            store.clearOverrides()
+            return
+        }
+        await store.apply(range: range, compare: compare, client: client, projectID: projectID)
+    }
+
     private func load(refresh: Bool) async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(
@@ -160,35 +339,39 @@ struct DashboardDetailView: View {
 
 struct TileCard: View {
     let tile: Tile
+    /// The model to draw, which is the tile's own unless a time-range override
+    /// replaced it.
+    let model: InsightRenderModel
     var webURL: URL?
 
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(tile.title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                    Spacer(minLength: 8)
-                }
+        Card(accent: TileStyle.accent(for: model)) {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                CardHeader(
+                    title: tile.title,
+                    systemImage: TileStyle.symbol(for: model)
+                )
 
-                InsightChartView(model: tile.renderModel, compact: true, webURL: webURL)
+                InsightChartView(model: model, compact: true, webURL: webURL)
 
                 FreshnessLabel(date: tile.lastRefresh, isCached: tile.isCached)
             }
+            // Clears the accent spine, which is drawn inside the card's bounds.
+            .padding(.leading, Theme.Space.s)
         }
         .contentShape(.rect)
         // Dragging a tile carries the chart as PNG, the series as CSV and the
         // title as text, so the destination decides what it wanted: Numbers
-        // takes the CSV, Mail or Slack the image.
-        .draggable(ExportableInsight(title: tile.title, model: tile.renderModel))
+        // takes the CSV, Mail or Slack the image. It carries what is on screen,
+        // so an exported CSV matches the window the user is looking at.
+        .draggable(ExportableInsight(title: tile.title, model: model))
         .contextMenu {
             if let webURL {
                 Link(destination: webURL) {
                     Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                 }
             }
-            InsightShareMenuItems(title: tile.title, model: tile.renderModel)
+            InsightShareMenuItems(title: tile.title, model: model)
         }
     }
 }

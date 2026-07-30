@@ -89,11 +89,29 @@ final class AutomationStore {
     var subscriptions: [InsightSubscription] = []
     var exports: [BatchExport] = []
 
+    /// Usage figures for the endpoints above. Held apart from `endpoints`
+    /// because they answer a different question and fail independently — a usage
+    /// outage must not blank the list of what exists.
+    var usage: EndpointUsageOverview?
+    var usageBreakdown: [EndpointUsageBreakdownRow] = []
+    var usageError: String?
+    var usageDimension: EndpointUsageDimension = .endpoint
+
     /// Keyed per section. Five independent resources, five independent
     /// permissions: one 403 must leave the other four on screen.
     var errors: [AutomationSection: String] = [:]
     var isLoading = false
     var loadedAt: Date?
+
+    /// What the usage numbers actually mean, given how many endpoints exist.
+    ///
+    /// The distinction is the whole point: this project reports zero requests
+    /// because it has **no endpoints defined**, not because traffic stopped. The
+    /// usage query cannot tell those apart on its own — it answers 200 with
+    /// zeros either way — so the endpoint count decides.
+    var usageReading: EndpointUsageReading {
+        (usage ?? EndpointUsageOverview(metrics: [])).reading(endpointCount: endpoints.count)
+    }
 
     var isEmpty: Bool {
         workflows.isEmpty && endpoints.isEmpty && alerts.isEmpty
@@ -172,6 +190,38 @@ final class AutomationStore {
 
         errors = failures
         if failures.count < AutomationSection.allCases.count { loadedAt = Date() }
+
+        // After the list, because the reading depends on how many endpoints came
+        // back — and skipped entirely when that list failed, since without a
+        // count a zero here cannot be interpreted at all.
+        if failures[.endpoints] == nil {
+            await loadUsage(client: client, projectID: projectID)
+        }
+    }
+
+    func loadUsage(client: PostHogClient, projectID: Int) async {
+        async let overview = client.data(
+            for: PostHogAPI.endpointsUsageOverview(projectID: projectID)
+        )
+        async let table = client.data(
+            for: PostHogAPI.endpointsUsageTable(projectID: projectID, breakdownBy: usageDimension)
+        )
+
+        do {
+            usage = try await EndpointUsageOverview.decode(from: overview)
+            usageError = nil
+        } catch {
+            usage = nil
+            usageError = Self.message(for: error)
+        }
+
+        do {
+            usageBreakdown = try await EndpointUsageBreakdownRow.rows(
+                from: QueryResponse.decode(from: table)
+            )
+        } catch {
+            usageBreakdown = []
+        }
     }
 
     func count(for section: AutomationSection) -> Int {
@@ -284,6 +334,11 @@ struct AutomationRoot: View {
             } actions: {
                 Button("Try again") { Task { await load() } }
             }
+        } else if section == .endpoints {
+            // Endpoints alone carry a usage panel, which has to render even when
+            // the list is empty — "no endpoints" is precisely what explains the
+            // zeros, so the two belong on screen together.
+            endpointsBody
         } else if store.count(for: section) == 0 && !store.isLoading {
             ContentUnavailableView(
                 section.emptyTitle,
@@ -295,7 +350,7 @@ struct AutomationRoot: View {
             case .workflows:
                 ForEach(store.workflows) { WorkflowRowView(workflow: $0) }
             case .endpoints:
-                ForEach(store.endpoints) { QueryEndpointRowView(endpoint: $0) }
+                EmptyView()
             case .alerts:
                 ForEach(store.alerts) { InsightAlertRowView(alert: $0) }
             case .subscriptions:
@@ -304,6 +359,26 @@ struct AutomationRoot: View {
                 ForEach(store.exports) { BatchExportRowView(export: $0) }
             }
         }
+    }
+
+    @ViewBuilder
+    private var endpointsBody: some View {
+        EndpointUsagePanel(store: store) { Task { await reloadUsage() } }
+
+        if store.endpoints.isEmpty && !store.isLoading {
+            ContentUnavailableView(
+                section.emptyTitle,
+                systemImage: section.systemImage,
+                description: Text(section.emptyDescription)
+            )
+        } else {
+            ForEach(store.endpoints) { QueryEndpointRowView(endpoint: $0) }
+        }
+    }
+
+    private func reloadUsage() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.loadUsage(client: client, projectID: projectID)
     }
 
     private func load() async {
@@ -342,6 +417,129 @@ struct AutomationFailureBanner: View {
         sections.count == 1
             ? "1 resource didn't load"
             : "\(sections.count) resources didn't load"
+    }
+}
+
+// MARK: - Endpoint usage
+
+/// Usage figures for the project's query endpoints.
+///
+/// The one thing this view exists to get right: **a zero that means "nothing is
+/// configured" must not read as "traffic dropped to nothing."** They are
+/// different statements and only one of them is alarming. When no endpoint is
+/// defined, the metric grid is withheld entirely and replaced by the sentence
+/// that explains it — a wall of eight zeros invites exactly the wrong reading,
+/// and no amount of caption text next to it undoes that first impression.
+struct EndpointUsagePanel: View {
+    @Bindable var store: AutomationStore
+    var onDimensionChange: () -> Void
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                CardHeader(
+                    title: "Usage",
+                    systemImage: "chart.bar",
+                    subtitle: "Last 7 days"
+                )
+
+                Text(store.usageReading.summary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let error = store.usageError {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(Theme.Status.critical)
+                        .lineLimit(3)
+                } else if store.usageReading != .noEndpointsDefined {
+                    metrics
+                    breakdown
+                }
+            }
+        }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+    }
+
+    private var metrics: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 108), spacing: Theme.Space.m)],
+            alignment: .leading,
+            spacing: Theme.Space.m
+        ) {
+            ForEach(store.usage?.metrics ?? []) { metric in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(metric.title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(metric.formattedValue)
+                        .font(.title3.weight(.semibold).monospacedDigit())
+
+                    // PostHog returns `previous` and the change percentage as
+                    // null here, which is *absent*, not zero. Drawing a 0% delta
+                    // would assert a flat trend the API never reported.
+                    if metric.hasComparison, let previous = metric.previous {
+                        DeltaBadge(current: metric.value ?? 0, previous: previous)
+                    } else {
+                        Text("No prior period")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(spokenMetric(metric))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var breakdown: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            Picker("Break down by", selection: $store.usageDimension) {
+                ForEach(EndpointUsageDimension.allCases) { dimension in
+                    Text(dimension.title).tag(dimension)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: store.usageDimension) { onDimensionChange() }
+
+            if store.usageBreakdown.isEmpty {
+                Text("Nothing to break down by \(store.usageDimension.title.lowercased()) in this window.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.usageBreakdown) { row in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.label)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
+                        // Labels come from the response's own column names: this
+                        // table's columns could not be observed live, and a
+                        // guessed heading over a real number is worse than a
+                        // plain one.
+                        Text(
+                            row.measures
+                                .map { "\($0.name) \($0.value.compactFormatted)" }
+                                .joined(separator: " · ")
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+    }
+
+    private func spokenMetric(_ metric: EndpointUsageMetric) -> String {
+        var parts = ["\(metric.title), \(metric.formattedValue)"]
+        if !metric.hasComparison {
+            parts.append("no prior period reported")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

@@ -14,20 +14,32 @@ final class EventsStore {
     private var cursor: Date?
     private let pageSize = 50
 
-    func reload(client: PostHogClient, projectID: Int, search: String?) async {
+    func reload(
+        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
+    ) async {
         cursor = nil
         reachedEnd = false
         events = []
-        await fetch(client: client, projectID: projectID, search: search, replacing: true)
+        await fetch(
+            client: client, projectID: projectID, tokens: tokens, search: search, replacing: true
+        )
     }
 
-    func loadMore(client: PostHogClient, projectID: Int, search: String?) async {
+    func loadMore(
+        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
+    ) async {
         guard !isPaging, !reachedEnd, cursor != nil else { return }
-        await fetch(client: client, projectID: projectID, search: search, replacing: false)
+        await fetch(
+            client: client, projectID: projectID, tokens: tokens, search: search, replacing: false
+        )
     }
 
     private func fetch(
-        client: PostHogClient, projectID: Int, search: String?, replacing: Bool
+        client: PostHogClient,
+        projectID: Int,
+        tokens: [EventFilterToken],
+        search: String?,
+        replacing: Bool
     ) async {
         if replacing { isLoading = true } else { isPaging = true }
         defer { isLoading = false; isPaging = false }
@@ -35,7 +47,11 @@ final class EventsStore {
         do {
             let response: QueryResponse = try await client.send(
                 PostHogAPI.events(
-                    projectID: projectID, limit: pageSize, before: cursor, search: search
+                    projectID: projectID,
+                    limit: pageSize,
+                    before: cursor,
+                    tokens: tokens,
+                    search: search
                 )
             )
             let page = response.rows.compactMap(EventRow.init(row:))
@@ -78,8 +94,17 @@ struct EventsRoot: View {
     @Environment(AppModel.self) private var model
     @State private var store = EventsStore()
     @State private var search = ""
+    @State private var tokens: [EventFilterToken] = []
+    @State private var suggestedTokens: [EventFilterToken] = []
     @State private var selected: EventRow?
     @State private var liveTail = LiveTailController()
+
+    /// Committed filters reload immediately; free text waits for submit, because
+    /// one request per keystroke would spend a budget shared with the whole
+    /// organisation.
+    private var filterSignature: String {
+        "\(model.projectID ?? 0)|" + tokens.map(\.id).joined(separator: ",")
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -87,12 +112,28 @@ struct EventsRoot: View {
                 .navigationTitle("Events")
                 .toolbar {
                     ProjectSwitcher()
+                    ToolbarItem(placement: .topBarTrailing) {
+                        SavedFiltersMenu(projectID: model.projectID, tokens: $tokens)
+                    }
                     ToolbarItem(placement: .topBarTrailing) { liveTailButton }
                 }
-                .searchable(text: $search, prompt: "Filter events")
+                .searchable(
+                    text: $search,
+                    tokens: $tokens,
+                    suggestedTokens: $suggestedTokens,
+                    prompt: "Filter events"
+                ) { token in
+                    Label(token.displayText, systemImage: token.systemImage)
+                }
+                .onChange(of: search) { _, text in
+                    suggestedTokens = EventFilterToken.suggestions(for: text)
+                }
                 .onSubmit(of: .search) { Task { await reload() } }
                 .refreshable { await reload() }
-                .task(id: model.projectID) { await reload() }
+                .task(id: filterSignature) {
+                    AppTips.refresh(from: model)
+                    await reload()
+                }
                 .onDisappear { liveTail.stop() }
         } detail: {
             if let selected {
@@ -179,14 +220,20 @@ struct EventsRoot: View {
     private func reload() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.reload(
-            client: client, projectID: projectID, search: search.isEmpty ? nil : search
+            client: client,
+            projectID: projectID,
+            tokens: tokens,
+            search: search.isEmpty ? nil : search
         )
     }
 
     private func loadMore() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.loadMore(
-            client: client, projectID: projectID, search: search.isEmpty ? nil : search
+            client: client,
+            projectID: projectID,
+            tokens: tokens,
+            search: search.isEmpty ? nil : search
         )
     }
 }

@@ -1,6 +1,7 @@
 import LocalAuthentication
 import GetHogKit
 import SwiftUI
+import TipKit
 
 /// Account, permissions, and limits.
 ///
@@ -40,6 +41,7 @@ struct SettingsRoot: View {
             // the switcher, and two controls for one piece of state on one
             // screen is a bug report waiting to happen.
             .task {
+                AppTips.refresh(from: model)
                 loadMaskedKey()
                 await loadCacheSize()
             }
@@ -87,6 +89,8 @@ struct SettingsRoot: View {
 
     private var projectSection: some View {
         Section {
+            TipView(ProjectSwitchTip())
+                .listRowBackground(Color.clear)
             Picker("Project", selection: Binding(
                 get: { model.selectedProject?.id ?? -1 },
                 set: { id in model.selectedProject = model.projects.first { $0.id == id } }

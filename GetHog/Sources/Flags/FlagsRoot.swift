@@ -1,5 +1,6 @@
 import GetHogKit
 import SwiftUI
+import TipKit
 
 /// How a flag is filed in the list. Archived wins over on/off, because an
 /// archived flag isn't something you reason about as "currently live".
@@ -89,7 +90,10 @@ struct FlagsRoot: View {
                 .toolbar { ProjectSwitcher() }
                 .searchable(text: $search, prompt: "Search flag key or name")
                 .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
+                .task(id: model.projectID) {
+                    AppTips.refresh(from: model)
+                    await load()
+                }
         } detail: {
             if let selection {
                 FlagDetailView(flag: selection, controller: store.toggles)
@@ -131,6 +135,8 @@ struct FlagsRoot: View {
 
     private var list: some View {
         List(selection: $selection) {
+            TipView(FlagWidgetTip())
+                .listRowBackground(Color.clear)
             ForEach(FlagStatusGroup.allCases) { group in
                 let items = store.flags(in: group, search: search)
                 if !items.isEmpty {

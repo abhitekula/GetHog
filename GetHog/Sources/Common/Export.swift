@@ -126,6 +126,96 @@ enum ExportError: Error {
     case notExportable
 }
 
+// MARK: - Save to Files
+
+/// The same CSV `ShareLink` hands to the share sheet, as a document the user can
+/// put somewhere and keep.
+///
+/// A different destination rather than a second route to the same one: the share
+/// sheet is for sending a number to a person, while this is for filing it next
+/// to the rest of the week's work, in iCloud Drive or on a synced volume. The
+/// bytes are `InsightCSV`'s either way — there is exactly one encoder, and an
+/// export that disagreed with the chart would be worse than no export at all.
+struct InsightCSVDocument: FileDocument {
+
+    /// Export-only. GetHog has nothing to do with a CSV somebody hands it,
+    /// and claiming otherwise would put the app in the Files "Open with" list.
+    static let readableContentTypes: [UTType] = []
+    static let writableContentTypes: [UTType] = [.commaSeparatedText]
+
+    let insight: ExportableInsight
+
+    init(insight: ExportableInsight) {
+        self.insight = insight
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        throw CocoaError(.fileReadUnsupportedScheme)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: try insight.csvData())
+    }
+}
+
+/// Carries a "save to Files" request from a menu item to the sheet that performs
+/// it.
+///
+/// The indirection is forced: a menu's content is built as menu *elements*, and
+/// a presentation modifier attached in there goes away with the menu the moment
+/// it closes, so the sheet never appears. The request is recorded here instead
+/// and presented by `insightCSVExporter()`, which is attached to a view that
+/// outlives every menu in the window.
+@MainActor
+@Observable
+final class InsightExportCoordinator {
+
+    fileprivate var document: InsightCSVDocument?
+    fileprivate var isPresented = false
+
+    func export(_ insight: ExportableInsight) {
+        // `.unsupported` insights decode to nothing drawable, so there is no
+        // honest CSV to write. The menu already hides the entry; this is the
+        // second lock on the same door.
+        guard insight.csv != nil else { return }
+        document = InsightCSVDocument(insight: insight)
+        isPresented = true
+    }
+
+    fileprivate var defaultFilename: String {
+        document.map { ExportableInsight.sanitized($0.insight.title) } ?? "Insight"
+    }
+}
+
+private struct InsightCSVExportModifier: ViewModifier {
+
+    @State private var coordinator = InsightExportCoordinator()
+
+    func body(content: Content) -> some View {
+        content
+            .environment(coordinator)
+            .fileExporter(
+                isPresented: $coordinator.isPresented,
+                document: coordinator.document,
+                contentType: .commaSeparatedText,
+                defaultFilename: coordinator.defaultFilename
+            ) { _ in
+                // Nothing to report either way: a successful save is visible in
+                // Files, and the picker has already shown its own error. The
+                // document is dropped so a later export cannot inherit it.
+                coordinator.document = nil
+            }
+    }
+}
+
+extension View {
+    /// Hosts the "save to Files" sheet, and offers everything below it the
+    /// coordinator that opens one. Attach once per window scene.
+    func insightCSVExporter() -> some View {
+        modifier(InsightCSVExportModifier())
+    }
+}
+
 /// The share actions themselves, unwrapped.
 ///
 /// Kept separate from `InsightShareMenu` so a context menu can show them flat
@@ -133,6 +223,11 @@ enum ExportError: Error {
 struct InsightShareMenuItems: View {
     let title: String
     let model: InsightRenderModel
+
+    /// Optional so the menu still builds in a preview, or in any window that
+    /// has not attached `insightCSVExporter()`; the entry simply isn't offered
+    /// there rather than being offered and doing nothing.
+    @Environment(InsightExportCoordinator.self) private var exporter: InsightExportCoordinator?
 
     private var insight: ExportableInsight {
         ExportableInsight(title: title, model: model)
@@ -159,6 +254,18 @@ struct InsightShareMenuItems: View {
                 Label("Export CSV", systemImage: "tablecells")
             }
             .accessibilityLabel("Export data as CSV")
+
+            // The share sheet's own "Save to Files" is three taps in and picks
+            // the destination last; this is the direct route for a CSV somebody
+            // means to keep rather than send.
+            if let exporter {
+                Button {
+                    exporter.export(insight)
+                } label: {
+                    Label("Save CSV to Files…", systemImage: "folder")
+                }
+                .accessibilityLabel("Save data as a CSV file")
+            }
 
             Button {
                 UIPasteboard.general.string = csv

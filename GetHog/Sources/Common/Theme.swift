@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Visual system.
 ///
@@ -14,12 +15,80 @@ enum Theme {
         dark: Color(red: 0.243, green: 0.773, blue: 0.808)     // #3EC5CE
     )
 
-    static let cardBackground = Color(.secondarySystemGroupedBackground)
-    static let pageBackground = Color(.systemGroupedBackground)
+    /// Warm off-white rather than the system's cool grey.
+    ///
+    /// Borrowed from PostHog's console, which grounds everything on a cream
+    /// paper tone. It is the single change that stops the app reading as a
+    /// default-styled iOS shell, and it makes a plain white card look like a
+    /// deliberate surface instead of the absence of one.
+    static let pageBackground = Color(
+        light: Color(hex: 0xF2EFE9),
+        dark: Color(hex: 0x151413)
+    )
 
-    /// Separator-weight border. Cards need this because the grouped card colour
-    /// is pure white in light mode and would otherwise vanish into the page.
-    static let hairline = Color(.separator)
+    /// Cards stay near-white so data sits on the highest-contrast surface
+    /// available; the page tone is what does the work of separating them.
+    static let cardBackground = Color(
+        light: Color(hex: 0xFFFFFF),
+        dark: Color(hex: 0x1F1E1C)
+    )
+
+    /// Warm border, a shade darker than the page.
+    ///
+    /// Load-bearing rather than decorative: a white card on a pale ground has no
+    /// edge of its own, and the hard-offset shadow below hangs off this line.
+    static let hairline = Color(
+        light: Color(hex: 0xDDD6C9),
+        dark: Color(hex: 0x38342F)
+    )
+
+    /// A second accent for chrome that needs warmth without competing with the
+    /// data — badges, small-caps section headers, selected pills.
+    static let accentWarm = Color(
+        light: Color(hex: 0xC2410C),
+        dark: Color(hex: 0xEA8C4F)
+    )
+
+    /// One spacing scale, so rhythm is consistent rather than per-screen taste.
+    /// Multiples of 4, which is what the system's own metrics are built on.
+    enum Space {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 12
+        static let l: CGFloat = 16
+        static let xl: CGFloat = 24
+        static let xxl: CGFloat = 32
+    }
+
+    /// Corner radii, always drawn `.continuous`. The system's own shapes use
+    /// continuous curvature; a circular radius next to them reads as subtly
+    /// wrong even when nobody can say why.
+    enum Radius {
+        static let small: CGFloat = 10
+        static let medium: CGFloat = 16
+        static let large: CGFloat = 22
+    }
+
+    /// Depth as a hard offset rather than a blur.
+    ///
+    /// Also from PostHog's console: its surfaces drop a tight, barely-blurred
+    /// shadow straight down, so a card reads as a physical card sitting on
+    /// paper. A soft radial blur reads as a slide-deck drop shadow instead, and
+    /// at these small sizes it just muddies the edge. The tint is warm because a
+    /// neutral black shadow on a cream ground goes visibly grey.
+    struct Elevation {
+        let ambient: (color: Color, radius: CGFloat, y: CGFloat)
+        let key: (color: Color, radius: CGFloat, y: CGFloat)
+
+        static let card = Elevation(
+            ambient: (Color(light: Color(hex: 0x4A3F2F).opacity(0.10), dark: .black.opacity(0.5)), 0, 1.5),
+            key: (Color(light: Color(hex: 0x4A3F2F).opacity(0.06), dark: .black.opacity(0.35)), 6, 3)
+        )
+        static let raised = Elevation(
+            ambient: (Color(light: Color(hex: 0x4A3F2F).opacity(0.14), dark: .black.opacity(0.6)), 0, 2),
+            key: (Color(light: Color(hex: 0x4A3F2F).opacity(0.10), dark: .black.opacity(0.45)), 14, 7)
+        )
+    }
 
     enum Status {
         static let good = Color(

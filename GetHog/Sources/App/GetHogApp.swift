@@ -3,9 +3,17 @@ import SwiftUI
 
 @main
 struct GetHogApp: App {
-    @State private var model = GetHogApp.makeModel()
+    @State private var model: AppModel
 
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let model = GetHogApp.makeModel()
+        _model = State(initialValue: model)
+        // `BGTaskScheduler` requires every handler to be registered before the
+        // app finishes launching, so this cannot wait for a `.task` on a view.
+        BackgroundRefresh.register(model: model)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -24,20 +32,35 @@ struct GetHogApp: App {
                 #endif
             }
                 .environment(model)
+                // "Save to Files" is triggered from menu content, which is torn
+                // down the instant the menu closes — the sheet has to be owned
+                // by something that outlives it.
+                .insightCSVExporter()
                 .tint(Theme.accent)
                 .task {
+                    AppTips.configure()
                     await model.bootstrap()
                     if let projectID = model.projectID {
                         await SpotlightIndexer.reindex(projectID: projectID)
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active else { return }
-                    // A widget or Control Center toggle can only record its
-                    // intent; the write itself needs the keychain, the rate-limit
-                    // governor and somewhere to surface a 403 — all of which
-                    // exist here and not in the extension.
-                    Task { await model.consumePendingIntentWork() }
+                    switch phase {
+                    case .active:
+                        // A widget or Control Center toggle can only record its
+                        // intent; the write itself needs the keychain, the rate-limit
+                        // governor and somewhere to surface a 403 — all of which
+                        // exist here and not in the extension.
+                        Task { await model.consumePendingIntentWork() }
+                    case .background:
+                        // The only moment the system accepts a request for the
+                        // next wake. Dated from the snapshot the app has just
+                        // been keeping current, so a session spent looking at
+                        // live data does not also buy a background refresh of it.
+                        BackgroundRefresh.schedule(model: model, refreshedAt: model.lastSnapshotDate)
+                    default:
+                        break
+                    }
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(
@@ -56,6 +79,7 @@ struct GetHogApp: App {
         WindowGroup(for: WindowTarget.self) { $target in
             DetachedWindowView(target: target)
                 .environment(model)
+                .insightCSVExporter()
                 .tint(Theme.accent)
         }
     }
