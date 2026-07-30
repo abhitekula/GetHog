@@ -169,7 +169,7 @@ final class AppModel {
                let dashboard: Dashboard = try? await client.send(
                    PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id)
                ) {
-                metrics = dashboard.tiles.compactMap(Self.metric(from:))
+                metrics = dashboard.tiles.compactMap { Self.metric(from: $0, on: pinned.id) }
             }
         }
 
@@ -318,29 +318,34 @@ final class AppModel {
     static let snapshotIngestionWindow: IngestionWarningWindow = .sevenDays
 
     /// Reduces a dashboard tile to a single headline figure, when it has one.
-    private static func metric(from tile: Tile) -> SharedSnapshot.Metric? {
+    ///
+    /// `dashboardID` is threaded through rather than looked up: this is only
+    /// ever called while iterating one dashboard's tiles, so the answer is
+    /// already in hand and costs neither a request nor a guess.
+    private static func metric(from tile: Tile, on dashboardID: Int) -> SharedSnapshot.Metric? {
         guard let insight = tile.insight else { return nil }
 
         switch tile.renderModel {
         case .bigNumber(let number):
             return .init(id: String(insight.id), title: tile.title, value: number.value,
-                         unit: nil, previous: nil, sparkline: [])
+                         unit: nil, previous: nil, sparkline: [], dashboardID: dashboardID)
         case .timeSeries(let series, _):
             guard let first = series.first, !first.points.isEmpty else { return nil }
             let values = first.points.map(\.value)
             return .init(id: String(insight.id), title: tile.title,
                          value: values.last ?? 0, unit: nil,
                          previous: values.count > 1 ? values[values.count - 2] : nil,
-                         sparkline: Array(values.suffix(24)))
+                         sparkline: Array(values.suffix(24)), dashboardID: dashboardID)
         case .barValue(let bars):
             guard let top = bars.first else { return nil }
             return .init(id: String(insight.id), title: tile.title, value: top.value,
-                         unit: top.label, previous: nil, sparkline: bars.map(\.value))
+                         unit: top.label, previous: nil, sparkline: bars.map(\.value),
+                         dashboardID: dashboardID)
         case .funnel(let groups):
             guard let group = groups.first, let last = group.steps.last else { return nil }
             return .init(id: String(insight.id), title: tile.title, value: last.count,
                          unit: nil, previous: group.steps.first?.count,
-                         sparkline: group.steps.map(\.count))
+                         sparkline: group.steps.map(\.count), dashboardID: dashboardID)
         default:
             // Retention grids, paths and stickiness have no single headline
             // figure, so they are simply not offered as widget metrics.

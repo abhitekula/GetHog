@@ -47,21 +47,27 @@ enum WidgetCache {
         projectID: 0,
         projectName: "Your project",
         metrics: [
+            // `dashboardID` is nil throughout: these are gallery placeholders,
+            // and no dashboard exists that they were read from. Naming one would
+            // be inventing a destination for a tap the gallery never routes.
             .init(
                 id: "1", title: "Active users", value: 12_480, unit: nil, previous: 10_920,
-                sparkline: [8_900, 9_400, 10_100, 10_920, 11_600, 12_480]
+                sparkline: [8_900, 9_400, 10_100, 10_920, 11_600, 12_480], dashboardID: nil
             ),
             .init(
                 id: "2", title: "Signups", value: 318, unit: nil, previous: 344,
-                sparkline: [402, 380, 355, 344, 330, 318]
+                sparkline: [402, 380, 355, 344, 330, 318], dashboardID: nil
             ),
-            .init(id: "3", title: "Bounce rate", value: 41.2, unit: "%", previous: 44.9, sparkline: []),
+            .init(id: "3", title: "Bounce rate", value: 41.2, unit: "%", previous: 44.9,
+                  sparkline: [], dashboardID: nil),
             .init(
                 id: "4", title: "Errors", value: 27, unit: nil, previous: 27,
-                sparkline: [31, 29, 28, 27, 27, 27]
+                sparkline: [31, 29, 28, 27, 27, 27], dashboardID: nil
             ),
-            .init(id: "5", title: "Revenue", value: 8_640, unit: "$", previous: 7_900, sparkline: []),
-            .init(id: "6", title: "Sessions", value: 44_120, unit: nil, previous: nil, sparkline: []),
+            .init(id: "5", title: "Revenue", value: 8_640, unit: "$", previous: 7_900,
+                  sparkline: [], dashboardID: nil),
+            .init(id: "6", title: "Sessions", value: 44_120, unit: nil, previous: nil,
+                  sparkline: [], dashboardID: nil),
         ],
         flags: [
             .init(id: 1, key: "new-onboarding", active: true, quickToggleAllowed: true),
