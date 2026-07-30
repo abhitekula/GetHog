@@ -41,9 +41,15 @@ struct DashboardsRoot: View {
                 .toolbar { ProjectSwitcher() }
                 .searchable(text: $search, prompt: "Search dashboards")
                 .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
+                .task(id: model.projectID) {
+                    await load()
+                    applyDebugSelectionIfNeeded()
+                }
         } detail: {
             if let selection {
+                // `.id` rebuilds the screen per dashboard, which also clears the
+                // previously selected tile rather than leaving one dashboard's
+                // insight open beside another dashboard's grid.
                 DashboardDetailView(summary: selection)
                     .id(selection.id)
             } else {
@@ -137,5 +143,18 @@ struct DashboardsRoot: View {
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID)
+    }
+
+    private func applyDebugSelectionIfNeeded() {
+        #if DEBUG
+        switch DebugLaunch.dashboard {
+        case .first:
+            selection = store.pinned.first ?? store.dashboards.first
+        case .id(let id):
+            selection = store.dashboards.first { $0.id == id }
+        case nil:
+            break
+        }
+        #endif
     }
 }

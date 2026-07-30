@@ -3,10 +3,11 @@ import SwiftUI
 
 enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
-    case webAnalytics, people, sql
+    case webAnalytics, clickmap, people, sql
     case errorTracking
-    case experiments, surveys
-    case llm, warehouse, pipelines
+    case experiments, surveys, earlyAccess
+    case llm, warehouse, pipelines, automation, actions, annotations
+    case notebooks, max
     case settings
 
     var title: String {
@@ -19,14 +20,24 @@ enum AppTab: String, Hashable, CaseIterable {
         case .sessions: "Sessions"
         case .flags: "Flags"
         case .webAnalytics: "Web"
+        // "Clickmap", not "Heatmap": without a page screenshot to overlay there
+        // is no heat map, and naming it one would promise a picture this app
+        // cannot draw.
+        case .clickmap: "Clickmap"
         case .people: "People"
         case .sql: "SQL"
         case .errorTracking: "Errors"
         case .experiments: "Experiments"
         case .surveys: "Surveys"
+        case .earlyAccess: "Early access"
         case .llm: "LLM"
         case .warehouse: "Warehouse"
         case .pipelines: "Pipelines"
+        case .automation: "Automation"
+        case .actions: "Actions"
+        case .annotations: "Annotations"
+        case .notebooks: "Notebooks"
+        case .max: "Max"
         case .settings: "Settings"
         }
     }
@@ -38,14 +49,21 @@ enum AppTab: String, Hashable, CaseIterable {
         case .sessions: "rectangle.stack"
         case .flags: "flag"
         case .webAnalytics: "globe"
+        case .clickmap: "cursorarrow.click.2"
         case .people: "person.2"
         case .sql: "terminal"
         case .errorTracking: "exclamationmark.triangle"
         case .experiments: "flask"
         case .surveys: "list.clipboard"
+        case .earlyAccess: "sparkles"
         case .llm: "brain"
         case .warehouse: "cylinder.split.1x2"
         case .pipelines: "arrow.triangle.branch"
+        case .automation: "gearshape.2"
+        case .actions: "cursorarrow.rays"
+        case .annotations: "note.text"
+        case .notebooks: "book"
+        case .max: "bubble.left.and.bubble.right"
         case .settings: "gearshape"
         }
     }
@@ -54,6 +72,7 @@ enum AppTab: String, Hashable, CaseIterable {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
+    @State private var hasAppliedDebugTab = false
 
     var body: some View {
         switch model.phase {
@@ -90,6 +109,9 @@ struct RootView: View {
                     Tab(AppTab.webAnalytics.title, systemImage: AppTab.webAnalytics.systemImage, value: AppTab.webAnalytics) {
                         WebAnalyticsRoot()
                     }
+                    Tab(AppTab.clickmap.title, systemImage: AppTab.clickmap.systemImage, value: AppTab.clickmap) {
+                        HeatmapsRoot()
+                    }
                     Tab(AppTab.people.title, systemImage: AppTab.people.systemImage, value: AppTab.people) {
                         PeopleRoot()
                     }
@@ -114,6 +136,15 @@ struct RootView: View {
                     Tab(AppTab.pipelines.title, systemImage: AppTab.pipelines.systemImage, value: AppTab.pipelines) {
                         PipelinesRoot()
                     }
+                    Tab(AppTab.automation.title, systemImage: AppTab.automation.systemImage, value: AppTab.automation) {
+                        AutomationRoot()
+                    }
+                    Tab(AppTab.actions.title, systemImage: AppTab.actions.systemImage, value: AppTab.actions) {
+                        ActionsRoot()
+                    }
+                    Tab(AppTab.annotations.title, systemImage: AppTab.annotations.systemImage, value: AppTab.annotations) {
+                        AnnotationsRoot()
+                    }
                 }
 
                 TabSection("Experiment") {
@@ -123,6 +154,18 @@ struct RootView: View {
                     Tab(AppTab.surveys.title, systemImage: AppTab.surveys.systemImage, value: AppTab.surveys) {
                         SurveysRoot()
                     }
+                    Tab(AppTab.earlyAccess.title, systemImage: AppTab.earlyAccess.systemImage, value: AppTab.earlyAccess) {
+                        EarlyAccessRoot()
+                    }
+                }
+
+                TabSection("Workspace") {
+                    Tab(AppTab.notebooks.title, systemImage: AppTab.notebooks.systemImage, value: AppTab.notebooks) {
+                        NotebooksRoot()
+                    }
+                    Tab(AppTab.max.title, systemImage: AppTab.max.systemImage, value: AppTab.max) {
+                        ConversationsRoot()
+                    }
                 }
 
                 Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
@@ -130,6 +173,27 @@ struct RootView: View {
                 }
             }
             .tabViewStyle(.sidebarAdaptable)
+            // Only the four loose tabs get a number: they are the ones always
+            // present in the tab bar. Settings takes the platform-conventional
+            // comma rather than a fifth number it would have to compete for.
+            .keyboardActions([
+                KeyboardAction(key: "1", title: AppTab.dashboards.title) { selectedTab = .dashboards },
+                KeyboardAction(key: "2", title: AppTab.events.title) { selectedTab = .events },
+                KeyboardAction(key: "3", title: AppTab.sessions.title) { selectedTab = .sessions },
+                KeyboardAction(key: "4", title: AppTab.flags.title) { selectedTab = .flags },
+                KeyboardAction(key: ",", title: AppTab.settings.title) { selectedTab = .settings },
+            ])
+            .onAppear {
+                #if DEBUG
+                // Applied once: `@SceneStorage` would otherwise fight a user who
+                // switched tabs after launch.
+                guard !hasAppliedDebugTab else { return }
+                hasAppliedDebugTab = true
+                if let raw = DebugLaunch.initialTab, let tab = AppTab(rawValue: raw) {
+                    selectedTab = tab
+                }
+                #endif
+            }
         }
     }
 }

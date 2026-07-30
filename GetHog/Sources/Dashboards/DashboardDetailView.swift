@@ -23,20 +23,68 @@ final class DashboardDetailStore {
 }
 
 struct DashboardDetailView: View {
-    let summary: DashboardSummary
+    let dashboardID: Int
+    /// Known up front when navigating from the list; absent when a restored
+    /// window has nothing but an id, in which case the fetch supplies it.
+    private let providedTitle: String?
+
+    init(dashboardID: Int, title: String? = nil) {
+        self.dashboardID = dashboardID
+        self.providedTitle = title
+    }
+
+    init(summary: DashboardSummary) {
+        self.init(dashboardID: summary.id, title: summary.title)
+    }
 
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.openWindow) private var openWindow
     @State private var store = DashboardDetailStore()
     @State private var selectedTile: Tile?
 
+    private var title: String {
+        store.dashboard?.title ?? providedTitle ?? "Dashboard"
+    }
+
     private var columns: [GridItem] {
-        sizeClass == .regular
-            ? [GridItem(.adaptive(minimum: 320), spacing: 16)]
+        guard sizeClass == .regular else { return [GridItem(.flexible())] }
+        // With the panel open the grid keeps about a third of the iPad, where an
+        // adaptive minimum yields one column centred between two dead margins.
+        // A flexible column fills that space instead.
+        return selectedTile == nil
+            ? [GridItem(.adaptive(minimum: 280), spacing: 16)]
             : [GridItem(.flexible())]
     }
 
     var body: some View {
+        grid
+            .insightDetail(tile: $selectedTile, isWide: sizeClass == .regular)
+            .background(Theme.pageBackground)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbarContent }
+            .keyboardActions([
+                KeyboardAction(key: "r", title: "Recompute results") {
+                    Task { await load(refresh: true) }
+                }
+            ])
+            .refreshable { await load(refresh: false) }
+            // Keyed on the project, not bare: a window restored at cold launch
+            // appears before `bootstrap()` has produced a client, and a plain
+            // `.task` would run once against nothing and leave the window
+            // permanently empty.
+            .task(id: model.projectID) {
+                await load(refresh: false)
+                #if DEBUG
+                if let index = DebugLaunch.tileIndex, orderedTiles.indices.contains(index) {
+                    selectedTile = orderedTiles[index]
+                }
+                #endif
+            }
+    }
+
+    private var grid: some View {
         ScrollView {
             if let error = store.error, store.dashboard == nil {
                 ContentUnavailableView {
@@ -51,6 +99,7 @@ struct DashboardDetailView: View {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(orderedTiles) { tile in
                         TileCard(tile: tile, webURL: tileWebURL(tile))
+                            .pointerHighlight()
                             .onTapGesture { selectedTile = tile }
                     }
                 }
@@ -58,35 +107,35 @@ struct DashboardDetailView: View {
                 .skeleton(store.isLoading && store.dashboard == nil)
             }
         }
-        .background(Theme.pageBackground)
-        .navigationTitle(summary.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        // Only an explicit user action escalates to recomputation;
-                        // the shared org budget pays for it.
-                        Task { await load(refresh: true) }
-                    } label: {
-                        Label("Recompute results", systemImage: "arrow.clockwise")
-                    }
-                    if let url = model.webURL(path: "dashboard/\(summary.id)") {
-                        Link(destination: url) {
-                            Label("Open in PostHog", systemImage: "arrow.up.forward.square")
-                        }
-                    }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Button {
+                    // Only an explicit user action escalates to recomputation;
+                    // the shared org budget pays for it.
+                    Task { await load(refresh: true) }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Label("Recompute results", systemImage: "arrow.clockwise")
                 }
+                if Platform.supportsMultipleWindows {
+                    Button {
+                        openWindow(value: WindowTarget.dashboard(id: dashboardID))
+                    } label: {
+                        Label("Open in new window", systemImage: "macwindow.badge.plus")
+                    }
+                }
+                if let url = model.webURL(path: "dashboard/\(dashboardID)") {
+                    Link(destination: url) {
+                        Label("Open in PostHog", systemImage: "arrow.up.forward.square")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
-        }
-        .refreshable { await load(refresh: false) }
-        .task { await load(refresh: false) }
-        .sheet(item: $selectedTile) { tile in
-            NavigationStack {
-                InsightDetailView(tile: tile, webURL: tileWebURL(tile))
-            }
+            .accessibilityLabel("Dashboard actions")
         }
     }
 
@@ -104,7 +153,7 @@ struct DashboardDetailView: View {
     private func load(refresh: Bool) async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(
-            client: client, projectID: projectID, dashboardID: summary.id, refresh: refresh
+            client: client, projectID: projectID, dashboardID: dashboardID, refresh: refresh
         )
     }
 }
@@ -129,21 +178,30 @@ struct TileCard: View {
             }
         }
         .contentShape(.rect)
+        // Dragging a tile carries the chart as PNG, the series as CSV and the
+        // title as text, so the destination decides what it wanted: Numbers
+        // takes the CSV, Mail or Slack the image.
+        .draggable(ExportableInsight(title: tile.title, model: tile.renderModel))
         .contextMenu {
             if let webURL {
                 Link(destination: webURL) {
                     Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                 }
             }
+            InsightShareMenuItems(title: tile.title, model: tile.renderModel)
         }
     }
 }
 
-struct InsightDetailView: View {
+/// The insight itself, with no navigation chrome of its own.
+///
+/// Split out because the two presentations need different chrome: the sheet gets
+/// a real navigation bar, while the iPad side panel draws its own header. Giving
+/// the panel a nested `NavigationStack` instead pushed its toolbar items up into
+/// the dashboard's navigation bar and displaced the dashboard's own title.
+struct InsightDetailBody: View {
     let tile: Tile
     var webURL: URL?
-
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -159,16 +217,42 @@ struct InsightDetailView: View {
             .padding()
         }
         .background(Theme.pageBackground)
+    }
+}
+
+struct InsightDetailView: View {
+    let tile: Tile
+    var webURL: URL?
+    var onClose: (() -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        InsightDetailBody(tile: tile, webURL: webURL)
         .navigationTitle(tile.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("Done") { dismiss() }
-            }
-            if let webURL {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ShareLink(item: webURL) { Image(systemName: "square.and.arrow.up") }
+                Button("Done") {
+                    if let onClose { onClose() } else { dismiss() }
                 }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    InsightShareMenuItems(title: tile.title, model: tile.renderModel)
+                    if let webURL {
+                        Divider()
+                        ShareLink(item: webURL) {
+                            Label("Share link", systemImage: "link")
+                        }
+                        Link(destination: webURL) {
+                            Label("Open in PostHog", systemImage: "arrow.up.forward.square")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share this insight")
             }
         }
     }

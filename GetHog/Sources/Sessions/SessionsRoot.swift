@@ -54,6 +54,16 @@ struct SessionsRoot: View {
                 .toolbar {
                     ProjectSwitcher()
                     ToolbarItem(placement: .topBarTrailing) { filterMenu }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        // Playlists are saved views over these same recordings,
+                        // so they live here rather than competing for a tab.
+                        NavigationLink {
+                            PlaylistsView()
+                        } label: {
+                            Image(systemName: "list.star")
+                        }
+                        .accessibilityLabel("Playlists")
+                    }
                 }
                 .searchable(text: $search, prompt: "Search person or URL")
                 .refreshable { await load() }

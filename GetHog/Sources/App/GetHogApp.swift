@@ -9,7 +9,20 @@ struct GetHogApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            Group {
+                #if DEBUG
+                // Renders one screen outside the tab bar and split view, to tell
+                // a layout problem in a screen apart from one caused by the
+                // containers around it.
+                if let target = DebugLaunch.soloWindowTarget {
+                    DetachedWindowView(target: target)
+                } else {
+                    RootView()
+                }
+                #else
+                RootView()
+                #endif
+            }
                 .environment(model)
                 .tint(Theme.accent)
                 .task {
@@ -34,6 +47,16 @@ struct GetHogApp: App {
                     // A Focus filter can switch projects while the app is running.
                     model.adoptExternallySelectedProject()
                 }
+        }
+
+        // Tear-off windows for iPad and Stage Manager. They share the one
+        // `AppModel`, and therefore one client, one rate-limit governor and one
+        // cache: a window that built its own stack would double this app's draw
+        // on a request budget that belongs to the whole organisation.
+        WindowGroup(for: WindowTarget.self) { $target in
+            DetachedWindowView(target: target)
+                .environment(model)
+                .tint(Theme.accent)
         }
     }
 
