@@ -86,17 +86,20 @@ struct WebVitalsSection: View {
                 }
             )
 
-            Picker("Percentile", selection: $percentile) {
-                ForEach(WebVitalPercentile.allCases) { option in
-                    Text(option.title)
-                        .accessibilityLabel(option.spokenTitle)
-                        .tag(option)
+            adaptivelyStyled(
+                Picker("Percentile", selection: $percentile) {
+                    ForEach(WebVitalPercentile.allCases) { option in
+                        Text(option.title)
+                            .accessibilityLabel(option.spokenTitle)
+                            .tag(option)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
+            )
         }
     }
 
+    /// Segmented controls shrink their labels to slivers at accessibility text
+    /// sizes, so past that threshold the same choice becomes a menu.
     @ViewBuilder
     private func adaptivelyStyled(_ picker: some View) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
@@ -159,28 +162,37 @@ struct WebVitalsSection: View {
 
     /// How the site splits across the three bands, before any individual page.
     private var bandSummary: some View {
-        // Ordered worst-first explicitly rather than by the band's own rank,
-        // which GetHogKit keeps internal.
-        HStack(spacing: Theme.Space.s) {
-            ForEach([WebVitalBand.poor, .needsImprovement, .good], id: \.self) { band in
-                let count = entries.filter { $0.band == band }.count
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(count)")
-                        .font(.system(.title3, design: .rounded, weight: .semibold))
-                        .monospacedDigit()
-                    Text(band.title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Theme.Space.m)
-                .background(band.tint.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.small, style: .continuous))
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(count) pages \(band.title.lowercased())")
-            }
+        // Stacks rather than truncates: a third of a phone's width cannot hold
+        // "Needs improvement", and a band tile whose name is cut to "Needs
+        // impro…" leaves the count with no stated verdict.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Space.s) { bandTiles }
+            VStack(alignment: .leading, spacing: Theme.Space.s) { bandTiles }
         }
         .skeleton(isLoading && entries.isEmpty)
+    }
+
+    /// Ordered worst-first explicitly rather than by the band's own rank, which
+    /// GetHogKit keeps internal.
+    @ViewBuilder
+    private var bandTiles: some View {
+        ForEach([WebVitalBand.poor, .needsImprovement, .good], id: \.self) { band in
+            let count = entries.filter { $0.band == band }.count
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(count)")
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .monospacedDigit()
+                Text(band.title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Space.m)
+            .background(band.tint.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.small, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(count) pages \(band.title.lowercased())")
+        }
     }
 
     private var pageList: some View {

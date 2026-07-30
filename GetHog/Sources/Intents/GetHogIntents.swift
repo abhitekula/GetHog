@@ -388,13 +388,22 @@ enum IntentValueFormat {
 
 // MARK: - Snippet views
 
-/// Snippets render inside Siri and Shortcuts, outside the app's window and its
-/// tint, so the accent is stated here instead of read from `Theme`.
+/// The app accent, restated.
+///
+/// **Keep in sync with `Theme.accent` by hand.** This is not preference: this
+/// whole directory is compiled into `GetHogWidgets` as well as the app (see
+/// `project.yml`), and that extension target's sources are only `GetHogWidgets`,
+/// `GetHog/Sources/Intents` and `FlagToggleController.swift` — it does not
+/// include `GetHog/Sources/Common`, so `Theme` does not exist here and naming
+/// it breaks the extension build, which breaks the app bundle with it.
+///
+/// The values are `Theme.accent`'s, resolved the same way so light and dark
+/// still come free.
 private enum SnippetStyle {
     static let accent = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.243, green: 0.773, blue: 0.808, alpha: 1)
-            : UIColor(red: 0.043, green: 0.431, blue: 0.459, alpha: 1)
+            ? UIColor(red: 0.243, green: 0.773, blue: 0.808, alpha: 1)  // #3EC5CE
+            : UIColor(red: 0.043, green: 0.431, blue: 0.459, alpha: 1)  // #0B6E75
     })
 }
 
@@ -408,8 +417,12 @@ struct MetricSnippetView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
+            // Semantic size, built the way `Theme.Typography.metric` is: snippets
+            // honour Dynamic Type, and a fixed 48pt only ever shrank — a reader
+            // at an accessibility size got the caption above it scaled up and the
+            // number itself left behind.
             Text(metric.displayValue)
-                .font(.system(size: 48, weight: .semibold, design: .rounded))
+                .font(.system(.largeTitle, design: .rounded, weight: .semibold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
 

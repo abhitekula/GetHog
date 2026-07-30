@@ -175,6 +175,11 @@ final class AppModel {
             capturedAt: Date()
         )
         try? SharedSnapshotStore.shared.write(snapshot)
+        // Every publish evaluates, foreground included. A background wake is the
+        // usual trigger, but a user who opens the app and watches a metric
+        // recover would otherwise leave its watch latched, and the next real
+        // crossing would pass in silence.
+        await MetricAlertDelivery.evaluate(snapshot: snapshot)
         WidgetCenter.shared.reloadAllTimelines()
         return reachedTheAPI
     }

@@ -460,6 +460,11 @@ struct EndpointUsagePanel: View {
     @Bindable var store: AutomationStore
     var onDimensionChange: () -> Void
 
+    /// 108pt is a measurement of these tiles at the default text size. Left
+    /// fixed, the grid kept fitting the same number of columns as the titles
+    /// grew, so every one of them truncated at accessibility sizes.
+    @ScaledMetric(relativeTo: .caption2) private var metricColumnWidth: CGFloat = 108
+
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
@@ -491,7 +496,7 @@ struct EndpointUsagePanel: View {
 
     private var metrics: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 108), spacing: Theme.Space.m)],
+            columns: [GridItem(.adaptive(minimum: metricColumnWidth), spacing: Theme.Space.m)],
             alignment: .leading,
             spacing: Theme.Space.m
         ) {
@@ -539,9 +544,15 @@ struct EndpointUsagePanel: View {
             } else {
                 ForEach(store.usageBreakdown) { row in
                     VStack(alignment: .leading, spacing: 2) {
+                        // The label *is* the row's content — the endpoint or user
+                        // this slice is grouped by — so it gets a second line,
+                        // and truncates in the middle like the other
+                        // identifier-shaped strings in the app: these share long
+                        // prefixes, and the tail is what tells two of them apart.
                         Text(row.label)
                             .font(.footnote.monospaced())
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
                         // Labels come from the response's own column names: this
                         // table's columns could not be observed live, and a
                         // guessed heading over a real number is worse than a

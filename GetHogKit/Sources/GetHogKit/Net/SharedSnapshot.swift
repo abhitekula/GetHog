@@ -191,6 +191,8 @@ public struct SharedSnapshotStore: Sendable {
     private static let snapshotFileName = "snapshot.json"
     private static let pendingFlagFileName = "pending-flag.json"
     private static let pendingOpenFileName = "pending-open.json"
+    private static let metricWatchesFileName = "metric-watches.json"
+    private static let breachingWatchIDsFileName = "metric-watch-breaches.json"
 
     public let directory: URL
 
@@ -235,6 +237,12 @@ public struct SharedSnapshotStore: Sendable {
     public var pendingFlagURL: URL { directory.appendingPathComponent(Self.pendingFlagFileName) }
 
     public var pendingOpenURL: URL { directory.appendingPathComponent(Self.pendingOpenFileName) }
+
+    public var metricWatchesURL: URL { directory.appendingPathComponent(Self.metricWatchesFileName) }
+
+    public var breachingWatchIDsURL: URL {
+        directory.appendingPathComponent(Self.breachingWatchIDsFileName)
+    }
 
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -299,6 +307,36 @@ public struct SharedSnapshotStore: Sendable {
 
     public func clearPendingOpen() {
         try? FileManager.default.removeItem(at: pendingOpenURL)
+    }
+
+    // MARK: Metric watches
+
+    /// Beside the snapshot rather than in `UserDefaults`, for the same reason
+    /// the snapshot is: a future notification-service or widget extension can
+    /// read the user's watches without the app being running, and the file
+    /// format is then the whole contract between the two processes.
+    public func writeMetricWatches(_ watches: [MetricWatch]) throws {
+        try writeJSON(watches, to: metricWatchesURL)
+    }
+
+    /// Non-throwing: a background wake has nowhere to report a decoding failure,
+    /// and a corrupt watch list must not be able to stop the snapshot itself
+    /// from being published.
+    public func metricWatches() -> [MetricWatch] {
+        (try? readJSON([MetricWatch].self, from: metricWatchesURL)) ?? []
+    }
+
+    /// The latch that stops a two-hourly wake re-notifying about one bad number.
+    ///
+    /// Kept in its own file, as the two pending-write records are: editing a
+    /// watch rewrites the list, and folding the latch into the same file would
+    /// make every edit a chance to lose it.
+    public func writeBreachingWatchIDs(_ ids: Set<String>) throws {
+        try writeJSON(ids, to: breachingWatchIDsURL)
+    }
+
+    public func breachingWatchIDs() -> Set<String> {
+        (try? readJSON(Set<String>.self, from: breachingWatchIDsURL)) ?? []
     }
 
     // MARK: Plumbing

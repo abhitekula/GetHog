@@ -42,6 +42,12 @@ struct LifecycleChart: View {
     let series: [LifecycleSeries]
     var compact: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// See `TimeSeriesChart.textScale`; this chart had the same fixed height and
+    /// the same fixed axis count.
+    @ScaledMetric(relativeTo: .caption2) private var textScale: CGFloat = 1
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Chart {
@@ -64,18 +70,23 @@ struct LifecycleChart: View {
                 domain: series.map(\.status.title),
                 range: series.map { SeriesPalette.color(at: $0.status.paletteSlot) }
             )
-            .chartXAxis { AxisMarks(values: .automatic(desiredCount: compact ? 3 : 6)) }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: dynamicTypeSize.thinnedAxisCount(compact ? 3 : 6)))
+            }
             .chartYAxis { AxisMarks(position: .leading) }
             .chartLegend(.visible)
-            .frame(height: compact ? 170 : 280)
+            .frame(height: (compact ? 170 : 280) * min(textScale, 1.5))
             .accessibilityChartDescriptor(LifecycleDescriptor(series: series))
 
             if !compact {
                 ForEach(series, id: \.status) { s in
                     HStack(spacing: 8) {
+                        // Scales with the label it identifies: this legend is
+                        // the non-colour route to a series only if it stays
+                        // visible, and three light-mode hues need it.
                         Circle()
                             .fill(SeriesPalette.color(at: s.status.paletteSlot))
-                            .frame(width: 8, height: 8)
+                            .frame(width: 8 * textScale, height: 8 * textScale)
                         Text(s.status.title).font(.caption)
                         Spacer()
                         Text(s.total.compactFormatted)
@@ -97,18 +108,46 @@ struct RetentionGridView: View {
     let grid: RetentionGrid
     var compact: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The cohort labels are dates — "Week of Jan 12" — and a fixed 62pt column
+    /// clipped them at the default size, never mind once the text scales.
+    @ScaledMetric(relativeTo: .caption2) private var cohortColumn: CGFloat = 62
+
+    /// Columns are cut from six because the cells now carry `.caption2` instead
+    /// of a fixed 9pt: the widest cell reads "100%", and six of those beside the
+    /// cohort column no longer cross a phone tile. The list is not bound by
+    /// width, so it shows what the grid used to.
     private var visibleIntervals: Int {
-        min(grid.intervalCount, compact ? 6 : 12)
+        let limit = dynamicTypeSize.isAccessibilitySize
+            ? (compact ? 6 : 12)
+            : (compact ? 4 : 12)
+        return min(grid.intervalCount, limit)
     }
 
     var body: some View {
+        // Past the accessibility threshold this stops being a grid.
+        //
+        // A grid spends width to buy density, and at those sizes there is no
+        // width left to spend: the cohort column has scaled, three columns of
+        // "100%" is all a phone tile has room for, and a retention insight
+        // showing three intervals is not worth reading. The same figures as a
+        // list are, and vertical room is the one thing a tile can always find.
+        if dynamicTypeSize.isAccessibilitySize {
+            cohortList
+        } else {
+            cohortGrid
+        }
+    }
+
+    private var cohortGrid: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Column headers
             HStack(spacing: 2) {
                 Text("Cohort")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .frame(width: 62, alignment: .leading)
+                    .frame(width: cohortColumn, alignment: .leading)
                 ForEach(0..<visibleIntervals, id: \.self) { index in
                     Text("\(index)")
                         .font(.caption2.monospacedDigit())
@@ -119,16 +158,57 @@ struct RetentionGridView: View {
 
             ForEach(grid.cohorts) { cohort in
                 HStack(spacing: 2) {
+                    // Two lines, because even a scaled column is narrower than
+                    // "Week of Jan 12" set at `.caption2` — wrapping shows the
+                    // whole date where one line showed "Week of Ja…".
                     Text(cohort.label)
                         .font(.caption2)
-                        .lineLimit(1)
-                        .frame(width: 62, alignment: .leading)
+                        .lineLimit(2)
+                        .frame(width: cohortColumn, alignment: .leading)
 
                     ForEach(0..<visibleIntervals, id: \.self) { index in
                         RetentionCell(
                             rate: index < cohort.counts.count ? cohort.rate(at: index) : nil,
                             count: index < cohort.counts.count ? cohort.counts[index] : nil
                         )
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel(for: cohort))
+            }
+        }
+    }
+
+    /// One block per cohort, one row per interval.
+    ///
+    /// Each row still carries the grid's tint, because that is what makes a
+    /// decay curve scannable rather than a column of numbers to be read one at a
+    /// time — and the same `.primary` on it, for the same contrast reason.
+    /// VoiceOver is handed the identical per-cohort label either way, so the two
+    /// layouts are indistinguishable to it.
+    private var cohortList: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            ForEach(grid.cohorts) { cohort in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(cohort.label)
+                        .font(.caption.weight(.semibold))
+
+                    ForEach(0..<min(visibleIntervals, cohort.counts.count), id: \.self) { index in
+                        HStack(spacing: Theme.Space.s) {
+                            Text("Interval \(index)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: Theme.Space.s)
+                            Text(cohort.rate(at: index), format: .percent.precision(.fractionLength(0)))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RetentionCell.fill(for: cohort.rate(at: index)),
+                                    in: .rect(cornerRadius: 3)
+                                )
+                        }
                     }
                 }
                 .accessibilityElement(children: .combine)
@@ -154,17 +234,30 @@ struct RetentionCell: View {
     let rate: Double?
     let count: Double?
 
+    /// One hue, floor to full. Declared once because the list layout draws the
+    /// same tint, and two copies of a ramp are two ramps waiting to disagree.
+    static func fill(for rate: Double) -> Color {
+        SeriesPalette.color(at: 0).opacity(0.1 + 0.75 * rate)
+    }
+
     var body: some View {
         Group {
             if let rate {
                 Text(rate, format: .percent.precision(.fractionLength(0)))
-                    .font(.system(size: 9).monospacedDigit())
-                    .foregroundStyle(rate > 0.55 ? Color.white : Color.primary)
+                    // A fixed 9pt ignored Dynamic Type outright, so the one
+                    // insight that is nothing but small numbers stayed 9pt at
+                    // every accessibility size.
+                    .font(.caption2.monospacedDigit())
+                    // One colour at every intensity. White was switched in above
+                    // 55% retention, where the fill has only reached part of its
+                    // strength: about 1.9:1 at the switch and still only 3.5:1
+                    // at 100% — worst on exactly the cells worth reading.
+                    // `.primary` clears 4.5:1 against the densest fill in both
+                    // modes.
+                    .foregroundStyle(.primary)
+                    // A floor, not a cap: the cell grows with the text.
                     .frame(maxWidth: .infinity, minHeight: 22)
-                    .background(
-                        SeriesPalette.color(at: 0).opacity(0.1 + 0.75 * rate),
-                        in: .rect(cornerRadius: 3)
-                    )
+                    .background(Self.fill(for: rate), in: .rect(cornerRadius: 3))
             } else {
                 Color.clear.frame(maxWidth: .infinity, minHeight: 22)
             }
@@ -188,8 +281,23 @@ struct TimeSeriesChart: View {
     /// abandoned without having mutated the committed window.
     @GestureState private var pinch: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var height: CGFloat { compact ? 170 : 280 }
+    /// A chart is laid out in points; the labels inside it are not. This is how
+    /// the two are kept in step — see `height`.
+    @ScaledMetric(relativeTo: .caption2) private var textScale: CGFloat = 1
+
+    /// Grows with the text, to a point.
+    ///
+    /// The y-axis labels stack vertically inside this height, so a height fixed
+    /// in points is a height that runs out of room for them. Capped at half
+    /// again: past that a single tile stops fitting on a phone screen and the
+    /// dashboard becomes a scroll through one chart at a time.
+    private var height: CGFloat { (compact ? 170 : 280) * min(textScale, 1.5) }
+
+    private var xAxisTickCount: Int {
+        dynamicTypeSize.thinnedAxisCount(compact ? 3 : 5)
+    }
 
     // MARK: - Zoom and pan
 
@@ -308,9 +416,11 @@ struct TimeSeriesChart: View {
             .chartForegroundStyleScale(range: paletteRange)
             .chartLegend(series.count > 1 ? .visible : .hidden)
             .chartXAxis {
-                // Let the axis choose its own tick count and format; a fixed
-                // categorical axis is what produced overlapping labels.
-                AxisMarks(preset: .aligned, values: .automatic(desiredCount: compact ? 3 : 5)) { value in
+                // The axis owns the format and the thinning; a fixed categorical
+                // axis is what produced overlapping labels. What it cannot see
+                // is the text size, so the count it is asked for carries that —
+                // see `xAxisTickCount`.
+                AxisMarks(preset: .aligned, values: .automatic(desiredCount: xAxisTickCount)) { value in
                     AxisGridLine()
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day())
                         .font(.caption2)
@@ -451,9 +561,12 @@ struct TimeSeriesChart: View {
                 .foregroundStyle(.secondary)
             ForEach(selectedPoints, id: \.index) { entry in
                 HStack(spacing: 4) {
+                    // The swatch is what ties a figure to its series, so it
+                    // tracks the figure rather than staying a 6pt speck beside
+                    // text three times its size.
                     Circle()
                         .fill(SeriesPalette.color(at: entry.index))
-                        .frame(width: 6, height: 6)
+                        .frame(width: 6 * textScale, height: 6 * textScale)
                     Text(entry.value.compactFormatted)
                         .font(.caption2.weight(.semibold).monospacedDigit())
                 }
@@ -473,31 +586,30 @@ struct BarValueChart: View {
     let bars: [BarValue]
     var compact: Bool
 
+    /// Row pitch. Scales because the per-bar labels beside it do; at a fixed
+    /// 26pt the labels of neighbouring rows ran into each other.
+    @ScaledMetric(relativeTo: .caption2) private var barSlot: CGFloat = 26
+
+    /// Preferred width of the label column, before it is measured against the
+    /// tile it actually landed in.
+    @ScaledMetric(relativeTo: .caption2) private var labelColumn: CGFloat = 78
+
     private var visible: [BarValue] {
         Array(bars.prefix(compact ? 6 : 20))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Chart(Array(visible.enumerated()), id: \.offset) { index, bar in
-                BarMark(
-                    x: .value("Value", bar.value),
-                    y: .value("Label", bar.label)
-                )
-                .foregroundStyle(SeriesPalette.color(at: 0))
-                .cornerRadius(4)
-                .annotation(position: .trailing, alignment: .leading) {
-                    // Direct labels: the relief the light-mode contrast warning
-                    // requires, and faster to read than a value axis.
-                    Text(bar.value.compactFormatted)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+            // The label column is bounded against the width the tile grants.
+            // These labels are free text — domains, URLs, breakdown values — and
+            // left to size itself the axis pushed "aparajita-ananth.example product.live"
+            // straight off the trailing edge of the tile, with "www.google."
+            // overlapping the row below. Held to a share of the width, an
+            // over-long label truncates inside its own box instead.
+            GeometryReader { geo in
+                chart(labelWidth: min(labelColumn, geo.size.width * 0.45))
             }
-            .chartXAxis(.hidden)
-            .chartYAxis { AxisMarks(preset: .aligned, position: .leading) }
-            .frame(height: CGFloat(visible.count) * 26 + 20)
-            .accessibilityChartDescriptor(BarValueDescriptor(bars: visible))
+            .frame(height: CGFloat(visible.count) * barSlot + 20)
 
             if bars.count > visible.count {
                 Text("+\(bars.count - visible.count) more")
@@ -505,6 +617,41 @@ struct BarValueChart: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private func chart(labelWidth: CGFloat) -> some View {
+        Chart(Array(visible.enumerated()), id: \.offset) { index, bar in
+            BarMark(
+                x: .value("Value", bar.value),
+                y: .value("Label", bar.label)
+            )
+            .foregroundStyle(SeriesPalette.color(at: 0))
+            .cornerRadius(4)
+            .annotation(position: .trailing, alignment: .leading) {
+                // Direct labels: the relief the light-mode contrast warning
+                // requires, and faster to read than a value axis.
+                Text(bar.value.compactFormatted)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(preset: .aligned, position: .leading) { value in
+                AxisValueLabel {
+                    Text(value.as(String.self) ?? "")
+                        .font(.caption2)
+                        .lineLimit(2)
+                        // Middle, because either end can be the distinguishing
+                        // part: a tail truncation loses "…example product.live" from one
+                        // domain and leaves "www.google." indistinguishable from
+                        // the next.
+                        .truncationMode(.middle)
+                        .frame(width: labelWidth, alignment: .leading)
+                }
+            }
+        }
+        .accessibilityChartDescriptor(BarValueDescriptor(bars: visible))
     }
 }
 
@@ -516,8 +663,10 @@ struct BigNumberView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(number.value.compactFormatted)
-                .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                .monospacedDigit()
+                // The token, not a copy of it: this was the same declaration
+                // spelled out inline, free to drift from the type scale.
+                // `Typography.metric` already carries the monospaced digits.
+                .font(Theme.Typography.metric)
                 .contentTransition(.numericText())
             if !number.label.isEmpty {
                 Text(number.label)
@@ -578,22 +727,33 @@ struct FunnelStepRow: View {
     let index: Int
     let maxCount: Double
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The bar is the only non-textual reading of the step, so it scales too —
+    /// a 6pt rule under 32pt text reads as a hairline, not as a quantity.
+    @ScaledMetric(relativeTo: .caption) private var barHeight: CGFloat = 6
+
     private var fraction: Double {
         maxCount > 0 ? step.count / maxCount : 0
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text("\(index + 1). \(step.name)")
-                    .font(.caption)
-                    .lineLimit(1)
-                Spacer()
-                Text(step.count.compactFormatted)
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                Text(fraction, format: .percent.precision(.fractionLength(0)))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            // The step name is the funnel's whole content and the only elastic
+            // thing on the row, so it is what gave way: at AX3 the steps read
+            // "1. First p…", "2. Second…", "3. Third pa…" and stopped being
+            // distinguishable from one another. Two lines, and past the
+            // accessibility threshold the count and its share step off the name's
+            // row entirely rather than squeezing it to nothing.
+            if dynamicTypeSize.isAccessibilitySize {
+                name
+                HStack(spacing: Theme.Space.s) { counts }
+            } else {
+                HStack {
+                    name
+                    Spacer()
+                    counts
+                }
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -603,13 +763,46 @@ struct FunnelStepRow: View {
                         .frame(width: max(2, geo.size.width * fraction))
                 }
             }
-            .frame(height: 6)
+            .frame(height: barHeight)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "Step \(index + 1), \(step.name): \(step.count.formatted()), "
             + "\(fraction.formatted(.percent.precision(.fractionLength(0)))) of the first step"
         )
+    }
+
+    private var name: some View {
+        Text("\(index + 1). \(step.name)")
+            .font(.caption)
+            .lineLimit(2)
+    }
+
+    @ViewBuilder
+    private var counts: some View {
+        Text(step.count.compactFormatted)
+            .font(.caption.weight(.semibold).monospacedDigit())
+        Text(fraction, format: .percent.precision(.fractionLength(0)))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+}
+
+extension DynamicTypeSize {
+    /// Thins an axis label count for the text size actually in force.
+    ///
+    /// Swift Charts thins its own labels to fit the count it is handed, but it
+    /// is handed one count regardless of text size — so at AX3 the compact time
+    /// series drew "Jul 5Jul 12ul 19ul 26", four labels printed over each other.
+    /// A label is roughly three times as wide at the top of the scale as at the
+    /// default size, so the count has to come down with it. Two is the floor: an
+    /// axis with one mark has stopped being an axis.
+    ///
+    /// Shared by every chart in this module, because they all inherited the same
+    /// fixed count and the same collision.
+    func thinnedAxisCount(_ base: Int) -> Int {
+        guard isAccessibilitySize else { return base }
+        return self >= .accessibility3 ? 2 : max(2, base - 2)
     }
 }
 

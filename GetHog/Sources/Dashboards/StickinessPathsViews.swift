@@ -62,6 +62,8 @@ struct PathsFlowView: View {
     let graph: PathsGraph
     var compact: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var visible: [PathEdge] {
         Array(graph.edges.prefix(compact ? 5 : 25))
     }
@@ -70,26 +72,7 @@ struct PathsFlowView: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(visible) { edge in
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        if let step = edge.step {
-                            Text("\(step)")
-                                .font(.caption2.weight(.bold).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(minWidth: 14)
-                        }
-                        Text(display(edge.source))
-                            .font(.caption)
-                            .lineLimit(1)
-                        Image(systemName: "arrow.right")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Text(display(edge.target))
-                            .font(.caption)
-                            .lineLimit(1)
-                        Spacer(minLength: 6)
-                        Text(edge.value.compactFormatted)
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                    }
+                    edgeLabels(edge)
 
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -113,6 +96,65 @@ struct PathsFlowView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    /// Source, target and the count for one edge.
+    ///
+    /// Both ends shared a row and both were clipped to one line, and `display()`
+    /// has already thrown the host away — so the characters that got cut were
+    /// the ones saying which step this is. Two lines each, and past the
+    /// accessibility threshold the two ends stop competing for one row at all:
+    /// four things across a phone leaves each of them a few characters.
+    @ViewBuilder
+    private func edgeLabels(_ edge: PathEdge) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    stepBadge(edge)
+                    node(edge.source)
+                    Spacer(minLength: 6)
+                    total(edge)
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    node(edge.target)
+                }
+            }
+        } else {
+            HStack(spacing: 6) {
+                stepBadge(edge)
+                node(edge.source)
+                Image(systemName: "arrow.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                node(edge.target)
+                Spacer(minLength: 6)
+                total(edge)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stepBadge(_ edge: PathEdge) -> some View {
+        if let step = edge.step {
+            Text("\(step)")
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 14)
+        }
+    }
+
+    private func node(_ value: String) -> some View {
+        Text(display(value))
+            .font(.caption)
+            .lineLimit(2)
+    }
+
+    private func total(_ edge: PathEdge) -> some View {
+        Text(edge.value.compactFormatted)
+            .font(.caption.weight(.semibold).monospacedDigit())
     }
 
     private func fraction(_ edge: PathEdge) -> Double {

@@ -20,17 +20,32 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch step {
-                case .welcome: welcome
-                case .region: regionPicker
-                case .key: keyEntry
+            // Every step scrolls, not just key entry. The welcome step stacks a
+            // 104pt tile, a large-title wordmark, three highlight rows and a
+            // footer above "Get started"; at accessibility text sizes that
+            // overflowed a fixed frame and put the only button on the first
+            // screen out of reach, so first launch could not be completed at all.
+            //
+            // The minimum height is what lets the steps keep their own `Spacer`s:
+            // inside a plain ScrollView a Spacer collapses to its minimum and the
+            // welcome step would bunch against the top at ordinary sizes.
+            GeometryReader { proxy in
+                ScrollView {
+                    Group {
+                        switch step {
+                        case .welcome: welcome
+                        case .region: regionPicker
+                        case .key: keyEntry
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: proxy.size.height)
                 }
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .frame(maxWidth: 560)
-            .frame(maxWidth: .infinity)
             // Cards use the grouped card colour, which is white in light mode —
             // without the grouped page behind them the whole flow reads as flat.
             .background(Theme.pageBackground)
@@ -199,48 +214,50 @@ struct OnboardingView: View {
 
     // MARK: - Key entry
 
+    /// No ScrollView of its own — the whole `Group` scrolls now, and nesting one
+    /// scroll view inside another leaves this step with two competing gestures.
     private var keyEntry: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Add your personal API key")
-                    .font(.title2.bold())
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Add your personal API key")
+                .font(.title2.bold())
 
-                Text("GetHog stores your key in the Keychain on this device only. It's never uploaded anywhere.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            Text("GetHog stores your key in the Keychain on this device only. It's never uploaded anywhere.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
 
-                SecureField("phx_…", text: $apiKey)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.body.monospaced())
+            SecureField("phx_…", text: $apiKey)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
 
-                scopeChecklist
+            scopeChecklist
 
-                Link(destination: region.apiKeySettingsURL) {
-                    Label("Create a key in PostHog", systemImage: "arrow.up.forward.square")
-                        .font(.subheadline.weight(.medium))
-                }
-
-                if let error {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.Status.critical)
-                }
-
-                Button {
-                    Task { await connect() }
-                } label: {
-                    if isConnecting {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else {
-                        Text("Connect").frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(apiKey.isEmpty || isConnecting)
+            Link(destination: region.apiKeySettingsURL) {
+                Label("Create a key in PostHog", systemImage: "arrow.up.forward.square")
+                    .font(.subheadline.weight(.medium))
             }
+
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.Status.critical)
+            }
+
+            Button {
+                Task { await connect() }
+            } label: {
+                if isConnecting {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    Text("Connect").frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(apiKey.isEmpty || isConnecting)
+
+            Spacer(minLength: 0)
         }
     }
 

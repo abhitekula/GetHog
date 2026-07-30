@@ -135,6 +135,7 @@ struct DashboardDetailView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openWindow) private var openWindow
     @State private var store = DashboardDetailStore()
     @State private var selectedTile: Tile?
@@ -204,12 +205,13 @@ struct DashboardDetailView: View {
     private var rangeBar: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             HStack(spacing: Theme.Space.s) {
-                Picker("Time range", selection: $range) {
-                    ForEach(DashboardRange.allCases) { option in
-                        Text(option.title).tag(option)
+                adaptivelyStyled(
+                    Picker("Time range", selection: $range) {
+                        ForEach(DashboardRange.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
+                )
                 // Capped rather than stretched: a segmented control spanning a
                 // 13-inch iPad puts five words a hand's width apart and reads as
                 // a toolbar, not a choice.
@@ -238,6 +240,19 @@ struct DashboardDetailView: View {
         }
         .padding(.horizontal, Theme.Space.l)
         .padding(.top, Theme.Space.s)
+    }
+
+    /// Segmented controls shrink their labels to slivers at accessibility text
+    /// sizes, so past that threshold the same choice becomes a menu. Five
+    /// segments made this the worst offender: "Saved" stayed tiny while every
+    /// other control on the screen grew around it.
+    @ViewBuilder
+    private func adaptivelyStyled(_ picker: some View) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            picker.pickerStyle(.menu)
+        } else {
+            picker.pickerStyle(.segmented)
+        }
     }
 
     private var grid: some View {
@@ -454,8 +469,13 @@ struct SeriesLegend: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(series.enumerated()), id: \.offset) { index, s in
                 HStack(spacing: 8) {
+                    // Tracks the label rather than sitting at a fixed 9pt. The
+                    // symbol is the half of this legend that does not depend on
+                    // hue, and three light-mode palette colours fall below 3:1 —
+                    // so pinning it small shrinks the relief to a speck for
+                    // precisely the readers it exists for.
                     Image(systemName: SeriesPalette.symbol(at: index))
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(SeriesPalette.color(at: index))
                     Text(s.label)
                         .font(.subheadline)

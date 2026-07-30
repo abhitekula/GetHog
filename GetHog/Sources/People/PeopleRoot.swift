@@ -100,6 +100,7 @@ final class PeopleStore {
 
 struct PeopleRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = PeopleStore()
     @State private var segment: PeopleStore.Segment = .persons
     @State private var search = ""
@@ -125,12 +126,13 @@ struct PeopleRoot: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             GlassFilterBar {
-                Picker("View", selection: $segment) {
-                    ForEach(PeopleStore.Segment.allCases) { segment in
-                        Text(segment.title).tag(segment)
+                adaptivelyStyled(
+                    Picker("View", selection: $segment) {
+                        ForEach(PeopleStore.Segment.allCases) { segment in
+                            Text(segment.title).tag(segment)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
+                )
             }
             .padding(.vertical, Theme.Space.s)
 
@@ -163,6 +165,17 @@ struct PeopleRoot: View {
         }
         .onChange(of: segment) { _, new in
             if new == .cohorts { Task { await loadCohorts() } }
+        }
+    }
+
+    /// Segmented controls shrink their labels to slivers at accessibility text
+    /// sizes, so past that threshold the same choice becomes a menu.
+    @ViewBuilder
+    private func adaptivelyStyled(_ picker: some View) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            picker.pickerStyle(.menu)
+        } else {
+            picker.pickerStyle(.segmented)
         }
     }
 

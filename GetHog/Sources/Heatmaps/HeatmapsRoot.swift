@@ -606,6 +606,11 @@ struct HeatmapDepthChart: View {
 struct HeatmapColumnChart: View {
     let profile: HeatmapProfile
 
+    /// The depth chart next door derives its height from its band count; this
+    /// one's bands run across, so the box has to track the type size instead.
+    /// Fixed, the "0–10%" axis labels grew into the plot and squeezed the bars.
+    @ScaledMetric(relativeTo: .caption2) private var chartHeight: CGFloat = 240
+
     var body: some View {
         Chart(profile.horizontalBands) { band in
             BarMark(
@@ -627,7 +632,7 @@ struct HeatmapColumnChart: View {
             }
         }
         .chartYAxis { AxisMarks(position: .leading) }
-        .frame(height: 240)
+        .frame(height: chartHeight)
         .accessibilityChartDescriptor(ColumnDescriptor(profile: profile))
     }
 

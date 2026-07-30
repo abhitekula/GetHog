@@ -164,8 +164,11 @@ struct SectionLabel: View {
     var body: some View {
         HStack(spacing: Theme.Space.xs) {
             if let systemImage {
+                // Same face as the text beside it. A fixed 10pt glyph stayed put
+                // while the label grew, so at accessibility sizes every one of
+                // the ~30 screens using this header showed a speck next to it.
                 Image(systemName: systemImage)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .accessibilityHidden(true)
             }
             Text(text.uppercased())

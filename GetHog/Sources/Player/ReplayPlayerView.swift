@@ -61,6 +61,7 @@ final class ReplayPlayerController {
     @ObservationIgnored private weak var webView: WKWebView?
     @ObservationIgnored private var hasBooted = false
     @ObservationIgnored private var reduceMotion = false
+    @ObservationIgnored private var colorScheme: ColorScheme = .light
 
     // MARK: Wiring
 
@@ -97,9 +98,10 @@ final class ReplayPlayerController {
 
     /// Boots the player on the first batch, then appends every later chunk
     /// in place so progressive loading never restarts playback.
-    func submit(events: [SnapshotEvent], reduceMotion: Bool) {
+    func submit(events: [SnapshotEvent], reduceMotion: Bool, colorScheme: ColorScheme) {
         guard !events.isEmpty, isDocumentReady, failure == nil else { return }
         self.reduceMotion = reduceMotion
+        self.colorScheme = colorScheme
 
         let booting = !hasBooted
         hasBooted = true
@@ -120,13 +122,30 @@ final class ReplayPlayerController {
                     {"speed": \(self.speed), \
                     "skipInactive": \(self.skipInactive), \
                     "mouseTail": \(self.reduceMotion ? "false" : "true"), \
-                    "tailColor": "#3EC5CE"}
+                    "tailColor": "\(Self.cssHex(Theme.accent, in: self.colorScheme))"}
                     """
                 self.evaluate("window.GetHogReplay.boot(\(payload), \(options));")
             } else {
                 self.evaluate("window.GetHogReplay.append(\(payload));")
             }
         }
+    }
+
+    /// Flattens a dynamic colour to the CSS hex rrweb's boot options want.
+    ///
+    /// The tail used to be the literal `#3EC5CE`, which is only `Theme.accent`'s
+    /// *dark* value — in light mode the pointer trail was drawn in the dark-mode
+    /// teal over a white page. Resolved against a trait collection built from the
+    /// view's own scheme rather than `UITraitCollection.current`, which is not
+    /// the view's when this runs from a detached encode.
+    private static func cssHex(_ color: Color, in scheme: ColorScheme) -> String {
+        let resolved = UIColor(color).resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
+        )
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        let byte = { (component: CGFloat) in Int((min(max(component, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
     }
 
     /// Serialises the rrweb events verbatim — `SnapshotEvent.event` is the whole
@@ -349,6 +368,9 @@ struct ReplayPlayerView: View {
     var onRetry: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Handed to the controller because the rrweb mouse tail is drawn by the web
+    /// view, which cannot resolve a SwiftUI dynamic colour on its own.
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pendingSeek: TimeInterval?
 
     /// The recording's own duration is the honest total. The other two are
@@ -547,7 +569,7 @@ struct ReplayPlayerView: View {
         guard controller.isDocumentReady, loader.canBoot, controller.failure == nil else { return }
         let batch = loader.drainPending()
         guard !batch.isEmpty else { return }
-        controller.submit(events: batch, reduceMotion: reduceMotion)
+        controller.submit(events: batch, reduceMotion: reduceMotion, colorScheme: colorScheme)
     }
 
     /// Seeks within the buffer immediately and pulls the rest in behind it.

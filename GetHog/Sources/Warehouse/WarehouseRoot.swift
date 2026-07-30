@@ -292,10 +292,16 @@ struct WarehouseTableRowView: View {
 
     var body: some View {
         DataRow(
-            glyph: "tablecells",
             // Imported tables and query-built ones behave differently — only the
             // first can go stale — so they are told apart before the name is
             // read, the way the dashboard list marks generated tiles.
+            //
+            // The glyph carries that distinction, not the tint: the row has no
+            // pill and its `provenance` line is nil whenever the API omits
+            // `sourceType`, which left teal-versus-orange as the only signal —
+            // invisible to anyone who cannot separate the two hues, and absent
+            // from VoiceOver entirely. The tint now only reinforces it.
+            glyph: table.isManaged ? "tablecells.badge.ellipsis" : "tablecells",
             tint: table.isManaged ? Theme.accent : Theme.accentWarm,
             // The table name is what a developer types into a query, so it leads
             // the row rather than sitting on a secondary line. `DataRow` sets a
@@ -326,7 +332,10 @@ struct WarehouseTableRowView: View {
     }
 
     private var spokenSummary: String {
-        var parts = [table.name]
+        // Stated first, because sighted users get it from the glyph before they
+        // reach the name and it is the difference between a table that can go
+        // stale and one that cannot.
+        var parts = [table.isManaged ? "\(table.name), imported table" : "\(table.name), query-built table"]
         if let format = table.format { parts.append("format \(format)") }
         parts.append("\(table.columns.count) columns")
         // Row count is genuinely absent from this endpoint; saying "0 rows"

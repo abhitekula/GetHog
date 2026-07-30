@@ -30,6 +30,7 @@ struct SettingsRoot: View {
             List {
                 accountSection
                 projectSection
+                alertsSection
                 permissionsSection
                 apiKeySection
                 dataSection
@@ -108,6 +109,25 @@ struct SettingsRoot: View {
             // Timezone is not trivia: it sets every chart's day boundary, so the
             // same query can disagree with a tool configured to local time.
             Text("Charts and event timestamps follow the project's timezone, \(model.selectedProject?.timezone ?? "UTC"). Days start and end there, not on this device.")
+        }
+    }
+
+    // MARK: - Alerts
+
+    private var alertsSection: some View {
+        Section {
+            NavigationLink {
+                MetricAlertsView()
+            } label: {
+                Label("Metric alerts", systemImage: "bell.badge")
+            }
+        } header: {
+            SectionLabel(text: "Alerts", systemImage: "bell.badge")
+        } footer: {
+            // Stated here as well as on the screen itself, because a Settings
+            // row called "alerts" is exactly where someone forms the assumption
+            // that this app watches their numbers continuously. It does not.
+            Text("Thresholds on the metrics your widgets already read, checked when iOS wakes the app in the background. Notices arrive late rather than live, and nothing is sent to a server — the check runs on this device.")
         }
     }
 

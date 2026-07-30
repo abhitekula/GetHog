@@ -309,6 +309,11 @@ struct TimelineRowView: View {
     let onToggle: () -> Void
     let onSeek: () -> Void
 
+    /// The gutter holds `SessionClock.offset`, which is "+1:23:45" for any
+    /// session over an hour — already the full 54pt at default size, so a fixed
+    /// width truncated the hour off exactly the sessions long enough to need it.
+    @ScaledMetric(relativeTo: .caption2) private var offsetWidth: CGFloat = 54
+
     private var tint: Color {
         if entry.isError { return Theme.Status.critical }
         if entry.isCustom { return Theme.accent }
@@ -320,7 +325,7 @@ struct TimelineRowView: View {
             Text(SessionClock.offset(entry.offset))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 54, alignment: .trailing)
+                .frame(width: offsetWidth, alignment: .trailing)
                 .padding(.top, 2)
 
             rail
@@ -357,10 +362,14 @@ struct TimelineRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
+                    // Two lines: custom events fall through to their raw name,
+                    // and `checkout_payment_method_selected` clipped to one line
+                    // reads the same as its neighbours — the tail is the part
+                    // someone is scanning this timeline for.
                     Text(entry.title)
                         .font(.subheadline.weight(entry.isCustom ? .semibold : .regular))
                         .foregroundStyle(entry.isError ? Theme.Status.critical : .primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     if entry.isError {
                         StatusPill(text: "Error", tint: Theme.Status.critical)
                     }
