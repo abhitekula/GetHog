@@ -264,13 +264,12 @@ struct ProjectSwitcher: ToolbarContent {
                     Text(org)
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text(model.selectedProject?.name ?? "Project")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.bold))
-                }
+                // A glyph, not the project name. The name is permanently
+                // visible as the navigation subtitle, and repeating it here
+                // made the item wide enough that it could not share the bar
+                // with a back button — costing a whole row of chrome on every
+                // pushed screen.
+                Image(systemName: "building.2")
             }
             .accessibilityLabel("Current project: \(model.selectedProject?.name ?? "none"). Double tap to switch.")
         }

@@ -55,6 +55,7 @@ struct ExperimentsRoot: View {
             content
                 .navigationTitle("Experiments")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
         }

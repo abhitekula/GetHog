@@ -142,6 +142,7 @@ struct PeopleRoot: View {
         .background(Theme.pageBackground)
         .navigationTitle("People")
         .toolbar { ProjectSwitcher() }
+        .projectSubtitle()
         .searchable(
             text: $search,
             prompt: segment == .persons ? "Search persons" : "Filter cohorts"

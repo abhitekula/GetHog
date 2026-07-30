@@ -49,22 +49,17 @@ enum Theme {
         dark: Color(hex: 0xEA8C4F)
     )
 
-    /// Tint applied to Liquid Glass surfaces.
+    /// Glass tint for a control in its **selected** state.
     ///
-    /// Untinted glass is neutral, and neutral glass floating over a cream ground
-    /// reads as a grey pill dropped on paper — the two materials look borrowed
-    /// from different apps. A warm tint lets the glass pick up the surface
-    /// beneath it, which is the whole point of the material. Kept low: past
-    /// roughly 0.12 it stops looking like glass and starts looking like a
-    /// coloured rectangle.
-    static let glassTint = Color(
-        light: Color(hex: 0xC2410C).opacity(0.09),
-        dark: Color(hex: 0xEA8C4F).opacity(0.11)
-    )
-
-    /// Glass tint for a control in its selected state, keyed to the app accent
-    /// rather than the warm secondary so selection reads as "active", not
-    /// merely "decorated".
+    /// The only tint the app applies to glass, and it carries meaning: this
+    /// control is on. Apple's guidance is explicit that tint is for primary
+    /// actions with semantic weight, not decoration — an earlier version of
+    /// this file tinted *every* glass surface warm to match the cream ground,
+    /// which is precisely the decorative use that rule prohibits and is a large
+    /// part of why the chrome read as almost-but-not-quite native.
+    ///
+    /// Warmth now lives entirely in the content layer — ground, cards,
+    /// hairlines — and the navigation layer is left as system glass.
     static let glassActiveTint = Color(
         light: Color(red: 0.043, green: 0.431, blue: 0.459).opacity(0.16),
         dark: Color(red: 0.243, green: 0.773, blue: 0.808).opacity(0.20)

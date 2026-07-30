@@ -45,6 +45,7 @@ struct AnnotationsRoot: View {
             content
                 .navigationTitle("Annotations")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search annotations")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }

@@ -145,15 +145,19 @@ struct DashboardDetailView: View {
         store.dashboard?.title ?? providedTitle ?? "Dashboard"
     }
 
-    /// Column count, chosen so a tile is never narrower than a chart needs.
+    /// Ceiling on columns; `MasonryLayout` drops below it whenever the width
+    /// cannot give each column a readable tile.
     ///
     /// Four columns on a large iPad looks tidy and reads badly: axis labels
     /// collide and every card becomes a postage stamp. Two wide columns beat
-    /// three narrow ones, and with the panel open the grid keeps roughly a third
-    /// of the canvas, which is one column's worth.
+    /// three narrow ones.
+    ///
+    /// This no longer forces one column when the inspector opens. It used to,
+    /// which combined with the old fixed-width side panel to squeeze the grid
+    /// into a strip of clipped titles — the layout now derives its own count
+    /// from the width it is actually granted.
     private var columnCount: Int {
-        guard sizeClass == .regular else { return 1 }
-        return selectedTile == nil ? 2 : 1
+        sizeClass == .regular ? 2 : 1
     }
 
     var body: some View {

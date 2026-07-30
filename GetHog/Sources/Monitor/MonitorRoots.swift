@@ -19,6 +19,7 @@ struct InboxRoot: View {
             content
                 .navigationTitle("Inbox")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search tasks")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
@@ -141,6 +142,7 @@ struct SignalsRoot: View {
             content
                 .navigationTitle("Signals")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
         }
@@ -260,6 +262,7 @@ struct HealthRoot: View {
             content
                 .navigationTitle("Health")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
         }

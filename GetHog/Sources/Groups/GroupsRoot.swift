@@ -45,6 +45,7 @@ struct GroupsRoot: View {
             content
                 .navigationTitle("Groups")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
                 .navigationDestination(for: GroupType.self) { type in

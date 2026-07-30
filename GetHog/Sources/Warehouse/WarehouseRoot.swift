@@ -84,6 +84,7 @@ struct WarehouseRoot: View {
             content
                 .navigationTitle("Warehouse")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search sources and tables")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }

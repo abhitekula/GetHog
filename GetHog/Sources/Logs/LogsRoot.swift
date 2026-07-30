@@ -139,6 +139,7 @@ struct LogsRoot: View {
             content
                 .navigationTitle("Logs")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $store.search, prompt: "Search log messages")
                 .onSubmit(of: .search) { Task { await load() } }
                 .refreshable { await load() }

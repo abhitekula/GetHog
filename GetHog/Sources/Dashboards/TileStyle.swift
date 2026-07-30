@@ -56,8 +56,11 @@ enum TileStyle {
     /// full width and collapsed the layout back into one tall column.
     static func preferredColumns(for model: InsightRenderModel) -> Int {
         switch model {
-        case .retention, .paths: 2
-        case .timeSeries, .lifecycle, .barValue, .funnel, .stickiness, .bigNumber, .unsupported: 1
+        // Wide by nature: a retention grid is a table, a paths graph is a
+        // flow, and lifecycle stacks four series with a four-item legend —
+        // squeezed into one column its category labels collide into mush.
+        case .retention, .paths, .lifecycle: 2
+        case .timeSeries, .barValue, .funnel, .stickiness, .bigNumber, .unsupported: 1
         }
     }
 }

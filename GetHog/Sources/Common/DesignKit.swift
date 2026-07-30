@@ -33,16 +33,55 @@ extension View {
             .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
-    /// Warm-tinted Liquid Glass in the app's shape language.
+    /// Liquid Glass in the app's shape language.
     ///
-    /// Wrapped rather than called directly so the tint is decided once. Every
-    /// bare `.glassEffect()` in a screen would be untinted, and untinted glass
-    /// on this ground reads grey — see `Theme.glassTint`.
+    /// Wrapped rather than called directly so one rule is applied everywhere:
+    /// **glass is tinted only to mean "selected"**, never to decorate. Apple's
+    /// guidance reserves tint for semantic weight, and a uniformly warm-tinted
+    /// navigation layer is the decorative case it warns against.
+    ///
+    /// The name is kept from when this did tint everything, because it is the
+    /// call site vocabulary across ~30 screens; what changed is the rule.
     func warmGlass(active: Bool = false, in shape: some Shape = .capsule) -> some View {
         glassEffect(
-            .regular.tint(active ? Theme.glassActiveTint : Theme.glassTint),
+            active ? .regular.tint(Theme.glassActiveTint) : .regular,
             in: shape
         )
+    }
+}
+
+/// Screen chrome shared by every root: the title, the current project, and the
+/// switcher.
+///
+/// Exists because the obvious arrangement was wrong in two different ways. The
+/// project name lived in a wide toolbar pill, which on iPhone was too wide to
+/// share the bar with a back button and so took an entire row to itself —
+/// three rows of chrome before any data. And on iPad the large title collided
+/// with the floating tab bar, which already names the section, drawing the two
+/// on top of each other.
+///
+/// The project is a `navigationSubtitle` instead: it stays permanently visible,
+/// which the plan requires — showing the wrong project's numbers is a
+/// correctness bug, not a cosmetic one — while costing no vertical space at
+/// all. The switcher shrinks to a glyph beside it.
+private struct ScreenChrome: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .navigationSubtitle(model.selectedProject?.name ?? "")
+            // Inline in regular width: the floating tab bar already carries the
+            // section name, so a large title beneath it is both a duplicate and
+            // an overlap.
+            .navigationBarTitleDisplayMode(sizeClass == .regular ? .inline : .automatic)
+    }
+}
+
+extension View {
+    /// Shows the current project under the title. Pair with `ProjectSwitcher`.
+    func projectSubtitle() -> some View {
+        modifier(ScreenChrome())
     }
 }
 

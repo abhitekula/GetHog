@@ -51,6 +51,7 @@ struct ActionsRoot: View {
             content
                 .navigationTitle("Actions")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search actions")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }

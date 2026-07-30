@@ -147,6 +147,7 @@ struct TracingRoot: View {
             content
                 .navigationTitle("Tracing")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $store.spanName, prompt: "Filter by span name")
                 .onSubmit(of: .search) { Task { await load() } }
                 .refreshable { await load() }

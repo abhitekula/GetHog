@@ -10,8 +10,45 @@ import SwiftUI
 /// a time series claim two columns stops a month of dates being crushed into a
 /// third of the width.
 struct MasonryLayout: Layout {
+    /// Upper bound on columns. The layout uses fewer when the width cannot give
+    /// each one `minColumnWidth`.
     var columns: Int
     var spacing: CGFloat = Theme.Space.l
+
+    /// Narrowest a tile may get before a column is dropped.
+    ///
+    /// Column count is derived from the width actually granted rather than
+    /// fixed by the caller, because the caller does not know it: opening the
+    /// inspector or the sidebar changes the detail pane's width underneath the
+    /// grid. A fixed count meant two columns of roughly 150pt each, in which
+    /// titles clipped to one character and axis labels drew on top of each
+    /// other. Below this width a chart has stopped being readable, so the grid
+    /// gives up a column instead of the data.
+    /// Measured, not guessed: on an 11-inch iPad in portrait with the sidebar
+    /// showing, the detail pane is about 490pt, and two columns at ~237pt each
+    /// render a month of dates with legible axis labels.
+    ///
+    /// The value has to sit *below* that 237, not at it — two columns need
+    /// `width + spacing >= 2 * (minColumnWidth + spacing)`, so 240 was still one
+    /// point too greedy and collapsed the very pane it was chosen for. The test
+    /// suite pins the 490pt case for exactly this reason.
+    var minColumnWidth: CGFloat = 230
+
+    /// Columns that actually fit in `width`.
+    ///
+    /// The finiteness check is load-bearing, not defensive. A `Layout` is
+    /// routinely proposed an **infinite** width while the parent is measuring —
+    /// here it happened the moment the sidebar collapsed — and `Int(.infinity)`
+    /// is a hard trap, not a large number. It crashed the app on the first
+    /// tile tap.
+    ///
+    /// This is the same trap as `JSONValue.stringValue`, fixed earlier in this
+    /// project for the same reason: a `> 0` guard does not exclude infinity.
+    func columnCount(for width: CGFloat) -> Int {
+        guard width.isFinite, width > 0 else { return columns }
+        let fitting = Int((width + spacing) / (minColumnWidth + spacing))
+        return max(1, min(columns, fitting))
+    }
 
     struct Cache {
         var heights: [CGFloat] = []
@@ -47,8 +84,12 @@ struct MasonryLayout: Layout {
         }
     }
 
-    private func solve(width: CGFloat, subviews: Subviews) -> Cache {
-        let count = max(1, columns)
+    private func solve(width rawWidth: CGFloat, subviews: Subviews) -> Cache {
+        // Same reason as `columnCount`: an infinite proposal reaches here
+        // during measurement, and an infinite column width poisons every
+        // placement derived from it.
+        let width = rawWidth.isFinite ? rawWidth : 0
+        let count = columnCount(for: rawWidth)
         let totalSpacing = spacing * CGFloat(count - 1)
         let columnWidth = max(1, (width - totalSpacing) / CGFloat(count))
 

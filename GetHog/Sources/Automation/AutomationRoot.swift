@@ -259,6 +259,7 @@ struct AutomationRoot: View {
             content
                 .navigationTitle("Automation")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
         }

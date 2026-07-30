@@ -98,6 +98,7 @@ struct FlagsRoot: View {
             content
                 .navigationTitle("Flags")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search flag key or name")
                 .refreshable { await load() }
                 .task(id: model.projectID) {

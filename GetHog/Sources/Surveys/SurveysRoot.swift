@@ -58,6 +58,7 @@ struct SurveysRoot: View {
             content
                 .navigationTitle("Surveys")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
         }

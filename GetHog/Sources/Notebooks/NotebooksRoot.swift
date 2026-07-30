@@ -43,6 +43,7 @@ struct NotebooksRoot: View {
             content
                 .navigationTitle("Notebooks")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search notebooks")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }

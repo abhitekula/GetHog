@@ -257,6 +257,7 @@ struct WebAnalyticsRoot: View {
             content
                 .navigationTitle("Web")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Filter \(dimension.pluralTitle)")
                 .refreshable { await reloadAll() }
                 // Two keys, not one: changing the breakdown dimension must not

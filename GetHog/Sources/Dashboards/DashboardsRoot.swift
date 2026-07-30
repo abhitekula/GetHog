@@ -33,12 +33,19 @@ struct DashboardsRoot: View {
     @State private var store = DashboardsStore()
     @State private var selection: DashboardSummary?
     @State private var search = ""
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             content
+                // Left to its own devices the sidebar took 340pt of an 834pt
+                // iPad, leaving the grid too narrow for two columns. The list
+                // is titles and one line of description; it does not need more
+                // than this, and the charts do.
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
                 .navigationTitle("Dashboards")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search dashboards")
                 .refreshable { await load() }
                 .task(id: model.projectID) {
@@ -62,6 +69,15 @@ struct DashboardsRoot: View {
                 // The detail pane is the largest surface in the app. Handing it
                 // a "Select a dashboard" placeholder wasted it on every launch.
                 ProjectOverview(dashboards: store.dashboards)
+            }
+        }
+        // The sidebar and the insight panel cannot both be afforded on an
+        // 11-inch iPad — together they left the grid a strip of clipped titles.
+        // The list is what you stop needing once you are reading one chart, so
+        // it yields, and comes back when the panel closes.
+        .onPreferenceChange(InsightPanelOpenKey.self) { isOpen in
+            withAnimation(.snappy(duration: 0.25)) {
+                columnVisibility = isOpen ? .detailOnly : .automatic
             }
         }
     }

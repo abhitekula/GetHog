@@ -97,22 +97,39 @@ private struct InsightDetailPresentation: ViewModifier {
     @Binding var tile: Tile?
     let isWide: Bool
 
-    /// Panel width. Wide enough for a legible chart plus its legend, narrow
-    /// enough to leave the grid usable on an 11-inch iPad in portrait.
-    private let panelWidth: CGFloat = 380
 
     func body(content: Content) -> some View {
         if isWide {
+            // Still a hand-rolled split, and `.inspector` is still not usable
+            // here.
+            //
+            // Re-tested on **iPadOS 26** after raising the deployment floor,
+            // because the original rejection was measured on iOS 18.2 and it
+            // seemed likely to have been fixed. It has not: `.inspector` again
+            // presented as a dimming overlay *on top of* the grid, greying the
+            // tiles and clipping them mid-chart, rather than taking a column
+            // beside them. Same failure, two OS generations apart.
+            //
+            // What did change is the squeeze this split used to cause. The grid
+            // no longer collapses to an unreadable strip, because
+            // `MasonryLayout` now derives its column count from the width it is
+            // granted, and the sidebar collapses while the panel is open — see
+            // `insightPanelOpen`.
             HStack(spacing: 0) {
                 content
                 if let tile {
                     Divider()
                     InsightSidePanel(tile: tile) { self.tile = nil }
-                        .frame(width: panelWidth)
+                        .frame(minWidth: 320, idealWidth: 380, maxWidth: 460)
                         .transition(.move(edge: .trailing))
                 }
             }
             .animation(.snappy(duration: 0.25), value: tile?.id)
+            // Lets the enclosing split view give up its sidebar while an
+            // insight is open: on an 11-inch iPad the sidebar and the panel
+            // cannot both be afforded, and the dashboard list is the one you do
+            // not need while reading a single chart.
+            .preference(key: InsightPanelOpenKey.self, value: tile != nil)
         } else {
             content.sheet(item: $tile) { tile in
                 // The sheet has room for a real navigation bar, so it uses one
@@ -122,5 +139,19 @@ private struct InsightDetailPresentation: ViewModifier {
                 }
             }
         }
+    }
+}
+
+/// Reports upward that an insight panel is open beside the grid.
+///
+/// A preference rather than shared state because the two views are on opposite
+/// sides of a `NavigationSplitView`: the panel is owned deep inside the detail
+/// column, and the sidebar it needs to displace is owned by the root. Threading
+/// a binding down through the dashboard list to get there would couple the list
+/// to a panel it knows nothing about.
+struct InsightPanelOpenKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
     }
 }

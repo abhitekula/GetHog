@@ -73,6 +73,7 @@ struct TaxonomyRoot: View {
             content
                 .navigationTitle("Taxonomy")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .searchable(text: $search, prompt: "Search events")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }

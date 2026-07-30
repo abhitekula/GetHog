@@ -128,6 +128,7 @@ struct HeatmapsRoot: View {
             content
                 .navigationTitle("Clickmap")
                 .toolbar { ProjectSwitcher() }
+                .projectSubtitle()
                 .refreshable { await load() }
                 .task(id: LoadKey(projectID: model.projectID, window: window)) { await load() }
         }
