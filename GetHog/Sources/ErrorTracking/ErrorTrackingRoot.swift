@@ -127,18 +127,64 @@ struct ErrorTrackingRoot: View {
         } else {
             NavigationSplitView {
                 issueList
+                    // The widest list column in the app, and it is earned. Left
+                    // to itself the sidebar took ~320pt, of which the glyph, the
+                    // status pill and the row insets ate ~170 — so every row
+                    // truncated ("An unexpecte…", "Connection c…") and the
+                    // footnote "4 users · 7 sessions · 14 occurrences" needs
+                    // ~240pt on its own. The 4-segment status picker above the
+                    // list clipped to "Suppre…" at the same width.
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 400, max: 460)
+                    // The tab sidebar already puts a toggle in this bar; the
+                    // split view added a second one beside it, two identical
+                    // buttons doing almost the same thing above the list.
+                    .toolbar(removing: .sidebarToggle)
             } detail: {
-                if let selection {
-                    ErrorIssueDetailView(issue: selection)
-                        .id(selection.id)
-                } else {
-                    ContentUnavailableView(
-                        "Select an issue",
-                        systemImage: "ladybug",
-                        description: Text("Pick an error to see its impact and where it came from.")
-                    )
-                }
+                detailPane
             }
+        }
+    }
+
+    /// The detail column: the chosen issue, or a summary of the product when
+    /// nothing is chosen yet.
+    ///
+    /// The no-selection branch mirrors the list's own states rather than summarising thin air: a locked
+    /// key and a genuinely quiet week are both normal outcomes on this screen,
+    /// and a grid of zeroes would misreport either one.
+    @ViewBuilder
+    private var detailPane: some View {
+        if let selection {
+            ErrorIssueDetailView(issue: selection)
+                .id(selection.id)
+        } else if !model.isAvailable(.events) {
+            LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.error, store.issues.isEmpty {
+            EmptyStateView(
+                title: "Couldn't load errors",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
+        } else if store.issues.isEmpty {
+            if store.isLoading {
+                ProgressView().controlSize(.large)
+            } else {
+                EmptyStateView(
+                    title: "No errors in this period",
+                    systemImage: "checkmark.circle",
+                    message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
+                )
+            }
+        } else {
+            ErrorsOverview(
+                issues: store.issues,
+                window: window,
+                loadedAt: store.loadedAt,
+                selection: $selection
+            )
         }
     }
 
@@ -210,8 +256,20 @@ struct ErrorTrackingRoot: View {
         }
     }
 
+    /// `nil` in compact width, and that is load-bearing.
+    ///
+    /// A selection binding makes the `List` claim the row tap: the
+    /// `NavigationLink` sets `selection` instead of pushing. A
+    /// `NavigationSplitView` is what turns that selection into a visible screen,
+    /// so the moment compact width stopped using one, tapping an issue
+    /// highlighted the row and did nothing at all — measured on device. Without
+    /// the binding the link keeps the tap and pushes onto the container's stack.
+    private var listSelection: Binding<ErrorIssue?>? {
+        sizeClass == .compact ? nil : $selection
+    }
+
     private var list: some View {
-        List(selection: $selection) {
+        List(selection: listSelection) {
             if visibleIssues.isEmpty {
                 EmptyStateView(
                     title: "No \(filter.title.lowercased()) issues",
@@ -262,12 +320,28 @@ struct ErrorTrackingRoot: View {
                 Text(option.title).tag(option)
             }
         }
-        // Segmented labels become unreadable at accessibility text sizes.
+        // Two different ways this control runs out of room, and it needs to
+        // survive both.
+        //
+        // Text size is the one already handled: segmented labels stop being
+        // readable at accessibility sizes.
+        //
+        // Width is the one measured afterwards on an iPad. The split view hands
+        // this list its *minimum* column width rather than its ideal, and four
+        // segments in ~320pt clipped the last one to `Suppre…` — a truncated
+        // control label, which is worse than a truncated row, because the user
+        // cannot tell what they would be selecting. `ViewThatFits` asks the
+        // segmented form whether it actually fits the column it was given and
+        // falls back to a menu when it does not, which is width the view can
+        // measure and a threshold it would otherwise have to guess.
         return Group {
             if dynamicTypeSize.isAccessibilitySize {
                 picker.pickerStyle(.menu)
             } else {
-                picker.pickerStyle(.segmented)
+                ViewThatFits(in: .horizontal) {
+                    picker.pickerStyle(.segmented)
+                    picker.pickerStyle(.menu)
+                }
             }
         }
     }
@@ -297,6 +371,11 @@ struct ErrorIssueRow: View {
             subtitle: issue.issueDescription,
             footnote: impactLine,
             isSubtitleMonospaced: true,
+            // Two lines, against the one-line default. Four of the six issues in
+            // this project are titled "Error", so the message is the only thing
+            // telling the rows apart — and it was exactly what the narrow column
+            // cut, leaving "An unexpecte…" beside "Connection c…".
+            subtitleLineLimit: 2,
             // Unconditional now that the glyph is tinted by status: resolved and
             // suppressed must never be carried by colour alone.
             accessory: .pill(issue.statusTitle, issue.statusTint)

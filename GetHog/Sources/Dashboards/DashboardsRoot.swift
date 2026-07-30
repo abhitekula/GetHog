@@ -43,6 +43,11 @@ struct DashboardsRoot: View {
                 // is titles and one line of description; it does not need more
                 // than this, and the charts do.
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
+                // The tab sidebar already puts a toggle in this bar; the split
+                // view added a second, identical one beside it. The column here
+                // is driven by `InsightPanelOpenKey` anyway, so the button was
+                // duplicating chrome for something the screen already decides.
+                .toolbar(removing: .sidebarToggle)
                 .navigationTitle("Dashboards")
                 .toolbar { ProjectSwitcher() }
                 .projectSubtitle()

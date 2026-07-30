@@ -122,19 +122,84 @@ struct PeopleRoot: View {
         } else {
             NavigationSplitView {
                 sidebar
+                    // Sized to the row's two identifier lines: a distinct id is
+                    // a 36-character UUID set monospaced (~300pt), and the
+                    // caption under it — "3 distinct IDs · First seen Jan 3,
+                    // 2026" — needs ~215pt beside a glyph, an Identified pill
+                    // and the list insets. The 2-segment picker above the list
+                    // is cheap by comparison; the rows are what set this.
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 380, max: 440)
+                    // The tab sidebar already puts a toggle in this bar; the
+                    // split view added a second, identical one beside it.
+                    .toolbar(removing: .sidebarToggle)
             } detail: {
-                if let selection {
-                    PersonDetailView(person: selection)
-                        .id(selection.id)
-                } else {
-                    ContentUnavailableView(
-                        "Select a person",
-                        systemImage: "person.crop.circle",
-                        description: Text("Pick a person to see their properties and recent events.")
-                    )
-                }
+                detailPane
             }
         }
+    }
+
+    /// The detail column: the chosen person, or a summary of the product when
+    /// nobody is chosen yet.
+    ///
+    /// The no-selection branch mirrors the list's own states rather than summarising thin air: a locked
+    /// key and a project that has never identified anyone are both normal
+    /// outcomes, and a grid of zeroes would misreport either one.
+    @ViewBuilder
+    private var detailPane: some View {
+        if let selection {
+            PersonDetailView(person: selection)
+                .id(selection.id)
+        } else if !model.isAvailable(.dashboards) {
+            LockedCapabilityView(
+                capability: .dashboards,
+                scope: model.lockedScope(for: .dashboards)
+            ) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.personsError, store.persons.isEmpty {
+            EmptyStateView(
+                title: "Couldn't load persons",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await loadPersons() }
+            }
+        } else if store.persons.isEmpty {
+            if store.isLoadingPersons {
+                ProgressView().controlSize(.large)
+            } else {
+                EmptyStateView(
+                    title: search.isEmpty ? "No persons" : "No matches",
+                    systemImage: "person.slash",
+                    message: search.isEmpty
+                        ? "This project hasn't identified anyone yet."
+                        : "No person matched “\(search)”."
+                )
+            }
+        } else {
+            PeopleOverview(
+                persons: store.persons,
+                total: store.personsTotal,
+                cohorts: store.cohorts,
+                cohortsLoadedAt: store.cohortsLoadedAt,
+                search: search,
+                loadedAt: store.personsLoadedAt,
+                selection: $selection
+            )
+        }
+    }
+
+    /// `nil` in compact width, and that is load-bearing.
+    ///
+    /// A selection binding makes the `List` claim the row tap: the
+    /// `NavigationLink` sets `selection` instead of pushing. A
+    /// `NavigationSplitView` is what turns that selection into a visible screen,
+    /// so the moment compact width stopped using one, tapping a person
+    /// highlighted the row and did nothing at all — measured on device. Without
+    /// the binding the link keeps the tap and pushes onto the container's stack.
+    private var listSelection: Binding<PersonSummary?>? {
+        sizeClass == .compact ? nil : $selection
     }
 
     private var sidebar: some View {
@@ -232,7 +297,7 @@ struct PeopleRoot: View {
                     : "No person matched “\(search)”."
             )
         } else {
-            List(selection: $selection) {
+            List(selection: listSelection) {
                 Section {
                     ForEach(store.persons, id: \.self) { person in
                         NavigationLink(value: person) { PersonRowView(person: person) }
@@ -367,6 +432,13 @@ struct PersonRowView: View {
                 person.isIdentified ? Theme.accent : .secondary
             )
         )
+        // Nothing in this row is prose, and typesetting it as if it were put a
+        // hyphen inside an address: person@example.com` wrapped onto a
+        // second line reads as a different domain, which on a screen whose whole
+        // job is identifying people is a lie rather than a blemish. `zxx` is the
+        // code for "no linguistic content", so no hyphenation dictionary applies
+        // and the title breaks only where the string already allows it.
+        .typesettingLanguage(Locale.Language(identifier: "zxx"))
     }
 
     private var distinctID: String? {

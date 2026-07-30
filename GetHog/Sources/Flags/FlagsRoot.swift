@@ -105,17 +105,57 @@ struct FlagsRoot: View {
                     AppTips.refresh(from: model)
                     await load()
                 }
+                // Narrower than the error and session lists on purpose: the
+                // widest thing in a flag row is the key on the monospaced line,
+                // around 30 characters, and the footnote is a short
+                // "50% rollout · 3 variants". It does not need what a stack
+                // trace message needs, and the release conditions in the detail
+                // pane do.
+                .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 400)
+                // The tab sidebar already puts a toggle in this bar; the split
+                // view added a second, identical one beside it.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
-            if let selection {
-                FlagDetailView(flag: selection, controller: store.toggles)
-                    .id(selection.id)
+            detailPane
+        }
+    }
+
+    /// The detail column: the chosen flag, or a summary of the product when
+    /// nothing is chosen yet.
+    ///
+    /// The no-selection branch mirrors the list's own states rather than summarising thin air: a locked
+    /// key and a project with no flags are both normal outcomes, and a grid of
+    /// zeroes would misreport either one.
+    @ViewBuilder
+    private var detailPane: some View {
+        if let selection {
+            FlagDetailView(flag: selection, controller: store.toggles)
+                .id(selection.id)
+        } else if !model.isAvailable(.flags) {
+            LockedCapabilityView(capability: .flags, scope: model.lockedScope(for: .flags)) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.error, store.flags.isEmpty {
+            EmptyStateView(
+                title: "Couldn't load flags",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await load() }
+            }
+        } else if store.flags.isEmpty {
+            if store.isLoading {
+                ProgressView().controlSize(.large)
             } else {
-                ContentUnavailableView(
-                    "Select a flag",
+                EmptyStateView(
+                    title: "No feature flags",
                     systemImage: "flag",
-                    description: Text("Pick a flag to see its release conditions.")
+                    message: "This project doesn't have any feature flags yet."
                 )
             }
+        } else {
+            FlagsOverview(store: store, selection: $selection)
         }
     }
 

@@ -8,7 +8,7 @@ enum AppTab: String, Hashable, CaseIterable {
     case inbox, signals, health
     case experiments, surveys, earlyAccess
     case llm, warehouse, pipelines, automation, actions, annotations
-    case notebooks, max
+    case notebooks, max, renders
     case groups, taxonomy
     case settings
     /// The index of everything the phone's tab bar cannot hold. A container,
@@ -49,6 +49,10 @@ enum AppTab: String, Hashable, CaseIterable {
         case .annotations: "Annotations"
         case .notebooks: "Notebooks"
         case .max: "Max"
+        // "Renders", not "Exports": `GET /exports/` is named for chart exports
+        // and returns none — every row is a video render of a session recording,
+        // and a tab called "Exports" would promise CSVs that are not on it.
+        case .renders: "Renders"
         case .groups: "Groups"
         case .taxonomy: "Taxonomy"
         case .settings: "Settings"
@@ -83,6 +87,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .annotations: "note.text"
         case .notebooks: "book"
         case .max: "bubble.left.and.bubble.right"
+        case .renders: "film"
         case .groups: "building.2"
         case .taxonomy: "list.bullet.indent"
         case .settings: "gearshape"
@@ -137,7 +142,10 @@ extension AppTab {
             tabs: [.warehouse, .pipelines, .automation, .actions, .annotations, .taxonomy]
         ),
         AppTabSection(title: "Experiment", tabs: [.experiments, .surveys, .earlyAccess]),
-        AppTabSection(title: "Workspace", tabs: [.notebooks, .max]),
+        // Renders sit with the other saved artefacts rather than with Sessions:
+        // the screen is a library of files somebody kept, not a live analysis
+        // surface, and this app can only read it.
+        AppTabSection(title: "Workspace", tabs: [.notebooks, .max, .renders]),
     ]
 
     /// Sits below the sections rather than inside one, in the sidebar and in the
@@ -185,6 +193,7 @@ struct TabRootView: View {
         case .earlyAccess: EarlyAccessRoot()
         case .notebooks: NotebooksRoot()
         case .max: ConversationsRoot()
+        case .renders: RendersRoot()
         case .settings: SettingsRoot()
         case .more:
             // A container, not a destination: nothing ever pushes `.more`.

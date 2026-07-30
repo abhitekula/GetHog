@@ -68,16 +68,59 @@ struct SessionsRoot: View {
                 .searchable(text: $search, prompt: "Search person or URL")
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
+                // Sized to the row's caption line, which is the longest thing
+                // here: "0:42 · 12 clicks · 3 errors · Mobile, not playable ·
+                // 2d" needs ~300pt, and the glyph plus row insets take another
+                // ~90 before it starts. At the ~320pt the column took by
+                // default the caveat that a recording cannot be played was
+                // being truncated away — the one thing it exists to say early.
+                .navigationSplitViewColumnWidth(min: 300, ideal: 380, max: 440)
+                // The tab sidebar already puts a toggle in this bar; the split
+                // view added a second, identical one beside it.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
-            if let selection {
-                SessionDetailView(recording: selection).id(selection.id)
+            detailPane
+        }
+    }
+
+    /// The detail column: the chosen recording, or a summary of the product when
+    /// nothing is chosen yet.
+    ///
+    /// The no-selection branch mirrors the list's own states rather than summarising thin air: a locked
+    /// key and a project with replay switched off are both normal outcomes, and
+    /// a grid of zeroes would misreport either one.
+    @ViewBuilder
+    private var detailPane: some View {
+        if let selection {
+            SessionDetailView(recording: selection).id(selection.id)
+        } else if !model.isAvailable(.sessions) {
+            LockedCapabilityView(capability: .sessions, scope: model.lockedScope(for: .sessions)) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.error, store.recordings.isEmpty {
+            EmptyStateView(
+                title: "Couldn't load sessions",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
+        } else if store.recordings.isEmpty {
+            if store.isLoading {
+                ProgressView().controlSize(.large)
             } else {
-                ContentUnavailableView(
-                    "Select a session",
+                EmptyStateView(
+                    title: "No sessions",
                     systemImage: "rectangle.stack",
-                    description: Text("Pick a session to inspect its timeline.")
+                    message: "No session recordings in this project yet."
                 )
             }
+        } else {
+            SessionsOverview(
+                recordings: store.recordings,
+                loadedAt: store.loadedAt,
+                selection: $selection
+            )
         }
     }
 

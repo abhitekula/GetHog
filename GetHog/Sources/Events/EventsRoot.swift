@@ -135,16 +135,53 @@ struct EventsRoot: View {
                     await reload()
                 }
                 .onDisappear { liveTail.stop() }
+                // Sized to the monospaced line under the event name, which is a
+                // path or a distinct id — and a distinct id is a 36-character
+                // UUID, ~300pt set monospaced. At the ~320pt the column took by
+                // default that left the row identifying nothing.
+                .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 420)
+                // The tab sidebar already puts a toggle in this bar; the split
+                // view added a second, identical one beside it.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
-            if let selected {
-                EventDetailView(event: selected)
+            detailPane
+        }
+    }
+
+    /// The detail column: the chosen event, or a summary of the feed when nothing
+    /// is chosen yet.
+    ///
+    /// The no-selection branch mirrors the list's own states rather than summarising thin air: a locked
+    /// key and a filter that matches nothing are both normal outcomes, and a
+    /// grid of zeroes would misreport either one.
+    @ViewBuilder
+    private var detailPane: some View {
+        if let selected {
+            EventDetailView(event: selected)
+        } else if !model.isAvailable(.events) {
+            LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.error, store.events.isEmpty {
+            EmptyStateView(
+                title: "Couldn't load events",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await reload() } }
+            )
+        } else if store.events.isEmpty {
+            if store.isLoading {
+                ProgressView().controlSize(.large)
             } else {
-                ContentUnavailableView(
-                    "Select an event",
-                    systemImage: "bolt",
-                    description: Text("Pick an event to inspect its properties.")
+                EmptyStateView(
+                    title: "No events",
+                    systemImage: "bolt.slash",
+                    message: "No events matched. Try a different filter."
                 )
             }
+        } else {
+            EventsOverview(events: store.events, loadedAt: store.loadedAt)
         }
     }
 
@@ -252,13 +289,46 @@ struct EventsRoot: View {
     }
 }
 
+/// Shape and colour for an event, keyed by its name.
+///
+/// Lifted out of `EventRowView` so the feed and the overview beside it agree.
+/// On iPad the two are on screen at once, and the same event drawn as two
+/// different glyphs in adjacent columns reads as two different things.
+enum EventAppearance {
+
+    /// Anything without PostHog's `$` prefix was instrumented by the product
+    /// team, which is usually what someone is scanning a feed for.
+    static func isCustom(_ name: String) -> Bool { !name.hasPrefix("$") }
+
+    /// Says what *kind* of event a row is before the name is read.
+    static func glyph(for name: String) -> String {
+        switch name {
+        case "$pageview", "$screen": "doc.richtext"
+        case "$pageleave": "rectangle.portrait.and.arrow.right"
+        case "$autocapture": "hand.tap"
+        case "$rageclick": "hand.tap.fill"
+        case "$exception": "exclamationmark.triangle.fill"
+        case "$identify", "$set": "person.crop.circle"
+        default: isCustom(name) ? "bolt.fill" : "bolt"
+        }
+    }
+
+    /// Custom events take the warm secondary and PostHog's own autocapture
+    /// recedes to the app accent, so a feed that is mostly `$autocapture` does
+    /// not bury the handful of rows somebody deliberately instrumented.
+    static func tint(for name: String) -> Color {
+        if name == "$exception" { return Theme.Status.critical }
+        return isCustom(name) ? Theme.accentWarm : Theme.accent
+    }
+}
+
 struct EventRowView: View {
     let event: EventRow
 
     var body: some View {
         DataRow(
-            glyph: glyph,
-            tint: tint,
+            glyph: EventAppearance.glyph(for: event.event),
+            tint: EventAppearance.tint(for: event.event),
             title: event.event,
             subtitle: subtitle,
             footnote: footnote,
@@ -266,33 +336,14 @@ struct EventRowView: View {
             // beneath it — a URL path or a distinct id — is what stays
             // monospaced, since that is the column being compared downwards.
             isSubtitleMonospaced: true,
+            // Two lines, against the one-line default. A feed is mostly repeats
+            // of `$pageview` and `$autocapture`, so the title is shared and the
+            // path or distinct id underneath is the only thing separating one
+            // row from the next — the same failure the error list had, where a
+            // narrow column cut exactly the distinguishing part.
+            subtitleLineLimit: 2,
             accessory: .none
         )
-    }
-
-    /// Anything without PostHog's `$` prefix was instrumented by the product
-    /// team, which is usually what someone is scanning a feed for.
-    private var isCustom: Bool { !event.event.hasPrefix("$") }
-
-    /// Says what *kind* of event the row is before the name is read.
-    private var glyph: String {
-        switch event.event {
-        case "$pageview", "$screen": "doc.richtext"
-        case "$pageleave": "rectangle.portrait.and.arrow.right"
-        case "$autocapture": "hand.tap"
-        case "$rageclick": "hand.tap.fill"
-        case "$exception": "exclamationmark.triangle.fill"
-        case "$identify", "$set": "person.crop.circle"
-        default: isCustom ? "bolt.fill" : "bolt"
-        }
-    }
-
-    /// Custom events take the warm secondary and PostHog's own autocapture
-    /// recedes to the app accent, so a feed that is mostly `$autocapture` does
-    /// not bury the handful of rows somebody deliberately instrumented.
-    private var tint: Color {
-        if event.event == "$exception" { return Theme.Status.critical }
-        return isCustom ? Theme.accentWarm : Theme.accent
     }
 
     private var subtitle: String? {
