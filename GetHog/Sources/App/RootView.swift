@@ -5,6 +5,7 @@ enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     case webAnalytics, clickmap, people, sql
     case errorTracking, tracing, logs
+    case inbox, signals, health
     case experiments, surveys, earlyAccess
     case llm, warehouse, pipelines, automation, actions, annotations
     case notebooks, max
@@ -30,6 +31,9 @@ enum AppTab: String, Hashable, CaseIterable {
         case .errorTracking: "Errors"
         case .tracing: "Tracing"
         case .logs: "Logs"
+        case .inbox: "Inbox"
+        case .signals: "Signals"
+        case .health: "Health"
         case .experiments: "Experiments"
         case .surveys: "Surveys"
         case .earlyAccess: "Early access"
@@ -60,6 +64,9 @@ enum AppTab: String, Hashable, CaseIterable {
         case .errorTracking: "exclamationmark.triangle"
         case .tracing: "point.3.connected.trianglepath.dotted"
         case .logs: "text.alignleft"
+        case .inbox: "tray.full"
+        case .signals: "antenna.radiowaves.left.and.right"
+        case .health: "stethoscope"
         case .experiments: "flask"
         case .surveys: "list.clipboard"
         case .earlyAccess: "sparkles"
@@ -145,6 +152,15 @@ struct RootView: View {
                     Tab(AppTab.logs.title, systemImage: AppTab.logs.systemImage, value: AppTab.logs) {
                         LogsRoot()
                     }
+                    Tab(AppTab.inbox.title, systemImage: AppTab.inbox.systemImage, value: AppTab.inbox) {
+                        InboxRoot()
+                    }
+                    Tab(AppTab.signals.title, systemImage: AppTab.signals.systemImage, value: AppTab.signals) {
+                        SignalsRoot()
+                    }
+                    Tab(AppTab.health.title, systemImage: AppTab.health.systemImage, value: AppTab.health) {
+                        HealthRoot()
+                    }
                 }
 
                 TabSection("Data") {
@@ -194,6 +210,10 @@ struct RootView: View {
                 }
             }
             .tabViewStyle(.sidebarAdaptable)
+            // Gives the tab bar's height back to the data while reading down a
+            // long list, which is most of what this app is. It restores itself
+            // on the first upward scroll, so nothing becomes unreachable.
+            .tabBarMinimizeBehavior(.onScrollDown)
             // Only the four loose tabs get a number: they are the ones always
             // present in the tab bar. Settings takes the platform-conventional
             // comma rather than a fifth number it would have to compete for.

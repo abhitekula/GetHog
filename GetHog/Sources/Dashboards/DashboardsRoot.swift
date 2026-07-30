@@ -52,12 +52,16 @@ struct DashboardsRoot: View {
                 // insight open beside another dashboard's grid.
                 DashboardDetailView(summary: selection)
                     .id(selection.id)
-            } else {
-                ContentUnavailableView(
-                    "Select a dashboard",
+            } else if store.dashboards.isEmpty {
+                EmptyStateView(
+                    title: "No dashboards",
                     systemImage: "square.grid.2x2",
-                    description: Text("Pick a dashboard to see its tiles.")
+                    message: "This project doesn't have any dashboards yet."
                 )
+            } else {
+                // The detail pane is the largest surface in the app. Handing it
+                // a "Select a dashboard" placeholder wasted it on every launch.
+                ProjectOverview(dashboards: store.dashboards)
             }
         }
     }
