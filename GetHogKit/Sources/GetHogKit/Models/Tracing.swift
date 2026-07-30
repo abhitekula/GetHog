@@ -12,8 +12,14 @@ import Foundation
 // against real spans. The decoders follow the column list PostHog documents for
 // each kind, and where a column could plausibly arrive in two spellings they
 // read both rather than pick one and be silently wrong.
+//
+// There is exactly **one** decoder, because `TraceSpansQuery` is the only
+// tracing kind the API still answers: the tree and attribute-breakdown kinds
+// return 400 `"Unsupported query kind"` (measured 2026-07-30 against project
+// [REMOVED PRIVATE DATA]). Everything those kinds used to be asked for is derived here from the
+// spans instead — the call tree from `parentSpanID`/`spanID`, the service facet
+// from `serviceName`, both of which arrive on every span.
 
-// MARK: - State
 // MARK: - Span
 
 /// An OTel span status. PostHog filters accept both the numeric code and the
@@ -106,6 +112,102 @@ public struct TraceSpan: Sendable, Identifiable, Hashable {
         response.rows.compactMap(TraceSpan.init(row:))
     }
 
+    /// The services present in a span list, for the explorer's filter.
+    ///
+    /// Derived rather than asked for: the query kind that answered this
+    /// server-side is gone (400 `"Unsupported query kind"`, measured
+    /// 2026-07-30), and `service_name` is on every span anyway.
+    ///
+    /// This names the services **in this result**, not every service in the
+    /// project — a page is capped by `limit`, and a page fetched *with* a
+    /// service filter contains exactly one service by construction. A caller
+    /// must therefore not let the facet shrink under a filter it already
+    /// applied; `TracingStore` handles that.
+    public static func serviceNames(from spans: [TraceSpan]) -> [String] {
+        // A span can carry an empty `service_name`. It is not a service anyone
+        // can filter by, and it would render as a blank menu row.
+        Set(spans.map(\.serviceName).filter { !$0.isEmpty }).sorted()
+    }
+
+    /// Nests a span list into drawable nodes, using `parentSpanID` as the edge
+    /// set.
+    ///
+    /// Replaces `TraceSpansTreeQuery`, which the API no longer has. Three things
+    /// the input does in practice that a naive walk does not survive:
+    ///
+    /// * **Orphans.** A span whose `parentSpanID` names a span that is not in
+    ///   the list. Routine — `limit` truncates a trace wherever it lands — so
+    ///   the orphan is promoted to the top of the forest and flagged, never
+    ///   dropped.
+    /// * **Cycles.** `parent_span_id` is producer-supplied and nothing
+    ///   validates it, so a loop is possible; ancestors are tracked and no span
+    ///   is ever nested beneath itself.
+    /// * **Spans reachable from no root at all.** A cycle with no entry point
+    ///   would leave its members unvisited. They are promoted last, so the
+    ///   number of nodes drawn always equals the number of spans handed in.
+    public static func tree(from spans: [TraceSpan]) -> [TraceSpanNode] {
+        let present = Set(spans.map(\.spanID))
+        var childrenByParent: [String: [TraceSpan]] = [:]
+        for span in spans {
+            guard let parent = span.parentSpanID,
+                  parent != span.spanID,
+                  present.contains(parent)
+            else { continue }
+            childrenByParent[parent, default: []].append(span)
+        }
+
+        // Keyed on `id` (the span's own identity) rather than `spanID`, so two
+        // spans that report the same `span_id` are still drawn once each.
+        var placed: Set<String> = []
+
+        func build(_ span: TraceSpan, parentDuration: Int?, ancestors: Set<String>) -> TraceSpanNode {
+            placed.insert(span.id)
+            var ancestors = ancestors
+            ancestors.insert(span.spanID)
+
+            var children: [TraceSpanNode] = []
+            for child in (childrenByParent[span.spanID] ?? []).sorted(by: precedes) {
+                guard !ancestors.contains(child.spanID), !placed.contains(child.id) else { continue }
+                children.append(
+                    build(child, parentDuration: span.durationNanos, ancestors: ancestors)
+                )
+            }
+
+            return TraceSpanNode(
+                span: span,
+                children: children,
+                shareOfParent: parentDuration.flatMap { total in
+                    total > 0 ? Double(span.durationNanos) / Double(total) : nil
+                },
+                isOrphan: parentDuration == nil && span.parentSpanID != nil
+            )
+        }
+
+        let ordered = spans.sorted(by: precedes)
+        var roots: [TraceSpanNode] = []
+        for span in ordered where !placed.contains(span.id) {
+            let isForestRoot = span.parentSpanID.map {
+                $0 == span.spanID || !present.contains($0)
+            } ?? true
+            guard isForestRoot else { continue }
+            roots.append(build(span, parentDuration: nil, ancestors: []))
+        }
+        // Whatever is left belongs to a cycle with no way in. Drawing it flat
+        // beats losing it.
+        for span in ordered where !placed.contains(span.id) {
+            roots.append(build(span, parentDuration: nil, ancestors: []))
+        }
+        return roots
+    }
+
+    /// Entry span first, then by start time — a trace reads top-down from where
+    /// it began. `spanID` only breaks ties, so the order cannot wobble between
+    /// two renders of the same data.
+    private static func precedes(_ a: TraceSpan, _ b: TraceSpan) -> Bool {
+        (a.isRoot ? 0 : 1, a.timestamp ?? .distantPast, a.spanID)
+            < (b.isRoot ? 0 : 1, b.timestamp ?? .distantPast, b.spanID)
+    }
+
     /// Groups a flat span list into traces, newest first.
     public static func traces(from spans: [TraceSpan]) -> [TraceGroup] {
         Dictionary(grouping: spans, by: \.traceID)
@@ -180,170 +282,43 @@ public struct TraceGroup: Sendable, Identifiable, Hashable {
 
     /// Short form of the trace id, for a row that cannot fit 32 hex characters.
     public var shortID: String { String(id.prefix(8)) }
+
+    /// The same spans, nested by `parentSpanID`. Costs no request: the spans
+    /// arrived with the trace.
+    public var tree: [TraceSpanNode] { TraceSpan.tree(from: spans) }
 }
 
 // MARK: - Call tree
 
-/// One `(parent) → (child)` edge from a `TraceSpansTreeQuery`.
+/// One span with its children resolved.
 ///
-/// Note this is an *aggregate*, not a single trace's structure: each row is many
-/// spans collapsed together, so its numbers are counts and percentiles rather
-/// than one span's timings.
-public struct TraceSpanTreeEdge: Sendable, Identifiable, Hashable {
-    public let parentService: String
-    public let parentName: String
-    public let serviceName: String
-    public let name: String
-    public let count: Int
-    public let totalDurationNanos: Int
-    public let avgDurationNanos: Int
-    public let p50Nanos: Int
-    public let p95Nanos: Int
-    public let p99Nanos: Int
-    public let errorCount: Int
-    public let avgStartOffsetNanos: Int
-    /// How many times this child runs per parent invocation. Null on root edges,
-    /// which have no parent to divide by. A child can top the total purely by
-    /// fanning out, so per-call cost needs this divisor.
-    public let callsPerParentInvocation: Double?
+/// Built on the phone from `parentSpanID`/`spanID`. Its server-side equivalent,
+/// `TraceSpansTreeQuery`, answers 400 `"Unsupported query kind"` — and was an
+/// *aggregate* over every trace that entered through a span, where this is the
+/// structure of one concrete trace, which is what a trace detail screen is
+/// actually asking about.
+public struct TraceSpanNode: Sendable, Identifiable, Hashable {
+    public let span: TraceSpan
+    public let children: [TraceSpanNode]
 
-    public var id: String { "\(parentService)|\(parentName)|\(serviceName)|\(name)" }
-
-    /// PostHog marks a trace's entry span with the literal parent name `<ROOT>`.
-    public var isRootEdge: Bool { parentName == Self.rootMarker }
-
-    static let rootMarker = "<ROOT>"
-
-    public var hasErrors: Bool { errorCount > 0 }
-
-    public var errorRate: Double? {
-        count > 0 ? Double(errorCount) / Double(count) : nil
-    }
-
-    public init?(row: QueryRow) {
-        guard let name = row.string("name") else { return nil }
-        self.name = name
-        self.parentService = row.string("parent_service") ?? ""
-        self.parentName = row.string("parent_name") ?? Self.rootMarker
-        self.serviceName = row.string("service_name") ?? ""
-        self.count = TraceSpan.wholeNumber(row.value("count")) ?? 0
-        self.totalDurationNanos = TraceSpan.wholeNumber(row.value("total_duration_nano")) ?? 0
-        self.avgDurationNanos = TraceSpan.wholeNumber(row.value("avg_duration_nano")) ?? 0
-        self.p50Nanos = TraceSpan.wholeNumber(row.value("p50_duration_nano")) ?? 0
-        self.p95Nanos = TraceSpan.wholeNumber(row.value("p95_duration_nano")) ?? 0
-        self.p99Nanos = TraceSpan.wholeNumber(row.value("p99_duration_nano")) ?? 0
-        self.errorCount = TraceSpan.wholeNumber(row.value("error_count")) ?? 0
-        self.avgStartOffsetNanos = TraceSpan.wholeNumber(row.value("avg_start_offset_nano")) ?? 0
-        self.callsPerParentInvocation = row.double("calls_per_parent_invocation")
-    }
-
-    public static func rows(from response: QueryResponse) -> [TraceSpanTreeEdge] {
-        response.rows.compactMap(TraceSpanTreeEdge.init(row:))
-    }
-
-    /// Nests the flat edge list into drawable nodes, heaviest branch first.
-    public static func tree(from edges: [TraceSpanTreeEdge]) -> [TraceSpanTreeNode] {
-        var childrenByParent: [String: [TraceSpanTreeEdge]] = [:]
-        for edge in edges where !edge.isRootEdge {
-            childrenByParent["\(edge.parentService)|\(edge.parentName)", default: []].append(edge)
-        }
-
-        // The edge list is aggregated, so a name can legitimately appear as its
-        // own ancestor (recursion, retries). Without a seen-set the walk below
-        // would never terminate.
-        func build(_ edge: TraceSpanTreeEdge, parentTotal: Int?, seen: Set<String>) -> TraceSpanTreeNode {
-            var seen = seen
-            let key = "\(edge.serviceName)|\(edge.name)"
-            seen.insert(key)
-
-            let children = (childrenByParent[key] ?? [])
-                .filter { !seen.contains("\($0.serviceName)|\($0.name)") }
-                .sorted { $0.totalDurationNanos > $1.totalDurationNanos }
-                .map { build($0, parentTotal: edge.totalDurationNanos, seen: seen) }
-
-            let share: Double? = parentTotal.flatMap { total in
-                total > 0 ? Double(edge.totalDurationNanos) / Double(total) : nil
-            }
-            return TraceSpanTreeNode(edge: edge, children: children, shareOfParent: share)
-        }
-
-        return edges
-            .filter(\.isRootEdge)
-            .sorted { $0.totalDurationNanos > $1.totalDurationNanos }
-            .map { build($0, parentTotal: nil, seen: []) }
-    }
-}
-
-/// A call-tree edge with its children resolved.
-public struct TraceSpanTreeNode: Sendable, Identifiable, Hashable {
-    public let edge: TraceSpanTreeEdge
-    public let children: [TraceSpanTreeNode]
-    /// This edge's total time as a fraction of its parent's. **Not clamped to
-    /// 1**: a child that runs several times per parent invocation genuinely
-    /// accumulates more time than the parent, and hiding that would hide the
-    /// fan-out that caused it.
+    /// This span's wall time as a fraction of its parent's. Nil at the top of
+    /// the forest, which has no parent to divide by.
+    ///
+    /// **Not clamped to 1.** Clock skew between two services, and work that
+    /// outlives the span that kicked it off, both push a child past its parent;
+    /// clamping would hide exactly the anomaly worth opening a trace for.
     public let shareOfParent: Double?
 
-    public var id: String { edge.id }
+    /// True when this node sits at the top of the forest but is not a trace
+    /// entry span — its parent was not in the result, normally because `limit`
+    /// truncated the trace. Surfaced so a screen can say the span above it is
+    /// missing rather than imply the trace began here.
+    public let isOrphan: Bool
+
+    public var id: String { span.id }
 
     /// Flattens the tree for a `List`, carrying each node's depth for indenting.
-    public func flattened(depth: Int = 0) -> [(node: TraceSpanTreeNode, depth: Int)] {
+    public func flattened(depth: Int = 0) -> [(node: TraceSpanNode, depth: Int)] {
         [(self, depth)] + children.flatMap { $0.flattened(depth: depth + 1) }
-    }
-}
-
-// MARK: - Attribute breakdown
-
-/// One row of a `TraceSpansAttributeBreakdownQuery` — the "what is different
-/// about the bad spans?" shape.
-public struct SpanAttributeBreakdownRow: Sendable, Identifiable, Hashable {
-    public let value: String
-    public let count: Int
-    public let errorCount: Int
-    public let p50Nanos: Int
-    public let p95Nanos: Int
-
-    public var id: String { value }
-
-    /// PostHog groups spans that don't carry the attribute at all under an empty
-    /// value. That is a finding, not a blank, so it is never dropped.
-    public var isUnset: Bool { value.isEmpty }
-
-    public var displayValue: String { isUnset ? "Not set" : value }
-
-    public var errorRate: Double? {
-        count > 0 ? Double(errorCount) / Double(count) : nil
-    }
-
-    public init?(row: QueryRow) {
-        guard let value = row.value("value") else {
-            // An explicitly empty string arrives as a non-null value; only a
-            // genuinely missing column skips the row.
-            guard row.columns.contains("value") else { return nil }
-            self.value = ""
-            self.count = TraceSpan.wholeNumber(row.value("count")) ?? 0
-            self.errorCount = TraceSpan.wholeNumber(row.value("error_count")) ?? 0
-            self.p50Nanos = TraceSpan.wholeNumber(row.value("p50_duration_nano")) ?? 0
-            self.p95Nanos = TraceSpan.wholeNumber(row.value("p95_duration_nano")) ?? 0
-            return
-        }
-        self.value = value.stringValue ?? ""
-        self.count = TraceSpan.wholeNumber(row.value("count")) ?? 0
-        self.errorCount = TraceSpan.wholeNumber(row.value("error_count")) ?? 0
-        self.p50Nanos = TraceSpan.wholeNumber(row.value("p50_duration_nano")) ?? 0
-        self.p95Nanos = TraceSpan.wholeNumber(row.value("p95_duration_nano")) ?? 0
-    }
-
-    public static func rows(from response: QueryResponse) -> [SpanAttributeBreakdownRow] {
-        response.rows.compactMap(SpanAttributeBreakdownRow.init(row:))
-    }
-
-    /// Service names, for the explorer's service filter.
-    ///
-    /// There is no separately verified "list services" query kind, so the facet
-    /// rides on the breakdown kind that *is* verified, broken down by the
-    /// allowlisted top-level `service_name` column.
-    public static func serviceNames(from response: QueryResponse) -> [String] {
-        rows(from: response).filter { !$0.isUnset }.map(\.value)
     }
 }

@@ -31,10 +31,19 @@ public struct FeatureFlag: Sendable, Decodable, Identifiable, Hashable {
         filters = try? c.decodeIfPresent(FlagFilters.self, forKey: .filters)
     }
 
+    /// The flag's name in full, or its key when it has none.
+    ///
+    /// Deliberately not shortened. This used to cut at 80 characters with an
+    /// ellipsis so the flags list would keep even row heights — a layout
+    /// decision taken in a type that cannot see a screen, and one every consumer
+    /// inherited whether or not it was laying anything out. The flags row's
+    /// `accessibilityLabel` was one of them, so VoiceOver read the `deep-links`
+    /// flag as "…copy-link buttons on vendor/guest/gift/member/eve…", and
+    /// Spotlight indexed the same stub. Truncation now happens in `FlagRowView`,
+    /// where the layout is.
     public var displayName: String {
         guard let name, !name.isEmpty else { return key }
-        // Flag "names" are often long paragraphs of description; keep rows readable.
-        return name.count > 80 ? String(name.prefix(80)) + "…" : name
+        return name
     }
 
     /// Highest rollout percentage across release condition groups, if set.

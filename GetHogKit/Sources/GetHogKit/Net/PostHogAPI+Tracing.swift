@@ -5,25 +5,21 @@ import Foundation
 /// Every one of these is a `/query/` node, so they all bill against the `.query`
 /// budget rather than `.crud`.
 ///
-/// **These cannot be verified against real data in the project they were built
-/// for.** `TraceSpansQuery` returns HTTP **400** — `"Access control failure. You
-/// don't have `viewer` access to the `tracing` resource."` — and the project
-/// defines no query endpoints, so every usage figure is zero. The kinds and
-/// required fields below were established by probing the live API for validation
-/// errors, which name every missing field; the response columns follow the
-/// column list PostHog documents per kind.
+/// **`TraceSpansQuery` is the only tracing kind the API still has.** Measured
+/// 2026-07-30 against project [REMOVED PRIVATE DATA]: `TraceSpansTreeQuery` and
+/// `TraceSpansAttributeBreakdownQuery` both answer HTTP 400 `"Unsupported query
+/// kind: …"` — not a permission wall, an endpoint that no longer exists for
+/// anyone — so their builders are gone and the call tree and the service facet
+/// are derived from the spans instead. See `TraceSpan.tree(from:)` and
+/// `TraceSpan.serviceNames(from:)`.
+///
+/// What `TraceSpansQuery` returns still cannot be seen from here: this
+/// organisation has no `viewer` access to the `tracing` resource, and PostHog
+/// reports that as HTTP **400**, not 403. The response columns follow the column
+/// list PostHog documents for the kind.
 public extension PostHogAPI {
 
     // MARK: - Tracing
-
-    /// Where an attribute key lives. `span` reaches the allowlisted top-level
-    /// columns only (`service_name`, `status_code`); the other two reach the
-    /// OTel attribute maps.
-    enum SpanBreakdownType: String, Sendable, CaseIterable {
-        case span
-        case spanAttribute = "span_attribute"
-        case spanResourceAttribute = "span_resource_attribute"
-    }
 
     /// Spans, for grouping into traces client-side.
     ///
@@ -50,20 +46,36 @@ public extension PostHogAPI {
         prefetchSpans: Int = 10,
         limit: Int = 100
     ) -> Endpoint {
-        var filterGroup: [[String: Any]] = []
+        var filters: [[String: Any]] = []
         if !spanNameContains.isEmpty {
-            filterGroup.append([
+            filters.append([
                 "key": "name",
-                "type": SpanBreakdownType.span.rawValue,
+                // `span` reaches the allowlisted top-level columns — `name`,
+                // `service_name`, `status_code` — rather than the OTel attribute
+                // maps, which are `span_attribute` and `span_resource_attribute`.
+                "type": "span",
                 "operator": "icontains",
                 "value": spanNameContains,
             ])
         }
 
+        // A `PropertyGroupFilter`: an object, and one whose `values` are
+        // themselves groups rather than bare filters. Measured 2026-07-30
+        // against project [REMOVED PRIVATE DATA], sending this exact body — a bare array is
+        // rejected with `"Input should be a valid dictionary or instance of
+        // PropertyGroupFilter"`, and filters placed flat inside `values` are
+        // rejected with `"Input should be 'AND' or 'OR'"`. Only the nested form
+        // parses far enough to reach the access-control check. The bare array
+        // shipped once, so `TracingEndpointTests` pins this shape.
+        var groups: [[String: Any]] = []
+        if !filters.isEmpty {
+            groups.append(["type": "AND", "values": filters])
+        }
+
         var query: [String: Any] = [
             "kind": "TraceSpansQuery",
             "dateRange": ["date_from": dateFrom],
-            "filterGroup": filterGroup,
+            "filterGroup": ["type": "AND", "values": groups],
             "orderBy": "timestamp",
             "orderDirection": "DESC",
             "rootSpans": rootSpans,
@@ -84,65 +96,14 @@ public extension PostHogAPI {
         return queryEndpoint(projectID: projectID, query: query)
     }
 
-    /// The aggregated call tree under one operation.
-    ///
-    /// **Both** `serviceName` and `spanName` are required — the API rejects the
-    /// query with either missing. `spanName` bounds the matched trace set, whose
-    /// `(trace_id, parent_span_id)` self-join is unsafe at high cardinality
-    /// without it; `serviceName` scopes the rows that come back.
-    static func traceSpanTree(
-        projectID: Int,
-        serviceName: String,
-        spanName: String,
-        dateFrom: String = "-24h"
-    ) -> Endpoint {
-        queryEndpoint(projectID: projectID, query: [
-            "kind": "TraceSpansTreeQuery",
-            "serviceName": serviceName,
-            "spanName": spanName,
-            "dateRange": ["date_from": dateFrom],
-            "filterGroup": [],
-        ])
-    }
-
-    /// Spans grouped by one attribute's value.
-    ///
-    /// **Both** `breakdownKey` and `breakdownType` are required.
-    static func traceSpanAttributeBreakdown(
-        projectID: Int,
-        breakdownKey: String,
-        breakdownType: SpanBreakdownType,
-        serviceNames: [String] = [],
-        dateFrom: String = "-24h"
-    ) -> Endpoint {
-        var query: [String: Any] = [
-            "kind": "TraceSpansAttributeBreakdownQuery",
-            "breakdownKey": breakdownKey,
-            "breakdownType": breakdownType.rawValue,
-            "dateRange": ["date_from": dateFrom],
-            "orderBy": "count",
-            "filterGroup": [],
-        ]
-        if !serviceNames.isEmpty {
-            query["serviceNames"] = serviceNames
-        }
-        return queryEndpoint(projectID: projectID, query: query)
-    }
-
-    /// The service list, for the explorer's filter.
-    ///
-    /// Built on the breakdown kind rather than a dedicated one: no "list
-    /// services" kind was verified against the live API, and `service_name` is an
-    /// allowlisted top-level `span` column, so the same verified request answers
-    /// the question. One fewer unproven kind in the catalog.
-    static func traceServices(projectID: Int, dateFrom: String = "-24h") -> Endpoint {
-        traceSpanAttributeBreakdown(
-            projectID: projectID,
-            breakdownKey: "service_name",
-            breakdownType: .span,
-            dateFrom: dateFrom
-        )
-    }
+    // There is no `traceSpanTree`, no `traceSpanAttributeBreakdown` and no
+    // `traceServices` here. All three were built on kinds the API answers with
+    // 400 `"Unsupported query kind"`, so no caller could ever have succeeded —
+    // and all three asked for something the spans already carry. The call tree
+    // is `parentSpanID`/`spanID`, the service facet is `serviceName`, and both
+    // are now derived in `Tracing.swift` from the response already in hand,
+    // which also keeps two requests off an organisation-wide rate-limit budget
+    // shared with the user's production integrations.
 
     // MARK: - Endpoint usage
 

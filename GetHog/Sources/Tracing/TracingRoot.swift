@@ -96,6 +96,7 @@ final class TracingStore {
             traces = TraceSpan.traces(from: spans)
             state = .resolved(rowCount: traces.count)
             loadedAt = Date()
+            updateServiceFacet(from: spans)
         } catch {
             state = ResourceAccessState(
                 failure: error,
@@ -103,34 +104,28 @@ final class TracingStore {
                 defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
             )
             traces = []
-        }
-
-        // Deliberately sequential, and deliberately skipped when the span query
-        // failed. The service facet exists only to filter a list; spending a
-        // second request against an organisation-wide budget to populate a
-        // filter for a list that isn't there is pure waste — and in this project
-        // the failure is a denial, so the second call would fail identically.
-        switch state {
-        case .loaded, .empty:
-            await loadServices(client: client, projectID: projectID)
-        default:
-            services = []
+            // The facet is left alone. A request that failed says nothing about
+            // which services exist, and clearing it would strand a user who had
+            // filtered to one service — the filter bar is not drawn in the
+            // failed state, so they could not pick their way back out.
         }
     }
 
-    private func loadServices(client: PostHogClient, projectID: Int) async {
-        do {
-            let data = try await client.data(
-                for: PostHogAPI.traceServices(projectID: projectID, dateFrom: window.rawValue)
-            )
-            services = SpanAttributeBreakdownRow.serviceNames(
-                from: try QueryResponse.decode(from: data)
-            )
-        } catch {
-            // A missing facet is a degraded filter, not a broken screen: the
-            // span list above it is already on display and stays there.
-            services = []
-        }
+    /// Rebuilds the service filter from the spans just fetched.
+    ///
+    /// This used to be a second `/query/` request. It is derived now because the
+    /// kind it rode on — `TraceSpansAttributeBreakdownQuery` — answers 400
+    /// `"Unsupported query kind"`, and because `service_name` is on every span
+    /// that already arrived: a request answered by data in hand is one more
+    /// draw on a rate-limit budget shared organisation-wide.
+    ///
+    /// The catch is that the facet now describes the *page*. Under a service
+    /// filter the page is one service by construction, so recomputing from it
+    /// would collapse the menu to the user's own choice and trap them there.
+    /// Filtered loads may only widen the facet, never replace it.
+    private func updateServiceFacet(from spans: [TraceSpan]) {
+        let found = TraceSpan.serviceNames(from: spans)
+        services = service == nil ? found : Set(services).union(found).sorted()
     }
 }
 
@@ -152,7 +147,7 @@ struct TracingRoot: View {
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
             .navigationDestination(for: TraceGroup.self) { trace in
-                TraceDetailView(trace: trace, window: store.window)
+                TraceDetailView(trace: trace)
             }
     }
 
@@ -256,6 +251,9 @@ struct TracingRoot: View {
                 }
                 .toggleStyle(.button)
                 .font(.footnote)
+                // Measured 84.3×14.3pt, the same control and the same shortfall
+                // as the Logs filter bar's; see `LogsRoot.filterBar`.
+                .minimumHitTarget()
                 .onChange(of: store.errorsOnly) { Task { await load() } }
             }
             .padding(.vertical, Theme.Space.s)
@@ -385,7 +383,6 @@ struct TraceRowView: View {
 
 struct TraceDetailView: View {
     let trace: TraceGroup
-    var window: TracingWindow = .day
 
     var body: some View {
         List {
@@ -422,11 +419,7 @@ struct TraceDetailView: View {
             if let root = trace.root {
                 Section {
                     NavigationLink {
-                        TraceSpanTreeView(
-                            serviceName: root.serviceName,
-                            spanName: root.name,
-                            window: window
-                        )
+                        TraceSpanTreeView(trace: trace)
                     } label: {
                         DataRow(
                             glyph: "list.bullet.indent",
@@ -439,7 +432,7 @@ struct TraceDetailView: View {
                     .accessibilityLabel("Call tree for \(root.name)")
                     .cardRow()
                 } footer: {
-                    Text("Aggregates every trace that entered through this span in the window, not just this one.")
+                    Text("The spans below, nested by parent. Built from this trace — no second request, and nothing in it that isn't already on this screen.")
                 }
             }
 
@@ -489,6 +482,14 @@ struct SpanRowView: View {
 
             // The bar is what makes a slow span findable without reading a
             // single duration, so it survives the move to `DataRow`.
+            //
+            // Clipped to the track rather than left to its own corner radius.
+            // The 2pt floor below exists because a millisecond span in a
+            // multi-second trace is the normal case, and at that width SwiftUI
+            // clamps the fill's 2pt radius to half its *own* 2pt width — 1pt —
+            // against a track whose cap is a full 2pt. Rendered at 8× against
+            // the clipped version: 1.12pt of fill outside the track's leading
+            // cap. Same class as `Card`'s spine, smaller.
             GeometryReader { proxy in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(span.isError ? Theme.Status.critical : Theme.accent)
@@ -496,6 +497,7 @@ struct SpanRowView: View {
             }
             .frame(height: 4)
             .background(Color.secondary.opacity(0.15), in: .rect(cornerRadius: 2))
+            .clipShape(.rect(cornerRadius: 2))
             .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
@@ -604,170 +606,126 @@ struct SpanDetailView: View {
 
 // MARK: - Call tree
 
-/// The aggregated call tree under one service + span.
+/// One trace's spans, nested by parent.
 ///
-/// Both are required by the API — the query is rejected without either — which
-/// is why this screen is only reachable from a trace whose root supplies them,
-/// rather than from a pair of free-text fields the user could leave half filled.
+/// Takes no request and cannot fail. It used to send `TraceSpansTreeQuery`,
+/// which the API answers with 400 `"Unsupported query kind"` — so this screen
+/// could not have loaded for anybody. Every edge it needs is `parentSpanID` on
+/// spans the caller already fetched, so the tree is built here instead.
+///
+/// It is also a narrower claim than the old screen made. That one aggregated
+/// every trace that entered through the same span in the window; this is the
+/// one trace the user opened, which is what they tapped through a trace row to
+/// see.
 struct TraceSpanTreeView: View {
-    @Environment(AppModel.self) private var model
+    let trace: TraceGroup
 
-    let serviceName: String
-    let spanName: String
-    var window: TracingWindow = .day
+    // Built once, in `init` rather than in `body`: `body` re-runs on every
+    // render and the nesting only changes when the trace does.
+    private let rows: [(node: TraceSpanNode, depth: Int)]
+    private let orphanCount: Int
 
-    @State private var state: ResourceAccessState = .loading
-    @State private var nodes: [TraceSpanTreeNode] = []
-    @State private var loadedAt: Date?
+    init(trace: TraceGroup) {
+        self.trace = trace
+        let tree = trace.tree
+        self.rows = tree.flatMap { $0.flattened() }
+        self.orphanCount = tree.filter(\.isOrphan).count
+    }
 
     var body: some View {
-        content
-            .navigationTitle("Call tree")
-            .navigationBarTitleDisplayMode(.inline)
-            .refreshable { await load() }
-            .task(id: model.projectID) { await load() }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch state {
-        case _ where state.isBlocked:
-            TracingLockedView(state: state) {
-                Task { await model.refreshCapabilities(); await load() }
-            }
-
-        case .failed(let message):
-            EmptyStateView(
-                title: "Couldn't load the call tree",
-                systemImage: "exclamationmark.triangle",
-                message: message,
-                actionTitle: "Try again",
-                action: { Task { await load() } }
-            )
-
-        case .empty:
-            EmptyStateView(
-                title: "No call tree",
-                systemImage: "list.bullet.indent",
-                message: "No trace entered through \(spanName) in \(serviceName) during the last \(window.title.lowercased())."
-            )
-
-        default:
-            list
-        }
-    }
-
-    private var list: some View {
         List {
             Section {
-                ForEach(flattened, id: \.node.id) { entry in
-                    TreeEdgeRowView(node: entry.node, depth: entry.depth)
-                        .cardRow()
+                ForEach(rows, id: \.node.id) { entry in
+                    SpanTreeRowView(
+                        node: entry.node,
+                        depth: entry.depth,
+                        traceDuration: trace.durationNanos
+                    )
+                    .cardRow()
                 }
             } header: {
-                SectionLabel(text: spanName, systemImage: "list.bullet.indent")
+                SectionLabel(text: trace.name, systemImage: "list.bullet.indent")
             } footer: {
-                Text("Percentiles are across every matching span in the window. A child can exceed its parent's total by running more than once per call.")
+                Text(footnote)
             }
-
-            FreshnessLabel(date: loadedAt)
-                .listRowBackground(Color.clear)
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
-        .skeleton(state == .loading)
+        .navigationTitle("Call tree")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var flattened: [(node: TraceSpanTreeNode, depth: Int)] {
-        nodes.flatMap { $0.flattened() }
-    }
-
-    private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        do {
-            let data = try await client.data(
-                for: PostHogAPI.traceSpanTree(
-                    projectID: projectID,
-                    serviceName: serviceName,
-                    spanName: spanName,
-                    dateFrom: window.rawValue
-                )
-            )
-            let edges = TraceSpanTreeEdge.rows(from: try QueryResponse.decode(from: data))
-            nodes = TraceSpanTreeEdge.tree(from: edges)
-            state = .resolved(rowCount: edges.count)
-            loadedAt = Date()
-        } catch {
-            state = ResourceAccessState(
-                failure: error,
-                resource: "tracing",
-                defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
-            )
-            nodes = []
-        }
+    /// Says so when a span's parent is missing, because the indentation alone
+    /// would read as "this span started the trace" — which is a different and
+    /// wrong statement. A truncated trace is the normal cause: the span query
+    /// is capped, and the cap can land anywhere in a trace.
+    private var footnote: String {
+        let base = "Each span sits under the span that started it, with its share of that span's time."
+        guard orphanCount > 0 else { return base }
+        return base + " \(orphanCount) span\(orphanCount == 1 ? "" : "s") \(orphanCount == 1 ? "names a parent" : "name parents") that didn't come back with this trace, so \(orphanCount == 1 ? "it is" : "they are") shown at the top level."
     }
 }
 
-struct TreeEdgeRowView: View {
-    let node: TraceSpanTreeNode
+struct SpanTreeRowView: View {
+    let node: TraceSpanNode
     let depth: Int
+    let traceDuration: Int
 
-    private var edge: TraceSpanTreeEdge { node.edge }
+    private var span: TraceSpan { node.span }
 
     var body: some View {
         DataRow(
-            // A child edge is drawn as a branch so nesting survives the moment
+            // A child is drawn as a branch so the nesting survives the moment
             // the indentation runs out of width.
             glyph: depth == 0 ? "list.bullet.indent" : "arrow.turn.down.right",
-            tint: edge.hasErrors ? Theme.Status.critical : Theme.accent,
-            title: edge.name,
-            subtitle: timings,
+            tint: span.isError ? Theme.Status.critical : Theme.accent,
+            title: span.name,
+            subtitle: span.serviceName,
             footnote: secondLine,
-            accessory: edge.hasErrors
-                ? .pill("\(edge.errorCount) err", Theme.Status.critical)
-                : .metric(TraceSpan.formatDuration(nanos: edge.p95Nanos))
+            isSubtitleMonospaced: true,
+            accessory: span.isError
+                ? .pill(span.status.title, Theme.Status.critical)
+                : .metric(span.formattedDuration)
         )
-        // Indentation is the only thing conveying nesting, so it is stated in
-        // the accessibility label too rather than left to the visual offset.
+        // Indentation is the only thing conveying nesting visually, so it is
+        // stated in the accessibility label too rather than left to the offset.
         .padding(.leading, CGFloat(depth) * 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
     }
 
-    private var timings: String {
-        var parts = [
-            "\(Double(edge.count).compactFormatted) calls",
-            "p50 \(TraceSpan.formatDuration(nanos: edge.p50Nanos))",
-        ]
-        // The error pill takes the trailing slot on a failing edge, so p95 —
-        // the number this tree is read for — moves inline rather than away.
-        if edge.hasErrors {
-            parts.append("p95 \(TraceSpan.formatDuration(nanos: edge.p95Nanos))")
-        }
-        return parts.joined(separator: " · ")
-    }
-
     private var secondLine: String {
-        var parts = ["Total \(TraceSpan.formatDuration(nanos: edge.totalDurationNanos))"]
+        var parts: [String] = []
+        // An erroring span spends its trailing slot on the status pill, so its
+        // duration is stated here instead.
+        if span.isError { parts.append(span.formattedDuration) }
         if let share = node.shareOfParent {
             parts.append("\(share.formatted(.percent.precision(.fractionLength(0...1)))) of parent")
+        } else if traceDuration > 0, !span.isRoot {
+            // No parent in the result to compare against, so the trace is the
+            // only honest denominator.
+            parts.append(
+                "\((Double(span.durationNanos) / Double(traceDuration)).formatted(.percent.precision(.fractionLength(0...1)))) of trace"
+            )
         }
-        if let calls = edge.callsPerParentInvocation {
-            parts.append("\(calls.formatted(.number.precision(.fractionLength(0...1))))× per call")
-        }
+        if node.isOrphan { parts.append("Parent not in result") }
+        if !span.matchedFilter { parts.append("Context") }
         return parts.joined(separator: " · ")
     }
 
     private var spokenSummary: String {
         var parts = [
-            "Depth \(depth), \(edge.name)",
-            "\(edge.count.formatted()) calls",
-            "p95 \(TraceSpan.formatDuration(nanos: edge.p95Nanos))",
-            "total \(TraceSpan.formatDuration(nanos: edge.totalDurationNanos))",
+            "Depth \(depth), \(span.name)",
+            span.serviceName,
+            span.formattedDuration,
+            span.status.title,
         ]
-        if edge.hasErrors { parts.append("\(edge.errorCount) errors") }
-        if let calls = edge.callsPerParentInvocation {
-            parts.append("\(calls.formatted(.number.precision(.fractionLength(0...1)))) calls per parent invocation")
+        if let share = node.shareOfParent {
+            parts.append("\(share.formatted(.percent.precision(.fractionLength(0...1)))) of its parent")
+        }
+        if node.isOrphan { parts.append("its parent span is not in this result") }
+        if !node.children.isEmpty {
+            parts.append("\(node.children.count) child span\(node.children.count == 1 ? "" : "s")")
         }
         return parts.joined(separator: ", ")
     }

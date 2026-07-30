@@ -25,6 +25,23 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         /// Oldest to newest. May be empty; the widget then draws no trend line
         /// rather than a straight one.
         public let sparkline: [Double]
+        /// The dashboard this metric was read from, so tapping a widget can land
+        /// on the screen that actually draws it.
+        ///
+        /// This app has no screen for a lone insight — it draws one only as a
+        /// tile on a dashboard, the same limit the link parser states when it
+        /// refuses `/insights/{id}`. The id is recorded at write time, where the
+        /// dashboard is already in hand and costs nothing; deriving it later
+        /// would mean a request, or a guess.
+        ///
+        /// `nil` means **unknown**, not "no dashboard": a snapshot written by an
+        /// older build has no such key. Callers route it to the dashboards home
+        /// rather than inventing a destination.
+        ///
+        /// Deliberately without a default in this initialiser. Every call site
+        /// is made to answer, because the failure mode of forgetting is silent —
+        /// the widget still opens, just one level short of where it promised.
+        public let dashboardID: Int?
 
         public init(
             id: String,
@@ -32,7 +49,8 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
             value: Double,
             unit: String?,
             previous: Double?,
-            sparkline: [Double]
+            sparkline: [Double],
+            dashboardID: Int?
         ) {
             self.id = id
             self.title = title
@@ -40,6 +58,7 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
             self.unit = unit
             self.previous = previous
             self.sparkline = sparkline
+            self.dashboardID = dashboardID
         }
     }
 
