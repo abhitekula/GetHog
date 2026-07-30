@@ -429,7 +429,6 @@ struct CardHeader: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 18)
-                    .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -443,6 +442,48 @@ struct CardHeader: View {
                 }
             }
             Spacer(minLength: 0)
+        }
+        // The symbol is chrome — it names nothing the title beside it does not
+        // already say — so it must not be a VoiceOver stop. It used to carry
+        // `.accessibilityHidden(true)` for that, and inside a dashboard tile
+        // **that modifier does nothing at all.**
+        //
+        // Measured through XCUITest on the demo dashboard's six tiles, counting
+        // elements whose label is the literal string `chart.xyaxis.line`:
+        //
+        // | header shape                                   | symbol stops | title stops |
+        // | ---------------------------------------------- | ------------ | ----------- |
+        // | `.accessibilityHidden(true)` (what shipped)     |            2 |           1 |
+        // | no modifier at all                              |            2 |           1 |
+        // | `.accessibilityElement(children: .ignore)`      |            2 |           1 |
+        // | `.accessibilityElement(children: .combine)`     |            2 |           2 |
+        // | `.accessibilityRepresentation`                  |        **0** |           1 |
+        //
+        // Hiding and not hiding produce the *same tree* — diffed whole, they
+        // match element for element and label for label, with only the pointer
+        // addresses different. That is the whole finding: the flag is not being
+        // lost somewhere, it is not being consulted at all.
+        // A tile's chart publishes an `AXChartDescriptor`, which keeps the
+        // button's label subtree a *container* rather than collapsing it to one
+        // leaf, and the container enumerates the rendered rows rather than
+        // SwiftUI's accessibility nodes — so a child's suppression never
+        // reaches it. `.ignore` fails for the same reason, and `.combine` makes
+        // it worse by adding a second stop carrying the title.
+        //
+        // This is the same class as the replay stage's WebKit leak, and it has
+        // the same answer: suppressing a subtree you do not own does not work,
+        // *replacing* it does. The replacement is deliberately the two lines
+        // this view draws and nothing else — the title has to survive, because
+        // it is the only thing in the header that says what the card is.
+        .accessibilityRepresentation {
+            if let subtitle {
+                VStack(alignment: .leading) {
+                    Text(title)
+                    Text(subtitle)
+                }
+            } else {
+                Text(title)
+            }
         }
     }
 }

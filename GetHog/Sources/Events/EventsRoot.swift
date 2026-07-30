@@ -61,9 +61,25 @@ final class EventsStore {
         guard !isPaging, !isLoading, !reachedEnd else { return }
         isPaging = true
         defer { isPaging = false }
-        _ = await fetchPage(
-            client: client, projectID: projectID, tokens: tokens, search: search
-        )
+
+        // Keeps going until it has rows to show or the pager is finished, for
+        // the same reason `reload` does: a page that came back empty *widened
+        // the window* rather than declaring the end, and nothing schedules the
+        // request that widening implies. The footer's `.task` fires once per
+        // appearance, so a single fetch could leave the feed asking for more
+        // and nobody asking again — which is precisely how the spinner outlived
+        // the request that justified it.
+        //
+        // **Cost.** At worst one request per rung of `EventFeedPager.windows`,
+        // and only while there is nothing to show for them; a page that returns
+        // rows returns here immediately.
+        repeat {
+            let before = events.count
+            guard await fetchPage(
+                client: client, projectID: projectID, tokens: tokens, search: search
+            ) else { return }
+            if events.count > before { return }
+        } while !pager.isExhausted
     }
 
     /// One page. Returns whether it succeeded, so `reload` stops widening after
@@ -303,9 +319,33 @@ struct EventsRoot: View {
             }
 
             if !store.reachedEnd {
+                // A spinner only while a request is actually in flight.
+                //
+                // It used to spin whenever the feed had not reached its end,
+                // which is not the same fact: the footer's `.task` runs once per
+                // appearance, so the moment a page came back short the screen
+                // held an animation over a request nobody was going to make. A
+                // view that animates forever means the app never quiesces, and
+                // XCUITest waits for quiescence on every launch and every query
+                // — measured, the third consecutive launch on this tab ended the
+                // run rather than failing an assertion.
+                //
+                // The button is not just somewhere to put the idle state. Scroll
+                // position was the only thing that could ask for another page,
+                // and scroll position is not something a VoiceOver or Full
+                // Keyboard Access user has — so until now the feed's second page
+                // was unreachable for them.
                 HStack {
                     Spacer()
-                    ProgressView()
+                    if store.isPaging {
+                        ProgressView()
+                    } else {
+                        Button("Load older events") { Task { await loadMore() } }
+                            .font(.footnote)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.accent)
+                            .minimumHitTarget()
+                    }
                     Spacer()
                 }
                 .task { await loadMore() }

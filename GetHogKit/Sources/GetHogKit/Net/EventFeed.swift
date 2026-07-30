@@ -50,8 +50,15 @@ public struct EventCursor: Sendable, Equatable, Hashable {
 /// a page can come back short because there is nothing older, or because this
 /// particular window is thin. Those are different facts. Concluding "end of the
 /// feed" from a short page would be the app asserting something the response
-/// never said, so a short page widens the window instead, and only the widest
-/// window is allowed to settle the question.
+/// never said, so a short page widens the window instead, and the widest window
+/// is what finally settles the question.
+///
+/// With one exception, and it is the one that matters for whether the feed ever
+/// stops: widening only makes sense while the *cursor* is still moving. A
+/// response that hands back rows without a resume point past the one it was
+/// given has already said it can go no further, and asking it again over a wider
+/// floor is a loop, not a search. `advance(rowCount:limit:cursor:)` treats that
+/// as the end at any rung.
 public struct EventFeedPager: Sendable, Equatable {
 
     /// Ascending. The first rung is the common case and the cheapest query; the
@@ -81,10 +88,33 @@ public struct EventFeedPager: Sendable, Equatable {
     }
 
     /// Records what a page returned and decides where the next one starts.
+    ///
+    /// A page that does not fill its limit can mean three different things, and
+    /// the old code collapsed two of them into "widen and ask again":
+    ///
+    /// - **Short or empty, but the resume point moved on.** The window was thin.
+    ///   Widen and ask again from the same cursor; the lower floor covers
+    ///   strictly more ground without re-returning anything already shown.
+    /// - **Empty.** Same conclusion, and there is no resume point to move: no
+    ///   rows *in this window* is not evidence of no rows at all.
+    /// - **Rows came back, but the resume point did not move past the one this
+    ///   request carried.** That is the end, whatever rung the window is on. The
+    ///   next request would be this request: keyset paging resumes from the
+    ///   cursor, so a response that hands back the same cursor — or none at all
+    ///   — has said it cannot go further, and a wider floor cannot change that.
+    ///   Widening here is an infinite loop with a spinner on top, and it is what
+    ///   the events feed did: the demo fixture answers every request with the
+    ///   same five rows and no `uuid` column, so the pager widened to its last
+    ///   rung, `isExhausted` stayed false, and the footer promised more forever.
     public mutating func advance(rowCount: Int, limit: Int, cursor: EventCursor?) {
-        if let cursor { self.cursor = cursor }
+        // Asked before the cursor is adopted, because the question is whether
+        // *this* response moved past the point it was given.
+        let resumed = Self.resumes(cursor, past: self.cursor)
+        if resumed, let cursor { self.cursor = cursor }
 
-        if rowCount >= limit {
+        if rowCount > 0 && !resumed {
+            isExhausted = true
+        } else if rowCount >= limit {
             // Dense again: go back to the cheapest window rather than carrying a
             // wide one forward for the rest of the session.
             windowIndex = 0
@@ -96,6 +126,24 @@ public struct EventFeedPager: Sendable, Equatable {
         } else {
             isExhausted = true
         }
+    }
+
+    /// Whether a page's resume point is genuinely further back than the one the
+    /// request carried.
+    ///
+    /// The timestamp is compared and the uuid is only checked for *difference*,
+    /// never ordered. A ClickHouse `UUID` does not compare as its string, so an
+    /// order imposed here could disagree with the `ORDER BY` that produced the
+    /// page — the same reason `eventCursor()` points at the server's last row
+    /// instead of recomputing a minimum. Within one timestamp the server's
+    /// ordering is the only one that exists, so "a different row" is as much as
+    /// the client can honestly say, and it is enough: the case this has to catch
+    /// is a response handing back the *identical* pair it was given.
+    private static func resumes(_ page: EventCursor?, past sent: EventCursor?) -> Bool {
+        guard let page else { return false }
+        guard let sent else { return true }
+        if page.timestamp != sent.timestamp { return page.timestamp < sent.timestamp }
+        return page.uuid != sent.uuid
     }
 
     /// Back to the first page. This is what a pull-to-refresh and each live-tail

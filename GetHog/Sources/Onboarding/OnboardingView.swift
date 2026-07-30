@@ -71,11 +71,25 @@ struct OnboardingView: View {
             Spacer(minLength: 24)
 
             VStack(spacing: 20) {
+                // A generic SF Symbol, deliberately — no PostHog logo or
+                // wordmark appears anywhere in this app — and hidden, because
+                // the wordmark directly beneath it already names the app.
+                //
+                // Without the hiding this was the *first thing VoiceOver said on
+                // first launch*: "chart.xyaxis.line". `AboutView` draws the same
+                // glyph for the same reason and has always hidden it; this one
+                // was simply missed, and no test could have caught it, because
+                // every screen in the audit sweep is reached through demo mode
+                // and demo mode supplies a credential that puts the app straight
+                // past onboarding. `AccessibilityAuditTests.testOnboarding` is
+                // the case that closes that, and it has to launch without
+                // `-GetHogDemo` to do it.
                 Image(systemName: "chart.xyaxis.line")
                     .font(.system(size: 52, weight: .medium))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 104, height: 104)
                     .background(Theme.accent.opacity(0.12), in: .rect(cornerRadius: 26))
+                    .accessibilityHidden(true)
 
                 VStack(spacing: 10) {
                     Text("GetHog")
@@ -107,7 +121,37 @@ struct OnboardingView: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    .accessibilityElement(children: .combine)
+                    // Replaced rather than combined, and the difference is
+                    // measured rather than stylistic.
+                    //
+                    // `.accessibilityElement(children: .combine)` was here, and
+                    // it *did* fold the two `Text`s into one label — while
+                    // leaving all three children in the tree underneath it. Two
+                    // of the three rows therefore published a stop labelled
+                    // `rectangle.stack` and `lock.shield`; the third read "Grid
+                    // View", because SF Symbols ships a description for that
+                    // glyph and not for the others, which is the only reason it
+                    // looked fine. Adding `.accessibilityHidden(true)` to the
+                    // image changed nothing at all: measured before and after,
+                    // both glyphs were still there.
+                    //
+                    // Combining makes this row a *container*, and a container's
+                    // children are enumerated from what was rendered rather than
+                    // from SwiftUI's accessibility nodes — so a child's
+                    // suppression is never consulted. The dashboard tile has the
+                    // same defect for the same reason, from a different cause
+                    // (a chart's `AXChartDescriptor`), and takes the same
+                    // answer: replace the subtree, do not try to edit it.
+                    //
+                    // The replacement says exactly what `.combine` said, so the
+                    // row still reads as one stop with both lines in it.
+                    .accessibilityRepresentation {
+                        VStack {
+                            Text(item.title)
+                            Text(item.detail)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
                 }
             }
 
