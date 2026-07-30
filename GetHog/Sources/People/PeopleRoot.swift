@@ -102,10 +102,29 @@ struct PeopleRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    @Environment(OpenDetails.self) private var openDetails
+
     @State private var store = PeopleStore()
     @State private var segment: PeopleStore.Segment = .persons
     @State private var search = ""
-    @State private var selection: PersonSummary?
+
+    /// The open person, and deliberately **not** `@State`.
+    ///
+    /// This screen is one of the 27 reached through the search tab, so it is
+    /// hosted by a sidebar `Tab` above the size-class boundary and by the search
+    /// stack below it — see `OpenDetails`. Crossing the boundary rebuilds the
+    /// screen in the other host, which threw `@State` away: measured at
+    /// 834→375→834pt on iPad Pro 11 M5 with a person open, `navigationBars` went
+    /// `["nina.drill.0729@example.com", "People"]` → `["People"]` → an *unnamed*
+    /// detail, against Dashboards — a primary tab, one host at both widths —
+    /// holding `["My App Dashboard", "Dashboards"]` across the identical drag.
+    private var selection: Binding<PersonSummary?> {
+        Binding(
+            get: { openDetails[.people] as? PersonSummary },
+            set: { openDetails[.people] = $0.map(AnyHashable.init) }
+        )
+    }
 
     // In compact width the index behind "More" owns the navigation stack (see
     // `RootView`). A `NavigationSplitView` here collapses into a stack of its
@@ -115,7 +134,14 @@ struct PeopleRoot: View {
     var body: some View {
         if sizeClass == .compact {
             sidebar
-                .navigationDestination(for: PersonSummary.self) { person in
+                // Bound to `selection`, not registered `for: PersonSummary.self`.
+                // A `for:` destination is driven by values the `NavigationLink`
+                // appends to the *container's* path, which this screen can
+                // neither read nor write — so the person open at 834pt could not
+                // be put back on the stack at 375pt, and the person open at
+                // 375pt was invisible to the detail column at 834pt. Bound to
+                // the selection, one piece of state serves both.
+                .navigationDestination(item: selection) { person in
                     PersonDetailView(person: person)
                         .id(person.id)
                 }
@@ -146,9 +172,9 @@ struct PeopleRoot: View {
     /// outcomes, and a grid of zeroes would misreport either one.
     @ViewBuilder
     private var detailPane: some View {
-        if let selection {
-            PersonDetailView(person: selection)
-                .id(selection.id)
+        if let person = selection.wrappedValue {
+            PersonDetailView(person: person)
+                .id(person.id)
         } else if !model.isAvailable(.dashboards) {
             LockedCapabilityView(
                 capability: .dashboards,
@@ -185,21 +211,9 @@ struct PeopleRoot: View {
                 cohortsLoadedAt: store.cohortsLoadedAt,
                 search: search,
                 loadedAt: store.personsLoadedAt,
-                selection: $selection
+                selection: selection
             )
         }
-    }
-
-    /// `nil` in compact width, and that is load-bearing.
-    ///
-    /// A selection binding makes the `List` claim the row tap: the
-    /// `NavigationLink` sets `selection` instead of pushing. A
-    /// `NavigationSplitView` is what turns that selection into a visible screen,
-    /// so the moment compact width stopped using one, tapping a person
-    /// highlighted the row and did nothing at all — measured on device. Without
-    /// the binding the link keeps the tap and pushes onto the container's stack.
-    private var listSelection: Binding<PersonSummary?>? {
-        sizeClass == .compact ? nil : $selection
     }
 
     private var sidebar: some View {
@@ -297,7 +311,14 @@ struct PeopleRoot: View {
                     : "No person matched “\(search)”."
             )
         } else {
-            List(selection: listSelection) {
+            // Selection-driven at *both* widths, which is the delicate part.
+            // Handing the `List` a binding makes it claim the row tap: the
+            // `NavigationLink` sets `selection` rather than pushing, so
+            // something else has to turn that selection into a visible screen.
+            // Compact width used to pass `nil` here for exactly that reason;
+            // it now has a display of its own — `navigationDestination(item:)`
+            // in `body` — so the binding is what both widths read.
+            List(selection: selection) {
                 Section {
                     ForEach(store.persons, id: \.self) { person in
                         NavigationLink(value: person) { PersonRowView(person: person) }
