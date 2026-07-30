@@ -125,13 +125,28 @@ public enum PostHogAPI {
 
     // MARK: - Replay snapshots
     //
-    // These live under `/environments/`, not `/projects/`, and PostHog documents
-    // them as internal and subject to change. Everything that touches them is
-    // isolated so a break degrades the player and nothing else.
+    // PostHog documents these as internal and subject to change, so everything
+    // that touches them is isolated and a break degrades the player alone.
+    //
+    // They used to be reached under `/api/environments/`. That alias is now
+    // deprecated and PostHog advertises the date in its own response headers:
+    //
+    //     deprecation: true
+    //     sunset: Fri, 31 Jul 2026 00:00:00 GMT
+    //     link: </api/projects/{id}/session_recordings/{id}/snapshots>;
+    //           rel="successor-version"
+    //
+    // Verified before switching: the `/api/projects/` form returns byte-identical
+    // data — same `application/jsonl` stream, same `cv:"2024-10"` gzip-in-string
+    // encoding — and carries no deprecation headers. The OpenAPI document lists
+    // 141 project-scoped families and none under `/api/environments/` at all.
+    //
+    // Caught by a routine research pass one day before the sunset date, not by a
+    // failure. Nothing in the app would have said why playback had stopped.
 
     public static func snapshotSources(projectID: Int, recordingID: String) -> Endpoint {
         Endpoint(
-            path: "/api/environments/\(projectID)/session_recordings/\(recordingID)/snapshots",
+            path: "/api/projects/\(projectID)/session_recordings/\(recordingID)/snapshots",
             category: .analytics
         )
     }
@@ -142,7 +157,7 @@ public enum PostHogAPI {
         range: BlobRange
     ) -> Endpoint {
         Endpoint(
-            path: "/api/environments/\(projectID)/session_recordings/\(recordingID)/snapshots",
+            path: "/api/projects/\(projectID)/session_recordings/\(recordingID)/snapshots",
             query: [
                 URLQueryItem(name: "source", value: "blob_v2"),
                 URLQueryItem(name: "start_blob_key", value: range.start),
