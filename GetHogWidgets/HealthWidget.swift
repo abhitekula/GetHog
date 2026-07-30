@@ -76,7 +76,7 @@ struct HealthWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: Self.kind, provider: HealthProvider()) { entry in
             HealthWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Project Health")
         .description("Ingestion warnings and quota from your last sync. GetHog refreshes it — the widget never calls the API itself.")

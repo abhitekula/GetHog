@@ -70,6 +70,12 @@ targets:
       # BiometricGate are the only app-target symbols they depend on.
       - path: GetHog/Sources/Intents
       - path: GetHog/Sources/Flags/FlagToggleController.swift
+      # The one design token file. Two places had hand-copied `Theme.accent`'s
+      # literals under a comment saying importing it here was impossible; it
+      # never was — `Theme.swift` imports only SwiftUI and UIKit and depends on
+      # nothing else in the app target. Compiling it here is what lets a widget
+      # and the app that owns it be the same colour by construction.
+      - path: GetHog/Sources/Common/Theme.swift
     dependencies:
       - package: GetHogKit
     settings:

@@ -5,19 +5,26 @@ import WidgetKit
 
 // MARK: - Palette
 
-/// A deliberately tiny local palette.
+/// The app's palette, narrowed to the four roles a widget has room for.
 ///
-/// The app's `Theme` lives in the app target and is built for full-colour
-/// screens with room to breathe; importing it here is impossible anyway, and
-/// copying it would be wrong. Widgets are small, are often rendered
-/// monochrome, and must survive being tinted by the system.
+/// This used to be four *system* colours under a comment claiming the app's
+/// `Theme` could not be reached from an extension target. It could: `Theme.swift`
+/// imports only SwiftUI and UIKit, and `project.yml` now compiles it here. The
+/// claim had a real cost — `accent` was `Color.orange`, which is the one hue the
+/// app rules out by name, for trademark distance from PostHog's own brand. A
+/// widget sits on the Home Screen with no app around it to give it context, so
+/// it is the *last* surface that can afford to be a different colour from the
+/// app it belongs to.
 ///
-/// Every colour below is decoration. Direction, state and value are always also
-/// carried by a glyph and by text, because on the Lock Screen the rendering mode
-/// is `.vibrant` or `.accented` and hue is simply discarded.
+/// The text-weight `Ink` partners rather than the marks, because every use here
+/// is a glyph or a number rather than a fill.
+///
+/// Every colour below is still decoration. Direction, state and value are always
+/// also carried by a glyph and by text, because on the Lock Screen the rendering
+/// mode is `.vibrant` or `.accented` and hue is simply discarded.
 enum WidgetPalette {
-    static let accent = Color.orange
-    static let positive = Color.green
+    static let accent = Theme.Status.accentInk
+    static let positive = Theme.Status.goodInk
     static let neutral = Color.secondary
 
     /// Direction is deliberately *not* painted green-good / red-bad.
@@ -64,7 +71,7 @@ enum WidgetPalette {
         }
     }
 
-    static let critical = Color.red
+    static let critical = Theme.Status.criticalInk
 }
 
 // MARK: - Formatting

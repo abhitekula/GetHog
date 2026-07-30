@@ -398,25 +398,6 @@ enum IntentValueFormat {
 
 // MARK: - Snippet views
 
-/// The app accent, restated.
-///
-/// **Keep in sync with `Theme.accent` by hand.** This is not preference: this
-/// whole directory is compiled into `GetHogWidgets` as well as the app (see
-/// `project.yml`), and that extension target's sources are only `GetHogWidgets`,
-/// `GetHog/Sources/Intents` and `FlagToggleController.swift` — it does not
-/// include `GetHog/Sources/Common`, so `Theme` does not exist here and naming
-/// it breaks the extension build, which breaks the app bundle with it.
-///
-/// The values are `Theme.accent`'s, resolved the same way so light and dark
-/// still come free.
-private enum SnippetStyle {
-    static let accent = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.243, green: 0.773, blue: 0.808, alpha: 1)  // #3EC5CE
-            : UIColor(red: 0.043, green: 0.431, blue: 0.459, alpha: 1)  // #0B6E75
-    })
-}
-
 struct MetricSnippetView: View {
     let metric: IntentMetric
 
@@ -445,12 +426,12 @@ struct MetricSnippetView: View {
 
             if !metric.series.isEmpty {
                 IntentSparkline(values: metric.series)
-                    .stroke(SnippetStyle.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .frame(height: 48)
                     .frame(maxWidth: .infinity)
                     .background(alignment: .bottom) {
                         IntentSparkline(values: metric.series, closed: true)
-                            .fill(SnippetStyle.accent.opacity(0.15))
+                            .fill(Theme.accent.opacity(0.15))
                     }
                     // A sparkline is decoration on top of the number that is
                     // already spoken; VoiceOver gets the summary, not the shape.

@@ -163,7 +163,15 @@ struct MetricWidget: Widget {
             MetricWidgetView(entry: entry)
                 // Required from iOS 17: without it the widget draws its own
                 // background and the system renders it clipped and inset wrong.
-                .containerBackground(.fill.tertiary, for: .widget)
+                //
+                // The app's card tone rather than `.fill.tertiary`. A widget is
+                // a card floating on the wallpaper, which is the same thing a
+                // card is in the app, and it is the ground `Theme.Status`'s ink
+                // tokens were actually measured against — 5.70:1 on card. The
+                // system fill was never in that table. On the accessory families
+                // the system discards the background and renders vibrant, so
+                // this only takes effect where it was chosen.
+                .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Metric")
         .description("A metric from your last sync. GetHog refreshes it — the widget never calls the API itself.")

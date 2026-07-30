@@ -176,7 +176,7 @@ struct FlagWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: Self.kind, intent: SelectFlagIntent.self, provider: FlagProvider()) { entry in
             FlagWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Feature Flag")
         .description("Shows a flag's state and asks GetHog to change it. Only flags you allow quick toggling for appear here.")
