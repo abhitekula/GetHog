@@ -97,19 +97,16 @@ enum BackgroundRefresh {
 
         let work = Task { @MainActor in
             let refreshed = await model.performBackgroundRefresh(now: now)
-            // The expiration handler has already completed the task; calling
-            // `setTaskCompleted` twice traps.
-            guard !Task.isCancelled else { return }
-            task.setTaskCompleted(success: refreshed)
+            // An expired wake reports failure even if it happened to finish:
+            // it did not do what it promised inside the time it was given, and
+            // saying otherwise skews the scheduler's model of this app.
+            task.setTaskCompleted(success: refreshed && !Task.isCancelled)
         }
 
-        task.expirationHandler = {
-            // Seconds from termination. Cancellation unwinds the in-flight
-            // request, and the wake is reported as unsuccessful rather than left
-            // hanging — an unfinished task costs the app its future wakes.
-            work.cancel()
-            task.setTaskCompleted(success: false)
-        }
+        // Only cancels. Completion stays on the one path above — `BGTask`
+        // tolerates exactly one `setTaskCompleted`, and an expiration handler
+        // that also completes races the work it just cancelled.
+        task.expirationHandler = { work.cancel() }
     }
 }
 

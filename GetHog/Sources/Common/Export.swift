@@ -149,6 +149,9 @@ struct InsightCSVDocument: FileDocument {
         self.insight = insight
     }
 
+    /// Unreachable while `readableContentTypes` is empty, and required by the
+    /// protocol regardless. Throwing beats a stub that would silently invent an
+    /// empty insight if the type ever became readable.
     init(configuration: ReadConfiguration) throws {
         throw CocoaError(.fileReadUnsupportedScheme)
     }

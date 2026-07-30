@@ -68,6 +68,11 @@ private struct SheetInsightDetail: View {
 
     var body: some View {
         InsightDetailView(tile: tile, webURL: webURL, onClose: onClose)
+            // Its own exporter, not the one at the window root. This screen is
+            // presented as a sheet on iPhone, and asking the root to raise a
+            // file picker over a live sheet is a nested presentation SwiftUI can
+            // simply decline — the menu item would do nothing at all.
+            .insightCSVExporter()
     }
 
     private var webURL: URL? {
