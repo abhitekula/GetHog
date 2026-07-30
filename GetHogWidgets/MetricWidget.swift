@@ -85,6 +85,11 @@ struct MetricEntry: TimelineEntry {
     /// The configured metric first, then the rest — the multi-metric families
     /// read straight off this list.
     let metrics: [SharedSnapshot.Metric]
+    /// Computed in the provider, where the user's watch list is one App Group read
+    /// away, rather than here: an entry is a value WidgetKit copies around and
+    /// re-reads, and touching the file system from a property it reads would turn
+    /// one file read into one per render.
+    let relevanceScore: Float
 
     var primary: SharedSnapshot.Metric? { metrics.first }
     var hasData: Bool { capturedAt != nil && !metrics.isEmpty }
@@ -93,17 +98,29 @@ struct MetricEntry: TimelineEntry {
     var isEmptyProject: Bool { capturedAt != nil && metrics.isEmpty }
     var freshness: WidgetFreshness { WidgetFreshness(capturedAt: capturedAt, now: date) }
 
+    /// What this entry claims in a Smart Stack. See `HealthEntry.relevance` for
+    /// why the duration is a step rather than the default zero.
+    var relevance: TimelineEntryRelevance? {
+        TimelineEntryRelevance(score: relevanceScore, duration: WidgetRefresh.step)
+    }
+
+    /// Zero for both, and deliberately. These feed the gallery and the redacted
+    /// placeholder, which are not a ranking — a sample that claimed urgency would
+    /// be this widget arguing for the top of a stack on data belonging to nobody.
     static func sample(at date: Date = Date()) -> MetricEntry {
         MetricEntry(
             date: date,
             projectName: WidgetCache.sample.projectName,
             capturedAt: date,
-            metrics: WidgetCache.sample.metrics
+            metrics: WidgetCache.sample.metrics,
+            relevanceScore: 0
         )
     }
 
     static func empty(at date: Date = Date()) -> MetricEntry {
-        MetricEntry(date: date, projectName: "GetHog", capturedAt: nil, metrics: [])
+        MetricEntry(
+            date: date, projectName: "GetHog", capturedAt: nil, metrics: [], relevanceScore: 0
+        )
     }
 }
 
@@ -127,15 +144,19 @@ struct MetricProvider: AppIntentTimelineProvider {
         // "Updated Xm ago" line stays truthful without another provider call.
         // See `WidgetRefresh` for why this is not a 15-minute reload loop.
         let snapshot = WidgetCache.snapshot()
+        // Read once for the whole timeline, alongside the snapshot, for the same
+        // reason: four entries built from one pair of file reads.
+        let watches = WidgetCache.metricWatches()
         return WidgetRefresh.timeline(from: now) { date in
-            entry(for: configuration, at: date, snapshot: snapshot)
+            entry(for: configuration, at: date, snapshot: snapshot, watches: watches)
         }
     }
 
     private func entry(
         for configuration: SelectMetricIntent,
         at date: Date,
-        snapshot: SharedSnapshot? = WidgetCache.snapshot()
+        snapshot: SharedSnapshot? = WidgetCache.snapshot(),
+        watches: [MetricWatch] = WidgetCache.metricWatches()
     ) -> MetricEntry {
         guard let snapshot else { return .empty(at: date) }
         let chosen = configuration.metric?.id
@@ -147,7 +168,15 @@ struct MetricProvider: AppIntentTimelineProvider {
             date: date,
             projectName: snapshot.projectName,
             capturedAt: snapshot.capturedAt,
-            metrics: ordered
+            metrics: ordered,
+            // Scored against the configured metric — `ordered.first` — because
+            // that is the one every family leads with and the only one the small
+            // and accessory families draw at all. The score decays with `date`, so
+            // the four entries in a timeline rank lower as the snapshot behind
+            // them ages, without the provider being woken to say so.
+            relevanceScore: SnapshotRelevance.metric(
+                ordered.first, in: snapshot, watches: watches, now: date
+            )
         )
     }
 }

@@ -25,6 +25,27 @@ struct HealthEntry: TimelineEntry {
     var headline: String { snapshot?.healthHeadline ?? "Not synced yet" }
     var detail: String { snapshot?.healthDetail ?? "Open GetHog to sync" }
 
+    /// What this entry claims in a Smart Stack.
+    ///
+    /// This is the widget the rotation exists for: a card that spends most of its
+    /// life saying "nothing to report" is exactly the card you want promoted on
+    /// the morning a quota blocks or an ingestion error starts, and buried on
+    /// every other morning. `SnapshotRelevance.health` returns a hard zero for
+    /// both `.clear` and `.unchecked` for that reason, so the promotion is spent
+    /// on a finding rather than on this widget's existence.
+    ///
+    /// A `duration` of one timeline step rather than the default. The default —
+    /// zero — means "valid until the next entry", and the *last* entry in a
+    /// timeline has no next entry: if WidgetKit is late calling the provider back,
+    /// a stale alarm would keep its rank indefinitely. Expiring with the step
+    /// makes a claim lapse into silence rather than into a lie.
+    var relevance: TimelineEntryRelevance? {
+        TimelineEntryRelevance(
+            score: SnapshotRelevance.health(snapshot, now: date),
+            duration: WidgetRefresh.step
+        )
+    }
+
     /// Verdict, fact, scope and age, in that order — the same order the visual
     /// hierarchy puts them in, so VoiceOver and sight agree.
     var spokenLabel: String {

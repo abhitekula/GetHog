@@ -106,15 +106,20 @@ extension View {
     /// The compact branch is a sheet rather than a push because the grid is not
     /// a list — there is no navigation stack here to push onto, and a modal
     /// keeps the tile the user tapped one dismissal away.
-    func insightDetail(tile: Binding<Tile?>, isWide: Bool) -> some View {
-        modifier(InsightDetailPresentation(tile: tile, isWide: isWide))
+    ///
+    /// `namespace` is the grid's, not this modifier's: see `tileTransition`.
+    func insightDetail(tile: Binding<Tile?>, isWide: Bool, in namespace: Namespace.ID) -> some View {
+        modifier(InsightDetailPresentation(tile: tile, isWide: isWide, namespace: namespace))
     }
 }
 
 private struct InsightDetailPresentation: ViewModifier {
     @Binding var tile: Tile?
     let isWide: Bool
+    /// Where the grid registered its tiles as transition sources.
+    let namespace: Namespace.ID
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         if isWide {
@@ -148,14 +153,46 @@ private struct InsightDetailPresentation: ViewModifier {
             // cannot both be afforded, and the dashboard list is the one you do
             // not need while reading a single chart.
             .preference(key: InsightPanelOpenKey.self, value: tile != nil)
+            // No zoom on this branch, and no attempt to build one. A zoom
+            // transition is a property of a *presentation* — a push, a sheet, a
+            // full-screen cover — and this branch presents nothing: the panel is
+            // a second view in an `HStack`, deliberately, because everything that
+            // does present here dims and clips the grid it is supposed to sit
+            // beside. Reshaping that into a presentation to earn an animation
+            // would trade the layout for the effect.
         } else {
             content.sheet(item: $tile) { tile in
                 // The sheet has room for a real navigation bar, so it uses one
                 // rather than the panel's hand-drawn header.
-                NavigationStack {
-                    SheetInsightDetail(tile: tile) { self.tile = nil }
+                zoomed(from: tile.id) {
+                    NavigationStack {
+                        SheetInsightDetail(tile: tile) { self.tile = nil }
+                    }
                 }
             }
+        }
+    }
+
+    /// The destination half of the zoom, when the reader wants motion.
+    ///
+    /// Two branches rather than a ternary because there is no ternary to write:
+    /// `.zoom(sourceID:in:)` and `.automatic` are different concrete
+    /// `NavigationTransition` types, so the choice has to be made in the view
+    /// tree and not in the argument.
+    ///
+    /// Reduce Motion drops back to the sheet's own slide, which is what this
+    /// screen did before and is still a transition — the setting asks for less
+    /// motion, not for none, and a detail that simply appeared would lose the
+    /// spatial cue rather than soften it. This matches how the rest of the app
+    /// reads the same setting: `InsightChartView` passes `nil` to `.animation`
+    /// for its zoom and selection, and `ReplayPlayerView` turns the player's
+    /// mouse tail off, in both cases leaving the underlying change in place.
+    @ViewBuilder
+    private func zoomed(from sourceID: Int, @ViewBuilder content: () -> some View) -> some View {
+        if reduceMotion {
+            content()
+        } else {
+            content().navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         }
     }
 }

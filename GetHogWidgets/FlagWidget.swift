@@ -125,6 +125,28 @@ struct ToggleFlagFromWidgetIntent: AppIntent, SetValueIntent {
 
 // MARK: - Timeline
 
+/// Deliberately without a `relevance`, unlike the metric and health entries.
+///
+/// Both of those score themselves for the Smart Stack out of something that
+/// changes: a verdict that turns critical, a number that crosses a line the user
+/// drew. A flag has neither. `active` is a steady state, not an event — a flag
+/// that has been on for three weeks is exactly as newsworthy today as it was
+/// yesterday — and the snapshot carries no history to say when it last changed.
+///
+/// Everything that looked like a signal here was checked and rejected. A
+/// `PendingFlagWrite` awaiting the app is real, but `AppModel.consumePendingIntentWork`
+/// clears it on the very next foreground, and the toggle that writes it opens the
+/// app immediately — so the window it exists in is too short for a widget timeline
+/// to observe, and a score built on it would fire approximately never while
+/// reading as though it did something. Staleness is real too, and points the wrong
+/// way: promoting a card *because* its data is old is an argument for showing the
+/// user something less trustworthy, not more.
+///
+/// So this entry claims nothing, which leaves `TimelineEntry.relevance` at its
+/// `nil` default. That is a stronger statement than a score of zero and a much
+/// stronger one than a constant: a constant relevance is a widget telling the
+/// system it matters without ever saying when, which is the one thing this API
+/// cannot be used for honestly.
 struct FlagEntry: TimelineEntry {
     let date: Date
     let flag: SharedSnapshot.Flag?

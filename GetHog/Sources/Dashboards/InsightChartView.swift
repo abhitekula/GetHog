@@ -881,7 +881,7 @@ struct BarValueChart: View {
         VStack(alignment: .leading, spacing: 6) {
             // The label column is bounded against the width the tile grants.
             // These labels are free text — domains, URLs, breakdown values — and
-            // left to size itself the axis pushed "aparajita-ananth.example product.live"
+            // left to size itself the axis pushed "guinevere-horace.example.net"
             // straight off the trailing edge of the tile, with "www.google."
             // overlapping the row below. Held to a share of the width, an
             // over-long label truncates inside its own box instead.
@@ -922,7 +922,7 @@ struct BarValueChart: View {
                         .font(.caption2)
                         .lineLimit(2)
                         // Middle, because either end can be the distinguishing
-                        // part: a tail truncation loses "…example product.live" from one
+                        // part: a tail truncation loses "…example.net" from one
                         // domain and leaves "www.google." indistinguishable from
                         // the next.
                         .truncationMode(.middle)

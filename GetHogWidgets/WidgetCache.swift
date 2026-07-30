@@ -30,6 +30,17 @@ enum WidgetCache {
         snapshot()?.quickToggleFlags ?? []
     }
 
+    /// The user's metric watches, read for Smart Stack ranking only.
+    ///
+    /// The extension never evaluates a watch for *delivery* — that belongs to the
+    /// app, which owns the notification centre and the breach latch that keeps a
+    /// single incident from being announced every two hours. All this read buys is
+    /// the answer to "did the user ask to be told about this number", which is the
+    /// strongest signal available for whether the widget deserves the top of a
+    /// stack. See `SnapshotRelevance.isBreaching`, which is careful to ask that
+    /// question without touching the latch.
+    static func metricWatches() -> [MetricWatch] { store.metricWatches() }
+
     static func quickToggleFlag(id: Int?) -> SharedSnapshot.Flag? {
         let candidates = quickToggleFlags()
         guard let id else { return candidates.first }

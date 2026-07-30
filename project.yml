@@ -100,12 +100,36 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTests
         GENERATE_INFOPLIST_FILE: YES
 
+  # Accessibility regressions are invisible to the unit tests: every one of them
+  # is a fact about the *rendered* tree — how many elements a web view leaks, how
+  # big a tap target ends up, whether a card carries the button trait — and none
+  # of those exist until the view is on a screen. Each defect pinned here was
+  # first found by hand-building a throwaway XCUITest harness, which is a
+  # measurement nobody repeats.
+  #
+  # Driven entirely in demo mode (`-GetHogDemo`), so a run is deterministic
+  # and never spends the organisation's shared rate-limit budget.
+  GetHogUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - GetHogUITests
+    dependencies:
+      - target: GetHog
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GetHog
+
 schemes:
   GetHog:
     build:
       targets:
         GetHog: all
         GetHogTests: [test]
+        GetHogUITests: [test]
     test:
       targets:
         - GetHogTests
+        - GetHogUITests

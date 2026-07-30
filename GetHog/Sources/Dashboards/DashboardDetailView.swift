@@ -142,6 +142,17 @@ struct DashboardDetailView: View {
     @State private var range: DashboardRange = .saved
     @State private var compare = false
 
+    /// Pairs each tile with the detail it opens, so the card grows into the
+    /// screen it becomes instead of the screen arriving from off-stage.
+    ///
+    /// Declared here rather than inside `InsightDetailPresentation` because the
+    /// two ends live on opposite sides of that modifier: the source is a card in
+    /// the grid this view owns, and the destination is presented by a modifier
+    /// applied to it. A `@Namespace` in the modifier would be a different
+    /// namespace from the one the cards registered in, and the transition would
+    /// silently fall back to a plain sheet — silently being the problem.
+    @Namespace private var tileTransition
+
     private var title: String {
         store.dashboard?.title ?? providedTitle ?? "Dashboard"
     }
@@ -163,7 +174,7 @@ struct DashboardDetailView: View {
 
     var body: some View {
         grid
-            .insightDetail(tile: $selectedTile, isWide: sizeClass == .regular)
+            .insightDetail(tile: $selectedTile, isWide: sizeClass == .regular, in: tileTransition)
             .background(Theme.pageBackground)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -289,6 +300,19 @@ struct DashboardDetailView: View {
                             open: { selectedTile = tile }
                         )
                         .pointerHighlight()
+                        // The source half of the zoom. Registered unconditionally,
+                        // including under Reduce Motion and on iPad where the
+                        // detail is a side panel rather than a presentation: with
+                        // no destination naming this id, the modifier records a
+                        // frame nothing reads and changes neither the layout nor
+                        // the accessibility tree. Gating it as well as the
+                        // destination would be two switches for one behaviour, and
+                        // the wrong one to forget.
+                        .matchedTransitionSource(id: tile.id, in: tileTransition)
+                        // Outermost, and it has to stay outermost: `tileSpan` is a
+                        // `LayoutValueKey` that `MasonryLayout` reads off the
+                        // subview it is given, and a modifier applied after it is
+                        // what that subview becomes.
                         .tileSpan(
                             TileStyle.preferredColumns(
                                 for: store.overrides[tile.id] ?? tile.renderModel
