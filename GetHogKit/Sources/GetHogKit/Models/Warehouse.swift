@@ -381,7 +381,7 @@ public struct HogFunction: Sendable, Decodable, Identifiable, Hashable {
            let raw = try? nested.decodeIfPresent(Int.self, forKey: .state) {
             state = HogFunctionState(rawValue: raw) ?? .unknown
         } else if let raw = try? c.decodeIfPresent(Int.self, forKey: .status) {
-            state = HogFunctionState(rawValue: raw ?? 0) ?? .unknown
+            state = HogFunctionState(rawValue: raw) ?? .unknown
         } else {
             state = .unknown
         }

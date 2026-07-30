@@ -6,6 +6,7 @@ enum AppTab: String, Hashable, CaseIterable {
     case webAnalytics, people, sql
     case errorTracking
     case experiments, surveys
+    case llm, warehouse, pipelines
     case settings
 
     var title: String {
@@ -23,6 +24,9 @@ enum AppTab: String, Hashable, CaseIterable {
         case .errorTracking: "Errors"
         case .experiments: "Experiments"
         case .surveys: "Surveys"
+        case .llm: "LLM"
+        case .warehouse: "Warehouse"
+        case .pipelines: "Pipelines"
         case .settings: "Settings"
         }
     }
@@ -39,6 +43,9 @@ enum AppTab: String, Hashable, CaseIterable {
         case .errorTracking: "exclamationmark.triangle"
         case .experiments: "flask"
         case .surveys: "list.clipboard"
+        case .llm: "brain"
+        case .warehouse: "cylinder.split.1x2"
+        case .pipelines: "arrow.triangle.branch"
         case .settings: "gearshape"
         }
     }
@@ -94,6 +101,18 @@ struct RootView: View {
                 TabSection("Monitor") {
                     Tab(AppTab.errorTracking.title, systemImage: AppTab.errorTracking.systemImage, value: AppTab.errorTracking) {
                         ErrorTrackingRoot()
+                    }
+                    Tab(AppTab.llm.title, systemImage: AppTab.llm.systemImage, value: AppTab.llm) {
+                        LLMAnalyticsRoot()
+                    }
+                }
+
+                TabSection("Data") {
+                    Tab(AppTab.warehouse.title, systemImage: AppTab.warehouse.systemImage, value: AppTab.warehouse) {
+                        WarehouseRoot()
+                    }
+                    Tab(AppTab.pipelines.title, systemImage: AppTab.pipelines.systemImage, value: AppTab.pipelines) {
+                        PipelinesRoot()
                     }
                 }
 

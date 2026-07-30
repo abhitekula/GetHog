@@ -141,8 +141,7 @@ public struct LLMTrace: Sendable, Decodable, Identifiable, Hashable {
         requestCost = try c.decodeIfPresent(Double.self, forKey: .requestCost)
         totalCost = try c.decodeIfPresent(Double.self, forKey: .totalCost)
         // Also a SUM, so it arrives as 0.0 rather than 0.
-        let errors = (try? c.decodeIfPresent(Double.self, forKey: .errorCount)) ?? nil
-        errorCount = Int(errors ?? 0)
+        errorCount = Int((try? c.decodeIfPresent(Double.self, forKey: .errorCount)) ?? 0)
         events = (try? c.decodeIfPresent([LLMTraceEvent].self, forKey: .events)) ?? []
     }
 

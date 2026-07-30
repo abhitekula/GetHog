@@ -1,32 +1,20 @@
 import SwiftUI
 import WidgetKit
 
+/// Home Screen and Lock Screen widgets plus the iOS 18 Control Center controls.
+///
+/// Everything in this bundle renders from the `SharedSnapshot` the app writes to
+/// the App Group container. No surface here calls the PostHog API: rate limits
+/// are organisation-wide and shared with the user's own integrations, so N
+/// widgets fetching independently would spend a budget that isn't ours, from
+/// processes the user never launched. See `WidgetCache` for the full reasoning.
 @main
 struct GetHogWidgetBundle: WidgetBundle {
+
     var body: some Widget {
         MetricWidget()
-    }
-}
-
-/// Placeholder so the extension target builds; the real timeline provider and
-/// families land next.
-struct MetricWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "MetricWidget", provider: PlaceholderProvider()) { _ in
-            Text("GetHog")
-        }
-        .configurationDisplayName("Metric")
-        .description("A PostHog metric at a glance.")
-    }
-}
-
-struct PlaceholderProvider: TimelineProvider {
-    struct Entry: TimelineEntry { let date: Date }
-    func placeholder(in context: Context) -> Entry { Entry(date: .now) }
-    func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
-        completion(Entry(date: .now))
-    }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        completion(Timeline(entries: [Entry(date: .now)], policy: .never))
+        FlagWidget()
+        FlagControl()
+        OpenDashboardControl()
     }
 }

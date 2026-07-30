@@ -16,16 +16,22 @@ import WidgetKit
 /// carried by a glyph and by text, because on the Lock Screen the rendering mode
 /// is `.vibrant` or `.accented` and hue is simply discarded.
 enum WidgetPalette {
-    static let up = Color.green
-    static let down = Color.red
-    static let flat = Color.secondary
     static let accent = Color.orange
+    static let positive = Color.green
+    static let neutral = Color.secondary
 
-    static func tint(for direction: SharedSnapshot.Metric.Direction, isIncreaseGood: Bool = true) -> Color {
+    /// Direction is deliberately *not* painted green-good / red-bad.
+    ///
+    /// The snapshot says how a number moved, not whether moving that way is
+    /// desirable — a rise in errors, bounce rate or churn is a fall in health,
+    /// and there is no field that distinguishes them. Colouring every rise green
+    /// would be wrong about half the metrics an analytics tool tracks. So the
+    /// arrow carries direction, the text carries magnitude, and colour only
+    /// separates "something changed" from "nothing to compare against".
+    static func tint(for direction: SharedSnapshot.Metric.Direction) -> Color {
         switch direction {
-        case .up: isIncreaseGood ? up : down
-        case .down: isIncreaseGood ? down : up
-        case .flat, .unknown: flat
+        case .up, .down: accent
+        case .flat, .unknown: neutral
         }
     }
 
@@ -161,21 +167,27 @@ struct Sparkline: View {
                         area(through: coordinates, in: geo.size).fill(shade.opacity(0.18))
                     }
                     line(through: coordinates)
-                        .stroke(shade, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                        .stroke(shade, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round, lineJoin: .round))
                 }
             }
         }
         .accessibilityHidden(true)
     }
 
+    private static let lineWidth: CGFloat = 2
+
     private func coordinates(in size: CGSize) -> [CGPoint] {
         guard points.count >= 2, let low = points.min(), let high = points.max() else { return [] }
         let span = high - low
         let step = size.width / CGFloat(points.count - 1)
+        // Inset by half the stroke so the peak and trough aren't shaved off by
+        // the frame — on a 16pt-tall sparkline that clipping is very visible.
+        let inset = Self.lineWidth / 2
+        let usable = max(0, size.height - Self.lineWidth)
         return points.enumerated().map { index, value in
             // A flat series would divide by zero; draw it down the middle.
             let fraction = span > 0 ? (value - low) / span : 0.5
-            return CGPoint(x: CGFloat(index) * step, y: size.height * (1 - fraction))
+            return CGPoint(x: CGFloat(index) * step, y: inset + usable * (1 - fraction))
         }
     }
 

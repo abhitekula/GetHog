@@ -23,15 +23,6 @@ enum WidgetCache {
 
     static func snapshot() -> SharedSnapshot? { store.loadOrNil() }
 
-    /// Metrics with the configured one first, then the rest in snapshot order —
-    /// the multi-metric families fill from the same list, so a user who picked a
-    /// metric sees it in the lead position on every size.
-    static func metrics(preferring id: String?) -> [SharedSnapshot.Metric] {
-        guard let snapshot = snapshot() else { return [] }
-        guard let id, let chosen = snapshot.metric(id: id) else { return snapshot.metrics }
-        return [chosen] + snapshot.metrics.filter { $0.id != id }
-    }
-
     /// Only flags the user opted in to. Outside the app there is no confirmation
     /// dialog to answer, so a flag stays invisible to widgets and Control Center
     /// until the user deliberately allows it.
@@ -171,13 +162,11 @@ struct RefreshInAppIntent: AppIntent {
         IntentDescription("Opens GetHog so it can refresh the data your widgets show.")
     }
 
-    /// The whole point. The extension has no business fetching.
+    /// The whole point. The extension has no business fetching, so "refresh"
+    /// can only mean "hand this to the process that can".
     static var openAppWhenRun: Bool { true }
 
-    func perform() async throws -> some IntentResult {
-        WidgetCache.store.requestOpen(PendingOpen(metricID: nil, requestedAt: Date()))
-        return .result()
-    }
+    func perform() async throws -> some IntentResult { .result() }
 }
 
 extension SharedSnapshotStore {

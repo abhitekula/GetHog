@@ -34,6 +34,12 @@ struct IntentDependencies: Sendable {
 
     static let log = Logger(subsystem: "app.gethog", category: "intents")
 
+    /// Posted after something outside the app changes the selected project — a
+    /// Focus filter, today. Lets a running app re-read the selection instead of
+    /// waiting for its next cold launch.
+    static let selectedProjectDidChangeNotification =
+        Notification.Name("app.gethog.selectedProjectDidChange")
+
     let client: PostHogClient
     let projectID: Int
 

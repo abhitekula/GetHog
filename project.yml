@@ -13,6 +13,11 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    # Required, and required to MATCH between the app and its extension:
+    # without them the installer cannot create the app-extension placeholder
+    # and rejects the whole bundle with "Invalid placeholder attributes".
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -62,9 +67,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.Widgets
         PRODUCT_NAME: GetHogWidgets
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHog/Support/GetHogWidgets-Info.plist
         CODE_SIGN_ENTITLEMENTS: GetHog/Support/GetHogWidgets.entitlements
-        INFOPLIST_KEY_CFBundleDisplayName: GetHog
-        INFOPLIST_KEY_NSExtensionPointIdentifier: com.apple.widgetkit-extension
         SKIP_INSTALL: YES
 
   GetHogTests:
