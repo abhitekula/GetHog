@@ -26,6 +26,13 @@ public actor ResponseCache {
         public static let lists: TimeInterval = 120
         public static let events: TimeInterval = 30
         public static let snapshots: TimeInterval = .infinity
+
+        /// A rendered page image changes only when someone re-renders the saved
+        /// heatmap in the web console, which is a manual act — so a day, not
+        /// minutes. Half a megabyte per view is exactly the kind of spend the
+        /// organisation-wide budget cannot absorb on a screen people scroll
+        /// back to.
+        public static let pageRenders: TimeInterval = 86_400
     }
 
     public init(appGroupID: String? = nil, subdirectory: String = "PostHogCache") {
@@ -44,15 +51,37 @@ public actor ResponseCache {
         )
     }
 
-    private func url(for key: String) -> URL {
-        // Hash so arbitrary query strings can't produce invalid filenames.
-        let name = String(format: "%02x", abs(key.hashValue)) + "-" + key
+    /// Filename for a cache key.
+    ///
+    /// The hash **must not** be `String.hashValue`. Swift seeds its hasher
+    /// randomly per process, so `hashValue` returns a different number for the
+    /// same key on every launch — which named the same response a different file
+    /// each time the app started. The cache therefore missed on every cold
+    /// start, re-spending the organisation-wide request budget it exists to
+    /// protect, and left the previous launch's copy behind as garbage. (It also
+    /// trapped, rarely: `abs()` overflows on `Int.min`.)
+    ///
+    /// FNV-1a instead: a few lines, no dependency, and identical across launches
+    /// and devices, which is the only property that matters here.
+    static func filename(for key: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in key.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        // The readable tail is kept for anyone inspecting the container; the
+        // hash is what makes the name unique and filesystem-safe.
+        let readable = key
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "?", with: "_")
             .replacingOccurrences(of: "&", with: "_")
             .replacingOccurrences(of: "=", with: "_")
             .suffix(96)
-        return directory.appendingPathComponent(name)
+        return String(format: "%016llx", hash) + "-" + readable
+    }
+
+    private func url(for key: String) -> URL {
+        directory.appendingPathComponent(Self.filename(for: key))
     }
 
     public func entry(for key: String) -> Entry? {

@@ -13,13 +13,22 @@ extension PostHogAPI {
     /// row is a per-coordinate click tally and nothing to do with paging.
     ///
     /// `urlExact` narrows to one page. Left nil the endpoint aggregates every
-    /// URL in the project, which is the only thing that makes sense without a
-    /// screenshot to overlay: the shape of the whole site's click distribution.
+    /// URL in the project, which is what the numbers-only clickmap wants: with
+    /// no page image in front of the reader, the shape of the whole site's click
+    /// distribution is the honest thing to show.
+    ///
+    /// `viewportWidthMin`/`viewportWidthMax` exist for the opposite case. Both
+    /// default to nil so the aggregate view keeps reporting every viewport, but
+    /// an overlay drawn on one fixed-width render has to pass them: `pointer_y`
+    /// is absolute pixels down the document the *visitor's* viewport produced,
+    /// and that document is a different height at every width.
     public static func heatmap(
         projectID: Int,
         dateFrom: String = "-7d",
         type: String = "click",
         urlExact: String? = nil,
+        viewportWidthMin: Int? = nil,
+        viewportWidthMax: Int? = nil,
         limit: Int = 500
     ) -> Endpoint {
         var query = [
@@ -32,6 +41,12 @@ extension PostHogAPI {
         ]
         if let urlExact, !urlExact.isEmpty {
             query.append(URLQueryItem(name: "url_exact", value: urlExact))
+        }
+        if let viewportWidthMin {
+            query.append(URLQueryItem(name: "viewport_width_min", value: String(viewportWidthMin)))
+        }
+        if let viewportWidthMax {
+            query.append(URLQueryItem(name: "viewport_width_max", value: String(viewportWidthMax)))
         }
         return Endpoint(
             path: "/api/projects/\(projectID)/heatmaps/",

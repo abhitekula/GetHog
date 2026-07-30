@@ -21,6 +21,13 @@ struct SettingsRoot: View {
     @State private var isConfirmingSignOut = false
     @State private var cacheBytes: Int64 = 0
 
+    /// Owned here rather than inside the cards so a row scrolling out of view
+    /// and back does not discard what was already paid for. The *loading* is
+    /// still triggered from the rows — see `QuotaSpendCard` — because that is
+    /// what makes it lazy; only the results live at this level.
+    @State private var quotaStore = QuotaStore()
+    @State private var sdkHealthStore = SDKHealthStore()
+
     /// A revealed key re-masks itself rather than sitting on a screen the user
     /// walked away from.
     private static let revealTimeout: Duration = .seconds(30)
@@ -33,6 +40,7 @@ struct SettingsRoot: View {
             permissionsSection
             apiKeySection
             dataSection
+            sdkHealthSection
             aboutSection
         }
         .listStyle(.insetGrouped)
@@ -221,10 +229,25 @@ struct SettingsRoot: View {
         }
     }
 
-    // MARK: - Data & limits
+    // MARK: - Usage & limits
 
+    /// One section, two budgets, deliberately in that order.
+    ///
+    /// The plan quota is what PostHog meters and bills the organisation for; the
+    /// rate-limit meter under it is GetHog's own share of a *different*
+    /// organisation-wide allowance. They were built at different times for
+    /// different reasons, but a reader arriving here is asking one question —
+    /// what is this costing us — and answering it in two unrelated places, with
+    /// two different colour languages, would make the smaller of the two look
+    /// like the whole story. So they share a section, a palette and a footer,
+    /// and the footer's job is to say which is which.
     private var dataSection: some View {
         Section {
+            QuotaSpendCard(store: quotaStore)
+                // Full-bleed so the card's own `StatStrip` supplies the inset;
+                // otherwise the strip is indented past every other row.
+                .listRowInsets(EdgeInsets(top: Theme.Space.s, leading: 0, bottom: Theme.Space.s, trailing: 0))
+
             RateLimitUsageView(client: model.client)
 
             LabeledContent("Cached data") {
@@ -239,12 +262,28 @@ struct SettingsRoot: View {
             }
             .disabled(cacheBytes == 0)
         } header: {
-            SectionLabel(text: "Data & limits", systemImage: "gauge.with.needle")
+            SectionLabel(text: "Usage & limits", systemImage: "gauge.with.needle")
         } footer: {
-            // The whole reason this meter exists. PostHog's limits are counted
+            // The whole reason both meters exist. PostHog's limits are counted
             // per organisation, so requests this app makes come out of the same
             // allowance the user's production integrations depend on.
-            Text("PostHog's rate limits are organisation-wide — the same budget your own production integrations spend. GetHog paces itself well below the published limits and caches responses on this device, so revisiting a dashboard doesn't cost your team another request.")
+            Text("Two allowances, both counted per organisation. The quota above is what PostHog meters your plan against; the meter below it is GetHog's own share of PostHog's rate limits — the same budget your production integrations spend. The app paces itself well below the published limits and caches responses on this device, so revisiting a dashboard doesn't cost your team another request.")
+        }
+    }
+
+    // MARK: - SDK health
+
+    private var sdkHealthSection: some View {
+        Section {
+            SDKHealthCard(store: sdkHealthStore)
+        } header: {
+            SectionLabel(text: "SDK health", systemImage: "shippingbox")
+        } footer: {
+            // Says out loud that the judgement is not this app's. Without it the
+            // card reads as GetHog grading the user's SDKs, and the first
+            // time it disagreed with the web console the app would be the one
+            // assumed wrong.
+            Text("PostHog decides this, not GetHog. Release grace periods, version-gap and age rules, and each version's share of traffic are all applied on PostHog's servers; this card shows the verdict and PostHog's own wording for it. The check re-runs roughly daily, so an SDK you have just upgraded can stay listed for about a day.")
         }
     }
 

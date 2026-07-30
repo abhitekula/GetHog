@@ -8,6 +8,7 @@ struct SessionDetailView: View {
     @Environment(AppModel.self) private var model
 
     @State private var timeline = SessionTimelineStore()
+    @State private var summary = SessionSummaryStore()
     @State private var loader = ReplayLoader()
     @State private var player = ReplayPlayerController()
     @State private var webLink: WebLink?
@@ -50,6 +51,25 @@ struct SessionDetailView: View {
                 )
                 .padding(.horizontal, Theme.Space.l)
 
+                // Directly under the player, above the timeline. The chapters
+                // are a table of contents *for the thing above them*, and a
+                // table of contents that sits below several hundred event rows
+                // is not one. It also puts the narrative — a paragraph that is
+                // faster to read than the video is to scrub — at the top of what
+                // someone actually reads on a phone.
+                SessionSummaryCard(
+                    store: summary,
+                    // rrweb counts from its first snapshot, not from
+                    // `session_start_time`, so the chapter offsets are re-based
+                    // onto whichever origin the player is actually using. Same
+                    // origin the timeline seeks on, for the same reason.
+                    origin: loader.replayStart ?? recording.startTime,
+                    canSeek: player.isReady,
+                    onSeek: { offset in player.seek(to: offset, resume: true) },
+                    onRetry: { Task { await loadSummary() } }
+                )
+                .padding(.horizontal, Theme.Space.l)
+
                 watchInPostHogCard
                     .padding(.horizontal, Theme.Space.l)
 
@@ -84,7 +104,18 @@ struct SessionDetailView: View {
         }
         .task(id: recording.id) { await loadTimeline() }
         .task(id: recording.id) { await startReplay() }
-        .refreshable { await loadTimeline() }
+        // A separate request, made when the screen opens. Most sessions have no
+        // summary and answer 404, which the store reads as absence rather than
+        // as failure — so this costs the screen nothing when there is nothing.
+        .task(id: recording.id) { await loadSummary() }
+        // Both in flight at once: they are different endpoints against different
+        // rate-limit categories, and serialising them would double how long a
+        // pull-to-refresh spins for no benefit.
+        .refreshable {
+            async let events: Void = loadTimeline()
+            async let narrative: Void = loadSummary()
+            _ = await (events, narrative)
+        }
         .sheet(item: $webLink) { link in
             SessionSafariView(url: link.url).ignoresSafeArea()
         }
@@ -148,6 +179,13 @@ struct SessionDetailView: View {
     private func loadTimeline() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await timeline.load(client: client, projectID: projectID, sessionID: recording.id)
+    }
+
+    private func loadSummary() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        // Keyed by the session id, which is what `SessionRecording.id` already
+        // is — no lookup, and no second identifier to keep in step.
+        await summary.load(client: client, projectID: projectID, sessionID: recording.id)
     }
 
     private func startReplay() async {

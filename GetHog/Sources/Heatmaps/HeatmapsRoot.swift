@@ -39,6 +39,11 @@ final class HeatmapsStore {
     /// capped but never how much was left off.
     var elementsTruncated = false
 
+    /// Saved page renders, once looked up. `nil` means "not asked yet", which is
+    /// different from "asked, and there are none" — the screen's closing note
+    /// says something different in each case and must not guess.
+    var savedRenders: [SavedHeatmap]?
+
     var isLoadingHeatmap = false
     var isLoadingElements = false
     var heatmapError: String?
@@ -47,6 +52,11 @@ final class HeatmapsStore {
 
     var isLoading: Bool { isLoadingHeatmap || isLoadingElements }
     var isEmpty: Bool { profile.isEmpty && elementStats.isEmpty }
+
+    /// The saved renders this app can actually draw on.
+    var renderablePages: [SavedHeatmap] {
+        (savedRenders ?? []).filter(\.isRenderable)
+    }
 
     /// Two independent requests. A heatmap outage must not blank the element
     /// list — they answer different questions and either is useful alone.
@@ -102,18 +112,36 @@ final class HeatmapsStore {
         }
     }
 
+    /// Looked up once per project, not once per date range: whether a page has a
+    /// saved render has nothing to do with the window being charted, and
+    /// re-asking on every range change would spend requests to learn the same
+    /// answer. A failure here is silent by design — it costs the reader the
+    /// overlay link, and saying so would be noise on a screen that is complete
+    /// without it.
+    func loadSavedRenders(client: PostHogClient, projectID: Int) async {
+        let page: Page<SavedHeatmap>? = try? await client.send(
+            PostHogAPI.savedHeatmaps(projectID: projectID)
+        )
+        savedRenders = page?.results ?? []
+    }
+
     private static func message(for error: any Error) -> String {
         (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
     }
 }
 
-/// A clickmap without the screenshot.
+/// Click distributions, plus a link to the page image where one exists.
 ///
-/// PostHog's web heatmap paints coordinates over a live render of the page. A
-/// phone has neither the page nor a way to render it, and a fabricated backdrop
-/// would put clicks over content they never touched. So this screen shows the
-/// two distributions and the one ranking that are true on their own: how far
-/// down people click, how far across, and what they actually hit.
+/// PostHog renders a page image for any URL somebody saves as a heatmap in the
+/// web console, and those renders are fetchable — so the picture its web
+/// heatmap paints clicks over *is* available here, on those pages. It is also
+/// rare: a render exists only where a person explicitly asked for one, and this
+/// project has a single such page against a whole site's worth of traffic.
+///
+/// So the picture is a destination (`HeatmapPageOverlay`) and this screen stays
+/// what it was — how far down people click, how far across, and what they
+/// actually hit. Those three answers need no backdrop, which is what makes them
+/// the right thing to show on every other page.
 struct HeatmapsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -130,6 +158,7 @@ struct HeatmapsRoot: View {
             .projectSubtitle()
             .refreshable { await load() }
             .task(id: LoadKey(projectID: model.projectID, window: window)) { await load() }
+            .task(id: model.projectID) { await loadSavedRenders() }
     }
 
     private struct LoadKey: Hashable {
@@ -195,13 +224,15 @@ struct HeatmapsRoot: View {
                 }
 
                 Group {
+                    overlayLinks
+
                     switch lens {
                     case .depth: depthSection
                     case .across: horizontalSection
                     case .elements: elementsSection
                     }
 
-                    noScreenshotNote
+                    screenshotNote
 
                     FreshnessLabel(date: store.loadedAt)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -495,10 +526,87 @@ struct HeatmapsRoot: View {
         .accessibilityLabel("\(title). \(subtitle)")
     }
 
-    private var noScreenshotNote: some View {
-        Text("PostHog's web heatmap paints these clicks over a screenshot of the page. That render isn't available to this app, so nothing here is drawn over a page image — the numbers stand on their own.")
+    /// The two things that are true, depending on the project.
+    ///
+    /// This note used to claim the page render "isn't available to this app".
+    /// It is — `/heatmap_screenshots/` serves the same image PostHog's web
+    /// heatmap paints over, at real device widths. What is scarce is coverage:
+    /// a render exists only for URLs somebody saved as a heatmap in the web
+    /// console, and the charts above aggregate every URL in the project. So the
+    /// note now says which of those two situations the reader is in, and the
+    /// no-render wording no longer blames the app for a picture the project
+    /// simply has not asked PostHog to draw.
+    private var screenshotNote: some View {
+        Text(screenshotNoteText)
             .font(.caption2)
             .foregroundStyle(.tertiary)
+    }
+
+    private var screenshotNoteText: String {
+        // Three states, not two. Until the lookup answers, the app does not know
+        // whether this project has a render — and "this project has none" is a
+        // claim, not a placeholder. Saying it while the request is still in
+        // flight would be the same kind of stale assertion this note replaced.
+        guard let renders = store.savedRenders else {
+            return "PostHog's web heatmap paints these clicks over a rendered image of the page. It renders one only for pages saved as a heatmap in the web console; checking whether this project has any."
+        }
+        let pages = renders.filter(\.isRenderable)
+        guard !pages.isEmpty else {
+            // Still nothing drawn — but say why, and say what would change it.
+            return "PostHog's web heatmap paints these clicks over a rendered image of the page. It renders one only for pages saved as a heatmap in the web console, and this project has none, so the numbers here stand on their own."
+        }
+        let noun = pages.count == 1 ? "one saved page" : "\(pages.count) saved pages"
+        return "The charts above aggregate every URL in the project, so no single page image fits them. PostHog has rendered \(noun) in this project — open it above to see these clicks drawn on the page itself."
+    }
+
+    /// Only shown when there is an image to open. An always-present row that
+    /// usually explained why it could do nothing would be the same false promise
+    /// the old note made, moved into the layout.
+    @ViewBuilder
+    private var overlayLinks: some View {
+        let pages = store.renderablePages
+        if !pages.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                SectionLabel(text: "Pages with a render", systemImage: "photo.on.rectangle")
+
+                VStack(spacing: 0) {
+                    ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
+                        if index > 0 { Divider().padding(.leading, Theme.Space.m) }
+                        NavigationLink {
+                            HeatmapPageOverlay(saved: page, window: window)
+                        } label: {
+                            DataRow(
+                                glyph: "photo",
+                                tint: Theme.accent,
+                                title: page.name ?? page.url,
+                                subtitle: page.name == nil ? nil : page.url,
+                                footnote: renderFootnote(for: page),
+                                isSubtitleMonospaced: true,
+                                accessory: .chevron
+                            )
+                            .truncationMode(.middle)
+                            .padding(.vertical, Theme.Space.xs)
+                            .padding(.horizontal, Theme.Space.m)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .background(
+                    Theme.cardBackground,
+                    in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous)
+                )
+            }
+        }
+    }
+
+    private func renderFootnote(for page: SavedHeatmap) -> String {
+        // The widths are the reason the overlay can be trusted on this device,
+        // so they are stated rather than left as an implementation detail.
+        let widths = page.renderedWidths
+        guard let first = widths.first, let last = widths.last else { return "Rendered" }
+        return widths.count == 1
+            ? "Rendered at \(first) px"
+            : "Rendered at \(widths.count) widths, \(first)–\(last) px"
     }
 
     private func staleNote(_ text: String) -> some View {
@@ -510,6 +618,11 @@ struct HeatmapsRoot: View {
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID, window: window)
+    }
+
+    private func loadSavedRenders() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.loadSavedRenders(client: client, projectID: projectID)
     }
 }
 

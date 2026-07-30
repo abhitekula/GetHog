@@ -1,9 +1,13 @@
 import Foundation
 
-// PostHog's web heatmap draws click coordinates over a live screenshot of the
-// page. A phone has no screenshot and no page, so the two things this file
-// builds instead are the parts of a clickmap that survive without one: where
-// down the page people click, and how far left or right.
+// PostHog's web heatmap draws click coordinates over a rendered image of the
+// page. That image is fetchable — see `HeatmapScreenshot.swift` — but only for
+// URLs somebody saved as a heatmap in the web console, which is a small and
+// deliberate subset of a project's pages.
+//
+// So this file builds the parts of a clickmap that survive with no image at
+// all, and they carry the common case: where down the page people click, and
+// how far left or right.
 
 // MARK: - Points
 

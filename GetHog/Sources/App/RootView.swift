@@ -4,7 +4,7 @@ import SwiftUI
 enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     case webAnalytics, clickmap, people, sql
-    case errorTracking, tracing, logs
+    case errorTracking, sessionSummaries, tracing, logs
     case support, inbox, signals, health, ingestion
     case experiments, surveys, earlyAccess
     case llm, warehouse, pipelines, automation, actions, annotations
@@ -39,13 +39,23 @@ enum AppTab: String, Hashable, CaseIterable {
         case .sessions: "Sessions"
         case .flags: "Flags"
         case .webAnalytics: "Web"
-        // "Clickmap", not "Heatmap": without a page screenshot to overlay there
-        // is no heat map, and naming it one would promise a picture this app
-        // cannot draw.
+        // "Clickmap", not "Heatmap" — and the reason has changed, so the old one
+        // is not left standing. It used to be that no page screenshot existed to
+        // overlay. One does now, and the app draws it.
+        //
+        // The name stays for three reasons that survive that: a render exists
+        // only for URLs somebody saved in the web console (one, here, against a
+        // whole site's traffic), the aggregate charts span *every* URL so no
+        // single page image backs them, and what is drawn is discrete points
+        // rather than a smoothed density field. "Heatmap" would promise the
+        // picture on every visit and deliver it almost never.
         case .clickmap: "Clickmap"
         case .people: "People"
         case .sql: "SQL"
         case .errorTracking: "Errors"
+        // "Summaries", not "AI summaries": the screen's own header says a model
+        // wrote them, and the tab has to fit a sidebar row beside "Ingestion".
+        case .sessionSummaries: "Summaries"
         case .tracing: "Tracing"
         case .logs: "Logs"
         // "Support", the name PostHog's own console gives the product at
@@ -96,6 +106,9 @@ enum AppTab: String, Hashable, CaseIterable {
         case .people: "person.2"
         case .sql: "terminal"
         case .errorTracking: "exclamationmark.triangle"
+        // The Sessions glyph with sparkles on it: these *are* sessions, read by
+        // a model, and the family resemblance is the point.
+        case .sessionSummaries: "sparkles.rectangle.stack"
         case .tracing: "point.3.connected.trianglepath.dotted"
         case .logs: "text.alignleft"
         case .support: "lifepreserver"
@@ -187,8 +200,13 @@ extension AppTab {
             // different sections is a bonus rather than the reason, but it is a
             // real one: the sidebar is where a reader would otherwise most
             // easily confuse them.
+            // Summaries sits beside Errors rather than with Sessions: both
+            // answer "what went wrong, and where", and `?outcome=failure` makes
+            // this a triage queue in exactly the sense the rest of the group is.
+            // Sessions stays a primary tab for browsing; this is for reading the
+            // ones already known to have gone badly.
             tabs: [
-                .errorTracking, .llm, .tracing, .logs,
+                .errorTracking, .sessionSummaries, .llm, .tracing, .logs,
                 .support, .inbox, .signals, .health, .ingestion,
             ]
         ),
@@ -234,6 +252,7 @@ struct TabRootView: View {
         case .groups: GroupsRoot()
         case .sql: SQLConsoleRoot()
         case .errorTracking: ErrorTrackingRoot()
+        case .sessionSummaries: SessionSummariesRoot()
         case .llm: LLMAnalyticsRoot()
         case .tracing: TracingRoot()
         case .logs: LogsRoot()
