@@ -10,7 +10,14 @@ final class ExperimentsStore {
     var loadedAt: Date?
 
     /// Lifecycle order, not alphabetical: what is live matters most.
-    private static let statusOrder = ["Running", "Draft", "Complete", "Archived"]
+    ///
+    /// Covers all five states `ExperimentStatusEnum` declares, plus the archived
+    /// flag which overrides them. `Paused` and `Exposure frozen` are virtual
+    /// states PostHog derives from the feature flag rather than storing, and
+    /// neither can be inferred from the start and end dates alone.
+    private static let statusOrder = [
+        "Running", "Paused", "Exposure frozen", "Draft", "Complete", "Archived",
+    ]
 
     func load(client: PostHogClient, projectID: Int) async {
         isLoading = true
@@ -174,97 +181,29 @@ struct ExperimentRowView: View {
     }
 }
 
-// MARK: - Detail
-
-struct ExperimentDetailSheet: View {
-    let experiment: Experiment
-    let webURL: URL?
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    LabeledContent("Status") {
-                        StatusPill(
-                            text: experiment.statusText,
-                            tint: experimentStatusTint(experiment.statusText)
-                        )
-                    }
-                    if let key = experiment.featureFlagKey, !key.isEmpty {
-                        LabeledContent("Feature flag") {
-                            Text(key)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                        }
-                    }
-                    if let start = experiment.startDate {
-                        LabeledContent("Started") {
-                            Text(start, format: .dateTime.year().month().day())
-                        }
-                    }
-                    if let end = experiment.endDate {
-                        LabeledContent("Ended") {
-                            Text(end, format: .dateTime.year().month().day())
-                        }
-                    }
-                }
-
-                if let description = experiment.description, !description.isEmpty {
-                    Section {
-                        Text(description).font(.callout)
-                    } header: {
-                        SectionLabel(text: "Description", systemImage: "text.alignleft")
-                    }
-                }
-
-                Section {
-                    if let webURL {
-                        Link(destination: webURL) {
-                            Label("Open in PostHog", systemImage: "arrow.up.forward.square")
-                        }
-                    }
-                } header: {
-                    SectionLabel(text: "Results", systemImage: "chart.bar")
-                } footer: {
-                    // Said plainly: this screen shows setup, not outcomes. An
-                    // experiment readout that hinted at a winner without running
-                    // the statistics would be worse than no readout at all.
-                    Text("GetHog shows how this experiment is set up. Variant results, exposures and statistical significance are computed by the PostHog web console and are not shown here.")
-                }
-            }
-            .pageSurface()
-            .navigationTitle(experiment.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Formatting
 //
-// File-private so concurrent work on other screens can't collide with the name.
+// Shared with `ExperimentDetailView.swift`, which is why these are internal
+// rather than file-private: the detail sheet paints the same status pill as the
+// row that opened it, and two copies of this mapping would drift.
 
 /// Chrome tint for a lifecycle status. The status word always travels with it —
 /// in the pill, the section header and the accessibility label — so the colour
 /// is never the only thing saying what state an experiment is in.
-private func experimentStatusTint(_ status: String) -> Color {
+func experimentStatusTint(_ status: String) -> Color {
     switch status {
     case "Running": Theme.Status.good
-    case "Draft": Theme.accentWarm
+    case "Draft", "Paused", "Exposure frozen": Theme.accentWarm
     default: Color.secondary
     }
 }
 
-private func experimentStatusSymbol(_ status: String) -> String {
+func experimentStatusSymbol(_ status: String) -> String {
     switch status {
     case "Running": "play.circle"
     case "Draft": "pencil"
+    case "Paused": "pause.circle"
+    case "Exposure frozen": "snowflake"
     case "Complete": "checkmark.circle"
     case "Archived": "archivebox"
     // Any status PostHog adds later still gets a header rather than a gap.
