@@ -26,47 +26,45 @@ struct SettingsRoot: View {
     private static let revealTimeout: Duration = .seconds(30)
 
     var body: some View {
-        NavigationStack {
-            List {
-                accountSection
-                projectSection
-                alertsSection
-                permissionsSection
-                apiKeySection
-                dataSection
-                aboutSection
-            }
-            .listStyle(.insetGrouped)
-            .pageSurface()
-            .navigationTitle("Settings")
-            // No `ProjectSwitcher()` here: the Project section below already is
-            // the switcher, and two controls for one piece of state on one
-            // screen is a bug report waiting to happen.
-            .task {
-                AppTips.refresh(from: model)
-                loadMaskedKey()
-                await loadCacheSize()
-            }
-            .task(id: revealedKey) {
-                guard revealedKey != nil else { return }
-                try? await Task.sleep(for: Self.revealTimeout)
-                revealedKey = nil
-            }
-            .onChange(of: scenePhase) { _, phase in
-                // iOS snapshots the screen for the app switcher on the way out.
-                // A revealed key must not survive into that image.
-                if phase != .active { revealedKey = nil }
-            }
-            .confirmationDialog(
-                "Sign out of GetHog?",
-                isPresented: $isConfirmingSignOut,
-                titleVisibility: .visible
-            ) {
-                Button("Sign out", role: .destructive) { model.signOut() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")
-            }
+        List {
+            accountSection
+            projectSection
+            alertsSection
+            permissionsSection
+            apiKeySection
+            dataSection
+            aboutSection
+        }
+        .listStyle(.insetGrouped)
+        .pageSurface()
+        .navigationTitle("Settings")
+        // No `ProjectSwitcher()` here: the Project section below already is
+        // the switcher, and two controls for one piece of state on one
+        // screen is a bug report waiting to happen.
+        .task {
+            AppTips.refresh(from: model)
+            loadMaskedKey()
+            await loadCacheSize()
+        }
+        .task(id: revealedKey) {
+            guard revealedKey != nil else { return }
+            try? await Task.sleep(for: Self.revealTimeout)
+            revealedKey = nil
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // iOS snapshots the screen for the app switcher on the way out.
+            // A revealed key must not survive into that image.
+            if phase != .active { revealedKey = nil }
+        }
+        .confirmationDialog(
+            "Sign out of GetHog?",
+            isPresented: $isConfirmingSignOut,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive) { model.signOut() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")
         }
     }
 

@@ -152,43 +152,41 @@ struct SQLConsoleRoot: View {
         """
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if model.isAvailable(.events) {
-                    console
-                } else {
-                    LockedCapabilityView(
-                        capability: .events,
-                        scope: model.lockedScope(for: .events)
-                    ) {
-                        Task { await model.refreshCapabilities() }
-                    }
+        Group {
+            if model.isAvailable(.events) {
+                console
+            } else {
+                LockedCapabilityView(
+                    capability: .events,
+                    scope: model.lockedScope(for: .events)
+                ) {
+                    Task { await model.refreshCapabilities() }
                 }
             }
-            .navigationTitle("SQL")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ProjectSwitcher()
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showHistory = true
-                    } label: {
-                        Label("Query history", systemImage: "clock.arrow.circlepath")
-                    }
-                    .accessibilityLabel("Query history")
-                    .disabled(store.history.isEmpty)
+        }
+        .navigationTitle("SQL")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ProjectSwitcher()
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showHistory = true
+                } label: {
+                    Label("Query history", systemImage: "clock.arrow.circlepath")
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { editorFocused = false }
-                }
+                .accessibilityLabel("Query history")
+                .disabled(store.history.isEmpty)
             }
-            .onChange(of: model.projectID) { _, _ in store.clearResults() }
-            .sheet(isPresented: $showHistory) {
-                SQLHistorySheet(store: store) { recalled in
-                    sql = recalled
-                    showHistory = false
-                }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { editorFocused = false }
+            }
+        }
+        .onChange(of: model.projectID) { _, _ in store.clearResults() }
+        .sheet(isPresented: $showHistory) {
+            SQLHistorySheet(store: store) { recalled in
+                sql = recalled
+                showHistory = false
             }
         }
     }

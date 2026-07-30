@@ -70,21 +70,19 @@ struct LLMAnalyticsRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("LLM")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search traces")
-                .refreshable { await load() }
-                .task(id: LoadKey(projectID: model.projectID, range: range)) { await load() }
-        }
-        .sheet(item: $selected) { trace in
-            LLMTraceDetailSheet(
-                trace: trace,
-                webURL: model.webURL(path: "llm-analytics/traces/\(trace.id)")
-            )
-        }
+        content
+            .navigationTitle("LLM")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search traces")
+            .refreshable { await load() }
+            .task(id: LoadKey(projectID: model.projectID, range: range)) { await load() }
+            .sheet(item: $selected) { trace in
+                LLMTraceDetailSheet(
+                    trace: trace,
+                    webURL: model.webURL(path: "llm-analytics/traces/\(trace.id)")
+                )
+            }
     }
 
     private struct LoadKey: Hashable {

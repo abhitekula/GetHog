@@ -124,14 +124,12 @@ struct HeatmapsRoot: View {
     @State private var kindFilter: ElementClickKind?
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Clickmap")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: LoadKey(projectID: model.projectID, window: window)) { await load() }
-        }
+        content
+            .navigationTitle("Clickmap")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: LoadKey(projectID: model.projectID, window: window)) { await load() }
     }
 
     private struct LoadKey: Hashable {

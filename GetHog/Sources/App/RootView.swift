@@ -11,6 +11,10 @@ enum AppTab: String, Hashable, CaseIterable {
     case notebooks, max
     case groups, taxonomy
     case settings
+    /// The index of everything the phone's tab bar cannot hold. A container,
+    /// not a product surface, and never selectable in regular width — the
+    /// sidebar gives every destination a row of its own there.
+    case more
 
     var title: String {
         switch self {
@@ -48,6 +52,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .groups: "Groups"
         case .taxonomy: "Taxonomy"
         case .settings: "Settings"
+        case .more: "More"
         }
     }
 
@@ -81,13 +86,121 @@ enum AppTab: String, Hashable, CaseIterable {
         case .groups: "building.2"
         case .taxonomy: "list.bullet.indent"
         case .settings: "gearshape"
+        case .more: "ellipsis"
+        }
+    }
+
+    /// Whether the screen brings a navigation container of its own.
+    ///
+    /// The six list-and-detail screens are `NavigationSplitView`s, which *are* a
+    /// navigation container: wrapping one in a `NavigationStack` puts a second,
+    /// empty navigation bar above it on iPhone and breaks the two-column layout
+    /// on iPad. Everything else is stack-less and gets its stack from whatever
+    /// is showing it — a `Tab` in `RootView`, or the index behind "More".
+    var ownsNavigationContainer: Bool {
+        switch self {
+        case .dashboards, .events, .sessions, .flags, .people, .errorTracking: true
+        default: false
+        }
+    }
+}
+
+/// One labelled group of destinations.
+struct AppTabSection: Identifiable {
+    let title: String
+    let tabs: [AppTab]
+
+    var id: String { title }
+}
+
+extension AppTab {
+
+    /// The four that hold the iPhone tab bar. They stay loose so they occupy it
+    /// directly, which is what keeps the surface growable without crowding the
+    /// phone.
+    static let primary: [AppTab] = [.dashboards, .events, .sessions, .flags]
+
+    /// Everything else, grouped.
+    ///
+    /// One array, two consumers: the iPad sidebar builds its `TabSection`s from
+    /// it and the iPhone index builds its list from it. Written out twice these
+    /// would drift the first time a screen was added to one and not the other,
+    /// and the difference would only ever show up on one of the two devices.
+    static let sections: [AppTabSection] = [
+        AppTabSection(title: "Analyze", tabs: [.webAnalytics, .clickmap, .people, .groups, .sql]),
+        AppTabSection(
+            title: "Monitor",
+            tabs: [.errorTracking, .llm, .tracing, .logs, .inbox, .signals, .health]
+        ),
+        AppTabSection(
+            title: "Data",
+            tabs: [.warehouse, .pipelines, .automation, .actions, .annotations, .taxonomy]
+        ),
+        AppTabSection(title: "Experiment", tabs: [.experiments, .surveys, .earlyAccess]),
+        AppTabSection(title: "Workspace", tabs: [.notebooks, .max]),
+    ]
+
+    /// Sits below the sections rather than inside one, in the sidebar and in the
+    /// index alike: settings are about the app, not about a part of PostHog.
+    static let utility: [AppTab] = [.settings]
+
+    /// Everything the phone reaches through the index rather than the tab bar.
+    static let secondary: [AppTab] = sections.flatMap(\.tabs) + utility
+}
+
+/// The screen a tab names.
+///
+/// One switch rather than a view written into each `Tab` declaration: the iPad
+/// sidebar and the iPhone index both resolve tabs through here, and a second
+/// mapping would be a second thing to keep in step.
+struct TabRootView: View {
+    let tab: AppTab
+
+    var body: some View {
+        switch tab {
+        case .dashboards: DashboardsRoot()
+        case .events: EventsRoot()
+        case .sessions: SessionsRoot()
+        case .flags: FlagsRoot()
+        case .webAnalytics: WebAnalyticsRoot()
+        case .clickmap: HeatmapsRoot()
+        case .people: PeopleRoot()
+        case .groups: GroupsRoot()
+        case .sql: SQLConsoleRoot()
+        case .errorTracking: ErrorTrackingRoot()
+        case .llm: LLMAnalyticsRoot()
+        case .tracing: TracingRoot()
+        case .logs: LogsRoot()
+        case .inbox: InboxRoot()
+        case .signals: SignalsRoot()
+        case .health: HealthRoot()
+        case .warehouse: WarehouseRoot()
+        case .pipelines: PipelinesRoot()
+        case .automation: AutomationRoot()
+        case .actions: ActionsRoot()
+        case .annotations: AnnotationsRoot()
+        case .taxonomy: TaxonomyRoot()
+        case .experiments: ExperimentsRoot()
+        case .surveys: SurveysRoot()
+        case .earlyAccess: EarlyAccessRoot()
+        case .notebooks: NotebooksRoot()
+        case .max: ConversationsRoot()
+        case .settings: SettingsRoot()
+        case .more:
+            // A container, not a destination: nothing ever pushes `.more`.
+            EmptyView()
         }
     }
 }
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
+    /// The index's stack. Heterogeneous — the index pushes an `AppTab`, and the
+    /// root it lands on then pushes its own issues, logs and traces into the
+    /// same stack — so a typed `[AppTab]` path cannot hold it.
+    @State private var morePath = NavigationPath()
     @State private var hasAppliedDebugTab = false
 
     var body: some View {
@@ -100,142 +213,169 @@ struct RootView: View {
             OnboardingView()
 
         case .ready:
-            // `.sidebarAdaptable` is the whole iPad story: a bottom tab bar on
-            // iPhone and a collapsible sidebar on iPad from one declaration.
-            //
-            // The four primary tabs stay loose so they occupy the iPhone tab bar
-            // directly; everything else is grouped into sections, which iPhone
-            // folds under "More" and iPad lays out in the sidebar. That keeps the
-            // surface growable without ever crowding the phone.
-            TabView(selection: $selectedTab) {
-                Tab(AppTab.dashboards.title, systemImage: AppTab.dashboards.systemImage, value: AppTab.dashboards) {
-                    DashboardsRoot()
+            tabs
+                .tabViewStyle(.sidebarAdaptable)
+                // Gives the tab bar's height back to the data while reading down a
+                // long list, which is most of what this app is. It restores itself
+                // on the first upward scroll, so nothing becomes unreachable.
+                .tabBarMinimizeBehavior(.onScrollDown)
+                // Only the four loose tabs get a number: they are the ones always
+                // present in the tab bar. Settings takes the platform-conventional
+                // comma rather than a fifth number it would have to compete for.
+                .keyboardActions([
+                    KeyboardAction(key: "1", title: AppTab.dashboards.title) { open(.dashboards) },
+                    KeyboardAction(key: "2", title: AppTab.events.title) { open(.events) },
+                    KeyboardAction(key: "3", title: AppTab.sessions.title) { open(.sessions) },
+                    KeyboardAction(key: "4", title: AppTab.flags.title) { open(.flags) },
+                    KeyboardAction(key: ",", title: AppTab.settings.title) { open(.settings) },
+                ])
+                .onAppear {
+                    #if DEBUG
+                    // Applied once: `@SceneStorage` would otherwise fight a user who
+                    // switched tabs after launch.
+                    if !hasAppliedDebugTab {
+                        hasAppliedDebugTab = true
+                        if let raw = DebugLaunch.initialTab, let tab = AppTab(rawValue: raw) {
+                            open(tab)
+                        }
+                    }
+                    #endif
+                    restorePushedTab()
                 }
-                Tab(AppTab.events.title, systemImage: AppTab.events.systemImage, value: AppTab.events) {
-                    EventsRoot()
+                // A Max-size iPhone in landscape and an iPad in narrow
+                // multitasking both cross the size-class boundary while running,
+                // which moves a destination between the sidebar and the index.
+                .onChange(of: sizeClass) { _, _ in restorePushedTab() }
+                .onChange(of: morePath.isEmpty) { _, isEmpty in
+                    // Popping back leaves `selectedTab` naming a screen that is no
+                    // longer showing, which the sidebar would then restore on the
+                    // next rotation into regular width. At the index it is `.more`.
+                    if isEmpty { selectedTab = .more }
                 }
-                Tab(AppTab.sessions.title, systemImage: AppTab.sessions.systemImage, value: AppTab.sessions) {
-                    SessionsRoot()
-                }
-                Tab(AppTab.flags.title, systemImage: AppTab.flags.systemImage, value: AppTab.flags) {
-                    FlagsRoot()
-                }
+        }
+    }
 
-                TabSection("Analyze") {
-                    Tab(AppTab.webAnalytics.title, systemImage: AppTab.webAnalytics.systemImage, value: AppTab.webAnalytics) {
-                        WebAnalyticsRoot()
-                    }
-                    Tab(AppTab.clickmap.title, systemImage: AppTab.clickmap.systemImage, value: AppTab.clickmap) {
-                        HeatmapsRoot()
-                    }
-                    Tab(AppTab.people.title, systemImage: AppTab.people.systemImage, value: AppTab.people) {
-                        PeopleRoot()
-                    }
-                    Tab(AppTab.groups.title, systemImage: AppTab.groups.systemImage, value: AppTab.groups) {
-                        GroupsRoot()
-                    }
-                    Tab(AppTab.sql.title, systemImage: AppTab.sql.systemImage, value: AppTab.sql) {
-                        SQLConsoleRoot()
-                    }
-                }
+    // MARK: - Structure
 
-                TabSection("Monitor") {
-                    Tab(AppTab.errorTracking.title, systemImage: AppTab.errorTracking.systemImage, value: AppTab.errorTracking) {
-                        ErrorTrackingRoot()
-                    }
-                    Tab(AppTab.llm.title, systemImage: AppTab.llm.systemImage, value: AppTab.llm) {
-                        LLMAnalyticsRoot()
-                    }
-                    Tab(AppTab.tracing.title, systemImage: AppTab.tracing.systemImage, value: AppTab.tracing) {
-                        TracingRoot()
-                    }
-                    Tab(AppTab.logs.title, systemImage: AppTab.logs.systemImage, value: AppTab.logs) {
-                        LogsRoot()
-                    }
-                    Tab(AppTab.inbox.title, systemImage: AppTab.inbox.systemImage, value: AppTab.inbox) {
-                        InboxRoot()
-                    }
-                    Tab(AppTab.signals.title, systemImage: AppTab.signals.systemImage, value: AppTab.signals) {
-                        SignalsRoot()
-                    }
-                    Tab(AppTab.health.title, systemImage: AppTab.health.systemImage, value: AppTab.health) {
-                        HealthRoot()
-                    }
-                }
+    /// One `TabView` across both widths rather than two.
+    ///
+    /// Only the trailing content differs, so the four primary tabs keep their
+    /// identity — and therefore their loaded data and scroll position — when a
+    /// Max-size iPhone is rotated across the size-class boundary. Two separate
+    /// `TabView`s threw all of that away on every rotation.
+    private var tabs: some View {
+        TabView(selection: tabSelection) {
+            tabItems(for: AppTab.primary)
 
-                TabSection("Data") {
-                    Tab(AppTab.warehouse.title, systemImage: AppTab.warehouse.systemImage, value: AppTab.warehouse) {
-                        WarehouseRoot()
-                    }
-                    Tab(AppTab.pipelines.title, systemImage: AppTab.pipelines.systemImage, value: AppTab.pipelines) {
-                        PipelinesRoot()
-                    }
-                    Tab(AppTab.automation.title, systemImage: AppTab.automation.systemImage, value: AppTab.automation) {
-                        AutomationRoot()
-                    }
-                    Tab(AppTab.actions.title, systemImage: AppTab.actions.systemImage, value: AppTab.actions) {
-                        ActionsRoot()
-                    }
-                    Tab(AppTab.annotations.title, systemImage: AppTab.annotations.systemImage, value: AppTab.annotations) {
-                        AnnotationsRoot()
-                    }
-                    Tab(AppTab.taxonomy.title, systemImage: AppTab.taxonomy.systemImage, value: AppTab.taxonomy) {
-                        TaxonomyRoot()
-                    }
-                }
-
-                TabSection("Experiment") {
-                    Tab(AppTab.experiments.title, systemImage: AppTab.experiments.systemImage, value: AppTab.experiments) {
-                        ExperimentsRoot()
-                    }
-                    Tab(AppTab.surveys.title, systemImage: AppTab.surveys.systemImage, value: AppTab.surveys) {
-                        SurveysRoot()
-                    }
-                    Tab(AppTab.earlyAccess.title, systemImage: AppTab.earlyAccess.systemImage, value: AppTab.earlyAccess) {
-                        EarlyAccessRoot()
-                    }
-                }
-
-                TabSection("Workspace") {
-                    Tab(AppTab.notebooks.title, systemImage: AppTab.notebooks.systemImage, value: AppTab.notebooks) {
-                        NotebooksRoot()
-                    }
-                    Tab(AppTab.max.title, systemImage: AppTab.max.systemImage, value: AppTab.max) {
-                        ConversationsRoot()
-                    }
-                }
-
-                Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
-                    SettingsRoot()
-                }
-            }
-            .tabViewStyle(.sidebarAdaptable)
-            // Gives the tab bar's height back to the data while reading down a
-            // long list, which is most of what this app is. It restores itself
-            // on the first upward scroll, so nothing becomes unreachable.
-            .tabBarMinimizeBehavior(.onScrollDown)
-            // Only the four loose tabs get a number: they are the ones always
-            // present in the tab bar. Settings takes the platform-conventional
-            // comma rather than a fifth number it would have to compete for.
-            .keyboardActions([
-                KeyboardAction(key: "1", title: AppTab.dashboards.title) { selectedTab = .dashboards },
-                KeyboardAction(key: "2", title: AppTab.events.title) { selectedTab = .events },
-                KeyboardAction(key: "3", title: AppTab.sessions.title) { selectedTab = .sessions },
-                KeyboardAction(key: "4", title: AppTab.flags.title) { selectedTab = .flags },
-                KeyboardAction(key: ",", title: AppTab.settings.title) { selectedTab = .settings },
-            ])
-            .onAppear {
-                #if DEBUG
-                // Applied once: `@SceneStorage` would otherwise fight a user who
-                // switched tabs after launch.
-                guard !hasAppliedDebugTab else { return }
-                hasAppliedDebugTab = true
-                if let raw = DebugLaunch.initialTab, let tab = AppTab(rawValue: raw) {
-                    selectedTab = tab
-                }
-                #endif
+            if sizeClass == .compact {
+                moreTab
+            } else {
+                sidebarSections
+                tabItems(for: AppTab.utility)
             }
         }
+    }
+
+    @TabContentBuilder<AppTab>
+    private func tabItems(for tabs: [AppTab]) -> some TabContent<AppTab> {
+        ForEach(tabs, id: \.self) { tab in
+            Tab(tab.title, systemImage: tab.systemImage, value: tab) {
+                container(for: tab)
+            }
+        }
+    }
+
+    /// One tab, our list, our stack. SwiftUI's generated "More" list is what
+    /// this replaces; `MoreIndexView` records what that list cost.
+    private var moreTab: some TabContent<AppTab> {
+        Tab(AppTab.more.title, systemImage: AppTab.more.systemImage, value: AppTab.more) {
+            NavigationStack(path: $morePath) {
+                MoreIndexView()
+                    .navigationDestination(for: AppTab.self) { tab in
+                        TabRootView(tab: tab)
+                            // Which destination is showing, for the sidebar to
+                            // select if this scene becomes regular width, and for
+                            // scene restoration. The stack cannot be read back.
+                            .onAppear { selectedTab = tab }
+                    }
+            }
+        }
+    }
+
+    /// `.sidebarAdaptable` turns these into the iPad sidebar. That arrangement
+    /// is good and must stay; only compact width swaps them for the index.
+    @TabContentBuilder<AppTab>
+    private var sidebarSections: some TabContent<AppTab> {
+        ForEach(AppTab.sections) { section in
+            TabSection(section.title) {
+                tabItems(for: section.tabs)
+            }
+        }
+    }
+
+    /// The stack a screen navigates in.
+    ///
+    /// Ownership sits here rather than in the roots because a root that carried
+    /// its own stack drew a second navigation bar the moment anything pushed it —
+    /// which is what "More" did to 24 screens on iPhone.
+    @ViewBuilder
+    private func container(for tab: AppTab) -> some View {
+        if tab.ownsNavigationContainer {
+            TabRootView(tab: tab)
+        } else {
+            NavigationStack {
+                TabRootView(tab: tab)
+            }
+        }
+    }
+
+    // MARK: - Selection
+
+    /// `selectedTab` names a destination; the tab bar and the sidebar can each
+    /// show only the subset they have a row for.
+    private var tabSelection: Binding<AppTab> {
+        Binding(
+            get: {
+                if sizeClass == .compact {
+                    // Nothing past the fourth has a tab of its own on a phone;
+                    // those destinations sit on the index's stack, and the index
+                    // is the tab that is selected while one of them is showing.
+                    AppTab.primary.contains(selectedTab) ? selectedTab : .more
+                } else {
+                    // The index does not exist in regular width, and selecting a
+                    // tab that isn't there leaves the whole detail area blank.
+                    selectedTab == .more ? .dashboards : selectedTab
+                }
+            },
+            set: { selectedTab = $0 }
+        )
+    }
+
+    /// Goes to a destination by name, from a keyboard shortcut or `GETHOG_TAB`.
+    ///
+    /// In compact width that means selecting the index *and* pushing, and it
+    /// replaces whatever the index had pushed before rather than landing behind
+    /// it: `⌘,` has to reach Settings from anywhere.
+    private func open(_ tab: AppTab) {
+        selectedTab = tab
+        guard sizeClass == .compact, AppTab.secondary.contains(tab) else { return }
+        var path = NavigationPath()
+        path.append(tab)
+        morePath = path
+    }
+
+    /// Puts a secondary destination back on the index's stack.
+    ///
+    /// `selectedTab` is scene storage and survives a relaunch; the stack is
+    /// `@State` and does not. Without this, `GETHOG_TAB=errorTracking` — and
+    /// a restored scene — would select the index and stop there instead of
+    /// landing on the screen.
+    private func restorePushedTab() {
+        guard sizeClass == .compact,
+              morePath.isEmpty,
+              AppTab.secondary.contains(selectedTab)
+        else { return }
+        morePath.append(selectedTab)
     }
 }
 

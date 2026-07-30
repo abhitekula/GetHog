@@ -51,23 +51,20 @@ struct SurveysRoot: View {
     @State private var selected: Survey?
 
     var body: some View {
-        // A NavigationStack rather than a split view: the detail is a sheet,
-        // because response analysis lives on the web and there is nothing to
-        // keep persistently open in a second column.
-        NavigationStack {
-            content
-                .navigationTitle("Surveys")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
-        .sheet(item: $selected) { survey in
-            SurveyDetailSheet(
-                survey: survey,
-                webURL: model.webURL(path: "surveys/\(survey.id)")
-            )
-        }
+        // A sheet rather than a second column: response analysis lives on the
+        // web, so there is nothing to keep persistently open beside the list.
+        content
+            .navigationTitle("Surveys")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .sheet(item: $selected) { survey in
+                SurveyDetailSheet(
+                    survey: survey,
+                    webURL: model.webURL(path: "surveys/\(survey.id)")
+                )
+            }
     }
 
     @ViewBuilder

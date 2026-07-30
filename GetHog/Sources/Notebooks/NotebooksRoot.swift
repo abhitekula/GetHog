@@ -39,18 +39,16 @@ struct NotebooksRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Notebooks")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search notebooks")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: Notebook.self) { notebook in
-                    NotebookDetailView(summary: notebook)
-                }
-        }
+        content
+            .navigationTitle("Notebooks")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search notebooks")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: Notebook.self) { notebook in
+                NotebookDetailView(summary: notebook)
+            }
     }
 
     // MARK: - States

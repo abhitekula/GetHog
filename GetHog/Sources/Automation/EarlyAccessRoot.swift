@@ -44,15 +44,13 @@ struct EarlyAccessRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Early access")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search features")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Early access")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search features")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     // MARK: - States

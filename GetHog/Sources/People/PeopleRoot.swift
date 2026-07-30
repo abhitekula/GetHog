@@ -101,24 +101,38 @@ final class PeopleStore {
 struct PeopleRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var store = PeopleStore()
     @State private var segment: PeopleStore.Segment = .persons
     @State private var search = ""
     @State private var selection: PersonSummary?
 
+    // In compact width the index behind "More" owns the navigation stack (see
+    // `RootView`). A `NavigationSplitView` here collapses into a stack of its
+    // own inside that one, which draws a second navigation bar above the first —
+    // a whole row spent on a back chevron. There is no second column at phone
+    // width anyway, so nothing is lost by pushing instead.
     var body: some View {
-        NavigationSplitView {
+        if sizeClass == .compact {
             sidebar
-        } detail: {
-            if let selection {
-                PersonDetailView(person: selection)
-                    .id(selection.id)
-            } else {
-                ContentUnavailableView(
-                    "Select a person",
-                    systemImage: "person.crop.circle",
-                    description: Text("Pick a person to see their properties and recent events.")
-                )
+                .navigationDestination(for: PersonSummary.self) { person in
+                    PersonDetailView(person: person)
+                        .id(person.id)
+                }
+        } else {
+            NavigationSplitView {
+                sidebar
+            } detail: {
+                if let selection {
+                    PersonDetailView(person: selection)
+                        .id(selection.id)
+                } else {
+                    ContentUnavailableView(
+                        "Select a person",
+                        systemImage: "person.crop.circle",
+                        description: Text("Pick a person to see their properties and recent events.")
+                    )
+                }
             }
         }
     }

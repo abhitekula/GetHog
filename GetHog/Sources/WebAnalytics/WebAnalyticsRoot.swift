@@ -253,43 +253,41 @@ struct WebAnalyticsRoot: View {
     /// A flat report with nothing to select — a split view would owe iPad a
     /// detail pane it does not have, so this screen is a plain stack.
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Web")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Filter \(dimension.pluralTitle)")
-                .refreshable { await reloadAll() }
-                // Two keys, not one: changing the breakdown dimension must not
-                // spend a second /query/ call re-fetching identical KPIs.
-                .task(id: OverviewKey(projectID: model.projectID, window: window)) {
-                    await loadOverview()
-                }
-                .task(id: BreakdownKey(projectID: model.projectID, window: window, dimension: dimension)) {
-                    await loadBreakdown()
-                }
-                // Neither of these depends on the breakdown dimension, so they
-                // share the overview's key rather than re-firing alongside it.
-                .task(id: OverviewKey(projectID: model.projectID, window: window)) {
-                    await loadNotableChanges()
-                }
-                .task(id: OverviewKey(projectID: model.projectID, window: window)) {
-                    await loadExternalClicks()
-                }
-                .task(id: OverviewKey(projectID: model.projectID, window: window)) {
-                    await loadMarketing()
-                }
-                // Vitals carry two extra selectors of their own, so changing the
-                // metric refetches only this one query.
-                .task(id: VitalsKey(
-                    projectID: model.projectID,
-                    window: window,
-                    metric: vitalMetric,
-                    percentile: vitalPercentile
-                )) {
-                    await loadVitals()
-                }
-        }
+        content
+            .navigationTitle("Web")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Filter \(dimension.pluralTitle)")
+            .refreshable { await reloadAll() }
+            // Two keys, not one: changing the breakdown dimension must not
+            // spend a second /query/ call re-fetching identical KPIs.
+            .task(id: OverviewKey(projectID: model.projectID, window: window)) {
+                await loadOverview()
+            }
+            .task(id: BreakdownKey(projectID: model.projectID, window: window, dimension: dimension)) {
+                await loadBreakdown()
+            }
+            // Neither of these depends on the breakdown dimension, so they
+            // share the overview's key rather than re-firing alongside it.
+            .task(id: OverviewKey(projectID: model.projectID, window: window)) {
+                await loadNotableChanges()
+            }
+            .task(id: OverviewKey(projectID: model.projectID, window: window)) {
+                await loadExternalClicks()
+            }
+            .task(id: OverviewKey(projectID: model.projectID, window: window)) {
+                await loadMarketing()
+            }
+            // Vitals carry two extra selectors of their own, so changing the
+            // metric refetches only this one query.
+            .task(id: VitalsKey(
+                projectID: model.projectID,
+                window: window,
+                metric: vitalMetric,
+                percentile: vitalPercentile
+            )) {
+                await loadVitals()
+            }
     }
 
     private struct VitalsKey: Hashable {

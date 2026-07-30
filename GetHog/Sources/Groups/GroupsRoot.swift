@@ -41,20 +41,18 @@ struct GroupsRoot: View {
     @State private var store = GroupTypesStore()
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Groups")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: GroupType.self) { type in
-                    GroupListView(groupType: type)
-                }
-                .navigationDestination(for: GroupDetailTarget.self) { target in
-                    GroupDetailView(group: target.group, groupType: target.groupType)
-                }
-        }
+        content
+            .navigationTitle("Groups")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: GroupType.self) { type in
+                GroupListView(groupType: type)
+            }
+            .navigationDestination(for: GroupDetailTarget.self) { target in
+                GroupDetailView(group: target.group, groupType: target.groupType)
+            }
     }
 
     @ViewBuilder

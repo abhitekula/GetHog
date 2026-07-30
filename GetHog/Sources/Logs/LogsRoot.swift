@@ -135,17 +135,15 @@ struct LogsRoot: View {
     var body: some View {
         @Bindable var store = store
 
-        NavigationStack {
-            content
-                .navigationTitle("Logs")
-                .navigationDestination(for: LogRow.self) { LogDetailView(row: $0) }
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $store.search, prompt: "Search log messages")
-                .onSubmit(of: .search) { Task { await load() } }
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Logs")
+            .navigationDestination(for: LogRow.self) { LogDetailView(row: $0) }
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $store.search, prompt: "Search log messages")
+            .onSubmit(of: .search) { Task { await load() } }
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     @ViewBuilder

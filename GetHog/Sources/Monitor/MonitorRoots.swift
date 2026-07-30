@@ -15,15 +15,13 @@ struct InboxRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Inbox")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search tasks")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Inbox")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search tasks")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     @ViewBuilder
@@ -138,14 +136,12 @@ struct SignalsRoot: View {
     @State private var store = SignalsStore()
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Signals")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Signals")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     @ViewBuilder
@@ -258,14 +254,12 @@ struct HealthRoot: View {
     @State private var store = HealthStore()
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Health")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Health")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     @ViewBuilder

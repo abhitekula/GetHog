@@ -80,18 +80,16 @@ struct WarehouseRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Warehouse")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search sources and tables")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: WarehouseTable.self) { table in
-                    WarehouseTableDetailView(table: table)
-                }
-        }
+        content
+            .navigationTitle("Warehouse")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search sources and tables")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: WarehouseTable.self) { table in
+                WarehouseTableDetailView(table: table)
+            }
     }
 
     // MARK: - States

@@ -69,18 +69,16 @@ struct TaxonomyRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Taxonomy")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search events")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: TaxonomyEvent.self) { event in
-                    TaxonomyEventDetailView(event: event)
-                }
-        }
+        content
+            .navigationTitle("Taxonomy")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search events")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: TaxonomyEvent.self) { event in
+                TaxonomyEventDetailView(event: event)
+            }
     }
 
     @ViewBuilder

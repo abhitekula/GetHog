@@ -49,22 +49,21 @@ struct ExperimentsRoot: View {
     @State private var selected: Experiment?
 
     var body: some View {
-        // NavigationStack, not a split view: the detail is a sheet because the
-        // numbers that justify a second column aren't computed on device.
-        NavigationStack {
-            content
-                .navigationTitle("Experiments")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
-        .sheet(item: $selected) { experiment in
-            ExperimentDetailSheet(
-                experiment: experiment,
-                webURL: model.webURL(path: "experiments/\(experiment.id)")
-            )
-        }
+        // No second column: the detail is a sheet because the numbers that
+        // would justify one aren't computed on device. The stack this pushes
+        // into belongs to the container — see `RootView`.
+        content
+            .navigationTitle("Experiments")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .sheet(item: $selected) { experiment in
+                ExperimentDetailSheet(
+                    experiment: experiment,
+                    webURL: model.webURL(path: "experiments/\(experiment.id)")
+                )
+            }
     }
 
     @ViewBuilder

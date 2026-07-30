@@ -48,23 +48,21 @@ struct PipelinesRoot: View {
     @State private var search = ""
 
     var body: some View {
-        // NavigationStack with a sheet, not a split view: a function's detail is
-        // a short read-only summary, not a second column's worth of content.
-        NavigationStack {
-            content
-                .navigationTitle("Pipelines")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search pipelines")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
-        .sheet(item: $selected) { function in
-            PipelineDetailSheet(
-                function: function,
-                webURL: model.webURL(path: webPath(for: function))
-            )
-        }
+        // A sheet, not a second column: a function's detail is a short
+        // read-only summary, not a column's worth of content.
+        content
+            .navigationTitle("Pipelines")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search pipelines")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .sheet(item: $selected) { function in
+                PipelineDetailSheet(
+                    function: function,
+                    webURL: model.webURL(path: webPath(for: function))
+                )
+            }
     }
 
     // MARK: - States

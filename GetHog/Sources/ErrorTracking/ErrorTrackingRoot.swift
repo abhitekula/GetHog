@@ -100,6 +100,7 @@ final class ErrorTrackingStore {
 struct ErrorTrackingRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var store = ErrorTrackingStore()
     // Ranked by people hurt, not by noise: an error hitting 200 users matters
@@ -109,30 +110,49 @@ struct ErrorTrackingRoot: View {
     @State private var window: AnalyticsWindow = .week
     @State private var selection: ErrorIssue?
 
+    // In compact width the index behind "More" owns the navigation stack (see
+    // `RootView`). A `NavigationSplitView` here collapses into a stack of its
+    // own inside that one and draws a second navigation bar above it — measured
+    // on this screen: a bar carrying only a back chevron, then a second bar with
+    // the project switcher and the sort menu, before any error was visible.
+    // There is no second column at phone width anyway, so there is nothing to
+    // collapse.
     var body: some View {
-        NavigationSplitView {
-            content
-                .navigationTitle("Errors")
-                .toolbar {
-                    ProjectSwitcher()
-                    ToolbarItem(placement: .topBarTrailing) { optionsMenu }
+        if sizeClass == .compact {
+            issueList
+                .navigationDestination(for: ErrorIssue.self) { issue in
+                    ErrorIssueDetailView(issue: issue)
+                        .id(issue.id)
                 }
-                .refreshable { await load() }
-                .task(id: LoadKey(projectID: model.projectID, window: window, order: order)) {
-                    await load()
+        } else {
+            NavigationSplitView {
+                issueList
+            } detail: {
+                if let selection {
+                    ErrorIssueDetailView(issue: selection)
+                        .id(selection.id)
+                } else {
+                    ContentUnavailableView(
+                        "Select an issue",
+                        systemImage: "ladybug",
+                        description: Text("Pick an error to see its impact and where it came from.")
+                    )
                 }
-        } detail: {
-            if let selection {
-                ErrorIssueDetailView(issue: selection)
-                    .id(selection.id)
-            } else {
-                ContentUnavailableView(
-                    "Select an issue",
-                    systemImage: "ladybug",
-                    description: Text("Pick an error to see its impact and where it came from.")
-                )
             }
         }
+    }
+
+    private var issueList: some View {
+        content
+            .navigationTitle("Errors")
+            .toolbar {
+                ProjectSwitcher()
+                ToolbarItem(placement: .topBarTrailing) { optionsMenu }
+            }
+            .refreshable { await load() }
+            .task(id: LoadKey(projectID: model.projectID, window: window, order: order)) {
+                await load()
+            }
     }
 
     private struct LoadKey: Hashable {

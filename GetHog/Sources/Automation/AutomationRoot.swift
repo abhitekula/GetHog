@@ -255,14 +255,12 @@ struct AutomationRoot: View {
     @State private var section: AutomationSection = .workflows
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Automation")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Automation")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     // MARK: - States

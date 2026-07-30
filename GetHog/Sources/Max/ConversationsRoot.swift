@@ -37,18 +37,16 @@ struct ConversationsRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Max")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search conversations")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: MaxConversation.self) { conversation in
-                    ConversationDetailView(conversation: conversation)
-                }
-        }
+        content
+            .navigationTitle("Max")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search conversations")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: MaxConversation.self) { conversation in
+                ConversationDetailView(conversation: conversation)
+            }
     }
 
     // MARK: - States

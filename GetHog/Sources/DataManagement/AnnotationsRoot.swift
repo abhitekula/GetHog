@@ -41,15 +41,13 @@ struct AnnotationsRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Annotations")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search annotations")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-        }
+        content
+            .navigationTitle("Annotations")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search annotations")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
     }
 
     @ViewBuilder

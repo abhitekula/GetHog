@@ -143,19 +143,17 @@ struct TracingRoot: View {
     var body: some View {
         @Bindable var store = store
 
-        NavigationStack {
-            content
-                .navigationTitle("Tracing")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $store.spanName, prompt: "Filter by span name")
-                .onSubmit(of: .search) { Task { await load() } }
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: TraceGroup.self) { trace in
-                    TraceDetailView(trace: trace, window: store.window)
-                }
-        }
+        content
+            .navigationTitle("Tracing")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $store.spanName, prompt: "Filter by span name")
+            .onSubmit(of: .search) { Task { await load() } }
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: TraceGroup.self) { trace in
+                TraceDetailView(trace: trace, window: store.window)
+            }
     }
 
     // MARK: States

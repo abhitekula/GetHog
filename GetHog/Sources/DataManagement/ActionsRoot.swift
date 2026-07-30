@@ -47,18 +47,16 @@ struct ActionsRoot: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Actions")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search actions")
-                .refreshable { await load() }
-                .task(id: model.projectID) { await load() }
-                .navigationDestination(for: PostHogAction.self) { action in
-                    ActionDetailView(action: action)
-                }
-        }
+        content
+            .navigationTitle("Actions")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search actions")
+            .refreshable { await load() }
+            .task(id: model.projectID) { await load() }
+            .navigationDestination(for: PostHogAction.self) { action in
+                ActionDetailView(action: action)
+            }
     }
 
     @ViewBuilder
