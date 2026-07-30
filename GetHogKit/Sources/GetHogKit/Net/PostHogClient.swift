@@ -116,6 +116,20 @@ public actor PostHogClient {
             try await auth.handleUnauthorized()
             throw PostHogError.unauthorized
 
+        case 400:
+            // PostHog reports missing per-resource access as a 400 rather than a
+            // 403, so treating every 400 as a malformed request would show a
+            // permissions problem as a client bug.
+            let envelope = try? decoder.decode(PostHogErrorEnvelope.self, from: data)
+            if let resource = envelope?.deniedResource {
+                throw PostHogError.accessDenied(resource: resource)
+            }
+            throw PostHogError.http(status: 400, detail: envelope?.detail)
+
+        case 402:
+            let envelope = try? decoder.decode(PostHogErrorEnvelope.self, from: data)
+            throw PostHogError.paymentRequired(envelope?.detail)
+
         case 403:
             let envelope = try? decoder.decode(PostHogErrorEnvelope.self, from: data)
             throw PostHogError.forbidden(missingScope: envelope?.missingScope)

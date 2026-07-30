@@ -27,11 +27,14 @@ targets:
         buildPhase: resources
     dependencies:
       - package: GetHogKit
+      - target: GetHogWidgets
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
         PRODUCT_NAME: GetHog
         GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: GetHog/Support/GetHog.entitlements
         # Required: iOS terminates an app that evaluates Face ID without a
         # purpose string. Used before revealing the stored API key and,
         # optionally, before toggling a live feature flag.
@@ -43,6 +46,26 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_PREVIEWS: YES
+
+  # Widgets and Control Center controls. Reads the App Group cache written by
+  # the app — it must never call the API directly, because the rate-limit budget
+  # is organisation-wide and shared with the user's own integrations.
+  GetHogWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: GetHogWidgets
+    dependencies:
+      - package: GetHogKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.Widgets
+        PRODUCT_NAME: GetHogWidgets
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: GetHog/Support/GetHogWidgets.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: GetHog
+        INFOPLIST_KEY_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        SKIP_INSTALL: YES
 
   GetHogTests:
     type: bundle.unit-test

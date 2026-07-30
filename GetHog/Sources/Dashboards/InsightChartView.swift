@@ -26,6 +26,10 @@ struct InsightChartView: View {
             LifecycleChart(series: series, compact: compact)
         case .retention(let grid):
             RetentionGridView(grid: grid, compact: compact)
+        case .stickiness(let series):
+            StickinessChart(series: series, compact: compact)
+        case .paths(let graph):
+            PathsFlowView(graph: graph, compact: compact)
         case .unsupported(let kind):
             UnsupportedInsightCard(kind: kind, webURL: webURL)
         }

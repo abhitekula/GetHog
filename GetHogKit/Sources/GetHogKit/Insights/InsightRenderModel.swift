@@ -18,6 +18,10 @@ public enum InsightRenderModel: Sendable, Equatable {
     case lifecycle([LifecycleSeries])
     /// Cohort retention grid.
     case retention(RetentionGrid)
+    /// How many intervals users were active in — a distribution, not a series.
+    case stickiness([StickinessSeries])
+    /// User flow between steps, as a ranked edge list.
+    case paths(PathsGraph)
     /// Recognised, but deliberately not drawn on mobile yet.
     case unsupported(kind: String)
 }
@@ -76,6 +80,74 @@ public struct LifecycleSeries: Sendable, Equatable {
         self.label = label
         self.total = total
         self.points = points
+    }
+}
+
+public struct StickinessSeries: Sendable, Equatable {
+    public let label: String
+    public let total: Double
+    public let buckets: [StickinessBucket]
+
+    public init(label: String, total: Double, buckets: [StickinessBucket]) {
+        self.label = label
+        self.total = total
+        self.buckets = buckets
+    }
+}
+
+/// "`count` users were active on exactly `intervals` days."
+///
+/// The x-axis is an interval count, not a date, which is why stickiness cannot
+/// share the trends renderer.
+public struct StickinessBucket: Sendable, Equatable, Identifiable {
+    public let intervals: Int
+    public let count: Double
+
+    public var id: Int { intervals }
+
+    public init(intervals: Int, count: Double) {
+        self.intervals = intervals
+        self.count = count
+    }
+}
+
+public struct PathsGraph: Sendable, Equatable {
+    /// Ranked by traffic, busiest first.
+    public let edges: [PathEdge]
+
+    public init(edges: [PathEdge]) {
+        self.edges = edges.sorted { $0.value > $1.value }
+    }
+
+    public var busiest: Double { edges.first?.value ?? 0 }
+}
+
+public struct PathEdge: Sendable, Equatable, Identifiable {
+    public let source: String
+    public let target: String
+    public let value: Double
+    public let averageConversionTime: Double?
+    /// The step index PostHog prefixes onto the source node name.
+    public let step: Int?
+
+    public var id: String { "\(source)→\(target)" }
+
+    public init(rawSource: String, rawTarget: String, value: Double, averageConversionTime: Double?) {
+        let (step, source) = Self.split(rawSource)
+        self.source = source
+        self.target = Self.split(rawTarget).name
+        self.value = value
+        self.averageConversionTime = averageConversionTime
+        self.step = step
+    }
+
+    /// PostHog encodes a node as `"<step>_<name>"`. The prefix is layout
+    /// metadata for its Sankey, not something to show a user.
+    static func split(_ raw: String) -> (step: Int?, name: String) {
+        guard let underscore = raw.firstIndex(of: "_"),
+              let step = Int(raw[raw.startIndex..<underscore])
+        else { return (nil, raw) }
+        return (step, String(raw[raw.index(after: underscore)...]))
     }
 }
 

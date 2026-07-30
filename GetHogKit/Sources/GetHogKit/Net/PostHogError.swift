@@ -5,6 +5,11 @@ public enum PostHogError: Error, Equatable, Sendable {
     /// The key authenticated but lacks a scope. `missingScope` is the exact
     /// scope string PostHog named, so onboarding can tell the user what to tick.
     case forbidden(missingScope: String?)
+    /// The feature exists but the organisation's plan doesn't include it (HTTP 402).
+    case paymentRequired(String?)
+    /// The key is fine, but this user lacks access to a specific resource.
+    /// PostHog reports this as a **400**, not a 403.
+    case accessDenied(resource: String?)
     case rateLimited(retryAfter: TimeInterval)
     case http(status: Int, detail: String?)
     case transport(String)
@@ -30,6 +35,14 @@ extension PostHogError: LocalizedError {
             } else {
                 "Your API key doesn't have permission for this."
             }
+        case .paymentRequired(let detail):
+            detail ?? "This feature requires a paid PostHog plan."
+        case .accessDenied(let resource):
+            if let resource {
+                "You don't have access to \(resource) in this project. Ask an admin to grant it."
+            } else {
+                "You don't have access to this resource in the project."
+            }
         case .rateLimited(let after):
             "PostHog is rate limiting requests. Try again in \(Int(after))s."
         case .http(let status, let detail):
@@ -54,6 +67,15 @@ struct PostHogErrorEnvelope: Decodable {
     var missingScope: String? {
         guard let detail else { return nil }
         let pattern = /([a-z_]+:(?:read|write))/
+        return detail.firstMatch(of: pattern).map { String($0.1) }
+    }
+
+    /// Pulls the resource name out of "Access control failure. You don't have
+    /// `viewer` access to the `logs` resource." — the message is the only place
+    /// PostHog says which resource was denied.
+    var deniedResource: String? {
+        guard let detail, detail.contains("Access control failure") else { return nil }
+        let pattern = /access to the `([a-z_]+)` resource/
         return detail.firstMatch(of: pattern).map { String($0.1) }
     }
 }

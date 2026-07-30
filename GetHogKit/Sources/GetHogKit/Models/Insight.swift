@@ -67,6 +67,14 @@ public struct Insight: Sendable, Decodable, Identifiable {
             let cohorts = result.retentionCohorts
             return cohorts.isEmpty ? .unsupported(kind: sourceKind) : .retention(RetentionGrid(cohorts: cohorts))
 
+        case "StickinessQuery":
+            let series = result.seriesDTOs.map(\.asStickinessSeries)
+            return series.isEmpty ? .unsupported(kind: sourceKind) : .stickiness(series)
+
+        case "PathsQuery":
+            let edges = result.pathEdges
+            return edges.isEmpty ? .unsupported(kind: sourceKind) : .paths(PathsGraph(edges: edges))
+
         default:
             return .unsupported(kind: sourceKind)
         }
@@ -97,6 +105,7 @@ enum RawResult: Sendable, Decodable {
     case funnelGroups([[FunnelStepDTO]])
     case funnelSteps([FunnelStepDTO])
     case retention([RetentionCohortDTO])
+    case paths([PathEdgeDTO])
     case unknown
 
     init(from decoder: any Decoder) throws {
@@ -105,6 +114,11 @@ enum RawResult: Sendable, Decodable {
         if let cohorts = try? [RetentionCohortDTO](from: decoder),
            cohorts.contains(where: { $0.values != nil }) {
             self = .retention(cohorts); return
+        }
+        // Paths edges are the only shape carrying both `source` and `target`.
+        if let edges = try? [PathEdgeDTO](from: decoder),
+           edges.contains(where: { $0.source != nil && $0.target != nil }) {
+            self = .paths(edges); return
         }
         if let groups = try? [[FunnelStepDTO]](from: decoder), !groups.isEmpty {
             self = .funnelGroups(groups); return
@@ -146,6 +160,33 @@ enum RawResult: Sendable, Decodable {
         guard case .retention(let dtos) = self else { return [] }
         return dtos.map(\.asCohort)
     }
+
+    var pathEdges: [PathEdge] {
+        guard case .paths(let dtos) = self else { return [] }
+        return dtos.compactMap(\.asEdge)
+    }
+}
+
+struct PathEdgeDTO: Sendable, Decodable {
+    let source: String?
+    let target: String?
+    let value: Double?
+    let averageConversionTime: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case source, target, value
+        case averageConversionTime = "average_conversion_time"
+    }
+
+    var asEdge: PathEdge? {
+        guard let source, let target else { return nil }
+        return PathEdge(
+            rawSource: source,
+            rawTarget: target,
+            value: value ?? 0,
+            averageConversionTime: averageConversionTime
+        )
+    }
 }
 
 struct RetentionCohortDTO: Sendable, Decodable {
@@ -171,7 +212,9 @@ struct TrendsSeriesDTO: Sendable, Decodable {
     let label: String?
     let count: Double?
     let data: [Double]?
-    let days: [String]?
+    /// Raw `days` entries. Trends sends date strings; stickiness sends interval
+    /// numbers, so this is decoded permissively and normalised by `dayLabels`.
+    let rawDays: [JSONValue]?
     let aggregatedValue: Double?
     /// Present only on lifecycle results.
     let status: String?
@@ -183,18 +226,42 @@ struct TrendsSeriesDTO: Sendable, Decodable {
         self.label = label
         self.count = count
         self.data = data
-        self.days = days
+        self.rawDays = days?.map { .string($0) }
         self.aggregatedValue = aggregatedValue
         self.status = status
     }
 
     enum CodingKeys: String, CodingKey {
-        case label, count, data, days, status
+        case label, count, data, status
+        case rawDays = "days"
         case aggregatedValue = "aggregated_value"
     }
 
+    /// `days` as strings regardless of whether PostHog sent strings or numbers.
+    /// Typing it as `[String]` alone drops stickiness entirely — the array fails
+    /// to decode, `days` becomes nil, and the chart renders empty with no error.
+    var dayLabels: [String]? {
+        rawDays?.compactMap(\.stringValue)
+    }
+
+    var days: [String]? { dayLabels }
+
     var lifecycleStatus: LifecycleStatus {
         LifecycleStatus(rawValue: (status ?? "").lowercased()) ?? .other
+    }
+
+    var asStickinessSeries: StickinessSeries {
+        let counts = data ?? []
+        // Prefer the interval numbers PostHog sends; fall back to 1-based
+        // positions when a payload omits them.
+        let intervals = (rawDays ?? []).compactMap(\.intValue)
+        let buckets = counts.enumerated().map { index, count in
+            StickinessBucket(
+                intervals: index < intervals.count ? intervals[index] : index + 1,
+                count: count
+            )
+        }
+        return StickinessSeries(label: label ?? "", total: count ?? 0, buckets: buckets)
     }
 
     var asLifecycleSeries: LifecycleSeries {
