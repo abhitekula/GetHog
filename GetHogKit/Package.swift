@@ -1,10 +1,10 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
     name: "GetHogKit",
     platforms: [
-        .iOS(.v18),
+        .iOS(.v26),
         .macOS(.v15), // so `swift test` runs from the CLI without a simulator
     ],
     products: [

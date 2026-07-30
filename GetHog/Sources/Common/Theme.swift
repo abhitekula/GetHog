@@ -49,6 +49,45 @@ enum Theme {
         dark: Color(hex: 0xEA8C4F)
     )
 
+    /// Tint applied to Liquid Glass surfaces.
+    ///
+    /// Untinted glass is neutral, and neutral glass floating over a cream ground
+    /// reads as a grey pill dropped on paper — the two materials look borrowed
+    /// from different apps. A warm tint lets the glass pick up the surface
+    /// beneath it, which is the whole point of the material. Kept low: past
+    /// roughly 0.12 it stops looking like glass and starts looking like a
+    /// coloured rectangle.
+    static let glassTint = Color(
+        light: Color(hex: 0xC2410C).opacity(0.09),
+        dark: Color(hex: 0xEA8C4F).opacity(0.11)
+    )
+
+    /// Glass tint for a control in its selected state, keyed to the app accent
+    /// rather than the warm secondary so selection reads as "active", not
+    /// merely "decorated".
+    static let glassActiveTint = Color(
+        light: Color(red: 0.043, green: 0.431, blue: 0.459).opacity(0.16),
+        dark: Color(red: 0.243, green: 0.773, blue: 0.808).opacity(0.20)
+    )
+
+    /// Type scale. Four sizes and two weights, deliberately — every extra size
+    /// buys a little emphasis and costs a lot of coherence, and a dense
+    /// analytics screen is exactly where that trade goes bad.
+    ///
+    /// All of them are semantic, so Dynamic Type works without per-screen care.
+    enum Typography {
+        /// Big numbers. Rounded because it reads as a figure rather than prose,
+        /// and monospaced digits so a value updating in place doesn't reflow.
+        static let metric = Font.system(.largeTitle, design: .rounded, weight: .semibold)
+            .monospacedDigit()
+        /// A smaller metric, for tiles that sit several to a row.
+        static let metricSmall = Font.system(.title2, design: .rounded, weight: .semibold)
+            .monospacedDigit()
+        static let title = Font.headline
+        static let body = Font.subheadline
+        static let caption = Font.caption
+    }
+
     /// One spacing scale, so rhythm is consistent rather than per-screen taste.
     /// Multiples of 4, which is what the system's own metrics are built on.
     enum Space {
