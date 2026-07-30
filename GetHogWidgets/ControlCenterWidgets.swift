@@ -127,8 +127,12 @@ struct OpenMetricFromControlIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        // Advisory: the app reads this to choose a landing screen. If it never
-        // does, the button still opens the app, which is most of the value.
+        // Read by `RootView.routePendingLinks()`, which lands on Dashboards and
+        // clears it. That was not true when this was written — the comment here
+        // called it "advisory" and nothing consumed it, so `openAppWhenRun`
+        // brought the app forward onto whatever screen it was last left on. A
+        // control labelled with a metric that lands you in Settings is the
+        // control failing at its only job.
         WidgetCache.store.requestOpen(PendingOpen(metricID: metricID, requestedAt: Date()))
         return .result()
     }

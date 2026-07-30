@@ -546,6 +546,27 @@ struct RootView: View {
     /// Both mailboxes, because an intent that opens the app and a tapped link
     /// are the same request as far as this view is concerned: go somewhere.
     private func routePendingLinks() {
+        // The Control Center dashboard button writes this and, until now,
+        // nothing read it. Its intent sets `openAppWhenRun`, so the app came to
+        // the front and stopped — on whatever screen you happened to leave it.
+        // Pressing a control labelled with a *metric* and landing on Settings is
+        // the control silently failing at the only job it has.
+        //
+        // The destination is the dashboards home rather than the metric itself,
+        // and that is the honest one: a snapshot metric knows its insight id,
+        // but this app draws an insight only as a tile on the dashboard it
+        // belongs to and has no screen for one on its own — the same limit the
+        // link parser states when it refuses `/insights/{id}`. Inventing a
+        // deeper landing would mean guessing which dashboard, and guessing wrong
+        // is worse than landing one level up.
+        // The id it carries is deliberately unread: presence is the whole
+        // signal. Consumed either way, so a stale request cannot redirect a
+        // later launch the user began somewhere else.
+        if SharedSnapshotStore.shared.pendingOpen() != nil {
+            SharedSnapshotStore.shared.clearPendingOpen()
+            open(.dashboards)
+        }
+
         if let target = IntentNavigationTarget.consume() {
             if let staged = target.stagedQuery {
                 LinkInbox.stage(query: staged.term, for: staged.tab)
