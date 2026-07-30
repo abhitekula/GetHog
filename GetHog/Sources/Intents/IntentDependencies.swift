@@ -229,7 +229,7 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible, Equatable {
         switch posthog {
         case .unauthorized:
             return .unauthorized
-        case .forbidden(let missingScope):
+        case .forbidden(let missingScope, _):
             // A read-scoped key passes every earlier check and only fails here,
             // so this is the first moment the user can learn what to tick.
             return .missingScope(scope: missingScope ?? writeScope ?? "the required", action: action)

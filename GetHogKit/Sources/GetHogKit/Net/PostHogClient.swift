@@ -132,7 +132,10 @@ public actor PostHogClient {
 
         case 403:
             let envelope = try? decoder.decode(PostHogErrorEnvelope.self, from: data)
-            throw PostHogError.forbidden(missingScope: envelope?.missingScope)
+            throw PostHogError.forbidden(
+                missingScope: envelope?.missingScope,
+                detail: envelope?.detail
+            )
 
         case 429:
             let retryAfter = response.value(forHTTPHeaderField: "Retry-After")

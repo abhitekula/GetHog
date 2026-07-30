@@ -1,6 +1,14 @@
 import GetHogKit
 import SwiftUI
 
+/// The words the tracing screens use for their own subject. Shared structure,
+/// per-screen nouns — see `ResourceCopy`.
+let tracingCopy = ResourceCopy(
+    subject: "Tracing",
+    itemNoun: "spans",
+    emptyHint: "No spans were recorded in this window. Send OpenTelemetry traces to PostHog to populate it."
+)
+
 /// The span explorer.
 ///
 /// Unusual among these screens in that its *blocked* state is the one that has
@@ -55,7 +63,7 @@ enum TracingWindow: String, CaseIterable, Identifiable, Hashable {
 @MainActor
 @Observable
 final class TracingStore {
-    private(set) var state: TracingState = .loading
+    private(set) var state: ResourceAccessState = .loading
     private(set) var traces: [TraceGroup] = []
     private(set) var services: [String] = []
     private(set) var loadedAt: Date?
@@ -89,7 +97,11 @@ final class TracingStore {
             state = .resolved(rowCount: traces.count)
             loadedAt = Date()
         } catch {
-            state = TracingState(failure: error)
+            state = ResourceAccessState(
+                failure: error,
+                resource: "tracing",
+                defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
+            )
             traces = []
         }
 
@@ -162,7 +174,7 @@ struct TracingRoot: View {
             }
         } else {
             switch store.state {
-            case .denied, .missingScope:
+            case _ where store.state.isBlocked:
                 TracingLockedView(state: store.state) {
                     Task { await model.refreshCapabilities(); await load() }
                 }
@@ -181,7 +193,7 @@ struct TracingRoot: View {
                     filterBar
                     EmptyStateView(
                         // Short on purpose: the title gets one line and truncates.
-                        title: store.state.headline,
+                        title: store.state.headline(tracingCopy),
                         systemImage: "point.3.connected.trianglepath.dotted",
                         message: emptyDescription
                     )
@@ -189,7 +201,7 @@ struct TracingRoot: View {
                 }
                 .background(Theme.pageBackground)
 
-            case .loading, .loaded:
+            default:
                 VStack(spacing: 0) {
                     filterBar
                     list
@@ -285,15 +297,15 @@ struct TracingRoot: View {
 /// to regenerate a key over a role problem wastes their afternoon, so this view
 /// says which of the two it is.
 struct TracingLockedView: View {
-    let state: TracingState
+    let state: ResourceAccessState
     var onRecheck: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
-            Label(state.headline, systemImage: "lock")
+            Label(state.headline(tracingCopy), systemImage: "lock")
         } description: {
             VStack(spacing: Theme.Space.s) {
-                Text(state.detail)
+                Text(state.detail(tracingCopy))
                 if case .denied(let resource) = state {
                     Text(resource)
                         .font(.footnote.monospaced())
@@ -595,7 +607,7 @@ struct TraceSpanTreeView: View {
     let spanName: String
     var window: TracingWindow = .day
 
-    @State private var state: TracingState = .loading
+    @State private var state: ResourceAccessState = .loading
     @State private var nodes: [TraceSpanTreeNode] = []
     @State private var loadedAt: Date?
 
@@ -610,7 +622,7 @@ struct TraceSpanTreeView: View {
     @ViewBuilder
     private var content: some View {
         switch state {
-        case .denied, .missingScope:
+        case _ where state.isBlocked:
             TracingLockedView(state: state) {
                 Task { await model.refreshCapabilities(); await load() }
             }
@@ -631,7 +643,7 @@ struct TraceSpanTreeView: View {
                 message: "No trace entered through \(spanName) in \(serviceName) during the last \(window.title.lowercased())."
             )
 
-        case .loading, .loaded:
+        default:
             list
         }
     }
@@ -677,7 +689,11 @@ struct TraceSpanTreeView: View {
             state = .resolved(rowCount: edges.count)
             loadedAt = Date()
         } catch {
-            state = TracingState(failure: error)
+            state = ResourceAccessState(
+                failure: error,
+                resource: "tracing",
+                defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
+            )
             nodes = []
         }
     }

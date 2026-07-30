@@ -1,6 +1,13 @@
 import GetHogKit
 import SwiftUI
 
+/// The words the logs screen uses for its own subject.
+let logsCopy = ResourceCopy(
+    subject: "Logs",
+    itemNoun: "log lines",
+    emptyHint: "No log lines matched in this window."
+)
+
 /// The log viewer.
 ///
 /// Like `TracingRoot`, this screen's *blocked* state is the one that has been
@@ -68,7 +75,7 @@ extension LogSeverity {
 @MainActor
 @Observable
 final class LogsStore {
-    private(set) var state: LogsState = .loading
+    private(set) var state: ResourceAccessState = .loading
     private(set) var rows: [LogRow] = []
     private(set) var loadedAt: Date?
     private(set) var isLoading = false
@@ -113,7 +120,7 @@ final class LogsStore {
             state = .resolved(rowCount: rows.count)
             loadedAt = Date()
         } catch {
-            state = LogsState(failure: error)
+            state = ResourceAccessState(failure: error, resource: "logs", defaultScope: "logs:read")
             rows = []
         }
     }
@@ -151,14 +158,14 @@ struct LogsRoot: View {
             }
         } else {
             switch store.state {
-            case .denied, .missingScope:
+            case _ where store.state.isBlocked:
                 LogsLockedView(state: store.state) {
                     Task { await model.refreshCapabilities(); await load() }
                 }
 
             case .failed(let message):
                 EmptyStateView(
-                    title: store.state.headline,
+                    title: store.state.headline(logsCopy),
                     systemImage: "exclamationmark.triangle",
                     message: message,
                     actionTitle: "Try again",
@@ -170,7 +177,7 @@ struct LogsRoot: View {
                     filterBar
                     EmptyStateView(
                         // Short on purpose: the title truncates to one line.
-                        title: store.state.headline,
+                        title: store.state.headline(logsCopy),
                         systemImage: "text.alignleft",
                         message: emptyDescription
                     )
@@ -178,7 +185,7 @@ struct LogsRoot: View {
                 }
                 .background(Theme.pageBackground)
 
-            case .loading, .loaded:
+            default:
                 VStack(spacing: 0) {
                     filterBar
                     list
@@ -278,15 +285,15 @@ struct LogsRoot: View {
 /// because the fix differs — a missing *scope* is repaired by the user editing
 /// their own API key, a denied *resource* needs an organisation admin.
 struct LogsLockedView: View {
-    let state: LogsState
+    let state: ResourceAccessState
     var onRecheck: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
-            Label(state.headline, systemImage: "lock")
+            Label(state.headline(logsCopy), systemImage: "lock")
         } description: {
             VStack(spacing: Theme.Space.s) {
-                Text(state.detail)
+                Text(state.detail(logsCopy))
                 if case .denied(let resource) = state {
                     Text(resource)
                         .font(.footnote.monospaced())

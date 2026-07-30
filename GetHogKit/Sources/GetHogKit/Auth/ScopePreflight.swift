@@ -121,7 +121,7 @@ public struct ScopePreflight: Sendable {
             return .available
         } catch let error as PostHogError {
             switch error {
-            case .forbidden(let scope): return .locked(scope: scope)
+            case .forbidden(let scope, _): return .locked(scope: scope)
             case .unauthorized: return .locked(scope: nil)
             default: return .failed(error.localizedDescription)
             }

@@ -4,7 +4,7 @@ public enum PostHogError: Error, Equatable, Sendable {
     case unauthorized
     /// The key authenticated but lacks a scope. `missingScope` is the exact
     /// scope string PostHog named, so onboarding can tell the user what to tick.
-    case forbidden(missingScope: String?)
+    case forbidden(missingScope: String?, detail: String? = nil)
     /// The feature exists but the organisation's plan doesn't include it (HTTP 402).
     case paymentRequired(String?)
     /// The key is fine, but this user lacks access to a specific resource.
@@ -29,7 +29,7 @@ extension PostHogError: LocalizedError {
         switch self {
         case .unauthorized:
             "Your API key was rejected. Check the key and try again."
-        case .forbidden(let scope):
+        case .forbidden(let scope, _):
             if let scope {
                 "Your API key is missing the \(scope) scope."
             } else {
