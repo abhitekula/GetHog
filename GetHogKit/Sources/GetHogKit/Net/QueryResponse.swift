@@ -56,7 +56,14 @@ public struct QueryRow: Sendable {
     public let columns: [String]
     public let values: [JSONValue]
 
-    init(columns: [String], values: [JSONValue]) {
+    /// Public so a consumer outside this package can build a row.
+    ///
+    /// The type is public and both its properties are, but the memberwise
+    /// initialiser defaulted to internal — so the app's own test target, which
+    /// is a different module, could read a `QueryRow` and not construct one.
+    /// That is only ever felt by a test wanting a row without a whole recorded
+    /// `/query/` response behind it, which is exactly the case worth serving.
+    public init(columns: [String], values: [JSONValue]) {
         self.columns = columns
         self.values = values
     }

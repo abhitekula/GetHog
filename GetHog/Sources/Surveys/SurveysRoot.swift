@@ -181,10 +181,22 @@ struct SurveyDetailSheet: View {
     let webURL: URL?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
+    @State private var results = SurveyResultsStore()
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    resultsSummary
+                } header: {
+                    SectionLabel(text: "Results", systemImage: "chart.bar")
+                } footer: {
+                    if let loadedAt = results.loadedAt, results.state != nil {
+                        FreshnessLabel(date: loadedAt)
+                    }
+                }
+
                 Section {
                     LabeledContent("Status") {
                         StatusPill(
@@ -220,7 +232,11 @@ struct SurveyDetailSheet: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(Array(survey.questions.enumerated()), id: \.offset) { index, question in
-                            SurveyQuestionRowView(index: index, question: question)
+                            SurveyQuestionRowView(
+                                index: index,
+                                question: question,
+                                results: questionResults(at: index)
+                            )
                         }
                     }
                 } header: {
@@ -236,9 +252,11 @@ struct SurveyDetailSheet: View {
                             Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                         }
                     } footer: {
-                        // Being blunt beats implying the app shows results it
-                        // has never fetched.
-                        Text("GetHog shows a survey's configuration. Responses and their breakdowns are only on the PostHog web console.")
+                        // Still says where the rest lives. What this screen now
+                        // shows is the funnel and the per-question breakdown;
+                        // targeting, branching and per-person responses remain
+                        // on the web.
+                        Text("GetHog reads a survey's results from its response events. Targeting, branching and individual respondents are on the PostHog web console.")
                     }
                 }
             }
@@ -250,13 +268,64 @@ struct SurveyDetailSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .task(id: survey.id) { await loadResults() }
+            .refreshable { await loadResults() }
         }
+    }
+
+    @ViewBuilder
+    private var resultsSummary: some View {
+        if let failure = results.failure {
+            SectionEmptyState(
+                text: failure.summary,
+                systemImage: "exclamationmark.triangle",
+                detail: failure.detail,
+                actionTitle: "Try again"
+            ) {
+                Task { await loadResults() }
+            }
+        } else if let state = results.state {
+            SurveyResultsSummaryView(survey: survey, state: state)
+        } else {
+            // Placeholder of the right shape, so the sheet does not jump when
+            // the counts arrive.
+            SurveyResultsSummaryView(
+                survey: survey,
+                state: .measured(
+                    SurveyResults(
+                        summary: SurveyResultsSummary(
+                            impressions: 0, responses: 0, partials: 0,
+                            dismissals: 0, abandonments: 0
+                        ),
+                        questions: [],
+                        submissions: [],
+                        isTruncated: false
+                    )
+                )
+            )
+            .skeleton(true)
+        }
+    }
+
+    /// The measured results for one question, or `nil` while they are still
+    /// loading or when there are none to show.
+    private func questionResults(at index: Int) -> SurveyQuestionResults? {
+        guard case .measured(let results)? = results.state else { return nil }
+        return results.questions.first { $0.index == index }
+    }
+
+    private func loadResults() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await results.load(client: client, projectID: projectID, survey: survey)
     }
 }
 
 struct SurveyQuestionRowView: View {
     let index: Int
     let question: SurveyQuestion
+    /// `nil` while results are loading, or when this survey has none — in which
+    /// case the row falls back to the configuration it always showed.
+    var results: SurveyQuestionResults?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -267,7 +336,14 @@ struct SurveyQuestionRowView: View {
                 StatusPill(text: questionTypeLabel(type), tint: .secondary)
             }
 
-            if let choices = question.choices, !choices.isEmpty {
+            if let results {
+                SurveyQuestionResultsView(results: results)
+                    .padding(.top, Theme.Space.xs)
+            } else if let choices = question.choices, !choices.isEmpty {
+                // The declared options, when there are no answers to show them
+                // against. Once there are, the breakdown lists every option
+                // including the ones nobody picked, so printing them twice would
+                // only make the row longer.
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(choices, id: \.self) { choice in
                         Text(choice)

@@ -23,4 +23,13 @@ public enum PostHogDate {
         if let d = try? Date(string, strategy: dayOnly) { return d }
         return parse(string)
     }
+
+    /// Formats an instant the way PostHog's query nodes expect to receive one.
+    ///
+    /// Round-trips through `parse` — the same string this type accepts is the
+    /// string it emits, so a window sent back to the API is the window that came
+    /// out of it.
+    public static func iso8601(_ date: Date) -> String {
+        date.formatted(plain)
+    }
 }
