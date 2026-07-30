@@ -99,10 +99,16 @@ struct TaxonomyRoot: View {
                 action: { Task { await load() } }
             )
         } else if store.isEmpty && !store.isLoading {
+            // Says what the two calls returned, and nothing beyond it. The
+            // previous copy — "This project hasn't received any events" — was a
+            // claim about ingestion that an empty taxonomy response does not
+            // support, and the app itself disproved it two tabs away: the Events
+            // feed was listing `$autocapture` and `$web_vitals` while Ingestion's
+            // header read "7 warnings · 5.4K events".
             EmptyStateView(
-                title: "No events yet",
+                title: "Nothing in the taxonomy",
                 systemImage: "list.bullet.rectangle",
-                message: "This project hasn't received any events, so there is no taxonomy to show. Send an event from your SDK and it will appear here."
+                message: "PostHog returned no events for the last 30 days and no registered event names for this project. That is what the taxonomy knows, not whether events are arriving — the Events feed reads the raw stream."
             )
         } else {
             list

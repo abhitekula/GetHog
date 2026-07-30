@@ -54,7 +54,7 @@ struct MarketingSection: View {
     let columns: [String]
     let rows: [MarketingRow]
     let isLoading: Bool
-    let error: WebLoadFailure?
+    let error: LoadFailure?
     let onRetry: () -> Void
 
     var body: some View {

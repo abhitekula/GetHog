@@ -223,23 +223,33 @@ struct RendersRoot: View {
         }
     }
 
-    /// Rides a horizontal scroll view because its controls grow with Dynamic
-    /// Type and would otherwise be clipped rather than reachable.
+    /// No scroll view around it, deliberately.
+    ///
+    /// This bar used to ride a horizontal `ScrollView` so its controls could grow
+    /// with Dynamic Type without clipping. Measured on iPhone: it claimed roughly
+    /// 230pt of height for a single menu button, leaving a dead band between the
+    /// title and the first row — and this screen's search field, which every
+    /// neighbouring screen draws in exactly that band, was not on screen at all.
+    /// A horizontal scroll view being the first scrollable thing under a
+    /// `.searchable` is the likeliest reason for the second half of that; either
+    /// way one `.menu` picker never needed one, since a menu label truncates and
+    /// stays tappable, and the list below is the scroll view the field belongs to.
     private var filterBar: some View {
         @Bindable var store = store
 
-        return ScrollView(.horizontal) {
-            GlassFilterBar {
-                Picker("Show", selection: $store.filter) {
-                    ForEach(RenderFilter.allCases) { filter in
-                        Text("\(filter.title) (\(store.count(for: filter)))").tag(filter)
-                    }
+        return GlassFilterBar {
+            Picker("Show", selection: $store.filter) {
+                ForEach(RenderFilter.allCases) { filter in
+                    Text("\(filter.title) (\(store.count(for: filter)))").tag(filter)
                 }
-                .pickerStyle(.menu)
             }
-            .padding(.vertical, Theme.Space.s)
+            .pickerStyle(.menu)
+            .lineLimit(1)
+            // The bar hugs its content, and a menu is narrow; without this it
+            // collapses to a pill centred in the screen.
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .scrollIndicators(.hidden)
+        .padding(.vertical, Theme.Space.s)
         .background(Theme.pageBackground)
     }
 

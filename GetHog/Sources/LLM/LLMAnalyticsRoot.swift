@@ -184,7 +184,6 @@ struct LLMAnalyticsRoot: View {
         store.response?.hasCostData == true ? "Traces by cost" : "Traces, most recent first"
     }
 
-    @ViewBuilder
     private var rangePicker: some View {
         let picker = Picker("Date range", selection: $range) {
             ForEach(LLMDateRange.allCases) { option in
@@ -195,11 +194,20 @@ struct LLMAnalyticsRoot: View {
         }
         // Segmented labels shrink to slivers at accessibility text sizes, so
         // past that threshold the same choice becomes a menu.
-        if dynamicTypeSize.isAccessibilitySize {
-            picker.pickerStyle(.menu)
-        } else {
-            picker.pickerStyle(.segmented)
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                picker.pickerStyle(.menu)
+            } else {
+                picker.pickerStyle(.segmented)
+            }
         }
+        // Claims the bar's width and sits at its leading edge. The bar hugs its
+        // content, so at accessibility sizes the whole thing shrank to a lone
+        // pill centred in the screen with dead space either side — measured at
+        // AX5, against neighbours whose filter bars all start at the leading
+        // margin. A segmented picker already fills the width, so this costs the
+        // ordinary case nothing.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var filtered: [LLMTrace] {

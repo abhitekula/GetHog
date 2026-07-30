@@ -77,19 +77,6 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// A failed load, split into what the screen says and what it keeps.
-///
-/// Measured: the vitals section put a raw `DecodingError` description on screen
-/// — four lines naming a coding key — as its user-facing message. A reader can
-/// do nothing with that, and the app cannot honestly claim to know why PostHog's
-/// payload differed. So the summary names *what* failed and stops there, and the
-/// underlying text travels alongside it rather than being thrown away.
-struct WebLoadFailure: Equatable {
-    let summary: String
-    /// The verbatim fault, when the underlying error carried one worth keeping.
-    var detail: String?
-}
-
 @MainActor
 @Observable
 final class WebAnalyticsStore {
@@ -106,12 +93,12 @@ final class WebAnalyticsStore {
     var isLoadingClicks = false
     var isLoadingVitals = false
     var isLoadingMarketing = false
-    var overviewError: WebLoadFailure?
-    var rowsError: WebLoadFailure?
-    var changesError: WebLoadFailure?
-    var clicksError: WebLoadFailure?
-    var vitalsError: WebLoadFailure?
-    var marketingError: WebLoadFailure?
+    var overviewError: LoadFailure?
+    var rowsError: LoadFailure?
+    var changesError: LoadFailure?
+    var clicksError: LoadFailure?
+    var vitalsError: LoadFailure?
+    var marketingError: LoadFailure?
     var loadedAt: Date?
 
     var isLoading: Bool {
@@ -127,7 +114,7 @@ final class WebAnalyticsStore {
     /// Any failure at all, for the case where nothing loaded and the screen has
     /// to say why. Per-section errors stay separate so one failing query only
     /// costs its own section.
-    var anyError: WebLoadFailure? {
+    var anyError: LoadFailure? {
         overviewError ?? rowsError ?? changesError ?? clicksError ?? vitalsError ?? marketingError
     }
 
@@ -249,33 +236,8 @@ final class WebAnalyticsStore {
     /// `subject` names the query that failed, so a decoding summary can say
     /// which response it means without the reader inferring it from whichever
     /// section went blank.
-    private static func failure(for error: any Error, loading subject: String) -> WebLoadFailure {
-        // A decoding failure is the one case where the error text is written for
-        // a compiler, not a person: `PostHogError.decoding` carries a
-        // `DecodingError` description, and passing that through put four lines
-        // of coding keys under "Couldn't load vitals". The app knows exactly one
-        // true thing here — the payload was not the shape it expected — so that
-        // is what it says, and the rest is kept for whoever can act on it.
-        if let posthog = error as? PostHogError {
-            if case .decoding(let detail) = posthog {
-                return WebLoadFailure(summary: unreadableResponse(subject), detail: detail)
-            }
-            return WebLoadFailure(summary: posthog.localizedDescription)
-        }
-        // Belt and braces: a `DecodingError` thrown outside the client would
-        // otherwise reach the screen through `localizedDescription`, which is
-        // the same unactionable dump by another route.
-        if let decoding = error as? DecodingError {
-            return WebLoadFailure(
-                summary: unreadableResponse(subject),
-                detail: String(describing: decoding)
-            )
-        }
-        return WebLoadFailure(summary: error.localizedDescription)
-    }
-
-    private static func unreadableResponse(_ subject: String) -> String {
-        "PostHog's \(subject) response wasn't in a shape this app could read."
+    private static func failure(for error: any Error, loading subject: String) -> LoadFailure {
+        LoadFailure(error, loading: subject)
     }
 }
 
@@ -363,18 +325,8 @@ struct WebAnalyticsRoot: View {
             // Screen-level emptiness, so this one keeps the full treatment. The
             // detail sits under it rather than inside the message: a decoding
             // dump is what the compact states were built to stop putting there.
-            VStack(spacing: Theme.Space.m) {
-                EmptyStateView(
-                    title: "Couldn't load web analytics",
-                    systemImage: "exclamationmark.triangle",
-                    message: failure.summary,
-                    actionTitle: "Try again",
-                    action: { Task { await reloadAll() } }
-                )
-                if let detail = failure.detail {
-                    FailureDetail(text: detail)
-                        .padding(.horizontal, Theme.Space.l)
-                }
+            LoadFailureState(title: "Couldn't load web analytics", failure: failure) {
+                Task { await reloadAll() }
             }
         } else if store.isEmpty && !store.isLoading {
             EmptyStateView(

@@ -89,6 +89,7 @@ final class FlagsStore {
 
 struct FlagsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = FlagsStore()
     @State private var selection: FeatureFlag?
     @State private var search = ""
@@ -187,8 +188,18 @@ struct FlagsRoot: View {
 
     private var list: some View {
         List(selection: $selection) {
-            TipView(FlagWidgetTip())
-                .listRowBackground(Color.clear)
+            // Withheld at accessibility sizes. Measured at AX5: the card grew
+            // past the full viewport — title, four-line body and dismiss button
+            // — and not one flag row was visible under it, so opening the tab
+            // meant scrolling through a screen of promotional copy to reach the
+            // list. A tip that hides the thing it is about has stopped being a
+            // tip, and the widget it advertises is not the reason anyone came
+            // here. TipKit keeps its own display state, so a user who has never
+            // seen it still gets it at a text size where it fits.
+            if !dynamicTypeSize.isAccessibilitySize {
+                TipView(FlagWidgetTip())
+                    .listRowBackground(Color.clear)
+            }
             ForEach(FlagStatusGroup.allCases) { group in
                 let items = store.flags(in: group, search: search)
                 if !items.isEmpty {

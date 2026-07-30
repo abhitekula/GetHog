@@ -65,7 +65,15 @@ struct SessionsRoot: View {
                         .accessibilityLabel("Playlists")
                     }
                 }
-                .searchable(text: $search, prompt: "Search person or URL")
+                .projectSubtitle()
+                // Placement is pinned rather than left to `.automatic`, for the
+                // reason recorded on `EventsRoot`: measured on iPad, the
+                // automatic placement drew no field at all in the list column.
+                .searchable(
+                    text: $search,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search person or URL"
+                )
                 .refreshable { await load() }
                 .task(id: model.projectID) { await load() }
                 // Sized to the row's caption line, which is the longest thing

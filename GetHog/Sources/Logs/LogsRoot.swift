@@ -197,11 +197,21 @@ struct LogsRoot: View {
 
     /// Names the filters that are narrowing the result, so "nothing here" is not
     /// mistaken for "nothing was logged" when it is really "nothing matched".
+    /// Reports the absence, and — when nothing is narrowing the window — says
+    /// what the screen would hold.
+    ///
+    /// The unfiltered case used to stop at "Nothing was logged", which tells a
+    /// first-time reader neither what a log line is here nor what would make one
+    /// appear. Notebooks, Actions and Pipelines all answer both; this now does
+    /// too. With a filter applied the sentence stays as it was: the filter is the
+    /// explanation, and a product blurb underneath it would only be in the way.
     private var emptyDescription: String {
         var clauses = ["Nothing was logged in the last \(store.window.title.lowercased())"]
         if !store.search.isEmpty { clauses.append("matching “\(store.search)”") }
         if store.problemsOnly { clauses.append("at error or fatal severity") }
-        return clauses.joined(separator: " ") + "."
+        let sentence = clauses.joined(separator: " ") + "."
+        guard clauses.count == 1 else { return sentence }
+        return sentence + " Logs are the lines your own services send to PostHog over OpenTelemetry, carrying a severity, a service name and the trace they belong to."
     }
 
     /// The glass bar rides a horizontal scroll view because its controls grow

@@ -85,10 +85,13 @@ struct ExperimentsRoot: View {
                 Task { await load() }
             }
         } else if store.experiments.isEmpty && !store.isLoading {
+            // Says what the product is, not only that it is empty — the standard
+            // Notebooks, Actions and Pipelines already set on this app's empty
+            // states.
             EmptyStateView(
                 title: "No experiments",
                 systemImage: "flask",
-                message: "This project doesn't have any experiments yet."
+                message: "An experiment splits traffic behind a feature flag and measures one metric against a control. None have been created in this project; they are set up in PostHog and appear here once they exist."
             )
         } else {
             list

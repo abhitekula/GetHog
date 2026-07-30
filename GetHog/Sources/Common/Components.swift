@@ -196,6 +196,89 @@ struct FailureDetail: View {
     }
 }
 
+/// A failed load, split into what the screen says and what it keeps.
+///
+/// Measured twice, on two screens, with the same shape of fault: Web Analytics
+/// put a raw `DecodingError` description under "Couldn't load vitals", and
+/// Groups showed "Unexpected response from PostHog: DecodingError.typeMismatch:
+/// expected value of type Array<Any>" as its entire explanation. A reader can do
+/// nothing with a Swift type name, and the app cannot honestly claim to know
+/// *why* PostHog's payload differed. So the summary names what failed and stops
+/// there, and the underlying text travels alongside it rather than being thrown
+/// away.
+struct LoadFailure: Equatable {
+    let summary: String
+    /// The verbatim fault, when the underlying error carried one worth keeping.
+    var detail: String?
+
+    /// Builds the pair from a thrown error.
+    ///
+    /// `subject` names what was being loaded — "vitals", "group types" — and is
+    /// used only when the payload could not be read, which is the one case where
+    /// the error's own description is unfit to show.
+    init(_ error: any Error, loading subject: String) {
+        if let posthog = error as? PostHogError {
+            if let technical = posthog.technicalDetail {
+                summary = Self.unreadableResponse(subject)
+                detail = technical
+            } else {
+                summary = posthog.localizedDescription
+                detail = nil
+            }
+            return
+        }
+        // Belt and braces: a `DecodingError` thrown outside the client would
+        // otherwise reach the screen through `localizedDescription`, which is
+        // the same unactionable dump by another route.
+        if let decoding = error as? DecodingError {
+            summary = Self.unreadableResponse(subject)
+            detail = String(describing: decoding)
+            return
+        }
+        summary = error.localizedDescription
+        detail = nil
+    }
+
+    private static func unreadableResponse(_ subject: String) -> String {
+        "PostHog's \(subject) response wasn't in a shape this app could read."
+    }
+
+    init(summary: String, detail: String? = nil) {
+        self.summary = summary
+        self.detail = detail
+    }
+}
+
+/// The whole-screen version of a failed load.
+///
+/// `EmptyStateView` alone cannot carry a `LoadFailure`: it has one `message`
+/// slot, and putting the detail in it is exactly the defect this pair exists to
+/// stop. The disclosure sits *under* the state instead, so the sentence is what
+/// the screen says and the dump is one tap away for whoever can use it.
+struct LoadFailureState: View {
+    let title: String
+    let failure: LoadFailure
+    var systemImage: String = "exclamationmark.triangle"
+    var retryTitle: String = "Try again"
+    var retry: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            EmptyStateView(
+                title: title,
+                systemImage: systemImage,
+                message: failure.summary,
+                actionTitle: retry == nil ? nil : retryTitle,
+                action: retry
+            )
+            if let detail = failure.detail {
+                FailureDetail(text: detail)
+                    .padding(.horizontal, Theme.Space.l)
+            }
+        }
+    }
+}
+
 /// A rounded card that hosts a dashboard tile or detail block.
 ///
 /// Three things stack to make it read as a surface rather than a rectangle: a

@@ -134,12 +134,26 @@ final class SQLConsoleStore {
 
 struct SQLConsoleRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = SQLConsoleStore()
     @State private var sql = SQLConsoleRoot.seedQuery
     @State private var showHistory = false
     @FocusState private var editorFocused: Bool
 
-    @ScaledMetric(relativeTo: .callout) private var editorHeight: CGFloat = 128
+    /// The editor is measured in **lines**, not points.
+    ///
+    /// It was a `@ScaledMetric(relativeTo: .callout) = 128`, and at AX5 that box
+    /// fitted three lines of monospaced text and then a fourth sliced
+    /// horizontally through the letter bodies — a point constant and a line box
+    /// do not grow on the same curve, so no constant lands on a line boundary at
+    /// every text size. A line count does, at all of them.
+    ///
+    /// Three lines at accessibility sizes rather than five: five AX5 lines are
+    /// most of a phone, and the results this console exists to show have to keep
+    /// somewhere to appear.
+    private var editorLines: Int {
+        dynamicTypeSize.isAccessibilitySize ? 3 : 5
+    }
 
     /// A harmless, universally valid starting point: it answers "what is this
     /// project even sending?" without the user having to know a schema.
@@ -165,7 +179,14 @@ struct SQLConsoleRoot: View {
             }
         }
         .navigationTitle("SQL")
-        .navigationBarTitleDisplayMode(.inline)
+        // Was `.inline` at every width, which made this the one root in the app
+        // whose title was centred and small while its neighbours carried a large
+        // title over the project name. `.projectSubtitle()` decides the mode —
+        // large on iPhone, inline on iPad where the tab bar already names the
+        // section — so SQL now matches every screen either side of it. There was
+        // no layout reason for the exception: the editor sits below the bar and
+        // is unaffected by the title's height.
+        .projectSubtitle()
         .toolbar {
             ProjectSwitcher()
             ToolbarItem(placement: .topBarTrailing) {
@@ -205,16 +226,19 @@ struct SQLConsoleRoot: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextEditor(text: $sql)
+            // A vertical-axis `TextField` rather than a `TextEditor`: it is the
+            // only multi-line input SwiftUI will size in whole lines, which is
+            // what stops the box cutting through a glyph. It still takes a
+            // Return, still scrolls past the reserved lines, and reads the same.
+            TextField("HogQL query", text: $sql, axis: .vertical)
                 .font(.callout)
                 .monospaced()
+                .lineLimit(editorLines, reservesSpace: true)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .focused($editorFocused)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .frame(height: editorHeight)
-                .background(Theme.cardBackground, in: .rect(cornerRadius: 10))
+                .padding(Theme.Space.s)
+                .background(Theme.cardBackground, in: .rect(cornerRadius: Theme.Radius.small, style: .continuous))
                 .accessibilityLabel("HogQL query")
 
             HStack(spacing: 12) {

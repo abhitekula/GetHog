@@ -64,17 +64,26 @@ extension View {
 /// which the plan requires — showing the wrong project's numbers is a
 /// correctness bug, not a cosmetic one — while costing no vertical space at
 /// all. The switcher shrinks to a glyph beside it.
+///
+/// The display mode is left to the system, which is a correction. Forcing
+/// `.inline` in regular width deleted the title on iPad rather than shrinking
+/// it: the floating tab bar sits in the centre of the top bar, an inline title
+/// has no other slot, and the subtitle hangs off the title and went with it. On
+/// ~18 stack-less roots that left the switcher glyph and then the data —
+/// nothing naming the screen, nothing naming the project, on a screen whose
+/// numbers mean nothing without both. Two measurements fix the cause: Settings,
+/// the one root in the same `NavigationStack` container that never applies this
+/// modifier, kept its large title on the same iPad; and the split-view roots,
+/// whose title renders in the sidebar column where the centre is free, kept
+/// title *and* subtitle while inline. The tab bar was never the fallback the
+/// comment here assumed it was — it pages, and on Clickmap it was showing
+/// `Dashboards · Events · Sessions · Flags` while Clickmap was on screen.
 private struct ScreenChrome: ViewModifier {
     @Environment(AppModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
     func body(content: Content) -> some View {
         content
             .navigationSubtitle(model.selectedProject?.name ?? "")
-            // Inline in regular width: the floating tab bar already carries the
-            // section name, so a large title beneath it is both a duplicate and
-            // an overlap.
-            .navigationBarTitleDisplayMode(sizeClass == .regular ? .inline : .automatic)
     }
 }
 
@@ -160,12 +169,21 @@ enum RowAccessory {
 /// data-forward: glyph for kind, title, one line of context, and a trailing
 /// value that is worth scanning vertically.
 struct DataRow: View {
+    /// Read because the row changes shape rather than shrinking at accessibility
+    /// sizes; see `layout`.
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     let glyph: String
     var tint: Color = Theme.accent
     let title: String
     var subtitle: String?
-    /// Third line, for provenance or freshness — kept to a caption so it
-    /// recedes behind the title rather than competing with it.
+    /// Third line, for provenance or freshness — kept to a caption so it recedes
+    /// behind the title by size. It used to recede by colour as well, on
+    /// `.tertiary`, which measured 1.84:1 against a light card and 2.27:1
+    /// against a dark one where AA body text wants 4.5:1. "Updated last month",
+    /// "First seen Jul 2…" and "4 users · 7 sessions" are the row's only dates
+    /// and counts, so they were the least readable text in the app and among the
+    /// most worth reading.
     var footnote: String?
     /// Rendered monospaced. For keys, paths and identifiers, where character
     /// alignment is what makes a column comparable at a glance.
@@ -178,39 +196,110 @@ struct DataRow: View {
     /// payload, and clipping a message to one line left long lines — the stack
     /// traces someone opened the screen for — unreadable anywhere in the app.
     var subtitleLineLimit: Int = 1
+    /// How many lines the footnote may take. One by default, as before.
+    ///
+    /// A knob for the same reason as the subtitle's, and for a sharper case:
+    /// the footnote is where the *varying* part of a row often sits, so one line
+    /// clips exactly what tells two rows apart. Every People row read
+    /// `2 distinct IDs · First seen Jul 2…` — same prefix, and the day of the
+    /// month, the only difference between them, is what went.
+    var footnoteLineLimit: Int = 1
     var accessory: RowAccessory = .chevron
 
     var body: some View {
-        HStack(spacing: Theme.Space.m) {
-            RowGlyph(systemName: glyph, tint: tint)
+        layout
+            // Nothing a row renders is prose: titles are exception types, event
+            // names and addresses, subtitles are keys and paths, footnotes are
+            // counts and dates. Typesetting them as prose inserted soft hyphens
+            // that render as real ones and change what the string says —
+            // `ananya.rohan.0710@example.-com`, person@example.com`,
+            // `$autocap-ture` — and a reader cannot tell an invented hyphen from
+            // one that was always there. `zxx` is the ISO code for "no
+            // linguistic content", so no hyphenation dictionary applies and a
+            // line breaks only where the string already allows it.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+            .padding(.vertical, Theme.Space.xs)
+            .contentShape(.rect)
+    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(Theme.Typography.title)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(isSubtitleMonospaced ? Theme.Typography.body.monospaced() : Theme.Typography.body)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(subtitleLineLimit)
+    /// Text beside the glyph normally, stacked beneath it at accessibility sizes.
+    ///
+    /// The glyph and the accessory are fixed furniture: they hold their width
+    /// whatever the type size, so what they leave over is all the text ever gets.
+    /// At `accessibility-extra-extra-large` on iPhone that was a few characters —
+    /// an Errors row read `Refer-/ence…`, `In-/stan…`, `4 users…` beside a pill
+    /// spelling `Ac-/tive`, which is a row carrying no information but its
+    /// colour. Stacked, every line gets the whole row to break in.
+    @ViewBuilder
+    private var layout: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                HStack(alignment: .top, spacing: Theme.Space.m) {
+                    RowGlyph(systemName: glyph, tint: tint)
+                    titleText
                 }
 
-                if let footnote, !footnote.isEmpty {
-                    Text(footnote)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                supportingText
+                stackedAccessory
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: Theme.Space.m) {
+                RowGlyph(systemName: glyph, tint: tint)
 
-            Spacer(minLength: Theme.Space.s)
+                VStack(alignment: .leading, spacing: 2) {
+                    titleText
+                    supportingText
+                }
 
+                Spacer(minLength: Theme.Space.s)
+
+                accessoryView
+            }
+        }
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .font(Theme.Typography.title)
+            .foregroundStyle(.primary)
+            // Uncapped at accessibility sizes: two lines of type that large is
+            // half a word, and the cap exists to keep rows an even height, which
+            // is a scanning concern that no longer applies at those sizes.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+    }
+
+    @ViewBuilder
+    private var supportingText: some View {
+        if let subtitle, !subtitle.isEmpty {
+            Text(subtitle)
+                .font(isSubtitleMonospaced ? Theme.Typography.body.monospaced() : Theme.Typography.body)
+                .foregroundStyle(.secondary)
+                .lineLimit(typeSize.isAccessibilitySize ? nil : subtitleLineLimit)
+        }
+
+        if let footnote, !footnote.isEmpty {
+            Text(footnote)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(typeSize.isAccessibilitySize ? nil : footnoteLineLimit)
+        }
+    }
+
+    /// The chevron is the one accessory the stacked row drops.
+    ///
+    /// It is decorative — the whole row is the tap target and VoiceOver is told
+    /// to ignore it — so on its own line beneath the text it would be a large
+    /// grey arrow pointing at nothing, costing a line to say what the row's
+    /// tappability already says. A metric or a pill is content and keeps its
+    /// line: the pill's word is the only non-colour encoding its state has.
+    @ViewBuilder
+    private var stackedAccessory: some View {
+        if case .chevron = accessory {
+            EmptyView()
+        } else {
             accessoryView
         }
-        .padding(.vertical, Theme.Space.xs)
-        .contentShape(.rect)
     }
 
     @ViewBuilder

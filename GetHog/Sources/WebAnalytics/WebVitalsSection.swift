@@ -48,7 +48,7 @@ struct WebVitalsSection: View {
     @Binding var percentile: WebVitalPercentile
     let breakdown: WebVitalsBreakdown?
     let isLoading: Bool
-    let error: WebLoadFailure?
+    let error: LoadFailure?
     let onRetry: () -> Void
 
     private var entries: [WebVitalEntry] { breakdown?.allEntries ?? [] }

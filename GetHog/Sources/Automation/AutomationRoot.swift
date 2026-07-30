@@ -283,23 +283,32 @@ struct AutomationRoot: View {
         }
     }
 
-    /// Icons rather than words: five labels including "Subscriptions" truncate to
-    /// nonsense at phone width. `.iconOnly` keeps each segment's title for
-    /// VoiceOver, and the section header directly below always names the
-    /// selected one in full, so nothing is left to the glyph alone.
+    /// Words, at the cost of the segmented form.
+    ///
+    /// This was five bare glyphs in a segmented control — a branch, a globe, a
+    /// bell, an envelope and a page — and it was the only unworded control in an
+    /// app whose every other segmented picker reads "48h · 7d · 30d",
+    /// "Persons · Cohorts", "All · Active · Resolved". The glyphs were not
+    /// chosen for illegibility; five labels including "Subscriptions" genuinely
+    /// cannot share a phone's width, so the segmented form had no way to keep
+    /// them. A menu can: it shows the selected resource in full, names the other
+    /// four in full when opened, and truncates nothing.
     private var picker: some View {
         GlassFilterBar {
             Picker("Resource", selection: $section) {
                 ForEach(AutomationSection.allCases) { section in
                     Label(section.title, systemImage: section.systemImage)
-                        .labelStyle(.iconOnly)
                         .tag(section)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             // Stays on the picker rather than on the glass bar around it: a
             // label on the container would not reach the control.
             .accessibilityLabel("Automation resource")
+            // The bar hugs its content, and a menu is narrow. Without this the
+            // whole bar collapses to a pill centred in the screen, where every
+            // neighbouring filter bar starts at the leading margin.
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, Theme.Space.s)
     }

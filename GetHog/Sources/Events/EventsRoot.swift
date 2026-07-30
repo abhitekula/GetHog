@@ -117,10 +117,19 @@ struct EventsRoot: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) { liveTailButton }
                 }
+                .projectSubtitle()
+                // Placement is pinned rather than left to `.automatic`. Measured
+                // on iPad: with the placement automatic the field was not drawn
+                // at all in the list column — the list was short enough to fit
+                // without scrolling, so it was absent rather than scrolled off —
+                // while the iPhone drew it normally. The drawer is where the
+                // field belongs at both widths, and `.always` keeps a *filter*
+                // visible, which is the point of one.
                 .searchable(
                     text: $search,
                     tokens: $tokens,
                     suggestedTokens: $suggestedTokens,
+                    placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Filter events"
                 ) { token in
                     Label(token.displayText, systemImage: token.systemImage)
@@ -358,8 +367,19 @@ struct EventRowView: View {
         return event.distinctID
     }
 
+    /// A clock time, not a relative one.
+    ///
+    /// Measured on iPhone: four consecutive rows read
+    /// `$autocapture / /s/tara-zubin / 10h ago`, indistinguishable from one
+    /// another, because a relative stamp rounds to the hour and these events
+    /// arrived seconds apart. The section header above already gives the rough
+    /// when — "Just now", "Earlier today" — so the row's remaining job is to
+    /// separate one event from the next, and only a real time does that.
     private var footnote: String? {
-        event.timestamp?.formatted(.relative(presentation: .numeric, unitsStyle: .narrow))
+        guard let timestamp = event.timestamp else { return nil }
+        return Calendar.current.isDateInToday(timestamp)
+            ? timestamp.formatted(date: .omitted, time: .standard)
+            : timestamp.formatted(date: .abbreviated, time: .standard)
     }
 }
 

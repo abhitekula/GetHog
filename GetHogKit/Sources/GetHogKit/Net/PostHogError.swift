@@ -13,6 +13,8 @@ public enum PostHogError: Error, Equatable, Sendable {
     case rateLimited(retryAfter: TimeInterval)
     case http(status: Int, detail: String?)
     case transport(String)
+    /// Carries a `DecodingError` description — written for a compiler, never for
+    /// a reader. See `errorDescription` and `technicalDetail`.
     case decoding(String)
 
     public var isRetryable: Bool {
@@ -21,6 +23,16 @@ public enum PostHogError: Error, Equatable, Sendable {
         case .http(let status, _): status >= 500
         default: false
         }
+    }
+
+    /// The verbatim fault, for a screen that can disclose it behind a
+    /// "Details" control rather than printing it as the message.
+    ///
+    /// Only `.decoding` has one: every other case's `errorDescription` is
+    /// already a sentence, and there is nothing further to reveal.
+    public var technicalDetail: String? {
+        guard case .decoding(let message) = self else { return nil }
+        return message
     }
 }
 
@@ -49,8 +61,14 @@ extension PostHogError: LocalizedError {
             detail ?? "PostHog returned an error (\(status))."
         case .transport(let message):
             "Couldn't reach PostHog: \(message)"
-        case .decoding(let message):
-            "Unexpected response from PostHog: \(message)"
+        // Deliberately says nothing about *what* was malformed. Measured on the
+        // Groups screen: interpolating the message put
+        // "DecodingError.typeMismatch: expected value of type Array<Any>" in
+        // front of a user, who can neither read nor act on a Swift type name.
+        // The one true thing the app knows is that the payload was not the shape
+        // it expected; the rest is `technicalDetail`, for whoever can use it.
+        case .decoding:
+            "PostHog's response wasn't in a shape this app could read."
         }
     }
 }

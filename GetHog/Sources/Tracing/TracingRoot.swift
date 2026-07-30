@@ -212,12 +212,22 @@ struct TracingRoot: View {
 
     /// Says which filters are narrowing the result, so an empty screen is not
     /// mistaken for an absence of data when it is really an absence of matches.
+    /// Reports the absence, and — when nothing is narrowing the window — says
+    /// what the screen would hold.
+    ///
+    /// The unfiltered case used to stop at "No spans in the last 24 hours",
+    /// which names an absence and nothing else. Notebooks, Actions and Pipelines
+    /// all say what the product is and what would make content appear; this now
+    /// does too. With a filter applied the sentence stays as it was — the filter
+    /// is already the explanation.
     private var emptyDescription: String {
         var clauses: [String] = ["No spans in the last \(store.window.title.lowercased())"]
         if let service = store.service { clauses.append("from \(service)") }
         if !store.spanName.isEmpty { clauses.append("named like “\(store.spanName)”") }
         if store.errorsOnly { clauses.append("with an error status") }
-        return clauses.joined(separator: " ") + "."
+        let sentence = clauses.joined(separator: " ") + "."
+        guard clauses.count == 1 else { return sentence }
+        return sentence + " A span is one timed step inside a request — a handler, a query, an outbound call — and they arrive once a service exports OpenTelemetry traces to PostHog."
     }
 
     /// The glass bar rides a horizontal scroll view because three controls plus

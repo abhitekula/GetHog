@@ -285,7 +285,20 @@ struct RootView: View {
                     KeyboardAction(key: ",", title: AppTab.settings.title) { open(.settings) },
                 ])
                 .onAppear {
+                    restorePushedTab()
+                    // Cold launch: a quick action or a URL that started the app
+                    // arrived before this body existed, so it is waiting rather
+                    // than lost.
+                    routePendingLinks()
                     #if DEBUG
+                    // Last, not first. Both mailboxes above can navigate, and
+                    // they are drained from storage shared with the widgets and
+                    // the intent extension — so a target left over from an
+                    // earlier run used to arrive *after* `GETHOG_TAB` had been
+                    // honoured and quietly overrule it. An explicitly requested
+                    // launch destination is the most specific instruction the
+                    // process has; it now wins.
+                    //
                     // Applied once: `@SceneStorage` would otherwise fight a user who
                     // switched tabs after launch.
                     if !hasAppliedDebugTab {
@@ -295,11 +308,6 @@ struct RootView: View {
                         }
                     }
                     #endif
-                    restorePushedTab()
-                    // Cold launch: a quick action or a URL that started the app
-                    // arrived before this body existed, so it is waiting rather
-                    // than lost.
-                    routePendingLinks()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: LinkInbox.didChangeNotification)) { _ in
                     routePendingLinks()
@@ -469,17 +477,23 @@ struct RootView: View {
     /// it: `⌘,` has to reach Settings from anywhere.
     private func open(_ tab: AppTab) {
         selectedTab = tab
+
+        // Asking for search means the field, at *both* widths. The reset used to
+        // sit behind the compact guard below, so in regular width selecting
+        // search showed whatever had last been pushed onto this stack — a link's
+        // destination, or a screen restored from a rotation — instead of the
+        // search root. The stack is shared with links precisely so a back button
+        // behaves once; that sharing is what makes clearing it necessary here.
+        if tab == .search { searchPath = NavigationPath() }
+
+        // Everything past this point is compact-only: in regular width every
+        // destination has a sidebar row of its own, so selecting it is the whole
+        // job and nothing needs pushing.
         guard sizeClass == .compact else { return }
         if AppTab.secondary.contains(tab) {
             var path = NavigationPath()
             path.append(tab)
             searchPath = path
-        } else if tab == .search {
-            // `GETHOG_TAB=search` means the field, so it has to clear anything
-            // standing in front of it — search is this stack's *root*, and
-            // leaving a pushed screen there would show that screen instead, under
-            // a second navigation bar.
-            searchPath = NavigationPath()
         }
     }
 

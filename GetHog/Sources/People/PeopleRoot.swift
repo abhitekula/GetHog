@@ -427,6 +427,13 @@ struct PersonRowView: View {
             subtitle: distinctID,
             footnote: footnote,
             isSubtitleMonospaced: true,
+            // Two lines, against the shared default of one. Measured: every row
+            // read `2 distinct IDs · First seen Jul 2…` — the day of the month,
+            // the only part that differs between people, was exactly what the
+            // truncation removed, leaving a line that says "July" and nothing
+            // else. A footnote that clips its own variable is worse than no
+            // footnote, because it looks like information.
+            footnoteLineLimit: 2,
             accessory: .pill(
                 person.isIdentified ? "Identified" : "Anonymous",
                 person.isIdentified ? Theme.accent : .secondary

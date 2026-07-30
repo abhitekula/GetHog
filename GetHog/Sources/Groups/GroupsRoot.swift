@@ -6,7 +6,10 @@ import SwiftUI
 final class GroupTypesStore {
     var types: [GroupType] = []
     var isLoading = false
-    var error: String?
+    /// A `LoadFailure`, not a `String`. This screen is where a raw
+    /// `DecodingError` description reached a user verbatim; the pair keeps the
+    /// dump without printing it.
+    var error: LoadFailure?
     var loadedAt: Date?
 
     var isEmpty: Bool { types.isEmpty }
@@ -23,8 +26,7 @@ final class GroupTypesStore {
             error = nil
             loadedAt = Date()
         } catch {
-            self.error = (error as? PostHogError)?.localizedDescription
-                ?? error.localizedDescription
+            self.error = LoadFailure(error, loading: "group types")
         }
     }
 }
@@ -66,13 +68,9 @@ struct GroupsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            EmptyStateView(
-                title: "Couldn't load groups",
-                systemImage: "exclamationmark.triangle",
-                message: error,
-                actionTitle: "Try again",
-                action: { Task { await load() } }
-            )
+            LoadFailureState(title: "Couldn't load groups", failure: error) {
+                Task { await load() }
+            }
         } else if store.isEmpty && !store.isLoading {
             // Keeps its own `ContentUnavailableView`: the action here is a link
             // out to PostHog rather than a button, which `EmptyStateView` does

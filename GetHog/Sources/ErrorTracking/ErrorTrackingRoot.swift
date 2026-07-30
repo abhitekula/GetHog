@@ -195,6 +195,7 @@ struct ErrorTrackingRoot: View {
                 ProjectSwitcher()
                 ToolbarItem(placement: .topBarTrailing) { optionsMenu }
             }
+            .projectSubtitle()
             .refreshable { await load() }
             .task(id: LoadKey(projectID: model.projectID, window: window, order: order)) {
                 await load()
@@ -344,6 +345,13 @@ struct ErrorTrackingRoot: View {
                 }
             }
         }
+        // Claims the bar's width and sits at its leading edge. The bar hugs its
+        // content, so whenever the menu form wins the whole thing collapsed to a
+        // pill centred in the screen with dead space either side — measured on
+        // iPhone, where every neighbouring filter bar starts at the leading
+        // margin. A segmented picker already fills the width, so this changes
+        // nothing in the case that fits.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Data

@@ -6,7 +6,7 @@ import SwiftUI
 final class GroupListStore {
     var groups: [GroupRow] = []
     var isLoading = false
-    var error: String?
+    var error: LoadFailure?
     var loadedAt: Date?
 
     var isEmpty: Bool { groups.isEmpty }
@@ -24,8 +24,7 @@ final class GroupListStore {
             error = nil
             loadedAt = Date()
         } catch {
-            self.error = (error as? PostHogError)?.localizedDescription
-                ?? error.localizedDescription
+            self.error = LoadFailure(error, loading: "groups")
         }
     }
 }
@@ -50,13 +49,9 @@ struct GroupListView: View {
     @ViewBuilder
     private var content: some View {
         if let error = store.error, store.isEmpty {
-            EmptyStateView(
-                title: "Couldn't load groups",
-                systemImage: "exclamationmark.triangle",
-                message: error,
-                actionTitle: "Try again",
-                action: { Task { await load() } }
-            )
+            LoadFailureState(title: "Couldn't load groups", failure: error) {
+                Task { await load() }
+            }
         } else if store.isEmpty && !store.isLoading {
             // A defined type with no groups is a real, common state — the type
             // exists because someone configured it, not because data arrived.
