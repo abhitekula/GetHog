@@ -119,10 +119,14 @@ enum PostHogLinkParser {
     /// Roughly half the app's 28 screens have no console page to be the inbound
     /// form of — Inbox, Health, Renders, Settings and the rest — and `url(for:)`
     /// has to be total, or a quick action could be generated that the parser
-    /// then refuses. The console never uses a `/tab/` segment, so this cannot
-    /// collide with a real page; in particular it keeps `gethog://tab/settings`
-    /// (this app's own settings) distinct from the console's `/settings`, which
-    /// is project configuration and something this app has no screen for.
+    /// then refuses. It keeps `gethog://tab/settings` (this app's own
+    /// settings) distinct from the console's `/settings`, which is project
+    /// configuration and something this app has no screen for.
+    ///
+    /// This used to claim the prefix "cannot collide with a real page". It can:
+    /// the *second* segment is an `AppTab` case name, and `templates` is both a
+    /// case and a `/replay/` list page. `link(from:)` therefore resolves this
+    /// prefix before consulting `listPages`.
     private static let tabPrefix = "tab"
 
     /// Console paths that live *under* a section but are still that section's
@@ -208,6 +212,21 @@ enum PostHogLinkParser {
         guard let section = components.first else { return nil }
         let rest = Array(components.dropFirst())
 
+        // `tab/<case>` resolves before anything else, because the two namespaces
+        // genuinely collide and the console's one used to win.
+        //
+        // `templates` is a `/replay/` list page *and*, since the dashboard
+        // template gallery shipped, an `AppTab` case. So
+        // `gethog://tab/templates` matched the list-page branch below, which
+        // then looked `tab` up in `sections`, found nothing, and returned nil —
+        // a quick action this app generated for its own screen, which its own
+        // parser refused. Caught by the round-trip test rather than on device,
+        // which is the whole reason that test exists.
+        if section == tabPrefix {
+            guard rest.count == 1 else { return nil }
+            return AppTab(rawValue: rest[0]).map(PostHogLink.screen)
+        }
+
         // A section on its own, or one of its list pages, is the screen.
         let tab = sections.first { $0.path == section }?.tab
         if rest.isEmpty || (rest.count == 1 && listPages.contains(rest[0].lowercased())) {
@@ -216,8 +235,6 @@ enum PostHogLinkParser {
         guard rest.count == 1, case let identifier = rest[0], !identifier.isEmpty else { return nil }
 
         switch section {
-        case tabPrefix:
-            return AppTab(rawValue: identifier).map(PostHogLink.screen)
         case "dashboard":
             return Int(identifier).map(PostHogLink.dashboard)
         case "feature_flags":

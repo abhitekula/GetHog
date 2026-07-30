@@ -5,10 +5,10 @@ enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     case webAnalytics, clickmap, people, sql
     case errorTracking, tracing, logs
-    case inbox, signals, health
+    case inbox, signals, health, ingestion
     case experiments, surveys, earlyAccess
     case llm, warehouse, pipelines, automation, actions, annotations
-    case notebooks, max, renders
+    case notebooks, max, renders, templates
     case groups, taxonomy
     case settings
     /// One field over everything: the app's own screens, and every object in the
@@ -17,7 +17,7 @@ enum AppTab: String, Hashable, CaseIterable {
     /// This is the fifth tab, and it is also the index of everything the phone's
     /// tab bar cannot hold — the two used to be separate and could not both fit.
     /// A phone's bar holds five items; four are product surfaces and the fifth
-    /// has to be the way to the other 24 screens. Declaring search as a sixth
+    /// has to be the way to the other 26 screens. Declaring search as a sixth
     /// `Tab` — even with `TabRole.search`, which reads as though it sits outside
     /// the bar — simply did not appear on iPhone 17 running iOS 26: the bar drew
     /// `Dashboards · Events · Sessions · Flags · More` and search was nowhere.
@@ -51,6 +51,10 @@ enum AppTab: String, Hashable, CaseIterable {
         case .inbox: "Inbox"
         case .signals: "Signals"
         case .health: "Health"
+        // "Ingestion", not "Warnings": the screen answers "is my data arriving
+        // intact", and a tab called Warnings sits next to Health and Errors
+        // saying nothing about which of the three it is.
+        case .ingestion: "Ingestion"
         case .experiments: "Experiments"
         case .surveys: "Surveys"
         case .earlyAccess: "Early access"
@@ -66,6 +70,9 @@ enum AppTab: String, Hashable, CaseIterable {
         // and returns none — every row is a video render of a session recording,
         // and a tab called "Exports" would promise CSVs that are not on it.
         case .renders: "Renders"
+        // "Templates", not "Dashboard templates": the word already sits under a
+        // sidebar heading, and the longer name is the one that truncates.
+        case .templates: "Templates"
         case .groups: "Groups"
         case .taxonomy: "Taxonomy"
         case .settings: "Settings"
@@ -89,6 +96,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .inbox: "tray.full"
         case .signals: "antenna.radiowaves.left.and.right"
         case .health: "stethoscope"
+        case .ingestion: "arrow.down.circle.badge.exclamationmark"
         case .experiments: "flask"
         case .surveys: "list.clipboard"
         case .earlyAccess: "sparkles"
@@ -101,6 +109,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .notebooks: "book"
         case .max: "bubble.left.and.bubble.right"
         case .renders: "film"
+        case .templates: "rectangle.on.rectangle.angled"
         case .groups: "building.2"
         case .taxonomy: "list.bullet.indent"
         case .settings: "gearshape"
@@ -142,7 +151,7 @@ extension AppTab {
     /// bar can hold.
     ///
     /// Search is separate from `primary` because it is not a product surface:
-    /// it is the fifth slot, and it is where the other 24 screens are reached.
+    /// it is the fifth slot, and it is where the other 26 screens are reached.
     static let alwaysVisible: [AppTab] = primary + [.search]
 
     /// Everything else, grouped.
@@ -155,7 +164,11 @@ extension AppTab {
         AppTabSection(title: "Analyze", tabs: [.webAnalytics, .clickmap, .people, .groups, .sql]),
         AppTabSection(
             title: "Monitor",
-            tabs: [.errorTracking, .llm, .tracing, .logs, .inbox, .signals, .health]
+            // Ingestion sits beside Health rather than under Data: it answers
+            // "is my instrumentation working", which is a monitoring question,
+            // and Health's own `ingestion_warning` issue kind is the summary
+            // this screen is the detail of.
+            tabs: [.errorTracking, .llm, .tracing, .logs, .inbox, .signals, .health, .ingestion]
         ),
         AppTabSection(
             title: "Data",
@@ -165,7 +178,10 @@ extension AppTab {
         // Renders sit with the other saved artefacts rather than with Sessions:
         // the screen is a library of files somebody kept, not a live analysis
         // surface, and this app can only read it.
-        AppTabSection(title: "Workspace", tabs: [.notebooks, .max, .renders]),
+        // Templates join them for the same reason: the screen is a library of
+        // ready-made dashboards to read, not a live analysis surface, and this
+        // app can only read it.
+        AppTabSection(title: "Workspace", tabs: [.notebooks, .max, .renders, .templates]),
     ]
 
     /// Sits below the sections rather than inside one, in the sidebar and in the
@@ -202,6 +218,7 @@ struct TabRootView: View {
         case .inbox: InboxRoot()
         case .signals: SignalsRoot()
         case .health: HealthRoot()
+        case .ingestion: IngestionWarningsRoot()
         case .warehouse: WarehouseRoot()
         case .pipelines: PipelinesRoot()
         case .automation: AutomationRoot()
@@ -214,6 +231,7 @@ struct TabRootView: View {
         case .notebooks: NotebooksRoot()
         case .max: ConversationsRoot()
         case .renders: RendersRoot()
+        case .templates: DashboardTemplatesRoot()
         case .settings: SettingsRoot()
         case .search:
             // Reached through `RootView.searchTab`, which owns the stack this

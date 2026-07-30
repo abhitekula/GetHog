@@ -425,6 +425,17 @@ struct InsightDetailBody: View {
                 }
 
                 FreshnessLabel(date: tile.lastRefresh, isCached: tile.isCached)
+
+                // Comments are keyed by scope + item_id, so they belong on the
+                // object they annotate rather than in a tab of their own. This
+                // body serves both presentations — the iPad side panel and the
+                // iPhone sheet — so one insertion covers both. Only a saved
+                // insight has an id to key on; an ad-hoc tile has nothing to
+                // attach a thread to.
+                if let insight = tile.insight {
+                    Divider()
+                    CommentsSection(scope: .insight, itemID: String(insight.id))
+                }
             }
             .padding()
         }
