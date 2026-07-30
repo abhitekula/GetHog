@@ -49,12 +49,27 @@ final class SessionTimelineStore {
     private(set) var loadedAt: Date?
     private(set) var didHitLimit = false
 
-    func load(client: PostHogClient, projectID: Int, sessionID: String) async {
+    /// `window` is the recording's own span, which the caller always has.
+    ///
+    /// Required rather than optional so the unbounded form cannot return by
+    /// omission — the events feed's timeout was exactly that shape, and this
+    /// query hits the same shared `events` table.
+    func load(
+        client: PostHogClient,
+        projectID: Int,
+        sessionID: String,
+        window: ClosedRange<Date>
+    ) async {
         isLoading = true
         defer { isLoading = false }
         do {
             let response: QueryResponse = try await client.send(
-                PostHogAPI.sessionEvents(projectID: projectID, sessionID: sessionID, limit: Self.limit)
+                PostHogAPI.sessionEvents(
+                    projectID: projectID,
+                    sessionID: sessionID,
+                    within: window,
+                    limit: Self.limit
+                )
             )
             events = response.rows.compactMap(EventRow.init(row:))
             didHitLimit = events.count >= Self.limit

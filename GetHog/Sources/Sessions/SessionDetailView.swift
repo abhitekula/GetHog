@@ -178,7 +178,20 @@ struct SessionDetailView: View {
 
     private func loadTimeline() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        await timeline.load(client: client, projectID: projectID, sessionID: recording.id)
+        // The recording carries its own span, so the query never has to scan the
+        // whole `events` table to find one session's rows. `start_time` is
+        // nullable and `recording_duration` can be absent on a still-processing
+        // recording, so a missing bound falls back to a day either side of now —
+        // wide enough to be wrong about *which* rows, never wide enough to be
+        // the unbounded query that timed out on the events feed.
+        let start = recording.startTime ?? Date()
+        let end = start.addingTimeInterval(recording.recordingDuration ?? 86_400)
+        await timeline.load(
+            client: client,
+            projectID: projectID,
+            sessionID: recording.id,
+            window: start...max(end, start)
+        )
     }
 
     private func loadSummary() async {

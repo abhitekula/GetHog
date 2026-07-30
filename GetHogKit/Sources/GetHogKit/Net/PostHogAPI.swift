@@ -105,15 +105,52 @@ public enum PostHogAPI {
             """
     }
 
+    /// Events belonging to one session, bounded to that session's own window.
+    ///
+    /// `within` is required and has no default, for the reason the events feed
+    /// learned the hard way: an unbounded `FROM events` denies ClickHouse
+    /// partition pruning on a shared table, and measured against a live project
+    /// that ran 8.5s and failed one time in five under load, against ~1s and no
+    /// failures for *any* bound — even a two-year one. Filtering on
+    /// `$session_id` does not help; the scan still has to find the rows.
+    ///
+    /// Measured live while I was here, and it moved the filter too. Three
+    /// variants, three runs each, against one real session returning 5 rows:
+    ///
+    ///     properties.$session_id + bound   38.66s / 5.45s / failed
+    ///     $session_id       + bound        failed / 10.17s / 1.35s
+    ///     $session_id       , no bound     failed / failed / failed
+    ///
+    /// `properties.$session_id` is a JSON extraction run over every row in the
+    /// window; `$session_id` is the materialised column, and HogQL returns the
+    /// identical rows for it. Unbounded fails outright regardless of which one
+    /// filters, which is why the window is required rather than advisory.
+    ///
+    /// The absolute numbers are not stable — the cluster was visibly loaded,
+    /// and the same query ran 1.30s in an idle window earlier. The *ordering*
+    /// held across every run, and that is what the change rests on.
+    ///
+    /// The window is padded because the bound is a safety rail, not a filter:
+    /// `$session_id` already decides membership. Event timestamps are stamped
+    /// by clients whose clocks disagree with the recording's start, so a bound
+    /// drawn tight to the recording would drop real events at the edges to save
+    /// nothing — the partition pruning is what matters, and a padded range
+    /// prunes just as well.
     public static func sessionEvents(
         projectID: Int,
         sessionID: String,
+        within window: ClosedRange<Date>,
         limit: Int = 500
     ) -> Endpoint {
+        let padding: TimeInterval = 3600
+        let from = window.lowerBound.addingTimeInterval(-padding)
+        let to = window.upperBound.addingTimeInterval(padding)
         let sql = """
             SELECT uuid, event, timestamp, distinct_id, properties.$current_url, properties
             FROM events
-            WHERE properties.$session_id = '\(escape(sessionID))'
+            WHERE $session_id = '\(escape(sessionID))'
+              AND timestamp > toDateTime64('\(sqlTimestamp(from))', 6)
+              AND timestamp < toDateTime64('\(sqlTimestamp(to))', 6)
             ORDER BY timestamp ASC
             LIMIT \(limit)
             """
