@@ -26,12 +26,21 @@ enum AppTab: String, Hashable, CaseIterable {
     /// This is the fifth tab, and it is also the index of everything the phone's
     /// tab bar cannot hold — the two used to be separate and could not both fit.
     /// A phone's bar holds five items; four are product surfaces and the fifth
-    /// has to be the way to the other 26 screens. Declaring search as a sixth
-    /// `Tab` — even with `TabRole.search`, which reads as though it sits outside
-    /// the bar — simply did not appear on iPhone 17 running iOS 26: the bar drew
+    /// has to be the way to every screen in `AppTab.secondary` — Settings
+    /// included, since the index is the only route to it on a phone.
+    ///
+    /// Named rather than counted, here and below, and that is a correction:
+    /// this said "the other 26 screens" while `secondary` held 30. A count
+    /// written into prose goes stale the first time a screen is added and
+    /// nothing fails when it does, so the two sentences that stated one now
+    /// point at the array instead.
+    ///
+    /// Declaring search as a sixth `Tab` — even with `TabRole.search`, which
+    /// reads as though it sits outside the bar — simply did not appear on
+    /// iPhone 17 running iOS 26: the bar drew
     /// `Dashboards · Events · Sessions · Flags · More` and search was nowhere.
     ///
-    /// So they are one surface. The index already had a search field over 24
+    /// So they are one surface. The index already had a search field over the
     /// screen names; it now searches the project's objects in the same breath,
     /// which is one field where there were two and costs no product surface its
     /// slot. In regular width the sidebar lists every screen itself, so only the
@@ -159,6 +168,24 @@ enum AppTab: String, Hashable, CaseIterable {
         }
     }
 
+    /// Whether the screen shows its open detail in a **sheet**, presented by
+    /// `RootView` rather than by the screen itself.
+    ///
+    /// These four are the ones whose detail is a short read-only summary — a
+    /// survey's questions, an experiment's variants — where a second column
+    /// would be mostly empty and a push would promise a screen's worth of
+    /// content that isn't there.
+    ///
+    /// The presentation is hoisted because a sheet **cannot** be driven from
+    /// inside a secondary screen across the size-class boundary. See
+    /// `RootView.presentedDetail` for what was measured.
+    var presentsDetailAsSheet: Bool {
+        switch self {
+        case .llm, .pipelines, .experiments, .surveys: true
+        default: false
+        }
+    }
+
     /// Whether the screen brings a navigation container of its own.
     ///
     /// The seven list-and-detail screens are `NavigationSplitView`s, which *are* a
@@ -193,7 +220,9 @@ extension AppTab {
     /// bar can hold.
     ///
     /// Search is separate from `primary` because it is not a product surface:
-    /// it is the fifth slot, and it is where the other 26 screens are reached.
+    /// it is the fifth slot, and it is where every screen in `secondary` is
+    /// reached — see the note on `case search` for why that is the array's name
+    /// and not a number.
     static let alwaysVisible: [AppTab] = primary + [.search]
 
     /// Everything else, grouped.
@@ -336,17 +365,113 @@ struct TabRootView: View {
 /// to anything about split views.
 ///
 /// This object is owned by `RootView`, which straddles the boundary, so the two
-/// hosts can hand the open detail to each other. `AnyHashable` because the 27
-/// secondary screens have 27 different detail types and this file must not know
-/// any of them.
+/// hosts can hand the open detail to each other. `AnyHashable` because every
+/// screen in `AppTab.secondary` has a detail type of its own and this file must
+/// not know any of them.
+///
+/// **One box, two presenters.** Every secondary screen keeps its open detail
+/// here; what differs is who turns that value back into a visible screen.
+///
+/// * A screen that *pushes* presents it itself, with
+///   `navigationDestination(item:)` bound to this box. The destination lives in
+///   whichever stack currently hosts the screen, and it is rebuilt from the
+///   value on the far side of a resize. Measured, and it is the fact the whole
+///   arrangement rests on: tearing a stack down does **not** write `nil` back
+///   through an item binding, so the value survives the swap. Support,
+///   Taxonomy, Summaries, Renders, Templates and Groups each held their open
+///   detail through four crossings at 834 ⇄ 375pt.
+/// * A screen that shows a **sheet** cannot present it itself. A sheet is a
+///   presented view controller, its dismissal is a real event, and the resize
+///   dismisses it — writing `nil` back through whatever drove it and destroying
+///   the record meant to survive. Those four screens only *write* here;
+///   `RootView` does the presenting, from above the boundary, where nothing
+///   tears the presentation down.
+///
+/// `level` exists for the one screen that nests: Groups pushes a group type and
+/// then a group inside it, and both have to come back.
 @MainActor
 @Observable
 final class OpenDetails {
-    private var byTab: [AppTab: AnyHashable] = [:]
+    private struct Slot: Hashable {
+        let tab: AppTab
+        let level: Int
+    }
+
+    private var byTab: [Slot: AnyHashable] = [:]
 
     subscript(tab: AppTab) -> AnyHashable? {
-        get { byTab[tab] }
-        set { byTab[tab] = newValue }
+        get { byTab[Slot(tab: tab, level: 0)] }
+        set { byTab[Slot(tab: tab, level: 0)] = newValue }
+    }
+
+    /// A deeper push on the same screen. Level 0 is the screen's own detail and
+    /// is what the subscript above reaches.
+    subscript(tab: AppTab, level level: Int) -> AnyHashable? {
+        get { byTab[Slot(tab: tab, level: level)] }
+        set { byTab[Slot(tab: tab, level: level)] = newValue }
+    }
+}
+
+/// A sheet detail and the screen it belongs to.
+///
+/// `Identifiable` off the whole value rather than off the detail alone, so the
+/// sheet is rebuilt when the screen changes even in the impossible case that two
+/// screens' details compare equal.
+struct PresentedDetail: Hashable, Identifiable {
+    let tab: AppTab
+    let detail: AnyHashable
+
+    var id: Self { self }
+}
+
+/// The sheet a secondary screen has open, built from the tab that owns it.
+///
+/// One switch rather than a closure stored beside the value, for the reason
+/// `TabRootView` is one switch: a stored `() -> AnyView` would make `OpenDetails`
+/// hold view-building code for four screens, and the box has to stay a box — it
+/// is shared with every screen that pushes, and with the split views that
+/// adopted it first.
+struct DetailSheetView: View {
+    let presented: PresentedDetail
+
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        switch presented.tab {
+        case .surveys:
+            if let survey = presented.detail as? Survey {
+                SurveyDetailSheet(
+                    survey: survey,
+                    webURL: model.webURL(path: "surveys/\(survey.id)")
+                )
+            }
+        case .experiments:
+            if let experiment = presented.detail as? Experiment {
+                ExperimentDetailSheet(
+                    experiment: experiment,
+                    webURL: model.webURL(path: "experiments/\(experiment.id)")
+                )
+            }
+        case .llm:
+            if let trace = presented.detail as? LLMTrace {
+                LLMTraceDetailSheet(
+                    trace: trace,
+                    webURL: model.webURL(path: "llm-analytics/traces/\(trace.id)")
+                )
+            }
+        case .pipelines:
+            if let function = presented.detail as? HogFunction {
+                PipelineDetailSheet(
+                    function: function,
+                    webURL: model.webURL(path: pipelineWebPath(for: function))
+                )
+            }
+        default:
+            // Unreachable: `presentedDetail` only builds a `PresentedDetail` for
+            // a tab whose `presentsDetailAsSheet` is true. Drawing nothing beats
+            // a `fatalError` for a case a future tab could add by omission.
+            EmptyView()
+        }
     }
 }
 
@@ -396,6 +521,10 @@ struct RootView: View {
                     KeyboardAction(key: "4", title: AppTab.flags.title) { open(.flags) },
                     KeyboardAction(key: ",", title: AppTab.settings.title) { open(.settings) },
                 ])
+                // Attached **here**, to the one view in the tree that a resize
+                // never rebuilds, rather than inside the four screens that own
+                // these details. See `presentedDetail`.
+                .sheet(item: presentedDetail) { DetailSheetView(presented: $0) }
                 .onAppear {
                     restorePushedTab()
                     // Cold launch: a quick action or a URL that started the app
@@ -558,6 +687,76 @@ struct RootView: View {
                 TabRootView(tab: tab)
             }
         }
+    }
+
+    // MARK: - Sheet details
+
+    /// The sheet the showing screen has open, if that screen shows sheets.
+    ///
+    /// **Why this is here and not in the four screens.** Everything else a
+    /// secondary screen opens is a *push*, and a push can be driven from inside
+    /// the screen: `navigationDestination(item:)` reads `OpenDetails`, and when
+    /// the size class swaps hosts the destination is simply rebuilt from the
+    /// value on the other side. A sheet cannot be driven that way, and two
+    /// attempts to do it were measured failing:
+    ///
+    /// 1. `.sheet(item:)` inside the screen, bound straight to `OpenDetails`.
+    ///    Survived one crossing and failed the next: the resize dismisses the
+    ///    presented controller, and the dismissal writes `nil` back through the
+    ///    binding — into the very box that was supposed to carry the record
+    ///    across.
+    /// 2. The same, mirrored into `@State` and cleared from `onDismiss`. Passed
+    ///    a three-stage 834 → 375 → 834 triple and failed on the **fourth**
+    ///    crossing, in the worst possible way: the sheet was still on screen at
+    ///    834pt with its backing value already cleared, so the next thing to
+    ///    read `OpenDetails` found nothing behind a visible screen.
+    ///
+    /// Both failures are the same fact — a sheet's teardown is indistinguishable
+    /// from a user dismissing it, and the teardown happens on a beat the screen
+    /// does not control. So the presentation moves to the one place a resize
+    /// never tears down. `RootView` straddles the boundary; only the *content*
+    /// of its `TabView` changes shape when the size class does. Nothing dismisses
+    /// this sheet but a user, and a user's dismissal is the only `nil` it writes.
+    ///
+    /// Measured after the move, on iPad Pro 11" portrait: with "30-Day NPS"
+    /// open, four crossings — 834 → 375 → 834 → 375 → 834pt — left
+    /// `navigationBars` at `["30-Day NPS", "Surveys"]` at every stage, and again
+    /// five seconds after each resize had settled. The late re-read is the point:
+    /// attempt 2 above looked correct the instant a drag ended.
+    ///
+    /// Keyed on `selectedTab` because that is what names the showing screen at
+    /// both widths — the sidebar selects it in regular width and the search
+    /// stack's destination sets it in compact. Navigating away therefore closes
+    /// the sheet without clearing it, and coming back re-presents it. That is
+    /// the same promise every pushing screen makes — `OpenDetails` is what
+    /// a screen *has open*, and a screen you return to is where you left it —
+    /// and it is reachable only by a link arriving from outside, since a sheet
+    /// covers the app and there is nothing else to tap while one is up.
+    ///
+    /// A read, and only a read: no `onChange` clears this. Every clearing path
+    /// that ran off something other than the user's own dismissal is what broke
+    /// the two attempts above.
+    private var presentedDetail: Binding<PresentedDetail?> {
+        Binding(
+            get: {
+                guard selectedTab.presentsDetailAsSheet,
+                      let detail = openDetails[selectedTab]
+                else { return nil }
+                return PresentedDetail(tab: selectedTab, detail: detail)
+            },
+            set: { newValue in
+                // `.sheet(item:)` only ever writes `nil` here, and it means the
+                // user dismissed it. Cleared across all four rather than for
+                // `selectedTab` alone: the write can land after the selection
+                // has already moved on, and clearing the tab that happens to be
+                // showing *then* would leave the dismissed screen's detail set
+                // and reopen its sheet the moment it came back.
+                guard newValue == nil else { return }
+                for tab in AppTab.allCases where tab.presentsDetailAsSheet {
+                    openDetails[tab] = nil
+                }
+            }
+        )
     }
 
     // MARK: - Selection

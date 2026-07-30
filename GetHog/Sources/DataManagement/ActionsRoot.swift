@@ -42,9 +42,23 @@ final class ActionsStore {
 /// nothing about whether the action is still catching the right clicks.
 struct ActionsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @Environment(\.openURL) private var openURL
     @State private var store = ActionsStore()
     @State private var search = ""
+
+    /// The open action, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value on
+    /// the host's stack goes when the host does.
+    private var selection: Binding<PostHogAction?> {
+        Binding(
+            get: { openDetails[.actions] as? PostHogAction },
+            set: { openDetails[.actions] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
@@ -54,7 +68,7 @@ struct ActionsRoot: View {
             .searchable(text: $search, prompt: "Search actions")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(for: PostHogAction.self) { action in
+            .navigationDestination(item: selection) { action in
                 ActionDetailView(action: action)
             }
     }
@@ -90,8 +104,10 @@ struct ActionsRoot: View {
         }
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 if filtered.isEmpty {
                     Text("No actions matched “\(search)”.")

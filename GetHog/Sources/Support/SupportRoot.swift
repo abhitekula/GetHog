@@ -84,14 +84,38 @@ final class SupportTicketsStore {
 /// stated fact rather than a greyed-out button inviting a tap that cannot work.
 struct SupportRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = SupportTicketsStore()
+
+    /// The open ticket, and deliberately **not** `@State` and not a value on the
+    /// container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`, reached through the search
+    /// tab, so it is hosted by a sidebar `Tab` above the size-class boundary and
+    /// by the search stack below it — see `OpenDetails`. It used to push with
+    /// `NavigationLink(value:)` into whichever stack the host provided, which
+    /// held nothing this screen could read back: measured with ticket #101 open,
+    /// dragging the window 834 → 375 → 834pt gave `navigationBars`
+    /// `["Ticket #101"]` → `["Support"]` → `["Support"]`. The stack the ticket
+    /// was pushed onto belonged to the sidebar `Tab`, which stops existing below
+    /// the boundary, and the push went with it.
+    ///
+    /// Bound to `OpenDetails` instead, the ticket outlives both hosts and
+    /// `navigationDestination(item:)` puts it back on whichever stack is
+    /// currently underneath.
+    private var selection: Binding<SupportTicket?> {
+        Binding(
+            get: { openDetails[.support] as? SupportTicket },
+            set: { openDetails[.support] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         @Bindable var store = store
 
         content
             .navigationTitle("Support")
-            .navigationDestination(for: SupportTicket.self) { SupportTicketDetailView(ticket: $0) }
+            .navigationDestination(item: selection) { SupportTicketDetailView(ticket: $0) }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $store.search, prompt: "Search tickets")
@@ -216,8 +240,15 @@ struct SupportRoot: View {
         (.github, "An issue opened on a connected repository"),
     ]
 
+    /// Selection-driven rather than push-driven.
+    ///
+    /// The binding on the `List` is what makes the row tap set `selection`
+    /// instead of appending to a path this screen cannot read; the
+    /// `navigationDestination(item:)` in `body` is what turns that selection
+    /// back into a pushed screen. Both halves are required — a selection with no
+    /// display leaves a tap that only highlights the row.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 DataRow(
                     glyph: store.unreadTotal > 0 ? "envelope.badge" : "envelope.open",

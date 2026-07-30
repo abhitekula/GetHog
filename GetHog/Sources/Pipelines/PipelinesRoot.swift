@@ -43,13 +43,21 @@ final class PipelinesStore {
 
 struct PipelinesRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = PipelinesStore()
-    @State private var selected: HogFunction?
     @State private var search = ""
 
+    /// The open function. A sheet, not a second column: a function's detail is a
+    /// short read-only summary, not a column's worth of content — but the sheet
+    /// is presented by `RootView`, not here, because a sheet driven from inside
+    /// a secondary screen does not survive a size-class change. See
+    /// `RootView.presentedDetail`.
+    private var selected: HogFunction? {
+        get { openDetails[.pipelines] as? HogFunction }
+        nonmutating set { openDetails[.pipelines] = newValue.map(AnyHashable.init) }
+    }
+
     var body: some View {
-        // A sheet, not a second column: a function's detail is a short
-        // read-only summary, not a column's worth of content.
         content
             .navigationTitle("Pipelines")
             .toolbar { ProjectSwitcher() }
@@ -57,12 +65,6 @@ struct PipelinesRoot: View {
             .searchable(text: $search, prompt: "Search pipelines")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .sheet(item: $selected) { function in
-                PipelineDetailSheet(
-                    function: function,
-                    webURL: model.webURL(path: webPath(for: function))
-                )
-            }
     }
 
     // MARK: - States
@@ -137,17 +139,6 @@ struct PipelinesRoot: View {
         case .transformation: "Run on every event as it is ingested."
         case .destination: "Forward matching events out of PostHog."
         case .other: "Other pipeline functions in this project."
-        }
-    }
-
-    /// Best-effort deep link. The console groups functions by the same two
-    /// buckets, so an unrecognised type lands on the pipeline overview rather
-    /// than a guessed URL.
-    private func webPath(for function: HogFunction) -> String {
-        switch function.kind {
-        case .transformation: "pipeline/transformations"
-        case .destination: "pipeline/destinations"
-        case .other: "pipeline"
         }
     }
 
@@ -282,6 +273,21 @@ struct PipelineDetailSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Best-effort deep link. The console groups functions by the same two buckets,
+/// so an unrecognised type lands on the pipeline overview rather than a guessed
+/// URL.
+///
+/// File scope rather than a method on the root: the sheet that needs it is
+/// presented by `RootView`, one level above this screen. See
+/// `RootView.presentedDetail`.
+func pipelineWebPath(for function: HogFunction) -> String {
+    switch function.kind {
+    case .transformation: "pipeline/transformations"
+    case .destination: "pipeline/destinations"
+    case .other: "pipeline"
     }
 }
 

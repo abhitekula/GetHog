@@ -166,14 +166,33 @@ final class RendersStore {
 
 struct RendersRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = RendersStore()
+
+    /// The open render, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value
+    /// pushed onto the host's stack goes when the host does.
+    ///
+    /// `LinkedSession` below stays a path value on purpose. It is a link *out*
+    /// of this screen into a session recording — one level deeper than the
+    /// render this screen has open — and restoring a whole stack is not what
+    /// `OpenDetails` promises.
+    private var selection: Binding<RecordingExport?> {
+        Binding(
+            get: { openDetails[.renders] as? RecordingExport },
+            set: { openDetails[.renders] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         @Bindable var store = store
 
         content
             .navigationTitle("Renders")
-            .navigationDestination(for: RecordingExport.self) {
+            .navigationDestination(item: selection) {
                 RenderDetailView(export: $0, asOf: store.asOf)
             }
             .navigationDestination(for: LinkedSession.self) {
@@ -253,8 +272,10 @@ struct RendersRoot: View {
         .background(Theme.pageBackground)
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 if store.visibleExports.isEmpty && !store.isLoading {
                     // Reached only by the client-side filter: the renders exist,

@@ -130,14 +130,28 @@ final class LogsStore {
 
 struct LogsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = LogsStore()
+
+    /// The open log line, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value on
+    /// the host's stack goes when the host does.
+    private var selection: Binding<LogRow?> {
+        Binding(
+            get: { openDetails[.logs] as? LogRow },
+            set: { openDetails[.logs] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         @Bindable var store = store
 
         content
             .navigationTitle("Logs")
-            .navigationDestination(for: LogRow.self) { LogDetailView(row: $0) }
+            .navigationDestination(item: selection) { LogDetailView(row: $0) }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $store.search, prompt: "Search log messages")
@@ -246,8 +260,10 @@ struct LogsRoot: View {
         .background(Theme.pageBackground)
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 if store.visibleRows.isEmpty && !store.isLoading {
                     // Reached only by the client-side severity filter: the rows

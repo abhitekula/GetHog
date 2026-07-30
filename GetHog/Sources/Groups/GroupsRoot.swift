@@ -40,7 +40,27 @@ final class GroupTypesStore {
 /// exactly the kind of quiet lie this app tries not to tell.
 struct GroupsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = GroupTypesStore()
+
+    /// The open type, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it. Measured with
+    /// "[REMOVED PRIVATE DATA]" open, dragging the window 834 → 375 → 834 → 375 → 834pt:
+    /// `navigationBars` went `["[REMOVED PRIVATE DATA]"]` → `["Groups"]` and stayed there for
+    /// all four crossings.
+    ///
+    /// This is the one screen that nests, so it uses two slots: the group *type*
+    /// here, and the group itself one level down in `GroupListView`. Restoring
+    /// only the type would land a reader on a list they had already left.
+    private var selection: Binding<GroupType?> {
+        Binding(
+            get: { openDetails[.groups] as? GroupType },
+            set: { openDetails[.groups] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
@@ -49,11 +69,8 @@ struct GroupsRoot: View {
             .projectSubtitle()
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(for: GroupType.self) { type in
+            .navigationDestination(item: selection) { type in
                 GroupListView(groupType: type)
-            }
-            .navigationDestination(for: GroupDetailTarget.self) { target in
-                GroupDetailView(group: target.group, groupType: target.groupType)
             }
     }
 
@@ -89,8 +106,10 @@ struct GroupsRoot: View {
         }
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 ForEach(store.types) { type in
                     NavigationLink(value: type) {
@@ -123,12 +142,12 @@ struct GroupsRoot: View {
     }
 }
 
-/// Navigation payload for a group, which needs its type along for the ride so
-/// the detail screen can name what kind of thing it is showing.
-struct GroupDetailTarget: Hashable {
-    let group: GroupRow
-    let groupType: GroupType
-}
+// The group + type navigation payload that used to live here is gone. It
+// existed because a value pushed onto the container's path had to carry
+// everything the destination needed, and the destination was registered up here
+// where the type was not in scope. The group's destination is now registered in
+// `GroupListView`, which already holds `groupType` as a property, so the pair
+// has nothing left to travel as.
 
 // MARK: - Rows
 

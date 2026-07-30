@@ -76,8 +76,22 @@ final class WarehouseStore {
 
 struct WarehouseRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = WarehouseStore()
     @State private var search = ""
+
+    /// The open table, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value on
+    /// the host's stack goes when the host does.
+    private var selection: Binding<WarehouseTable?> {
+        Binding(
+            get: { openDetails[.warehouse] as? WarehouseTable },
+            set: { openDetails[.warehouse] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
@@ -87,7 +101,7 @@ struct WarehouseRoot: View {
             .searchable(text: $search, prompt: "Search sources and tables")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(for: WarehouseTable.self) { table in
+            .navigationDestination(item: selection) { table in
                 WarehouseTableDetailView(table: table)
             }
     }
@@ -122,8 +136,10 @@ struct WarehouseRoot: View {
         }
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             if !store.unhealthySources.isEmpty && search.isEmpty {
                 Section {
                     WarehouseAlertBanner(sources: store.unhealthySources)

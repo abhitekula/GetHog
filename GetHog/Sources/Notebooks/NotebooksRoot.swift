@@ -35,6 +35,7 @@ final class NotebooksStore {
 
 struct NotebooksRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = NotebooksStore()
     @State private var search = ""
 
@@ -46,9 +47,22 @@ struct NotebooksRoot: View {
             .searchable(text: $search, prompt: "Search notebooks")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(for: Notebook.self) { notebook in
+            .navigationDestination(item: selection) { notebook in
                 NotebookDetailView(summary: notebook)
             }
+    }
+
+    /// The open notebook, held in `OpenDetails` rather than pushed as a value
+    /// onto the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value on
+    /// the host's stack goes when the host does.
+    private var selection: Binding<Notebook?> {
+        Binding(
+            get: { openDetails[.notebooks] as? Notebook },
+            set: { openDetails[.notebooks] = $0.map(AnyHashable.init) }
+        )
     }
 
     // MARK: - States
@@ -81,8 +95,10 @@ struct NotebooksRoot: View {
         }
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 if filtered.isEmpty {
                     Text("No notebooks matched “\(search)”.")

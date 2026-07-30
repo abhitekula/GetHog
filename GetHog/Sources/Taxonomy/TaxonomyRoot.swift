@@ -65,8 +65,25 @@ final class TaxonomyStore {
 /// misstate one of them, so both are labelled for what they are.
 struct TaxonomyRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = TaxonomyStore()
     @State private var search = ""
+
+    /// The open event, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`, so it is hosted by a sidebar
+    /// `Tab` above the size-class boundary and by the search stack below it. A
+    /// `NavigationLink(value:)` appended to whichever stack the host provided,
+    /// and that stack stops existing when the host does: measured with an event
+    /// open, dragging the window 834 → 375 → 834pt collapsed `navigationBars`
+    /// to `["Taxonomy"]` and it stayed there.
+    private var selection: Binding<TaxonomyEvent?> {
+        Binding(
+            get: { openDetails[.taxonomy] as? TaxonomyEvent },
+            set: { openDetails[.taxonomy] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
@@ -76,7 +93,7 @@ struct TaxonomyRoot: View {
             .searchable(text: $search, prompt: "Search events")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(for: TaxonomyEvent.self) { event in
+            .navigationDestination(item: selection) { event in
                 TaxonomyEventDetailView(event: event)
             }
     }
@@ -115,8 +132,12 @@ struct TaxonomyRoot: View {
         }
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` turns it back
+    /// into a pushed screen. Both halves are needed — a selection with nothing
+    /// displaying it leaves a tap that only highlights the row.
     private var list: some View {
-        List {
+        List(selection: selection) {
             if search.isEmpty {
                 Section {
                     TaxonomySummaryCard(

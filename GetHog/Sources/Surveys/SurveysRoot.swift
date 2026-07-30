@@ -47,24 +47,37 @@ final class SurveysStore {
 
 struct SurveysRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = SurveysStore()
-    @State private var selected: Survey?
+
+    /// The open survey, and deliberately neither `@State` nor a `.sheet` of this
+    /// screen's own.
+    ///
+    /// A sheet rather than a second column: response analysis lives on the web,
+    /// so there is nothing to keep persistently open beside the list. But this
+    /// screen is one of `AppTab.secondary`, reached through the search tab, so
+    /// it is hosted by a sidebar `Tab` above the size-class boundary and by the
+    /// search stack below it — and crossing the boundary rebuilds it in the
+    /// other host.
+    /// Measured with "30-Day NPS" open, dragging the window 834 → 375 → 834pt:
+    /// `navigationBars` went `["30-Day NPS", "Surveys"]` → `["Surveys"]` →
+    /// `["Surveys"]`. The sheet was dismissed by the resize and never came back.
+    ///
+    /// So this screen writes the survey and stops. `RootView` presents it, from
+    /// above the boundary — see `RootView.presentedDetail` for why a sheet in
+    /// *this* view cannot be made to survive, whichever state drives it.
+    private var selected: Survey? {
+        get { openDetails[.surveys] as? Survey }
+        nonmutating set { openDetails[.surveys] = newValue.map(AnyHashable.init) }
+    }
 
     var body: some View {
-        // A sheet rather than a second column: response analysis lives on the
-        // web, so there is nothing to keep persistently open beside the list.
         content
             .navigationTitle("Surveys")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .sheet(item: $selected) { survey in
-                SurveyDetailSheet(
-                    survey: survey,
-                    webURL: model.webURL(path: "surveys/\(survey.id)")
-                )
-            }
     }
 
     @ViewBuilder

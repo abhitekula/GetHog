@@ -34,12 +34,30 @@ struct GroupListView: View {
     let groupType: GroupType
 
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = GroupListStore()
     @State private var search = ""
+
+    /// The open group — level 1 of the Groups screen, with the group *type* at
+    /// level 0 in `GroupsRoot`.
+    ///
+    /// This view is rebuilt along with everything else under it when the size
+    /// class swaps hosts, so its own `@State` would go the same way the type's
+    /// did. Both levels are restored, in order, by the two
+    /// `navigationDestination(item:)`s reading these two slots.
+    private var selection: Binding<GroupRow?> {
+        Binding(
+            get: { openDetails[.groups, level: 1] as? GroupRow },
+            set: { openDetails[.groups, level: 1] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
             .navigationTitle(groupType.pluralName)
+            .navigationDestination(item: selection) { group in
+                GroupDetailView(group: group, groupType: groupType)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, prompt: "Search \(groupType.pluralName.lowercased())")
             .refreshable { await load() }
@@ -65,8 +83,10 @@ struct GroupListView: View {
         }
     }
 
+    /// Selection-driven, like every other list that opens a detail across the
+    /// size-class boundary.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 if filtered.isEmpty {
                     Text("No \(groupType.pluralName.lowercased()) matched “\(search)”.")
@@ -75,7 +95,7 @@ struct GroupListView: View {
                         .listRowBackground(Color.clear)
                 } else {
                     ForEach(filtered) { group in
-                        NavigationLink(value: GroupDetailTarget(group: group, groupType: groupType)) {
+                        NavigationLink(value: group) {
                             GroupRowView(group: group)
                         }
                         .listRowBackground(

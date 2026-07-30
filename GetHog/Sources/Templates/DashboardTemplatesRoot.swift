@@ -59,14 +59,28 @@ final class DashboardTemplatesStore {
 /// the wrong dashboard.
 struct DashboardTemplatesRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = DashboardTemplatesStore()
+
+    /// The open template, held in `OpenDetails` rather than pushed as a value
+    /// onto the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value on
+    /// the host's stack goes when the host does.
+    private var selection: Binding<DashboardTemplate?> {
+        Binding(
+            get: { openDetails[.templates] as? DashboardTemplate },
+            set: { openDetails[.templates] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         @Bindable var store = store
 
         content
             .navigationTitle("Templates")
-            .navigationDestination(for: DashboardTemplate.self) { template in
+            .navigationDestination(item: selection) { template in
                 DashboardTemplateDetailView(template: template)
             }
             .toolbar { ProjectSwitcher() }
@@ -92,7 +106,15 @@ struct DashboardTemplatesRoot: View {
             PageScaffold {
                 LazyVGrid(columns: columns, spacing: Theme.Space.l) {
                     ForEach(store.visible) { template in
-                        NavigationLink(value: template) {
+                        // A `Button`, not a `NavigationLink`, and not because
+                        // the appearance changes — it was already
+                        // `.buttonStyle(.plain)`. These cards are in a
+                        // `LazyVGrid`, so there is no `List` to hand a selection
+                        // binding to; the tap writes the selection directly and
+                        // `navigationDestination(item:)` in `body` displays it.
+                        Button {
+                            selection.wrappedValue = template
+                        } label: {
                             TemplateCard(template: template)
                         }
                         .buttonStyle(.plain)

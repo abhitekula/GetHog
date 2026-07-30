@@ -45,25 +45,26 @@ final class ExperimentsStore {
 
 struct ExperimentsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = ExperimentsStore()
-    @State private var selected: Experiment?
+
+    /// The open experiment. No second column: the detail is a sheet because the
+    /// numbers that would justify one aren't computed on device. The sheet
+    /// itself is presented by `RootView` — a sheet driven from inside a
+    /// secondary screen is dismissed by a size-class change and cannot be put
+    /// back, see `RootView.presentedDetail`.
+    private var selected: Experiment? {
+        get { openDetails[.experiments] as? Experiment }
+        nonmutating set { openDetails[.experiments] = newValue.map(AnyHashable.init) }
+    }
 
     var body: some View {
-        // No second column: the detail is a sheet because the numbers that
-        // would justify one aren't computed on device. The stack this pushes
-        // into belongs to the container — see `RootView`.
         content
             .navigationTitle("Experiments")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .sheet(item: $selected) { experiment in
-                ExperimentDetailSheet(
-                    experiment: experiment,
-                    webURL: model.webURL(path: "experiments/\(experiment.id)")
-                )
-            }
     }
 
     @ViewBuilder

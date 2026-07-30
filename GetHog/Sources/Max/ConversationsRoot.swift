@@ -33,8 +33,22 @@ final class ConversationsStore {
 /// which is not something a viewer should be able to trigger from a list row.
 struct ConversationsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = ConversationsStore()
     @State private var search = ""
+
+    /// The open conversation, held in `OpenDetails` rather than pushed as a value onto
+    /// the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it, and a value on
+    /// the host's stack goes when the host does.
+    private var selection: Binding<MaxConversation?> {
+        Binding(
+            get: { openDetails[.max] as? MaxConversation },
+            set: { openDetails[.max] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
@@ -44,7 +58,7 @@ struct ConversationsRoot: View {
             .searchable(text: $search, prompt: "Search conversations")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(for: MaxConversation.self) { conversation in
+            .navigationDestination(item: selection) { conversation in
                 ConversationDetailView(conversation: conversation)
             }
     }
@@ -79,8 +93,10 @@ struct ConversationsRoot: View {
         }
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             Section {
                 if filtered.isEmpty {
                     Text("No conversations matched “\(search)”.")

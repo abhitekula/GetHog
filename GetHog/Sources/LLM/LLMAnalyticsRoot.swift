@@ -64,10 +64,22 @@ struct LLMAnalyticsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    @Environment(OpenDetails.self) private var openDetails
+
     @State private var store = LLMAnalyticsStore()
     @State private var range: LLMDateRange = .week
-    @State private var selected: LLMTrace?
     @State private var search = ""
+
+    /// The open trace, held outside this screen and presented by `RootView`.
+    ///
+    /// Measured with a trace open, dragging the window 834 → 375 → 834pt: the
+    /// sheet was dismissed by the resize and never returned, and `@State` here
+    /// went with the host. A sheet cannot be driven across the boundary from
+    /// inside a secondary screen at all — see `RootView.presentedDetail`.
+    private var selected: LLMTrace? {
+        get { openDetails[.llm] as? LLMTrace }
+        nonmutating set { openDetails[.llm] = newValue.map(AnyHashable.init) }
+    }
 
     var body: some View {
         content
@@ -77,12 +89,6 @@ struct LLMAnalyticsRoot: View {
             .searchable(text: $search, prompt: "Search traces")
             .refreshable { await load() }
             .task(id: LoadKey(projectID: model.projectID, range: range)) { await load() }
-            .sheet(item: $selected) { trace in
-                LLMTraceDetailSheet(
-                    trace: trace,
-                    webURL: model.webURL(path: "llm-analytics/traces/\(trace.id)")
-                )
-            }
     }
 
     private struct LoadKey: Hashable {
