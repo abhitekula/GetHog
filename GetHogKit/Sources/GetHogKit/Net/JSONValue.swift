@@ -45,10 +45,39 @@ public extension JSONValue {
     var stringValue: String? {
         switch self {
         case .string(let s): s
-        case .number(let d): d == d.rounded() ? String(Int(d)) : String(d)
+        case .number(let d): Self.render(d)
         case .bool(let b): String(b)
         default: nil
         }
+    }
+
+    /// Renders a JSON number as text, or `nil` when there is nothing useful to
+    /// show.
+    ///
+    /// `Int(d)` traps on infinity and on any magnitude past `Int.max`, and a
+    /// HogQL result reaches both: an aggregate that divided by a count which
+    /// turned out to be zero, and plain `1e300`, which JSON permits and
+    /// `JSONDecoder` hands back as a `Double`. Either one crashed the app
+    /// wherever a query result is drawn as text — the events feed, the SQL
+    /// console, warehouse rows. NaN escaped only by accident, because it compares
+    /// unequal to its own `rounded()`, so the guard is explicit rather than
+    /// leaning on that.
+    ///
+    /// Non-finite values render as *absent* rather than as "inf": the property is
+    /// already Optional, every caller treats `nil` as no value, and an empty cell
+    /// says more than the literal text "inf" does.
+    ///
+    /// The integer form stops at 2^53, where a `Double` no longer holds every
+    /// integer and a long digit string would claim an exactness the value does
+    /// not have. Same cutoff as `InsightCSV.number`, deliberately — two
+    /// thresholds for rendering the same numbers would be a trap for whoever
+    /// reads this next.
+    private static func render(_ value: Double) -> String? {
+        guard value.isFinite else { return nil }
+        if value == value.rounded(), abs(value) < 9e15 {
+            return String(Int(value))
+        }
+        return String(value)
     }
 
     var doubleValue: Double? {
