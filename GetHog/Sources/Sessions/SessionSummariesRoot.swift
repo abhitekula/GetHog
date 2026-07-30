@@ -16,8 +16,24 @@ import SwiftUI
 /// button that could never work.
 struct SessionSummariesRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = SessionSummariesStore()
     @State private var search = ""
+
+    /// The open summary, held in `OpenDetails` rather than pushed as a value
+    /// onto the container's path.
+    ///
+    /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
+    /// the size-class boundary and by the search stack below it. A
+    /// `NavigationLink(value:)` went onto whichever stack the host owned, and
+    /// the host stops existing across the boundary — measured, the open summary
+    /// was gone at 375pt and did not come back at 834.
+    private var selection: Binding<SessionSummaryRow?> {
+        Binding(
+            get: { openDetails[.sessionSummaries] as? SessionSummaryRow },
+            set: { openDetails[.sessionSummaries] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         content
@@ -34,7 +50,7 @@ struct SessionSummariesRoot: View {
             // differ, and a client-side pass would answer "26 failures" with
             // however few of them landed in the first fifty rows.
             .task(id: filterKey) { await load() }
-            .navigationDestination(for: SessionSummaryRow.self) { row in
+            .navigationDestination(item: selection) { row in
                 SessionSummaryDetailView(row: row)
             }
     }
@@ -81,8 +97,10 @@ struct SessionSummariesRoot: View {
             : "No summary in this project matches the filter. Clear it to see the rest."
     }
 
+    /// Selection-driven: the binding on the `List` makes a row tap set
+    /// `selection`, and `navigationDestination(item:)` in `body` displays it.
     private var list: some View {
-        List {
+        List(selection: selection) {
             if let total = store.total {
                 Section { banner(total) }
             }

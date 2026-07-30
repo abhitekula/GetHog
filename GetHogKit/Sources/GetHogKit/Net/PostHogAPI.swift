@@ -170,17 +170,26 @@ public enum PostHogAPI {
 
     // MARK: - Session recordings
 
+    /// The recording list, optionally narrowed server-side.
+    ///
+    /// The filter's own documentation records what the API accepts and why this
+    /// is a `GET` rather than a `RecordingsQuery` through `/query/`. The short
+    /// version: the `GET` hydrates `person`, `/query/` returns it as `null`.
+    ///
+    /// An untouched filter contributes no query items, so the unfiltered call
+    /// is the same request it always was.
     public static func sessionRecordings(
         projectID: Int,
         limit: Int = 50,
-        offset: Int = 0
+        offset: Int = 0,
+        filter: SessionRecordingFilter = SessionRecordingFilter()
     ) -> Endpoint {
         Endpoint(
             path: "/api/projects/\(projectID)/session_recordings/",
             query: [
                 URLQueryItem(name: "limit", value: String(limit)),
                 URLQueryItem(name: "offset", value: String(offset)),
-            ],
+            ] + filter.queryItems,
             category: .analytics
         )
     }

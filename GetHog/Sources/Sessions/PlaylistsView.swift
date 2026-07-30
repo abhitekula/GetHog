@@ -25,19 +25,29 @@ final class PlaylistsStore {
         }
     }
 
-    /// The project's own playlists, pinned first.
-    var own: [SessionRecordingPlaylist] {
+    /// Saved filters: stored queries, re-run on open. Pinned first.
+    ///
+    /// Grouped by *what a playlist is* rather than by who made it, which is the
+    /// division that changes what happens when you tap one. The screen used to
+    /// split "Saved in this project" from "Built in", which put a stored query
+    /// and a hand-pinned list side by side under one heading and left the only
+    /// distinction that matters to a small grey pill on the row.
+    var savedFilters: [SessionRecordingPlaylist] {
         playlists
-            .filter { !$0.isSynthetic }
-            .sorted {
-                ($0.pinned ? 0 : 1, $0.name) < ($1.pinned ? 0 : 1, $1.name)
-            }
+            .filter { $0.kind == .filters }
+            .sorted { ($0.pinned ? 0 : 1, $0.name) < ($1.pinned ? 0 : 1, $1.name) }
     }
 
-    /// PostHog's built-in views — watch history, frustration signals and the
-    /// rest — which arrive in the same page with negative ids.
-    var builtIn: [SessionRecordingPlaylist] {
-        playlists.filter(\.isSynthetic)
+    /// Collections: static lists of recordings somebody pinned. Includes
+    /// PostHog's built-in views, which report the same `type` and — measured —
+    /// are served by the same pinned-recordings sub-resource.
+    var collections: [SessionRecordingPlaylist] {
+        playlists
+            .filter { $0.kind != .filters }
+            .sorted {
+                ($0.isSynthetic ? 1 : 0, $0.pinned ? 0 : 1, $0.name)
+                    < ($1.isSynthetic ? 1 : 0, $1.pinned ? 0 : 1, $1.name)
+            }
     }
 }
 
@@ -47,6 +57,10 @@ final class PlaylistsStore {
 /// A plain `View`, not a tab root: playlists belong inside the sessions area,
 /// so this is meant to be pushed onto an existing navigation stack.
 struct PlaylistsView: View {
+    /// Hands a saved filter back to the sessions list. `nil` when there is no
+    /// list behind this screen to hand one to.
+    var onApplyFilter: ((SessionRecordingFilter) -> Void)?
+
     @Environment(AppModel.self) private var model
     @State private var store = PlaylistsStore()
 
@@ -91,24 +105,26 @@ struct PlaylistsView: View {
 
     private var list: some View {
         List {
-            if !store.own.isEmpty {
+            if !store.savedFilters.isEmpty {
                 Section {
-                    ForEach(store.own) { row($0) }
+                    ForEach(store.savedFilters) { row($0) }
                 } header: {
-                    SectionLabel(text: "Saved in this project", systemImage: "bookmark.fill")
+                    SectionLabel(text: "Saved filters", systemImage: "line.3.horizontal.decrease.circle")
+                } footer: {
+                    Text("Stored queries. Each one is re-run when you open it, so what it holds changes as new sessions arrive.")
                 }
             }
 
-            if !store.builtIn.isEmpty {
+            if !store.collections.isEmpty {
                 Section {
-                    ForEach(store.builtIn) { row($0) }
+                    ForEach(store.collections) { row($0) }
                 } header: {
-                    SectionLabel(text: "Built in", systemImage: "wand.and.stars")
+                    SectionLabel(text: "Collections", systemImage: "rectangle.stack")
                 } footer: {
                     // Named as PostHog's, not the team's, because these appear in
                     // the same response and would otherwise read as playlists
                     // somebody created and forgot about.
-                    Text("Views PostHog maintains for every project. They cannot be edited or deleted.")
+                    Text("Fixed lists of recordings. The ones marked “PostHog” are maintained for every project and cannot be edited or deleted.")
                 }
             }
 
@@ -122,13 +138,17 @@ struct PlaylistsView: View {
     }
 
     private func row(_ playlist: SessionRecordingPlaylist) -> some View {
-        PlaylistRowView(playlist: playlist)
-            .listRowBackground(
-                Theme.cardBackground
-                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                    .padding(.vertical, 1)
-            )
-            .listRowSeparator(.hidden)
+        NavigationLink {
+            PlaylistDetailView(playlist: playlist, onApplyFilter: onApplyFilter)
+        } label: {
+            PlaylistRowView(playlist: playlist)
+        }
+        .listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
     }
 
     private func load() async {
@@ -153,7 +173,10 @@ struct PlaylistRowView: View {
                 title: playlist.name,
                 subtitle: playlist.description,
                 footnote: playlist.countSummary,
-                accessory: .pill(playlist.kind.title, .secondary)
+                // The section heading now carries the kind, so the pill is free
+                // to carry the thing the heading cannot: whether this row is
+                // PostHog's or the team's. Rows with no pill are the team's.
+                accessory: playlist.isSynthetic ? .pill("PostHog", .secondary) : .none
             )
 
             if let progress = playlist.watchedProgress {
@@ -171,6 +194,7 @@ struct PlaylistRowView: View {
 
     private var spokenSummary: String {
         var parts = ["\(playlist.name), \(playlist.kind.title.lowercased())"]
+        if playlist.isSynthetic { parts.append("maintained by PostHog") }
         if playlist.pinned { parts.append("pinned") }
         if let description = playlist.description { parts.append(description) }
         parts.append(playlist.countSummary)

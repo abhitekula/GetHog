@@ -1,0 +1,251 @@
+import GetHogKit
+import SwiftUI
+
+/// The session-recording filter, as much of it as belongs on a phone.
+///
+/// ## What is on the surface, and why
+///
+/// The web console's replay filter panel offers person, events and actions with
+/// per-property sub-filters, duration, active duration, click and keypress
+/// counts, console level *and* console content, feature-flag variant, device,
+/// OS, country, and the three frustration signals. Reproducing that list on a
+/// 390-point screen would produce a panel nobody could operate one-handed.
+///
+/// So the sheet is ordered by what somebody reaches for while holding a phone:
+///
+/// * **What went wrong** first. It is the reason a replay list gets opened away
+///   from a desk — a report came in and you want the sessions it happened in.
+/// * **When**, because every other filter is meaningless without a window, and
+///   because a narrow window is also the cheapest query.
+/// * **How long**, carrying the total-versus-active distinction the console
+///   makes and the old client-side picker did not.
+/// * **Playable**, which is specific to this app: it cannot play mobile
+///   recordings, and on a mobile-heavy project most of the list is unopenable.
+/// * **Sort**, which changes the order rather than the contents.
+///
+/// Person search is *not* here. It lives in the navigation bar's search field,
+/// which is the control a thumb finds without opening anything.
+///
+/// Under "More", because they are real but rarely the first move: page URL, and
+/// any clause inherited from a saved filter that has no control of its own.
+///
+/// Deliberately absent, and the honest reasons:
+///
+/// * **Arbitrary events and actions with property sub-filters.** These need an
+///   event-taxonomy browser and a per-property operator picker — a screen, not a
+///   row. The four signals that matter are named individually instead.
+/// * **Feature-flag variant, device, OS, country.** All person-property
+///   equality filters. They need a property picker with server-side value
+///   completion; the same screen, again. A saved filter that uses them is
+///   carried through unchanged, so they are reachable, just not composable here.
+/// * **Console log *content* search.** The API accepts it. PostHog's own saved
+///   filter that uses it returns nothing — measured, `{key: message, operator:
+///   gt, value: "5"}` turns three real results into zero. Shipping a control
+///   that renders correct-looking empty lists is worse than not shipping it.
+/// * **Click and keypress count thresholds.** Available as *sort* orders, where
+///   they answer the same question ("show me the busy ones") without asking
+///   somebody to guess a number.
+struct SessionFilterSheet: View {
+    @Binding var filter: SessionRecordingFilter
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showsMore = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                signalSection
+                whenSection
+                durationSection
+                playableSection
+                sortSection
+                moreSection
+            }
+            .navigationTitle("Filter sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Clear", role: .destructive) { filter.clear() }
+                        .disabled(!filter.isNarrowed)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    // MARK: - What went wrong
+
+    /// One signal, not a set of tick boxes.
+    ///
+    /// Measured, and the reason this is a `Picker` rather than a row of toggles:
+    /// asking for two signals at once requires `operand=OR`, and `operand` is
+    /// global — it ORs the person, URL and console clauses away at the same
+    /// time. A multi-select here would silently widen every other filter on the
+    /// sheet. One at a time is the shape the API can actually honour.
+    private var signalSection: some View {
+        Section {
+            Picker("Signal", selection: $filter.signal) {
+                Text("Any").tag(SessionRecordingFilter.Signal?.none)
+                ForEach(SessionRecordingFilter.Signal.allCases) { signal in
+                    Label(signal.title, systemImage: signal.systemImage)
+                        .tag(SessionRecordingFilter.Signal?.some(signal))
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } header: {
+            Text("What went wrong")
+        } footer: {
+            Text("One at a time. PostHog applies a single combining rule to the whole filter, so asking for two signals would also widen everything else here.")
+        }
+    }
+
+    // MARK: - When
+
+    private var whenSection: some View {
+        Section {
+            Picker("Time range", selection: $filter.dateWindow) {
+                ForEach(SessionRecordingFilter.DateWindow.allCases) { window in
+                    Text(window.title).tag(window)
+                }
+            }
+        } header: {
+            Text("When")
+        }
+    }
+
+    // MARK: - How long
+
+    private var durationSection: some View {
+        Section {
+            Picker("Longer than", selection: minimumDuration) {
+                ForEach(Self.durationChoices, id: \.self) { seconds in
+                    Text(Self.durationTitle(seconds)).tag(seconds)
+                }
+            }
+
+            // Segmented controls shrink their labels to slivers at accessibility
+            // text sizes, so past that threshold the same choice becomes a menu
+            // — the adaptation `PeopleRoot` documents and uses. "Total length"
+            // and "Active time" are the two longest labels on this sheet.
+            adaptivelyStyled(
+                Picker("Measured as", selection: $filter.durationMetric) {
+                    ForEach(SessionRecordingFilter.DurationMetric.allCases, id: \.self) { metric in
+                        Text(metric.title).tag(metric)
+                    }
+                }
+            )
+            .disabled((filter.minimumDuration ?? 0) <= 0)
+        } header: {
+            Text("How long")
+        } footer: {
+            // These are genuinely different numbers and the gap is large: a
+            // 34-minute recording in this project holds 40 seconds of activity.
+            // The old picker filtered on wall-clock time without saying so.
+            Text("Total length is wall-clock time from first event to last. Active time counts only the parts somebody was interacting — they are often minutes apart.")
+        }
+    }
+
+    @ViewBuilder
+    private func adaptivelyStyled(_ picker: some View) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            picker.pickerStyle(.menu)
+        } else {
+            picker.pickerStyle(.segmented)
+        }
+    }
+
+    private static let durationChoices: [Double] = [0, 30, 120, 600, 1800]
+
+    private static func durationTitle(_ seconds: Double) -> String {
+        switch seconds {
+        case 0: "Any"
+        case 30: "30 seconds"
+        case 120: "2 minutes"
+        case 600: "10 minutes"
+        default: "30 minutes"
+        }
+    }
+
+    private var minimumDuration: Binding<Double> {
+        Binding(
+            get: { filter.minimumDuration ?? 0 },
+            set: { filter.minimumDuration = $0 <= 0 ? nil : $0 }
+        )
+    }
+
+    // MARK: - Playable
+
+    private var playableSection: some View {
+        Section {
+            Toggle("Only recordings this app can play", isOn: Binding(
+                get: { filter.source == .web },
+                set: { filter.source = $0 ? .web : nil }
+            ))
+        } footer: {
+            Text("Mobile recordings need a transform PostHog has not published, so this app lists them but cannot play them.")
+        }
+    }
+
+    // MARK: - Sort
+
+    private var sortSection: some View {
+        Section {
+            Picker("Sort by", selection: $filter.order) {
+                ForEach(SessionRecordingFilter.Order.allCases) { order in
+                    Text(order.title).tag(order)
+                }
+            }
+        } header: {
+            Text("Sort")
+        }
+    }
+
+    // MARK: - More
+
+    @ViewBuilder
+    private var moreSection: some View {
+        Section(isExpanded: $showsMore) {
+            LabeledContent("Page URL contains") {
+                TextField("path or host", text: Binding(
+                    get: { filter.urlSearch ?? "" },
+                    set: { filter.urlSearch = $0.isEmpty ? nil : $0 }
+                ))
+                .multilineTextAlignment(.trailing)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+            }
+
+            if filter.inheritedProperties.isEmpty {
+                Text("Filters carried in from a saved filter appear here.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+            } else {
+                // Shown rather than silently applied. These come from a saved
+                // filter made in the web console and are re-sent verbatim; the
+                // list is running a narrower query than the controls above
+                // describe, and it should say so.
+                ForEach(Array(filter.inheritedProperties.enumerated()), id: \.offset) { _, clause in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(clause.key)
+                            .font(.footnote.monospaced())
+                        Text("from a saved filter · \(clause.op ?? "exact")")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Ink.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(clause.key), inherited from a saved filter")
+                }
+
+                Button("Remove inherited filters", role: .destructive) {
+                    filter.inheritedProperties.removeAll()
+                }
+            }
+        } header: {
+            Text("More")
+        }
+    }
+}

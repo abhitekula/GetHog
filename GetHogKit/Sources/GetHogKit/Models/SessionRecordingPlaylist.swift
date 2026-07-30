@@ -126,6 +126,137 @@ public struct SessionRecordingPlaylist: Sendable, Decodable, Identifiable, Hasha
         return Double(watchedCount) / Double(recordingCount)
     }
 
+    /// The stored query behind a **saved filter**, translated into something
+    /// the recordings endpoint accepts. `nil` for a collection, which has no
+    /// query at all — its contents are the rows somebody pinned.
+    ///
+    /// That distinction is the whole reason this property is optional rather
+    /// than defaulted: a collection and a saved filter are fetched by
+    /// completely different means, and a type that produced a filter for both
+    /// would send an empty query for a collection and quietly return the whole
+    /// project.
+    ///
+    /// The stored blob is the web console's own legacy filter shape, and it does
+    /// not match the API's input schema. Three mismatches, all measured:
+    ///
+    /// * `date_to` is the four-character **string** `"null"`, not JSON null.
+    ///   Forwarded verbatim it is a 400.
+    /// * `filter_test_accounts` is the string `"true"`, not a bool.
+    /// * `filter_group` is not an accepted input field at all; its leaves have
+    ///   to be sorted into `properties`, `console_log_filters` and
+    ///   `having_predicates` by their own `type`.
+    public var recordingFilter: SessionRecordingFilter? {
+        guard kind == .filters, let filters else { return nil }
+        var out = SessionRecordingFilter()
+
+        if let raw = filters["date_from"]?.stringValue,
+           let window = SessionRecordingFilter.DateWindow(relativeDate: raw) {
+            out.dateWindow = window
+        }
+
+        // `duration` is an array of recording-level clauses keyed by which
+        // duration they mean — wall clock or active time.
+        if case .array(let clauses)? = filters["duration"] {
+            for case .object(let clause) in clauses {
+                guard let key = clause["key"]?.stringValue,
+                      let metric = SessionRecordingFilter.DurationMetric(rawValue: key),
+                      case .number(let value)? = clause["value"]
+                else { continue }
+                out.durationMetric = metric
+                out.minimumDuration = value
+                // Carried rather than defaulted: the console stores `gt` and
+                // this app's own picker means `gte`, and running the wrong one
+                // makes the saved filter's list a recording wider than its name.
+                if let stored = clause["operator"]?.stringValue,
+                   let comparison = SessionRecordingFilter.DurationComparison(rawValue: stored) {
+                    out.durationComparison = comparison
+                }
+            }
+        }
+
+        if case .array(let events)? = filters["events"] {
+            for case .object(let event) in events {
+                guard let id = event["id"]?.stringValue,
+                      let signal = SessionRecordingFilter.Signal.allCases.first(
+                          where: { $0.eventName == id }
+                      )
+                else { continue }
+                out.signal = signal
+            }
+        }
+
+        for leaf in Self.leaves(of: filters["filter_group"]) {
+            apply(leaf, to: &out)
+        }
+
+        if let raw = filters["order"]?.stringValue,
+           let order = SessionRecordingFilter.Order(rawValue: raw) {
+            out.order = order
+        }
+
+        return out
+    }
+
+    /// Clauses in the stored filter that `recordingFilter` deliberately does
+    /// **not** apply, named so a screen can say the query it ran is wider than
+    /// the one the playlist describes.
+    ///
+    /// Silence here would be the dangerous option: an untranslated clause makes
+    /// the result *larger*, and a saved filter showing more than it should looks
+    /// exactly like one working correctly.
+    public var untranslatedClauses: [String] {
+        guard kind == .filters, let filters else { return [] }
+        return Self.leaves(of: filters["filter_group"]).compactMap { leaf in
+            guard let key = leaf["key"]?.stringValue else { return nil }
+            guard leaf["type"]?.stringValue == "log_entry", key != "level" else { return nil }
+            return "console \(key)"
+        }
+    }
+
+    /// `filter_group` nests `{type, values}` to an arbitrary depth; the leaves
+    /// are the objects carrying a `key`.
+    private static func leaves(of node: JSONValue?) -> [[String: JSONValue]] {
+        guard case .object(let object)? = node else { return [] }
+        if object["key"] != nil { return [object] }
+        guard case .array(let values)? = object["values"] else { return [] }
+        return values.flatMap { leaves(of: $0) }
+    }
+
+    private func apply(
+        _ leaf: [String: JSONValue],
+        to filter: inout SessionRecordingFilter
+    ) {
+        guard let key = leaf["key"]?.stringValue else { return }
+        let type = leaf["type"]?.stringValue ?? "person"
+        let op = leaf["operator"]?.stringValue
+
+        switch type {
+        case "log_entry":
+            // Only the level clause has a control on the sheet. The console
+            // *message* clause is deliberately not translated: PostHog's own
+            // "5+ console log errors" saved filter stores
+            // `{key: message, operator: gt, value: "5"}`, which the API accepts
+            // and which matches nothing — measured, it turns a filter with 3
+            // real results into 0. Reproducing it would reproduce the fault.
+            if key == "level", case .array(let levels)? = leaf["value"],
+               levels.contains(where: { $0.stringValue == "error" }) {
+                filter.signal = .consoleError
+            }
+        case "recording":
+            if key == "snapshot_source", case .array(let sources)? = leaf["value"],
+               let raw = sources.first?.stringValue,
+               let source = SessionRecordingFilter.Source(rawValue: raw) {
+                filter.source = source
+            }
+        default:
+            filter.inheritedProperties.append(
+                SessionRecordingFilter.PropertyClause(
+                    key: key, type: type, value: leaf["value"], op: op
+                )
+            )
+        }
+    }
+
     /// Row subtitle. Says the count is missing rather than printing a zero the
     /// API never claimed.
     public var countSummary: String {
