@@ -102,6 +102,18 @@ struct DashboardsRoot: View {
                 columnVisibility = isOpen ? .detailOnly : .all
             }
         }
+        // Teaches Siri which dashboard this person actually opens.
+        //
+        // Here rather than in `DashboardDetailView`, and that placement is the
+        // point: the detail screen is also drawn by a restored window, by a deep
+        // link, and by `applyDebugSelectionIfNeeded` under the UI tests, none of
+        // which is somebody choosing a dashboard. `selection` on this list is
+        // set by a row tap and by nothing else in a shipping build — the debug
+        // path is `#if DEBUG` and driven by a launch variable.
+        .onChange(of: selection) { _, opened in
+            guard let opened else { return }
+            IntentDonations.dashboardOpened(opened)
+        }
     }
 
     @ViewBuilder

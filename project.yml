@@ -113,12 +113,51 @@ targets:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - GetHogUITests
+      - path: GetHogUITests
+        # The screenshot harness lives beside these tests but is deliberately
+        # not one of them — see `GetHogScreenshots` below.
+        excludes:
+          - Screenshots/**
     dependencies:
       - target: GetHog
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GetHog
+
+  # The screenshot harness: launches the demo build once per screen and writes a
+  # PNG of what actually came up, so shipped UI can be *reviewed* rather than
+  # reasoned about.
+  #
+  # A target of its own, and this is the part that needed a project change. A
+  # full sweep is minutes — 47 screens × up to three configurations, each a real
+  # launch — where `GetHogUITests` is the target the project's own
+  # verification command runs on every pass
+  # (`xcodebuild test -only-testing:GetHogUITests`, 33 tests). Folding the
+  # harness into that target would make every verification pass pay for it.
+  #
+  # Skipping by environment flag was tried first and does not work here:
+  # `TEST_RUNNER_`-prefixed variables on the `xcodebuild` command line were
+  # measured **not** reaching the UI-test runner's `ProcessInfo.environment`
+  # under this toolchain, so there is no channel to tell an in-target test to
+  # stand down. A separate target and scheme need no channel.
+  #
+  # Sources are the harness directory plus `DemoLaunch.swift`, shared with the
+  # audit target rather than copied: its `wait`/`settle`/`pause` encode measured
+  # facts about this app (poll `exists`, never `waitForExistence`), and two
+  # copies would drift.
+  GetHogScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - GetHogUITests/Screenshots
+      - GetHogUITests/DemoLaunch.swift
+    dependencies:
+      - target: GetHog
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogScreenshots
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHog
 
@@ -133,3 +172,17 @@ schemes:
       targets:
         - GetHogTests
         - GetHogUITests
+
+  # `xcodebuild test -project GetHog.xcodeproj -scheme GetHogScreenshots \
+  #    -destination 'platform=iOS Simulator,name=iPhone 17'`
+  #
+  # Writes `build/Screenshots/<device>/{light,dark,ax5}/<screen>.png`. Re-run
+  # with an iPad destination for the iPad half; nothing else changes.
+  GetHogScreenshots:
+    build:
+      targets:
+        GetHog: all
+        GetHogScreenshots: [test]
+    test:
+      targets:
+        - GetHogScreenshots

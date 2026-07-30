@@ -135,6 +135,100 @@ final class EventsStore {
             ("Earlier today", today), ("Earlier", earlier),
         ].filter { !$0.1.isEmpty }
     }
+
+    // MARK: - Rotors
+
+    /// Every `$exception` in the feed, in the order it is drawn.
+    ///
+    /// Built from `buckets` rather than from `events` so the order matches what
+    /// is on screen exactly: `buckets` is a partition, not a filter, and a rotor
+    /// whose entries run in a different order than the list reads as the screen
+    /// jumping about at random.
+    var exceptionRows: [EventRow] {
+        buckets.flatMap(\.events).filter { $0.event == "$exception" }
+    }
+
+    /// The events somebody on the product team instrumented themselves.
+    ///
+    /// The same distinction `EventAppearance.isCustom` draws for the row tint,
+    /// and for the same stated reason: a feed that is mostly `$autocapture` and
+    /// `$pageview` buries the handful of rows that were deliberately added. A
+    /// tint answers that for a reader who can see the list; this answers it for
+    /// one who is hearing it one row at a time.
+    var customEventRows: [EventRow] {
+        buckets.flatMap(\.events).filter { EventAppearance.isCustom($0.event) }
+    }
+
+    /// The first row of each time bucket, labelled with the bucket's own
+    /// heading — so a rotor jump lands on a row rather than on a header, which
+    /// is what a reader actually wants to be put next to.
+    var bucketAnchors: [RotorAnchor] {
+        buckets.compactMap { bucket in
+            bucket.events.first.map { RotorAnchor(id: $0.id, label: bucket.title) }
+        }
+    }
+}
+
+extension View {
+
+    /// The events feed's three rotors, as one named thing.
+    ///
+    /// Split out of `EventsRoot.list` so the declaration can be applied to a
+    /// list of real `EventRowView`s in a test and read back off the rendered
+    /// tree. Demo mode answers every `/query/` with the same five-row HogQL
+    /// fixture — see `AccessibilityAuditTests`, which documents the same
+    /// limitation from the other side — so the feed there has neither an
+    /// exception nor more than one time bucket to jump between.
+    func eventFeedRotors(
+        exceptions: [EventRow],
+        custom: [EventRow],
+        periods: [RotorAnchor]
+    ) -> some View {
+        accessibilityRotor(
+            Text("Errors"),
+            entries: exceptions,
+            entryID: \.id,
+            entryLabel: \.rotorLabel
+        )
+        .accessibilityRotor(
+            Text("Custom events"),
+            entries: custom,
+            entryID: \.id,
+            entryLabel: \.rotorLabel
+        )
+        // The "by day" rotor, named for what this feed actually buckets by. Its
+        // sections are relative — "Just now", "Earlier today" — not calendar
+        // days, and a rotor called "Days" that jumps to "Last hour" would be
+        // claiming a granularity the screen does not have.
+        .accessibilityRotor(
+            Text("Time periods"),
+            entries: periods,
+            entryLabel: \.label
+        )
+    }
+}
+
+extension EventRow {
+
+    /// What a rotor speaks for this row.
+    ///
+    /// The name leads, because that is what the rotor selected on. The path or
+    /// distinct id follows for the same reason `EventRowView` prints it: four
+    /// consecutive `$autocapture` rows are otherwise indistinguishable, and a
+    /// rotor that reads the same four words four times has not moved anywhere as
+    /// far as the listener can tell.
+    var rotorLabel: String {
+        var parts = [event]
+        if let url = currentURL, let path = URL(string: url)?.path, !path.isEmpty {
+            parts.append(path)
+        } else if let distinctID {
+            parts.append(distinctID)
+        }
+        if let timestamp {
+            parts.append(timestamp.formatted(date: .omitted, time: .shortened))
+        }
+        return parts.joined(separator: ", ")
+    }
 }
 
 struct EventsRoot: View {
@@ -360,6 +454,23 @@ struct EventsRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .skeleton(store.isLoading && store.events.isEmpty)
+        // Three rotors, and each one is a question this feed already answers for
+        // a reader who can see it and answered for nobody else.
+        //
+        // The feed's first page is 50 rows and it pages further; scrolling is
+        // how a sighted reader skips the noise, and scroll position is not
+        // something a VoiceOver user has — the same gap that made the "Load
+        // older events" button necessary in the footer above.
+        //
+        // Every entry id is an `EventRow.id`, which is the identity the
+        // `ForEach` above uses, so each entry resolves to a row on screen. The
+        // entry lists are built from `buckets` rather than from `events` so
+        // their order is the drawn order.
+        .eventFeedRotors(
+            exceptions: store.exceptionRows,
+            custom: store.customEventRows,
+            periods: store.bucketAnchors
+        )
     }
 
     private func reload() async {

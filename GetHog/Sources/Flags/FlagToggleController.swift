@@ -155,6 +155,14 @@ final class FlagToggleController {
                 for: PostHogAPI.setFlagActive(projectID: projectID, flagID: flag.id, active: desired)
             )
             successCount += 1
+            // Inside the success branch, after the write returned, and never in
+            // the `catch` below: the optimistic state is rolled back when the
+            // request fails, and a donation is a claim the thing happened. It is
+            // also gated on the flag's own quick-toggle opt-in — see
+            // `IntentDonations.mayDonateToggle` — so a flag the user has chosen
+            // to keep in-app only cannot become a Siri suggestion that would
+            // then be refused by `SetFeatureFlagIntent` anyway.
+            IntentDonations.flagSet(flag, enabled: desired)
         } catch {
             apply(previous, to: flag)
             failureCount += 1

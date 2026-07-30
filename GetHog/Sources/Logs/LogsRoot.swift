@@ -88,6 +88,12 @@ final class LogsStore {
 
     var isEmpty: Bool { rows.isEmpty }
 
+    /// The rows a VoiceOver rotor jumps between, in the order they are drawn.
+    ///
+    /// Derived from `visibleRows` rather than from `rows`: a rotor that offered
+    /// a line the list is not currently showing would be a jump to nothing.
+    var problemRows: [LogRow] { visibleRows.filter(\.severity.isProblem) }
+
     /// Severity filtering is done on the client.
     ///
     /// The alternative is a fresh `/query/` call every time the toggle moves,
@@ -299,11 +305,78 @@ struct LogsRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
+        // The reason this screen earns a rotor and a short list would not: the
+        // one thing anybody opens a log viewer to find is the failure, and the
+        // "Errors only" toggle in the bar above is a *filter* — it throws away
+        // the surrounding lines, which are the context that makes the failure
+        // legible. A rotor is the same question asked without destroying the
+        // answer: jump error to error, and swipe either way to read what
+        // happened around it.
+        //
+        // Entry ids are `LogRow.id`, which is exactly the identity the `ForEach`
+        // above uses, so each entry resolves to a row that is really on screen.
+        .logsRotor(problems: store.problemRows)
     }
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID)
+    }
+}
+
+// MARK: - Rotor
+
+extension View {
+
+    /// The logs list's rotor, as one named thing.
+    ///
+    /// Split out of `LogsRoot.list` so it can be applied to a list of real
+    /// `LogRowView`s in a test and the rotor read back off the rendered tree.
+    /// Demo mode carries no logs fixture, so the screen itself renders no rows
+    /// there and cannot be measured; this is the declaration under test, called
+    /// by the screen and by nothing else.
+    func logsRotor(problems: [LogRow]) -> some View {
+        accessibilityRotor(
+            Text("Errors and fatals"),
+            entries: problems,
+            entryID: \.id,
+            entryLabel: \.rotorLabel
+        )
+    }
+}
+
+// MARK: - Rotor labels
+
+extension LogRow {
+
+    /// What the rotor speaks for this line.
+    ///
+    /// Deliberately shorter than `LogRowView`'s own accessibility label: a rotor
+    /// entry is read while the user is *scanning*, and the whole point of the
+    /// jump is to hear enough to decide whether to stop. Severity leads because
+    /// it is what the rotor is selecting on, then the service, then as much of
+    /// the message as fits a spoken phrase.
+    var rotorLabel: String {
+        var parts = [severity.title]
+        if let serviceName { parts.append(serviceName) }
+        parts.append(body.rotorSnippet)
+        return parts.joined(separator: ", ")
+    }
+}
+
+extension String {
+
+    /// The first line, capped, for a rotor entry.
+    ///
+    /// Log bodies and exception messages both arrive multi-line and unbounded;
+    /// a rotor entry that reads a whole stack trace aloud is worse than no rotor
+    /// at all, because the user cannot get out of it without listening to the
+    /// end.
+    var rotorSnippet: String {
+        let firstLine = split(separator: "\n", maxSplits: 1).first.map(String.init) ?? self
+        let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count > 90 else { return trimmed }
+        return trimmed.prefix(90).trimmingCharacters(in: .whitespaces) + "…"
     }
 }
 

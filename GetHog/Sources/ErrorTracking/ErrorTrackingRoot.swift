@@ -77,6 +77,24 @@ extension ErrorIssue {
         }
         return Theme.Status.critical
     }
+
+    /// What a rotor speaks for this issue.
+    ///
+    /// Shorter than `ErrorIssueRow`'s own label, which reads the full impact
+    /// line: a rotor entry is heard while scanning, and the decision being made
+    /// is "is this the one". Four of this project's six issues are titled
+    /// "Error", so the name alone identifies nothing — the message is what
+    /// separates them, exactly as it does in the drawn row. The user count comes
+    /// last because it is what the list is ranked by, so it is how a listener
+    /// knows they are still near the top.
+    var rotorLabel: String {
+        var parts = [name]
+        if let issueDescription, !issueDescription.isEmpty {
+            parts.append(issueDescription.rotorSnippet)
+        }
+        parts.append("\(users.compactFormatted) users")
+        return parts.joined(separator: ", ")
+    }
 }
 
 @MainActor
@@ -368,6 +386,33 @@ struct ErrorTrackingRoot: View {
             GlassFilterBar { statusFilter }
                 .padding(.bottom, Theme.Space.s)
         }
+        // A rotor rather than a second filter, and the difference is the whole
+        // reason it is here. The status picker above *removes* rows; this moves
+        // between them. With the picker on "All" — its default, and the state a
+        // triage pass starts in — the unresolved issues are interleaved with
+        // everything already dealt with, and finding them again is a scroll.
+        //
+        // The entries are `ErrorIssue` values keyed by `\.self`, because that is
+        // the identity `ForEach(visibleIssues, id: \.self)` uses; keying by
+        // `\.id` here would produce entries that match no row.
+        //
+        // Filtered from `visibleIssues` and read through `triage.effective`, so
+        // an issue resolved a moment ago on the detail screen leaves this rotor
+        // at the same instant it leaves the "Active" filter.
+        .accessibilityRotor(
+            Text("Unresolved issues"),
+            entries: unresolvedIssues,
+            entryID: \.self,
+            entryLabel: \.rotorLabel
+        )
+    }
+
+    /// The rows in the list that are still asking for attention.
+    ///
+    /// Derived from `visibleIssues` rather than from `store.issues`: a rotor
+    /// entry for a row the status filter has hidden would be a jump to nothing.
+    private var unresolvedIssues: [ErrorIssue] {
+        visibleIssues.filter { triage.effective($0).isActive }
     }
 
     private var statusFilter: some View {

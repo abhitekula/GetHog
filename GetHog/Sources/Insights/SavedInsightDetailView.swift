@@ -385,6 +385,22 @@ struct SavedInsightDetailView: View {
                 projectID: projectID
             )
             QuickActions.refresh(projectID: projectID)
+
+            // The in-app twin of `GetMetricValueIntent`: the user asked for this
+            // insight and the app has now put its number in front of them.
+            //
+            // After `loadResults`, and that is what makes the donation honest in
+            // both directions. It is the first moment the app knows whether this
+            // insight reduces to a single spoken value at all — the collection
+            // endpoint hands back rows with no results — so an insight Siri
+            // could only refuse is filtered out here rather than promoted into a
+            // suggestion. `IntentDonations.metricRead` makes that call.
+            //
+            // Every route to this screen is a user act: a row in the library, a
+            // search result, a `posthog.com` link, a home-screen shortcut.
+            // Nothing restores an insight into a window on its own, which is why
+            // this can sit beside `recordVisit` rather than needing a gesture.
+            IntentDonations.metricRead(resolved)
         }
     }
 

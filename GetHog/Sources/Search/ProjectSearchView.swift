@@ -29,6 +29,7 @@ struct ProjectSearchView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var store = ProjectSearchStore()
+    @State private var recents = RecentSearchStore()
     @State private var query = ""
     /// A survey opens as a sheet, because that is how `SurveyDetailSheet` is
     /// presented from the Surveys screen and it carries its own navigation stack.
@@ -55,6 +56,49 @@ struct ProjectSearchView: View {
         .toolbar { ProjectSwitcher() }
         .projectSubtitle()
         .searchable(text: $query, prompt: prompt)
+        .searchSuggestions { suggestions }
+        // Submitting is not what runs the search — filtering is live over an
+        // index already in memory — so this hook exists only to write the term
+        // down. Accepting a suggestion submits too, which is what keeps a term
+        // offered once and then chosen from climbing back to the top of the
+        // list on its own.
+        .onSubmit(of: .search) { recents.record(query) }
+        // One rotor, over the screen index, and this screen wants it more than
+        // any other list in the app: on a phone it is the *only* route to every
+        // screen in `AppTab.secondary`, so it is the one list where "scroll
+        // until you find it" is not a fallback but the whole navigation model —
+        // and scroll position is exactly what a VoiceOver user does not have.
+        //
+        // Entry ids are `AppTab` values keyed by `\.self`, which is the identity
+        // `ScreenIndexSections` gives its own `ForEach`, and the entries are
+        // filtered by the same rule — so a query that cuts the index to three
+        // names leaves three entries in the rotor.
+        //
+        // **A second rotor over the object-type groups was written, measured and
+        // removed.** It jumped to the head of each result group — Dashboards,
+        // Insights, Flags — which is the half of this screen a rotor would help
+        // most, since the demo project's index is 140 insights against 14
+        // dashboards. It registered correctly under the name "Object types" and
+        // returned **zero entries**, twice: once with the group heads carried as
+        // anchors keyed by `FileSystemEntry.id`, and again with the entries as
+        // `FileSystemEntry` values keyed by `\.self` against a `ForEach` keyed
+        // the same way. The rows were rendered and were on screen — the tree
+        // read back eight dashboard rows by name — so this is not laziness.
+        // The one structural difference from every rotor in this app that does
+        // resolve is that these rows are wrapped in a `Group` carrying a
+        // `contextMenu` and four different destinations, where the working ones
+        // are a bare `NavigationLink`.
+        //
+        // It is gone rather than shipped, because a rotor that is present in the
+        // rotor list and empty when turned to is worse for the user than one
+        // that was never offered, and it is exactly the shape of claim this
+        // project has been burned by before.
+        .accessibilityRotor(
+            Text("Screens"),
+            entries: rotorScreens,
+            entryID: \.self,
+            entryLabel: \.title
+        )
         // A term Siri was given, typed in for the user. `ShowGetHogSearchResultsIntent`
         // can only ask the app to search; this is where the asking lands.
         .onAppear {
@@ -85,6 +129,90 @@ struct ProjectSearchView: View {
     /// under-promise on the device where it is doing the most work.
     private var prompt: String {
         showsScreens ? "Search screens, names and folders" : "Search names and folders"
+    }
+
+    // MARK: - Suggestions
+
+    /// What the field offers before anything is typed.
+    ///
+    /// **No search scopes, and that is a decision rather than an omission.** The
+    /// obvious reading of this screen is that the screens/objects split wants
+    /// `.searchScopes`, and it was measured before being rejected. Three things
+    /// against it:
+    ///
+    /// 1. **A scope hides a half, and there are queries where both halves are
+    ///    real.** Measured over the 200-row demo index against the 30 screens in
+    ///    `AppTab.secondary`: four screen titles — "Insights", "Notebooks",
+    ///    "Surveys", "Web" — are also matched by an object name or folder in the
+    ///    same project. In a scoped field those four queries get answered with
+    ///    half the truth and no sign that they had been. `SearchSuggestionTests`
+    ///    pins the count and the names.
+    /// 2. **And the half a scope would rescue is never buried anyway.** Each of
+    ///    those four queries matches exactly *one* screen, so the object results
+    ///    begin one row below the screen results — measured in the same test.
+    ///    The scope bar would cost more vertical space than the rows it saves
+    ///    scrolling past, and it costs it when the keyboard is up.
+    /// 3. The split is already carried, permanently and for free, by the section
+    ///    headers: every screen group reads "… screens" under a `macwindow`
+    ///    glyph and every object group carries its own type's.
+    /// 4. In regular width there is no screens half at all — the sidebar lists
+    ///    them — so the control would have to be conditional on size class,
+    ///    which changes the `searchable` modifier's identity across the
+    ///    boundary. This app has already measured what that costs elsewhere:
+    ///    state thrown away on rotation, the defect `OpenDetails` exists for.
+    ///
+    /// What the split *does* want is a rotor, which navigates within a half
+    /// without removing the other. That is the `accessibilityRotor` above.
+    @ViewBuilder
+    private var suggestions: some View {
+        let offered = ProjectSearchSuggestions.forQuery(
+            query,
+            recentTerms: recents.terms,
+            entries: store.entries
+        )
+
+        if !offered.recentTerms.isEmpty {
+            Section("Recent searches") {
+                ForEach(offered.recentTerms, id: \.self) { term in
+                    Label(term, systemImage: "clock.arrow.circlepath")
+                        .searchCompletion(term)
+                }
+            }
+        }
+
+        if !offered.recentObjects.isEmpty {
+            Section("Recently viewed") {
+                ForEach(offered.recentObjects) { entry in
+                    // A completion rather than a link, deliberately. A row in
+                    // this list resolves to one of four different destinations —
+                    // a push, a sheet this view presents itself, a browser, or
+                    // nothing at all — and a suggestion that navigated would
+                    // have to reproduce that routing inside a surface the search
+                    // controller owns rather than this stack. Completing to the
+                    // object's exact name filters 200 rows to the one row, which
+                    // is then unambiguous and carries the real routing.
+                    Label(entry.name, systemImage: entry.type.systemImage)
+                        .searchCompletion(entry.name)
+                }
+            }
+        }
+    }
+
+    // MARK: - Rotor entries
+
+    /// The screen rows currently drawn, in the order `ScreenIndexSections` draws
+    /// them.
+    ///
+    /// `AppTab.secondary` is defined as `sections.flatMap(\.tabs) + utility`,
+    /// which is exactly that order, and the filter is the same
+    /// case-insensitive title match. Empty in regular width, where this screen
+    /// draws no screen rows at all — so the rotor is absent there rather than
+    /// offering jumps to rows that were never rendered.
+    private var rotorScreens: [AppTab] {
+        guard showsScreens else { return [] }
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return AppTab.secondary }
+        return AppTab.secondary.filter { $0.title.localizedCaseInsensitiveContains(needle) }
     }
 
     // MARK: - Objects
