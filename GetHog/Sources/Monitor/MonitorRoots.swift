@@ -72,8 +72,11 @@ struct InboxRoot: View {
             // reading, and it is the only axis that actually varies here.
             glyph: task.signalReportID != nil ? "antenna.radiowaves.left.and.right" : "binoculars",
             tint: task.signalReportID != nil ? Theme.accentWarm : Theme.accent,
-            title: task.title,
-            subtitle: task.repository,
+            title: task.displayTitle,
+            // Repository when there is one; otherwise the scout's own
+            // identifier, which is the only thing distinguishing one scout run
+            // from the next and is what the title was derived from.
+            subtitle: task.repository ?? task.scoutName,
             footnote: footnote(task),
             isSubtitleMonospaced: true,
             accessory: runAccessory(task)
@@ -102,7 +105,7 @@ struct InboxRoot: View {
     }
 
     private func spoken(_ task: AgentTask) -> String {
-        var text = task.title
+        var text = task.displayTitle
         text += task.signalReportID != nil ? ", filed by a signal report" : ", filed by a scout"
         if let status = task.latestRun?.status { text += ", last run \(status)" }
         return text
@@ -111,8 +114,12 @@ struct InboxRoot: View {
     private var filtered: [AgentTask] {
         guard !search.isEmpty else { return store.tasks }
         return store.tasks.filter {
-            $0.title.localizedCaseInsensitiveContains(search)
+            // Searches what is on screen, not the raw prompt. Matching the
+            // stored title would hit "You are a Signals scout agent" on every
+            // scout row and return the whole list for half the words typed.
+            $0.displayTitle.localizedCaseInsensitiveContains(search)
                 || ($0.repository ?? "").localizedCaseInsensitiveContains(search)
+                || ($0.scoutName ?? "").localizedCaseInsensitiveContains(search)
         }
     }
 

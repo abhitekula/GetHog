@@ -311,4 +311,45 @@ public struct AgentTask: Sendable, Decodable, Identifiable, Hashable {
         archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt).flatMap(PostHogDate.parse)
     }
+
+    /// The scout that filed this, when one did.
+    ///
+    /// A scout-filed task stores its entire prompt as the title, behind a
+    /// bracketed internal identifier:
+    ///
+    ///     [sandbox_prompt:signals_scout:signals-scout-feature-flags] You are a
+    ///     Signals scout agent for PostHog. Your job: explore this project…
+    ///
+    /// The identifier's last component is the only part that distinguishes one
+    /// scout task from another; everything after the bracket is the same
+    /// boilerplate on every row.
+    public var scoutName: String? {
+        guard title.hasPrefix("["), let close = title.firstIndex(of: "]") else { return nil }
+        let inside = title[title.index(after: title.startIndex)..<close]
+        guard let last = inside.split(separator: ":").last, !last.isEmpty else { return nil }
+        return String(last)
+    }
+
+    /// The title to actually show.
+    ///
+    /// Report-filed tasks already carry a written title and are returned
+    /// untouched. Only the prompt-shaped ones are rewritten, and they are
+    /// rewritten from their own identifier — nothing is invented.
+    public var displayTitle: String {
+        guard let scoutName else { return title }
+        // "signals-scout-feature-flags" → "Feature flags scout". The product
+        // prefix is dropped because the section it appears under already says
+        // it, and repeating it on every row costs the width that the part which
+        // actually differs needs.
+        var stem = scoutName
+        for prefix in ["signals-scout-", "signals_scout-", "scout-"] where stem.hasPrefix(prefix) {
+            stem.removeFirst(prefix.count)
+            break
+        }
+        let words = stem.replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard !words.isEmpty else { return title }
+        return words.prefix(1).uppercased() + words.dropFirst() + " scout"
+    }
 }
