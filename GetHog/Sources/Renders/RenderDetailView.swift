@@ -419,7 +419,7 @@ struct RenderDetailView: View {
                     activityLegend(
                         label: "Idle",
                         seconds: context.idleDuration,
-                        tint: .secondary
+                        tint: ActivityStrip.idleTone
                     )
                     Spacer(minLength: 0)
                 }
@@ -582,6 +582,15 @@ struct RenderDetailView: View {
 /// gives each its total, and the strip itself reads as one summary sentence to
 /// VoiceOver rather than as a row of anonymous rectangles.
 struct ActivityStrip: View {
+    /// The idle band's tone, named here so the legend swatch beside the strip is
+    /// literally the same value as the band it identifies. It was not: the strip
+    /// drew idle at 28% and the legend drew its dot at full strength, which on a
+    /// card measured 1.35:1 for the band and 3.44:1 for the dot — a key darker
+    /// than the thing it keys, over a band too faint to find. At full strength
+    /// the band clears the 3:1 floor for a graphical object while the active
+    /// stretches, at 6.00:1, stay the louder of the two.
+    static let idleTone = Color.secondary
+
     let periods: [ExportInactivityPeriod]
 
     private var total: TimeInterval {
@@ -593,7 +602,7 @@ struct ActivityStrip: View {
             HStack(spacing: 0) {
                 ForEach(Array(periods.enumerated()), id: \.offset) { _, period in
                     Rectangle()
-                        .fill(period.isActive ? Theme.accent : Color.secondary.opacity(0.28))
+                        .fill(period.isActive ? Theme.accent : ActivityStrip.idleTone)
                         .frame(width: proxy.size.width * period.duration / total)
                 }
             }

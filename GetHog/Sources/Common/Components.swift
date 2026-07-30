@@ -477,7 +477,10 @@ struct DeltaBadge: View {
                 Image(systemName: rising ? "arrow.up.right" : "arrow.down.right")
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(isGood ? Theme.Status.good : Theme.Status.critical)
+            // The badge is a number and an arrow, not a mark: on a card the
+            // mark tints measured 3.95:1 (critical) and 4.95:1 (good), and on
+            // the page 3.44:1 and 4.31:1, against a 4.5:1 floor.
+            .foregroundStyle(isGood ? Theme.Status.goodInk : Theme.Status.criticalInk)
             .accessibilityLabel(
                 "\(rising ? "Up" : "Down") "
                     + abs(change).formatted(.percent.precision(.fractionLength(0...1)))
@@ -543,7 +546,12 @@ struct StatusPill: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(tint.opacity(0.15), in: .capsule)
-            .foregroundStyle(tint)
+            // The chip is still a wash of the tint — that is what tells the
+            // states apart at a glance — but the word is not. Drawn in the tint
+            // it measured 3.25:1 for `critical` in light and 4.21:1 in dark,
+            // against a 4.5:1 floor. The ink is the same hue at a value that
+            // clears 5:1 on the chip, so the pill looks the same and reads.
+            .foregroundStyle(Theme.Status.ink(for: tint))
     }
 }
 

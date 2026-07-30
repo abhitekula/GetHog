@@ -242,7 +242,7 @@ struct ActionDetailView: View {
                 if action.steps.isEmpty {
                     Text("This action has no steps, so it never matches anything.")
                         .font(.callout)
-                        .foregroundStyle(Theme.Status.critical)
+                        .foregroundStyle(Theme.Status.criticalInk)
                 } else {
                     ForEach(Array(action.steps.enumerated()), id: \.offset) { index, step in
                         VStack(alignment: .leading, spacing: 4) {

@@ -244,7 +244,7 @@ struct DashboardDetailView: View {
                 if let rangeError = store.rangeError {
                     Label(rangeError, systemImage: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(Theme.Status.critical)
+                        .foregroundStyle(Theme.Status.criticalInk)
                 }
             }
         }

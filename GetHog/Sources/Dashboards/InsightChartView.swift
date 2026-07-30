@@ -120,7 +120,7 @@ struct InsightLegend: View {
     private func total(_ entry: Entry) -> some View {
         Text(entry.total.compactFormatted)
             .font(.caption.weight(.semibold).monospacedDigit())
-            .foregroundStyle(entry.isNegative ? Theme.Status.critical : .primary)
+            .foregroundStyle(entry.isNegative ? Theme.Status.criticalInk : .primary)
     }
 
     private func accessibilityLabel(for entry: Entry) -> String {

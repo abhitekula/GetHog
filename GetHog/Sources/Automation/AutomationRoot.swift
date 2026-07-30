@@ -433,7 +433,7 @@ struct AutomationFailureBanner: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label(headline, systemImage: "exclamationmark.circle")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.Status.critical)
+                    .foregroundStyle(Theme.Status.criticalInk)
 
                 ForEach(sections) { section in
                     Text("\(section.title): \(store.errors[section] ?? "failed to load")")
@@ -489,7 +489,7 @@ struct EndpointUsagePanel: View {
                 if let error = store.usageError {
                     Label(error, systemImage: "exclamationmark.circle")
                         .font(.caption)
-                        .foregroundStyle(Theme.Status.critical)
+                        .foregroundStyle(Theme.Status.criticalInk)
                         .lineLimit(3)
                 } else if store.usageReading != .noEndpointsDefined {
                     metrics

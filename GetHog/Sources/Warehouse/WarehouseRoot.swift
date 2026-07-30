@@ -222,7 +222,7 @@ struct WarehouseAlertBanner: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label(headline, systemImage: failed.isEmpty ? "pause.circle" : "exclamationmark.triangle")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(failed.isEmpty ? Color.secondary : Theme.Status.critical)
+                    .foregroundStyle(failed.isEmpty ? Theme.Ink.secondary : Theme.Status.criticalInk)
 
                 ForEach(sources) { source in
                     Text("\(source.displayName): \(source.latestError ?? source.health.title.lowercased()) · \(source.syncSummary)")

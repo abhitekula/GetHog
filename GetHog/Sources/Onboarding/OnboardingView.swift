@@ -241,7 +241,7 @@ struct OnboardingView: View {
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
-                    .foregroundStyle(Theme.Status.critical)
+                    .foregroundStyle(Theme.Status.criticalInk)
             }
 
             Button {

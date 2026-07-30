@@ -507,7 +507,7 @@ struct ReplayPlayerView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Replay unavailable", systemImage: "exclamationmark.triangle")
                 .font(.footnote.weight(.medium))
-                .foregroundStyle(Theme.Status.critical)
+                .foregroundStyle(Theme.Status.criticalInk)
             Text(message)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -554,7 +554,7 @@ struct ReplayPlayerView: View {
         if let streamingError = loader.streamingError {
             Text("Stopped loading more of this session: \(streamingError)")
                 .font(.caption2)
-                .foregroundStyle(Theme.Status.critical)
+                .foregroundStyle(Theme.Status.criticalInk)
         } else if !loader.isComplete {
             Text("Buffered \(SessionClock.clock(loader.bufferedSeconds)) of \(SessionClock.clock(duration))")
                 .font(.caption2)

@@ -145,7 +145,12 @@ struct SurveyRowView: View {
             // The type still travels as a word: the glyph reinforces it, but a
             // reader should never have to decode an icon to learn how a survey
             // reaches people.
-            subtitle: "\(surveyTypeLabel(survey.type)) · \(questionCount)",
+            //
+            // The space before the separator is non-breaking because at
+            // accessibility sizes this wrapped between the type and the dot,
+            // leaving a `·` hanging alone at the end of a line pointing at
+            // nothing. A separator belongs to the thing it follows.
+            subtitle: "\(surveyTypeLabel(survey.type))\u{00A0}· \(questionCount)",
             footnote: surveyRangeText(start: survey.startDate, end: survey.endDate),
             accessory: .pill(survey.statusText, surveyStatusTint(survey.statusText))
         )

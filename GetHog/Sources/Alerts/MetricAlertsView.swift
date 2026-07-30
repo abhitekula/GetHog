@@ -217,7 +217,7 @@ struct MetricAlertsView: View {
             if let error = controller.authorizationError {
                 Text(error)
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Status.critical)
+                    .foregroundStyle(Theme.Status.criticalInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

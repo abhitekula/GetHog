@@ -172,6 +172,42 @@ enum Theme {
         )
     }
 
+    /// Status colour, in two weights: a **mark** and an **ink**.
+    ///
+    /// The marks below are for things that are not words — the glyph tile that
+    /// leads a row, a usage bar, a chart rule, a card's accent stripe. WCAG's
+    /// floor for those is 3:1 and they clear it; `critical` is the tightest at
+    /// 3.95:1 on `cardBackground`, 3.44:1 on `pageBackground`.
+    ///
+    /// They are not text colours, and that is not academic. A `StatusPill` drew
+    /// its word in the tint over a 15% wash of the same tint, which measured:
+    ///
+    /// | | light card | light page | dark card | dark page |
+    /// |---|---|---|---|---|
+    /// | `critical`   | **3.25:1** | **2.87:1** | **4.21:1** | 4.71:1 |
+    /// | `good`       | **4.00:1** | **3.52:1** | 5.18:1 | 5.82:1 |
+    /// | `accentWarm` | **4.16:1** | **3.67:1** | 5.15:1 | 5.79:1 |
+    /// | `accent`     | 4.82:1 | **4.24:1** | 6.02:1 | 6.78:1 |
+    /// | `.secondary` | **3.24:1** | **3.07:1** | 5.06:1 | 5.49:1 |
+    ///
+    /// Ten of those twenty are under the 4.5:1 AA floor for text this size — on
+    /// the one word in the app whose whole job is to state a state without
+    /// relying on colour. A status word that is hard to read defeats the
+    /// mechanism it is.
+    ///
+    /// The wash cannot fix it. The word *is* the tint, so the palest chip
+    /// possible is a white one, and even there `critical` tops out at 3.95:1;
+    /// a heavier wash moves the wrong way (2.53:1 at 25%).
+    ///
+    /// Nor can darkening the marks. Solving each tint so that it clears 4.5:1
+    /// against a wash of *itself* lands all four on one luminance, and the
+    /// separation between states — 1.05:1 to 1.74:1 today — collapses to
+    /// 1.00:1. That separation is the only thing a chart mark has when red and
+    /// green arrive at the same hue, and unlike a pill it has no word beside it.
+    /// It would also drag a 3pt bar to 6.46:1 against a card to settle an
+    /// argument about a 9pt word.
+    ///
+    /// So the marks keep their values and words take `ink(for:)`.
     enum Status {
         static let good = Color(
             light: Color(red: 0.0, green: 0.514, blue: 0.0),
@@ -181,6 +217,69 @@ enum Theme {
             light: Color(red: 0.890, green: 0.286, blue: 0.282),
             dark: Color(red: 0.902, green: 0.404, blue: 0.404)
         )
+
+        // Text-weight partners: each mark's own hue and saturation, moved to the
+        // value that clears 5.0:1 on the darker of the two grounds a pill sits
+        // on. Deliberately not parked on 4.5:1, for the reason `Theme.Ink`
+        // gives — the ratios are computed on flat colour and a rendered glyph is
+        // antialiased into the chip beneath it.
+        //
+        // Light is where the work was needed. In dark the mark is already
+        // text-weight, so `good`, `warning` and `accent` resolve to the mark
+        // itself and only `critical`, at 4.21:1, needs a lighter partner.
+
+        /// 5.70:1 / 5.02:1 on its chip, card and page.
+        static let goodInk = Color(light: Color(hex: 0x006800), dark: good)
+
+        /// 5.66:1 / 4.99:1 light; 5.14:1 / 5.75:1 dark, up from 4.21:1 / 4.71:1.
+        static let criticalInk = Color(
+            light: Color(hex: 0xA13433),
+            dark: Color(hex: 0xF37B7B)
+        )
+
+        /// Partner to `Theme.accentWarm`, the warning tint. 5.68:1 / 5.01:1.
+        static let warningInk = Color(light: Color(hex: 0x9E350A), dark: Theme.accentWarm)
+
+        /// Partner to `Theme.accent`, which pills use for in-flight states.
+        /// 5.70:1 / 5.02:1 — it was the one tint that cleared AA on a card, and
+        /// it still failed on the page at 4.24:1.
+        static let accentInk = Color(light: Color(hex: 0x0A6268), dark: Theme.accent)
+
+        /// The ink that belongs with a pill's tint.
+        ///
+        /// Keyed on the resolved colour rather than on token identity, so a call
+        /// site that spells the same tint a different way is not silently left
+        /// with the failing one. Anything unrecognised — including `.secondary`,
+        /// which is what the app's neutral pills carry — takes
+        /// `Theme.Ink.secondary`: it measures 5.64:1 or better against every
+        /// chip in the table above, so the fallback is legible by construction
+        /// rather than by luck. It gives up the word's hue, which is why the
+        /// four tints that carry severity are named here instead.
+        static func ink(for tint: Color) -> Color {
+            inkByTint[swatchKey(tint)] ?? Theme.Ink.secondary
+        }
+
+        private static let inkByTint: [UInt32: Color] = [
+            swatchKey(good): goodInk,
+            swatchKey(critical): criticalInk,
+            swatchKey(Theme.accentWarm): warningInk,
+            swatchKey(Theme.accent): accentInk,
+        ]
+
+        /// Packs a colour's light-appearance sRGB into a comparable key. Light
+        /// specifically, because that is the appearance in which the tints are
+        /// furthest apart, and it makes the lookup independent of the appearance
+        /// the pill happens to be drawn in.
+        private static func swatchKey(_ color: Color) -> UInt32 {
+            let resolved = UIColor(color)
+                .resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return 0 }
+            func byte(_ channel: CGFloat) -> UInt32 {
+                UInt32(min(max((channel * 255).rounded(), 0), 255))
+            }
+            return byte(red) << 24 | byte(green) << 16 | byte(blue) << 8 | byte(alpha)
+        }
     }
 }
 

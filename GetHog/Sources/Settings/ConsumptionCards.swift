@@ -114,7 +114,7 @@ struct QuotaSpendCard: View {
                         systemImage: "exclamationmark.octagon.fill"
                     )
                     .font(.footnote)
-                    .foregroundStyle(Theme.Status.critical)
+                    .foregroundStyle(Theme.Status.criticalInk)
                     .fixedSize(horizontal: false, vertical: true)
                 }
 

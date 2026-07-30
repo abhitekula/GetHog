@@ -208,7 +208,7 @@ struct SettingsRoot: View {
             if let revealError {
                 Label(revealError, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
-                    .foregroundStyle(Theme.Status.critical)
+                    .foregroundStyle(Theme.Status.criticalInk)
             }
 
             if let url = model.client?.region.apiKeySettingsURL {

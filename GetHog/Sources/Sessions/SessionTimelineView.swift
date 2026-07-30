@@ -282,7 +282,7 @@ struct SessionTimelineView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Couldn't load the timeline", systemImage: "exclamationmark.triangle")
                 .font(.footnote.weight(.medium))
-                .foregroundStyle(Theme.Status.critical)
+                .foregroundStyle(Theme.Status.criticalInk)
             Text(message)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -368,7 +368,7 @@ struct TimelineRowView: View {
                     // someone is scanning this timeline for.
                     Text(entry.title)
                         .font(.subheadline.weight(entry.isCustom ? .semibold : .regular))
-                        .foregroundStyle(entry.isError ? Theme.Status.critical : .primary)
+                        .foregroundStyle(entry.isError ? Theme.Status.criticalInk : .primary)
                         .lineLimit(2)
                     if entry.isError {
                         StatusPill(text: "Error", tint: Theme.Status.critical)
