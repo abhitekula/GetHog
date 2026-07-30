@@ -94,18 +94,61 @@ struct InsightLegend: View {
     /// the chart descriptor that would otherwise name the unit.
     var unit: String = ""
 
+    /// Per-entry drill-downs, keyed by the entry's position.
+    ///
+    /// A legend row names a *series*, and a series on its own is not something
+    /// PostHog will resolve to people — measured, a `series`-only actors query
+    /// returns zero rows. So a row that can be drilled offers the points it is
+    /// made of instead, each with the count already drawn on the chart.
+    var drills: [Int: [InsightDrill]] = [:]
+    /// What the drills are indexed by, in the reader's words.
+    var drillAxisLabel = "Interval"
+    var onDrill: ((InsightDrillRequest) -> Void)?
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             // Indexed, not keyed by label: two series of a breakdown can carry
             // the same label, and a duplicate `ForEach` id drops one of them.
-            ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                row(entry)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(accessibilityLabel(for: entry))
+            ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                if let onDrill, let choices = drills[index], !choices.isEmpty {
+                    drillableRow(entry, choices: choices, onDrill: onDrill)
+                } else {
+                    row(entry)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(accessibilityLabel(for: entry))
+                }
             }
         }
+    }
+
+    /// Opens the most recent interval, and offers the rest inside the sheet.
+    ///
+    /// `choices` arrives newest-first, so `first` is the latest interval — the
+    /// one a reader looking at a legend is almost always asking about.
+    private func drillableRow(
+        _ entry: Entry,
+        choices: [InsightDrill],
+        onDrill: @escaping (InsightDrillRequest) -> Void
+    ) -> some View {
+        Button {
+            guard let latest = choices.first else { return }
+            onDrill(
+                InsightDrillRequest(
+                    selected: latest, siblings: choices, axisLabel: drillAxisLabel
+                )
+            )
+        } label: {
+            row(entry)
+                // A legend row is two lines of `.caption`; the hit target is
+                // built here rather than inherited.
+                .frame(minHeight: 44, alignment: .center)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel(for: entry))
+        .accessibilityHint("Shows the people counted in this band")
     }
 
     @ViewBuilder
@@ -314,10 +357,44 @@ struct LifecycleChart: View {
                             isNegative: $0.status.isNegative
                         )
                     },
-                    unit: "users"
+                    unit: "users",
+                    drills: bandDrills,
+                    drillAxisLabel: "Interval",
+                    onDrill: drill?.open
                 )
             }
         }
+    }
+
+    @Environment(\.insightDrill) private var drill
+
+    /// One drill per band per day, newest first.
+    ///
+    /// Per *day*, not per band: a lifecycle band on one day reconciles exactly —
+    /// checked against all four statuses across all five weeks of a live weekly
+    /// insight, 18 of 18 including the dormant band, whose charted value is
+    /// negative and whose people are its magnitude. A band without a day does
+    /// return people, but nothing on the chart states how many, so there would
+    /// be no number to be honest about.
+    ///
+    /// Costs nothing to build: every label and count here is already drawn.
+    private var bandDrills: [Int: [InsightDrill]] {
+        guard drill?.axis == .lifecycleBand else { return [:] }
+        var out: [Int: [InsightDrill]] = [:]
+        for (index, s) in series.enumerated() {
+            out[index] = s.points.reversed().filter { $0.value != 0 }.map { point in
+                InsightDrill(
+                    kind: .lifecycleBand(status: s.status.rawValue, day: point.day),
+                    title: "\(Self.dayLabel(point)) · \(s.status.title)",
+                    expectedCount: abs(point.value)
+                )
+            }
+        }
+        return out
+    }
+
+    private static func dayLabel(_ point: Point) -> String {
+        point.date?.formatted(.dateTime.month(.abbreviated).day()) ?? point.day
     }
 }
 
@@ -596,16 +673,53 @@ struct TimeSeriesChart: View {
     }
 
     /// The point nearest the scrub position, per series.
-    private var selectedPoints: [(series: Series, value: Double, index: Int)] {
+    ///
+    /// Carries the point's own `day` string as well as its value, because that
+    /// is what an actors query has to be given — PostHog matches the day label
+    /// it sent, and reformatting the parsed `Date` back into text would be a
+    /// second, independent guess at its format.
+    private var selectedPoints: [(series: Series, point: Point, index: Int)] {
         guard let selectedDate else { return [] }
         return series.enumerated().compactMap { index, s in
-            guard let dated = s.datedPoints,
-                  let nearest = dated.min(by: {
-                      abs($0.date.timeIntervalSince(selectedDate))
-                          < abs($1.date.timeIntervalSince(selectedDate))
+            guard s.datedPoints != nil,
+                  let nearest = s.points.filter({ $0.date != nil }).min(by: {
+                      abs(($0.date ?? .distantPast).timeIntervalSince(selectedDate))
+                          < abs(($1.date ?? .distantPast).timeIntervalSince(selectedDate))
                   })
             else { return nil }
-            return (s, nearest.value, index)
+            return (s, nearest, index)
+        }
+    }
+
+    @Environment(\.insightDrill) private var drill
+
+    /// Whether the scrubbed point can be turned into a list of people.
+    ///
+    /// Compact tiles are excluded on purpose. A tile is already a button that
+    /// opens the insight, the readout is a few points tall inside it, and a
+    /// sheet presented from a dashboard grid would land the user somewhere they
+    /// did not navigate to.
+    private var canDrill: Bool { drill?.axis == .trendsPoint && !compact }
+
+    /// One drill per series at the scrubbed day.
+    ///
+    /// The day is required, not optional: measured against a live project, a
+    /// trends actors query given `series` and no `day` returns **zero** rows —
+    /// it does not fall back to the whole range. Which is why this affordance
+    /// hangs off the scrub readout at all. The plot region belongs to
+    /// `chartXSelection`, and a tap gesture there would fight the scrub for the
+    /// same pixels; the readout is a separate view that only exists once a day
+    /// has been chosen, so it can be a button without contending for anything.
+    private var pointDrills: [InsightDrill] {
+        guard canDrill else { return [] }
+        return selectedPoints.filter { $0.point.value != 0 }.map { entry in
+            InsightDrill(
+                kind: .trendsPoint(series: entry.index, day: entry.point.day),
+                title: series.count > 1
+                    ? "\(selectedLabel) · \(entry.series.label)"
+                    : selectedLabel,
+                expectedCount: entry.point.value
+            )
         }
     }
 
@@ -618,8 +732,19 @@ struct TimeSeriesChart: View {
             HStack(alignment: .firstTextBaseline) {
                 // Reserve the row unconditionally so the chart never shifts when
                 // a scrub begins.
-                scrubReadout
-                    .opacity(selectedPoints.isEmpty ? 0 : 1)
+                Group {
+                    if let onDrill = drill?.open, !pointDrills.isEmpty {
+                        drillableReadout(onDrill: onDrill)
+                    } else {
+                        scrubReadout
+                    }
+                }
+                .opacity(selectedPoints.isEmpty ? 0 : 1)
+                // Hidden from touch and from VoiceOver while there is nothing
+                // scrubbed: an invisible button that still takes taps is worse
+                // than no button.
+                .allowsHitTesting(!selectedPoints.isEmpty)
+                .accessibilityHidden(selectedPoints.isEmpty)
 
                 Spacer(minLength: Theme.Space.s)
 
@@ -845,9 +970,17 @@ struct TimeSeriesChart: View {
                     Circle()
                         .fill(SeriesPalette.color(at: entry.index))
                         .frame(width: 6 * textScale, height: 6 * textScale)
-                    Text(entry.value.compactFormatted)
+                    Text(entry.point.value.compactFormatted)
                         .font(.caption2.weight(.semibold).monospacedDigit())
                 }
+            }
+            if canDrill {
+                // The only hint that the readout does anything. Without it the
+                // affordance is invisible — a scrub readout has never been
+                // tappable before.
+                Image(systemName: "person.2")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.Status.accentInk)
             }
             Spacer(minLength: 0)
         }
@@ -855,6 +988,33 @@ struct TimeSeriesChart: View {
         .padding(.vertical, 5)
         .background(.thinMaterial, in: .capsule)
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
+
+    /// The readout, as "show me these people".
+    ///
+    /// A second, deliberate tap after the scrub has already chosen the day — it
+    /// cannot be fired by a finger that was only trying to scrub, which matters
+    /// because the request is charged to a budget shared organisation-wide with
+    /// the user's production integrations.
+    ///
+    /// Opens the largest series at that day and offers the others in the sheet.
+    /// A chart with one series — which is most of them — is a single tap.
+    private func drillableReadout(onDrill: @escaping (InsightDrillRequest) -> Void) -> some View {
+        Button {
+            let choices = pointDrills
+            guard let biggest = choices.max(by: { $0.expectedCount < $1.expectedCount })
+            else { return }
+            onDrill(
+                InsightDrillRequest(selected: biggest, siblings: choices, axisLabel: "Series")
+            )
+        } label: {
+            scrubReadout
+                .frame(minHeight: 44, alignment: .center)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(selectedLabel), \(selectedPoints.count) series")
+        .accessibilityHint("Shows the people behind this point")
     }
 }
 
@@ -877,7 +1037,73 @@ struct BarValueChart: View {
         Array(bars.prefix(compact ? 6 : 20))
     }
 
+    @Environment(\.insightDrill) private var drill
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// Bars become rows when each one is a breakdown value that can be resolved
+    /// to people — which is also the shape a `WorldMap` insight arrives in.
+    ///
+    /// Only at full size. In a dashboard tile the bars stay a `Chart`: six rows
+    /// with 44pt targets do not fit a tile, and the tile is already one button.
+    private var canDrill: Bool { drill?.axis == .breakdown && !compact }
+
     var body: some View {
+        if canDrill {
+            drillableRows
+        } else {
+            plainChart
+        }
+    }
+
+    /// The same bars, as rows, because a `Chart`'s marks cannot carry a button.
+    ///
+    /// Hand-drawn rather than overlaid on the chart: `FunnelStepRow` and
+    /// `PathsFlowView` already draw exactly this — a label, a capsule track, a
+    /// figure — so this is the house style rather than a new one, and unlike a
+    /// tap-target overlay on a plot it reflows under Dynamic Type and gives
+    /// VoiceOver a real button per row.
+    private var drillableRows: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            ForEach(Array(visible.enumerated()), id: \.offset) { _, bar in
+                Button {
+                    // Every visible bar is a sibling, so the sheet can move
+                    // between breakdown values without going back to the chart.
+                    let choices = visible.map {
+                        InsightDrill(
+                            kind: .breakdown(series: 0, value: $0.rawValue),
+                            title: $0.label,
+                            expectedCount: $0.value
+                        )
+                    }
+                    let selected = InsightDrill(
+                        kind: .breakdown(series: 0, value: bar.rawValue),
+                        title: bar.label,
+                        expectedCount: bar.value
+                    )
+                    drill?.open(
+                        InsightDrillRequest(
+                            selected: selected, siblings: choices, axisLabel: "Value"
+                        )
+                    )
+                } label: {
+                    BarValueRow(bar: bar, maxValue: visible.map(\.value).max() ?? 1)
+                        .frame(minHeight: 44, alignment: .center)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(bar.label), \(bar.value.formatted())")
+                .accessibilityHint("Shows the people counted here")
+            }
+
+            if bars.count > visible.count {
+                Text("+\(bars.count - visible.count) more")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.Ink.tertiary)
+            }
+        }
+    }
+
+    private var plainChart: some View {
         VStack(alignment: .leading, spacing: 6) {
             // The label column is bounded against the width the tile grants.
             // These labels are free text — domains, URLs, breakdown values — and
@@ -934,6 +1160,64 @@ struct BarValueChart: View {
     }
 }
 
+/// One breakdown value, drawn the way this app already draws a proportion.
+struct BarValueRow: View {
+    let bar: BarValue
+    let maxValue: Double
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .caption) private var barHeight: CGFloat = 6
+
+    private var fraction: Double {
+        maxValue > 0 ? bar.value / maxValue : 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            // The same reflow as `FunnelStepRow`, for the same measured reason:
+            // past the accessibility threshold a label and a figure sharing one
+            // row leave the figure a couple of characters wide.
+            if dynamicTypeSize.isAccessibilitySize {
+                name
+                value
+            } else {
+                HStack {
+                    name
+                    Spacer(minLength: Theme.Space.s)
+                    value
+                }
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    Capsule()
+                        .fill(SeriesPalette.color(at: 0))
+                        .frame(width: max(2, geo.size.width * fraction))
+                }
+            }
+            .frame(height: barHeight)
+            // Clipped by the track, in the track's own space — see the note on
+            // `FunnelStepRow`, where the same 2pt floor leaves a self-clipped
+            // fill's corners outside the track's cap.
+            .clipShape(.capsule)
+        }
+    }
+
+    private var name: some View {
+        Text(bar.label)
+            .font(.caption)
+            .lineLimit(2)
+            // Either end can be the distinguishing part of a breakdown value —
+            // the same reasoning as the chart's own axis labels.
+            .truncationMode(.middle)
+    }
+
+    private var value: some View {
+        Text(bar.value.compactFormatted)
+            .font(.caption.weight(.semibold).monospacedDigit())
+    }
+}
+
 // MARK: - Big number
 
 struct BigNumberView: View {
@@ -969,6 +1253,13 @@ struct FunnelChart: View {
     /// first is legible, so the rest are summarised rather than crammed in.
     private var primary: FunnelGroup? { groups.first }
 
+    @Environment(\.insightDrill) private var drill
+
+    /// Steps are the one place in this app where a chart element was already a
+    /// discrete row, so the drill-down needed no new interaction — only a button
+    /// around what was there.
+    private var canDrill: Bool { drill?.axis == .funnelStep }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let primary {
@@ -979,11 +1270,16 @@ struct FunnelChart: View {
                 }
 
                 ForEach(Array(primary.steps.enumerated()), id: \.offset) { index, step in
-                    FunnelStepRow(
+                    let row = FunnelStepRow(
                         step: step,
                         index: index,
                         maxCount: primary.steps.first?.count ?? 1
                     )
+                    if canDrill {
+                        stepButton(for: step, at: index, in: primary) { row }
+                    } else {
+                        row
+                    }
                 }
 
                 if groups.count > 1 {
@@ -998,6 +1294,51 @@ struct FunnelChart: View {
             "Funnel with \(primary?.steps.count ?? 0) steps, "
             + "\((primary?.conversionRate ?? 0).formatted(.percent.precision(.fractionLength(0...1)))) overall conversion"
         )
+    }
+
+    /// A step opens the people who *reached* it, and offers the drop-off inside
+    /// the sheet.
+    ///
+    /// Converted first because it is the step's own headline figure — the number
+    /// already drawn on the row — so the tap resolves to the thing under the
+    /// finger. "Who dropped out here" is the question people actually come for,
+    /// but it is a different number from the one on the row, and opening it from
+    /// a tap on that row would be a lie about what was tapped.
+    ///
+    /// The first step offers no drop-off at all: nobody can fall out before the
+    /// funnel begins, and asking PostHog anyway is **HTTP 500**, not an empty
+    /// list. `InsightDrill.funnelDropOff` returns nil there and the sibling is
+    /// simply never built, so the picker cannot offer a tap that fails.
+    private func stepButton(
+        for step: FunnelStep,
+        at index: Int,
+        in group: FunnelGroup,
+        @ViewBuilder label: () -> some View
+    ) -> some View {
+        let converted = InsightDrill.funnelConverted(step: step, index: index)
+        let dropped = InsightDrill.funnelDropOff(
+            step: step, index: index, previous: index > 0 ? group.steps[index - 1] : nil
+        )
+
+        return Button {
+            drill?.open(
+                InsightDrillRequest(
+                    selected: converted,
+                    siblings: [converted, dropped].compactMap(\.self),
+                    axisLabel: "Outcome"
+                )
+            )
+        } label: {
+            label()
+                // The row is text and a 6pt bar — nowhere near 44pt on its own.
+                .frame(minHeight: 44, alignment: .center)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Step \(index + 1), \(step.name): \(step.count.formatted()) people"
+        )
+        .accessibilityHint("Shows who completed or dropped off at this step")
     }
 }
 

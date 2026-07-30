@@ -546,6 +546,13 @@ struct InsightDetailBody: View {
             }
             .padding()
         }
+        // The opened tile, not the grid: the charts inside a `TileCard` are
+        // deliberately left inert, because a tile is already one button. Here
+        // there is room for a step to be a step and a bar to be a bar.
+        //
+        // An ad-hoc tile with no saved insight has no query to drill and gets
+        // nothing, which is the same answer as a kind that cannot be drilled.
+        .insightPeople(for: tile.insight)
         .background(Theme.pageBackground)
     }
 }

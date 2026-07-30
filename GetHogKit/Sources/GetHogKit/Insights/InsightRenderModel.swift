@@ -36,10 +36,35 @@ public enum TimeSeriesStyle: Sendable, Equatable {
     case bar
     case stackedBar
 
+    /// The full vocabulary, straight from the API's own validation error, is
+    ///
+    ///     Auto, ActionsLineGraph, ActionsBar, ActionsUnstackedBar,
+    ///     ActionsStackedBar, ActionsAreaGraph, ActionsLineGraphCumulative,
+    ///     BoldNumber, Metric, ActionsPie, ActionsBarValue, ActionsTable,
+    ///     WorldMap, CalendarHeatmap, TwoDimensionalHeatmap, BoxPlot, SlopeGraph
+    ///
+    /// Only the ones that reach here are handled here; the aggregated and
+    /// undrawable ones are diverted by `Insight.renderModel` before this is
+    /// reached. Of what remains, measured against live responses:
+    ///
+    /// - `Auto`, `ActionsLineGraph` — plain series, a line.
+    /// - `ActionsLineGraphCumulative` — the server returns the running total
+    ///   already summed (`[37, 52, 69, …]`), so a line is the right mark.
+    /// - `SlopeGraph` — the server returns exactly two points, the ends of the
+    ///   range, which a line between them draws correctly.
+    /// - `Metric` — plain series, but *two* of them (`compare_label` `current`
+    ///   and `previous`) carrying the same `label`. Drawn as two lines.
+    /// - `TwoDimensionalHeatmap` — returns ordinary trends data, byte-identical
+    ///   to the same query with no display set. Drawn as a line, which is what
+    ///   the payload is.
     init(display: String?) {
         switch display {
         case "ActionsAreaGraph": self = .area
-        case "ActionsBar": self = .bar
+        // Both bar forms, and `ActionsUnstackedBar` deliberately: it returns
+        // ordinary time-series data and used to fall through to `.line`, which
+        // drew a bar insight as a line — the same class of mistake as ignoring
+        // the display type altogether.
+        case "ActionsBar", "ActionsUnstackedBar": self = .bar
         case "ActionsStackedBar": self = .stackedBar
         default: self = .line
         }
@@ -224,12 +249,23 @@ public extension Series {
 }
 
 public struct BarValue: Sendable, Equatable {
+    /// What to draw beside the bar.
     public let label: String
     public let value: Double
 
-    public init(label: String, value: Double) {
+    /// The breakdown value exactly as PostHog sent it, which is what an actors
+    /// query has to be given.
+    ///
+    /// Separate from `label` because the two genuinely differ: the sentinel
+    /// `$$_posthog_breakdown_null_$$` is shown as "(no value)" but must be sent
+    /// back verbatim. Defaults to `label`, so a bar that is not a breakdown is
+    /// unaffected.
+    public let rawValue: String
+
+    public init(label: String, value: Double, rawValue: String? = nil) {
         self.label = label
         self.value = value
+        self.rawValue = rawValue ?? label
     }
 }
 

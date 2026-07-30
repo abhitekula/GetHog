@@ -155,11 +155,40 @@ public struct Insight: Sendable, Decodable, Identifiable {
             switch display {
             // Aggregated displays have no time axis: the figure is in
             // `aggregated_value` and `data` is empty.
-            case "ActionsBarValue", "ActionsPie", "ActionsTable":
+            //
+            // `WorldMap` is one of these and belongs here, not in `default`.
+            // Measured against this project's three WorldMap insights, a tile
+            // returns exactly the bar-value shape — `data: []`, `days: []`,
+            // `aggregated_value: 35`, `label: "US"`, `breakdown_value: "US"` —
+            // so falling through to `TimeSeriesStyle(display:)` drew a line
+            // chart with no points. Not an unsupported card: a *broken* one.
+            //
+            // It is drawn as bars rather than as a map on purpose. The data is
+            // already `country code → count`; MapKit does annotations well and
+            // choropleth not at all, a 200-region choropleth on a phone is
+            // unreadable even when it renders, and shipping country geometry to
+            // draw it would cost megabytes. The bar list also *gains* something
+            // the map would not: each row is a breakdown value, and a breakdown
+            // value is drillable to the people behind it — verified exact,
+            // `breakdown: "US"` returns 35 people against a charted 35.
+            case "ActionsBarValue", "ActionsPie", "ActionsTable", "WorldMap":
                 return .barValue(result.seriesDTOs.map(\.asBarValue))
             case "BoldNumber":
                 guard let first = result.seriesDTOs.first else { return .unsupported(kind: sourceKind) }
                 return .bigNumber(BigNumber(label: first.label ?? "", value: first.headlineValue))
+
+            // Recognised, genuinely not drawable here, and routed to the honest
+            // card rather than to an empty chart.
+            //
+            // `CalendarHeatmap` returns `data: []`, `days: null` and its real
+            // payload under a `calendar_heatmap_data` key this app does not
+            // model — a day-of-week × hour matrix. `BoxPlot` returns
+            // `results: []` outright, with a top-level `boxplot_data` of null.
+            // Both used to reach `.timeSeries([], .line)` and draw an empty
+            // pair of axes.
+            case "CalendarHeatmap", "BoxPlot":
+                return .unsupported(kind: display ?? sourceKind)
+
             default:
                 return .timeSeries(
                     result.seriesDTOs.map(\.asSeries),
@@ -472,7 +501,12 @@ struct TrendsSeriesDTO: Sendable, Decodable {
     }
 
     var asBarValue: BarValue {
-        BarValue(label: label ?? "", value: headlineValue)
+        let raw = label ?? ""
+        return BarValue(
+            label: BreakdownLabel.display(raw),
+            value: headlineValue,
+            rawValue: raw
+        )
     }
 }
 
@@ -498,6 +532,25 @@ struct FunnelStepDTO: Sendable, Decodable {
             order: order ?? 0,
             averageConversionTime: averageConversionTime
         )
+    }
+}
+
+/// PostHog's sentinel for "this breakdown had no value".
+///
+/// It arrives as a literal label, not as null: a live WorldMap insight returns
+/// two rows, `"US"` with 35 and `"$$_posthog_breakdown_null_$$"` with 537 — the
+/// second being every user with no geoip country. Drawn verbatim it is a bar
+/// labelled `$$_posthog_breakdown_null_$$`, which is both unreadable and the
+/// *largest* bar on that chart. This affects every breakdown display, not only
+/// world maps.
+///
+/// The raw form is kept for the drill-down: `breakdown` in an actors query has
+/// to be the sentinel PostHog sent, not the words shown to a person.
+public enum BreakdownLabel {
+    public static let nullSentinel = "$$_posthog_breakdown_null_$$"
+
+    public static func display(_ raw: String) -> String {
+        raw == nullSentinel ? "(no value)" : raw
     }
 }
 

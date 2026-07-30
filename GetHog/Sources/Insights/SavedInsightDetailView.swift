@@ -39,6 +39,12 @@ struct SavedInsightDetailView: View {
 
     var body: some View {
         content
+            // Only the full-size screen offers the drill-down. A dashboard tile
+            // is already a button that opens the insight, and a sheet raised
+            // from a grid would land the reader somewhere they never navigated
+            // to. `nil` for a kind that cannot be drilled, which is how the
+            // affordance stays absent rather than present-and-failing.
+            .insightPeople(for: insight)
             .background(Theme.pageBackground)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
