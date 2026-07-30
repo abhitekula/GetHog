@@ -11,6 +11,12 @@ struct StickinessChart: View {
     let series: [StickinessSeries]
     var compact: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// See `TimeSeriesChart.textScale`; this chart carried the same fixed height
+    /// and the same fixed axis count.
+    @ScaledMetric(relativeTo: .caption2) private var textScale: CGFloat = 1
+
     private var buckets: [(seriesIndex: Int, bucket: StickinessBucket)] {
         series.enumerated().flatMap { index, s in
             s.buckets.map { (index, $0) }
@@ -32,18 +38,20 @@ struct StickinessChart: View {
             .chartForegroundStyleScale(range: series.indices.map { SeriesPalette.color(at: $0) })
             .chartLegend(series.count > 1 ? .visible : .hidden)
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: compact ? 4 : 8)) {
+                AxisMarks(values: .automatic(desiredCount: dynamicTypeSize.thinnedAxisCount(compact ? 4 : 8))) {
                     AxisGridLine()
                     AxisValueLabel().font(.caption2)
                 }
             }
             .chartYAxis {
+                // Deliberately not thinned, for the reason given on the time
+                // series' y-axis: vertical room scales with the text.
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) {
                     AxisGridLine()
                     AxisValueLabel().font(.caption2)
                 }
             }
-            .frame(height: compact ? 150 : 240)
+            .frame(height: (compact ? 150 : 240) * min(textScale, 1.5))
             .accessibilityChartDescriptor(StickinessDescriptor(series: series))
 
             Text("Days active in the period")
@@ -64,6 +72,10 @@ struct PathsFlowView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// The bar is the only non-textual reading of an edge's weight, so it scales
+    /// with the row rather than staying a 5pt hairline under 32pt text.
+    @ScaledMetric(relativeTo: .caption) private var barHeight: CGFloat = 5
+
     private var visible: [PathEdge] {
         Array(graph.edges.prefix(compact ? 5 : 25))
     }
@@ -82,7 +94,7 @@ struct PathsFlowView: View {
                                 .frame(width: max(2, geo.size.width * fraction(edge)))
                         }
                     }
-                    .frame(height: 5)
+                    .frame(height: barHeight)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(

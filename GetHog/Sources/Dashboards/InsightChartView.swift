@@ -427,6 +427,9 @@ struct TimeSeriesChart: View {
                 }
             }
             .chartYAxis {
+                // Deliberately not thinned. These labels stack down a height
+                // that now scales with the text, so they gain room as they grow
+                // — it is only the x-axis that has a width it cannot get back.
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
                     AxisGridLine()
                     AxisValueLabel().font(.caption2)
