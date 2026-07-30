@@ -28,11 +28,23 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         /// The dashboard this metric was read from, so tapping a widget can land
         /// on the screen that actually draws it.
         ///
-        /// This app has no screen for a lone insight — it draws one only as a
-        /// tile on a dashboard, the same limit the link parser states when it
-        /// refuses `/insights/{id}`. The id is recorded at write time, where the
-        /// dashboard is already in hand and costs nothing; deriving it later
-        /// would mean a request, or a guess.
+        /// The id is recorded at write time, where the dashboard is already in
+        /// hand and costs nothing; deriving it later would mean a request, or a
+        /// guess.
+        ///
+        /// This used to say the app had no screen for a lone insight and drew
+        /// one only as a dashboard tile. **That is no longer true** — the app
+        /// has a saved-insight library and a detail screen, and the link parser
+        /// resolves `/insights/{id}` rather than refusing it.
+        ///
+        /// The field is unchanged regardless, and this is the honest reason
+        /// rather than the old one: a `Metric` has never carried an insight id.
+        /// It carries a title, a value and the dashboard it was read from,
+        /// because that is what the widget's writer had. Routing a widget tap to
+        /// an insight would mean matching on the title, which is a guess — and a
+        /// control labelled with a metric landing on some other object that
+        /// happens to share its name is a worse outcome than landing on the
+        /// dashboard that definitely contains it.
         ///
         /// `nil` means **unknown**, not "no dashboard": a snapshot written by an
         /// older build has no such key. Callers route it to the dashboards home
