@@ -112,6 +112,13 @@ final class AppModel {
     ///
     /// Returns whether anything was actually fetched, which is what a background
     /// wake reports back to `BGTaskScheduler`.
+    ///
+    /// **Cost.** Four requests, plus a fifth at most twice a day:
+    /// the dashboard list, the pinned dashboard, the feature flags, the ingestion
+    /// warnings, and — on its own twelve-hour clock — the quota limits. Every one
+    /// is `.crud`, so none of them touches the scarce analytics budget. See
+    /// `SnapshotHealth.swift` for why the last two are worth what they cost, and
+    /// `BackgroundRefreshPolicy` for what a day of that adds up to.
     @discardableResult
     func publishWidgetSnapshot() async -> Bool {
         guard let client, let project = selectedProject else { return false }
@@ -129,6 +136,13 @@ final class AppModel {
         var metrics: [SharedSnapshot.Metric] = []
         var flags: [SharedSnapshot.Flag] = []
         var reachedTheAPI = false
+
+        // Read once, for three separate jobs: the guard below, and carrying both
+        // health sections forward when their own fetch is skipped or refused.
+        let previous = SharedSnapshotStore.shared.loadOrNil()
+        // A snapshot for a different project describes a different business. Its
+        // quota and warnings are carried forward for nobody.
+        let carried = previous?.projectID == projectID ? previous : nil
 
         // Reuse the dashboard the user pinned; its tiles already carry results,
         // so this costs one request rather than one per metric.
@@ -177,17 +191,54 @@ final class AppModel {
                 }
         }
 
+        let now = Date()
+
+        // Ingestion warnings. One request for the whole section: PostHog
+        // pre-aggregates severity, a count and a sparkline per row, so there is
+        // nothing to follow up and nothing to roll up here.
+        //
+        // Seven days, matching the Ingestion screen's own default — a widget
+        // that disagreed with the screen it sends you to would be worse than no
+        // widget. The response is a bare JSON array, not a `Page`.
+        var ingestion = carried?.ingestion
+        if let data = try? await client.data(
+            for: PostHogAPI.ingestionWarnings(projectID: projectID, window: Self.snapshotIngestionWindow)
+        ), let warnings = try? IngestionWarning.decodeList(from: data) {
+            reachedTheAPI = true
+            ingestion = SharedSnapshot.IngestionDigest(
+                warnings: warnings, window: Self.snapshotIngestionWindow, capturedAt: now
+            )
+        }
+        // A refused or unreachable request leaves the previous digest in place
+        // rather than blanking it. The digest carries its own capture time, so
+        // the widget states that age instead of inheriting the snapshot's — an
+        // old warning count labelled as old beats no answer at all.
+
+        // Quota, on its own twelve-hour clock. A monthly allowance does not move
+        // between two-hourly wakes, and this is a request against somebody's
+        // production budget, so it is carried forward until it is genuinely due.
+        var quota = carried?.quota
+        if SharedSnapshot.QuotaDigest.isDue(previous: quota, now: now),
+           let limits: QuotaLimits = try? await client.send(
+               PostHogAPI.quotaLimits(projectID: projectID)
+           ) {
+            reachedTheAPI = true
+            quota = SharedSnapshot.QuotaDigest(limits, capturedAt: now)
+        }
+
         // A wake that found no network must not overwrite a good snapshot with
         // an empty one: the widget would go blank and claim to be current,
         // which is worse than showing older numbers with an honest age on them.
-        guard reachedTheAPI || SharedSnapshotStore.shared.loadOrNil() == nil else { return false }
+        guard reachedTheAPI || previous == nil else { return false }
 
         let snapshot = SharedSnapshot(
             projectID: projectID,
             projectName: projectName,
             metrics: metrics,
             flags: flags,
-            capturedAt: Date()
+            ingestion: ingestion,
+            quota: quota,
+            capturedAt: now
         )
         try? SharedSnapshotStore.shared.write(snapshot)
         // Every publish evaluates, foreground included. A background wake is the
@@ -257,6 +308,14 @@ final class AppModel {
             projectName: previous.projectName
         )
     }
+
+    /// The window the widget's ingestion section is aggregated over.
+    ///
+    /// The Ingestion screen's own default. Forty-eight hours would be more
+    /// current but would miss a problem that started three days ago and never
+    /// stopped, and — more importantly — a widget that reported a different
+    /// number from the screen it opens would make both of them untrustworthy.
+    static let snapshotIngestionWindow: IngestionWarningWindow = .sevenDays
 
     /// Reduces a dashboard tile to a single headline figure, when it has one.
     private static func metric(from tile: Tile) -> SharedSnapshot.Metric? {

@@ -175,3 +175,81 @@ struct OpenDashboardControl: ControlWidget {
         .description("Opens GetHog at a dashboard.")
     }
 }
+
+// MARK: - Project health
+
+/// A control whose *label* is the answer.
+///
+/// Worth a slot for a reason the other two are not: Control Center is one swipe
+/// from the Lock Screen and can be bound to the Action Button, so this is the
+/// shortest path in the system to "is anything wrong". Pressing it opens the
+/// app, but the press is the second-best part — a user who reads "Nothing to
+/// report" and puts the phone back in their pocket got what they came for
+/// without launching anything, which is the cheapest possible outcome for a
+/// rate-limit budget that belongs to somebody's production integrations.
+///
+/// Unconfigurable on purpose. There is nothing to choose, and a control that let
+/// you pick which half of the health check to display would be a way to hide the
+/// failing half.
+struct HealthControlValue {
+    let verdict: SharedSnapshot.HealthVerdict
+    let headline: String
+    /// How old the answer is, in the same compact form the widgets use. Shown in
+    /// the control because a verdict with no age attached is the one thing this
+    /// app refuses to put on screen.
+    let age: String
+
+    static func from(_ snapshot: SharedSnapshot?, now: Date = Date()) -> HealthControlValue {
+        guard let snapshot else {
+            return HealthControlValue(verdict: .unchecked, headline: "Not synced", age: "never")
+        }
+        return HealthControlValue(
+            verdict: snapshot.healthVerdict,
+            headline: snapshot.healthHeadline,
+            age: WidgetFreshness(capturedAt: snapshot.capturedAt, now: now).shortLabel
+        )
+    }
+
+    /// Control Center gives one line and no subtitle, so the age rides with the
+    /// verdict rather than being dropped.
+    var title: String { "\(headline) · \(age)" }
+}
+
+struct HealthControlProvider: ControlValueProvider {
+
+    var previewValue: HealthControlValue { .from(WidgetCache.sample) }
+
+    /// Reads the snapshot. As everywhere in this extension, no network call.
+    func currentValue() async throws -> HealthControlValue { .from(WidgetCache.snapshot()) }
+}
+
+struct OpenHealthFromControlIntent: AppIntent {
+
+    static var title: LocalizedStringResource { "Open GetHog Health" }
+    static var description: IntentDescription {
+        IntentDescription("Opens GetHog so you can see what the warning is about.")
+    }
+
+    static var openAppWhenRun: Bool { true }
+
+    func perform() async throws -> some IntentResult { .result() }
+}
+
+struct ProjectHealthControl: ControlWidget {
+
+    static let kind = "app.gethog.control.health"
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind, provider: HealthControlProvider()) { value in
+            ControlWidgetButton(action: OpenHealthFromControlIntent()) {
+                // Glyph *and* words, and the words name the state on their own —
+                // Control Center renders monochrome, so a control whose verdict
+                // lived in its tint would have no verdict at all.
+                Label(value.title, systemImage: value.verdict.symbolName)
+            }
+            .tint(WidgetPalette.tint(for: value.verdict))
+        }
+        .displayName("Project Health")
+        .description("Ingestion warnings and quota from your last GetHog sync, with the age of the answer.")
+    }
+}

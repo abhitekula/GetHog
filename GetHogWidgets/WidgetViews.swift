@@ -43,6 +43,28 @@ enum WidgetPalette {
         case .unknown: "minus"
         }
     }
+
+    /// Health, unlike direction, has a defined polarity.
+    ///
+    /// The rule above — never green-good / red-bad — holds for a *metric*,
+    /// because the snapshot says how a number moved and not whether moving that
+    /// way is desirable. A health verdict is the opposite case: `critical` means
+    /// PostHog is refusing or rejecting data right now, and there is no reading of
+    /// that which is good news. So red is accurate here and only here.
+    ///
+    /// It is still never the only encoding. Every surface that uses this also
+    /// draws `HealthVerdict.symbolName` and prints `healthHeadline`, because the
+    /// Lock Screen renders `.vibrant` or `.accented` and discards hue outright.
+    static func tint(for verdict: SharedSnapshot.HealthVerdict) -> Color {
+        switch verdict {
+        case .critical: critical
+        case .attention: accent
+        case .clear: positive
+        case .unchecked: neutral
+        }
+    }
+
+    static let critical = Color.red
 }
 
 // MARK: - Formatting

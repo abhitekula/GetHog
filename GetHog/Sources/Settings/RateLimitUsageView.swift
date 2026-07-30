@@ -75,11 +75,19 @@ struct RateLimitUsageView: View {
 
     // MARK: - Copy
 
+    /// The arithmetic is spelled out rather than summarised.
+    ///
+    /// Without the quota clause the sentence does not add up — four requests
+    /// twelve times is forty-eight, and the total says fifty — and a consumption
+    /// figure a reader can catch out is worse than no figure, on the one screen
+    /// that exists to be trusted about spending.
     private var backgroundCost: String {
         let hours = Int(BackgroundRefreshPolicy.minimumInterval / 3_600)
+        let quotaHours = Int(SharedSnapshot.QuotaDigest.refreshInterval / 3_600)
         return """
             Background refresh runs at most once every \(hours) hours, and each run \
-            costs \(BackgroundRefreshPolicy.requestsPerRefresh) requests — \
+            costs \(BackgroundRefreshPolicy.requestsPerRefresh) requests. Quota is \
+            re-read only every \(quotaHours) hours on top of that — \
             \(BackgroundRefreshPolicy.maximumRequestsPerDay) a day at the very most.
             """
     }

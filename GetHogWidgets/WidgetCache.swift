@@ -67,6 +67,34 @@ enum WidgetCache {
             .init(id: 1, key: "new-onboarding", active: true, quickToggleAllowed: true),
             .init(id: 2, key: "beta-search", active: false, quickToggleAllowed: true),
         ],
+        // The gallery has to show the state worth installing the widget for. A
+        // sample that read "nothing to report" would look like a widget that
+        // renders nothing — and the two are indistinguishable in a gallery cell.
+        ingestion: .init(
+            typeCount: 3,
+            errorCount: 1,
+            warningCount: 2,
+            affectedEvents: 5_332,
+            topTitle: "Cannot merge already identified",
+            topSeverity: .error,
+            topCount: 4_182,
+            topSparkline: [12, 40, 133, 0, 9, 402, 1_180, 903, 744, 219, 88, 452],
+            windowTitle: "7 days",
+            capturedAt: Date()
+        ),
+        quota: .init(
+            blockedCount: 0,
+            pressingCount: 1,
+            resourceCount: 18,
+            topTitle: "Signals credits",
+            topState: .watch,
+            topUsage: 3_000,
+            topLimit: 4_500,
+            // Deliberately older than the snapshot, so the gallery shows the
+            // "as of 4h ago" note this section carries in real life rather than
+            // hiding a behaviour the user will meet on their first sync.
+            capturedAt: Date().addingTimeInterval(-4 * 60 * 60)
+        ),
         capturedAt: Date()
     )
 }

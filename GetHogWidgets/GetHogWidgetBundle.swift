@@ -13,8 +13,10 @@ struct GetHogWidgetBundle: WidgetBundle {
 
     var body: some Widget {
         MetricWidget()
+        HealthWidget()
         FlagWidget()
         FlagControl()
         OpenDashboardControl()
+        ProjectHealthControl()
     }
 }

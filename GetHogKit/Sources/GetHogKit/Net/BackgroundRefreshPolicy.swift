@@ -36,14 +36,35 @@ public enum BackgroundRefreshPolicy {
     public static let dueTolerance: TimeInterval = 5 * 60
 
     /// Requests one coalesced refresh spends: the dashboard list, the dashboard
-    /// itself, and the feature flags. Deliberately *one* dashboard fetch feeding
-    /// every widget metric, rather than one request per metric.
-    public static let requestsPerRefresh = 3
+    /// itself, the feature flags, and the ingestion warnings. Deliberately *one*
+    /// dashboard fetch feeding every widget metric, rather than one per metric.
+    ///
+    /// The fourth is the ingestion warnings, and it is the only one added since
+    /// this app shipped. It buys the question the other three cannot answer —
+    /// *is the data still arriving intact* — and it buys the whole of it: the
+    /// server pre-aggregates severity, a count and a sparkline per row, so there
+    /// is no follow-up request and no client-side rollup. It is a `.crud` read,
+    /// so it triggers no query-engine work and does not touch the scarce
+    /// analytics budget.
+    public static let requestsPerRefresh = 4
+
+    /// Wakes in a day at the tightest cadence the policy allows.
+    public static var refreshesPerDay: Int { Int((24 * 60 * 60) / minimumInterval) }
+
+    /// Quota top-ups in a day.
+    ///
+    /// Not part of `requestsPerRefresh` because it is deliberately *not* paid on
+    /// every wake: a monthly allowance does not move in two hours, so the section
+    /// is fetched on its own twelve-hour clock and carried forward in between —
+    /// twice a day rather than twelve times, for the same information.
+    public static var quotaRequestsPerDay: Int {
+        Int((24 * 60 * 60) / SharedSnapshot.QuotaDigest.refreshInterval)
+    }
 
     /// The honest worst case to show the user in Settings, where the rest of
     /// their consumption is already on display.
     public static var maximumRequestsPerDay: Int {
-        Int((24 * 60 * 60) / minimumInterval) * requestsPerRefresh
+        refreshesPerDay * requestsPerRefresh + quotaRequestsPerDay
     }
 
     /// A wake with no credential can only fail, and failures teach iOS that this

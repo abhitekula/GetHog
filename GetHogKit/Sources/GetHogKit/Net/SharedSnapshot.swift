@@ -65,6 +65,14 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
     public let projectName: String
     public let metrics: [Metric]
     public let flags: [Flag]
+    /// Ingestion warnings, reduced. `nil` means **not checked** — an app build
+    /// that predates the section, or a fetch PostHog refused — which is a
+    /// different claim from "healthy" and must never render as one.
+    public let ingestion: IngestionDigest?
+    /// Metered resources, reduced. `nil` for the same reason, and it carries its
+    /// own capture time because it is refreshed on a slower clock than the rest
+    /// of this value. See `QuotaDigest.refreshInterval`.
+    public let quota: QuotaDigest?
     public let capturedAt: Date
 
     public init(
@@ -72,13 +80,55 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         projectName: String,
         metrics: [Metric],
         flags: [Flag],
+        ingestion: IngestionDigest? = nil,
+        quota: QuotaDigest? = nil,
         capturedAt: Date
     ) {
         self.projectID = projectID
         self.projectName = projectName
         self.metrics = metrics
         self.flags = flags
+        self.ingestion = ingestion
+        self.quota = quota
         self.capturedAt = capturedAt
+    }
+
+    // MARK: - Decoding across binaries
+
+    /// Written by the app, read by a **separately installed extension binary**.
+    ///
+    /// The two are updated independently — a widget can be a release ahead of the
+    /// app or a release behind it — so this decode has to survive a snapshot from
+    /// either direction. Swift's synthesised keyed decoding already ignores keys
+    /// it has no property for, which is what lets an *older* widget read a
+    /// *newer* snapshot; this hand-written version preserves that and adds the
+    /// other direction, splitting the fields into two groups on one rule:
+    ///
+    /// - **Required** — `projectID`, `projectName`, `capturedAt`. Each one is a
+    ///   field the widget would have to *lie* to substitute. A missing project
+    ///   name renders somebody else's numbers under the wrong heading, and a
+    ///   missing capture time defaulted to `Date()` makes every stale snapshot
+    ///   claim to be current, which is precisely what the freshness footer
+    ///   exists to prevent.
+    /// - **Tolerant** — everything else. A section this build does not
+    ///   understand, or that a newer app has not written, costs that section and
+    ///   nothing else: the widget renders the parts it did get, and says so.
+    ///
+    /// The alternative — one strict decode — turns any single field a future
+    /// release renames into a total blank on the Lock Screen, which looks
+    /// identical to a broken widget.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        projectID = try c.decode(Int.self, forKey: .projectID)
+        projectName = try c.decode(String.self, forKey: .projectName)
+        capturedAt = try c.decode(Date.self, forKey: .capturedAt)
+        metrics = try c.decodeIfPresent([Metric].self, forKey: .metrics) ?? []
+        flags = try c.decodeIfPresent([Flag].self, forKey: .flags) ?? []
+        // `try?`, not `try`: a section whose own decode throws — a future field
+        // that turned out to be required, a missing timestamp — is dropped, and
+        // the rest of the snapshot still renders.
+        ingestion = (try? c.decodeIfPresent(IngestionDigest.self, forKey: .ingestion)) ?? nil
+        quota = (try? c.decodeIfPresent(QuotaDigest.self, forKey: .quota)) ?? nil
     }
 }
 
