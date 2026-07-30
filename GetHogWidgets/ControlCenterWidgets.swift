@@ -108,7 +108,7 @@ struct SelectDashboardControlIntent: ControlConfigurationIntent {
     }
 }
 
-struct OpenDashboardIntent: AppIntent {
+struct OpenMetricFromControlIntent: AppIntent {
 
     static var title: LocalizedStringResource { "Open Dashboard" }
     static var description: IntentDescription {
@@ -167,7 +167,7 @@ struct OpenDashboardControl: ControlWidget {
             kind: Self.kind,
             provider: DashboardControlProvider()
         ) { value in
-            ControlWidgetButton(action: OpenDashboardIntent(metricID: value.metricID)) {
+            ControlWidgetButton(action: OpenMetricFromControlIntent(metricID: value.metricID)) {
                 Label(value.title, systemImage: "chart.xyaxis.line")
             }
         }

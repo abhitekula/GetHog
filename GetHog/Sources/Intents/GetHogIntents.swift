@@ -421,12 +421,12 @@ struct MetricSnippetView: View {
             }
 
             if !metric.series.isEmpty {
-                Sparkline(values: metric.series)
+                IntentSparkline(values: metric.series)
                     .stroke(SnippetStyle.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .frame(height: 48)
                     .frame(maxWidth: .infinity)
                     .background(alignment: .bottom) {
-                        Sparkline(values: metric.series, closed: true)
+                        IntentSparkline(values: metric.series, closed: true)
                             .fill(SnippetStyle.accent.opacity(0.15))
                     }
                     // A sparkline is decoration on top of the number that is
@@ -488,7 +488,7 @@ struct EventsSnippetView: View {
 /// Minimal line chart for a snippet. Hand-drawn rather than a `Chart`, because
 /// a snippet has no axes, no legend and no interaction — everything a chart
 /// library would bring costs layout it can't use.
-private struct Sparkline: Shape {
+private struct IntentSparkline: Shape {
     let values: [Double]
     var closed = false
 

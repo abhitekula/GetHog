@@ -5,12 +5,35 @@ import SwiftUI
 struct GetHogApp: App {
     @State private var model = GetHogApp.makeModel()
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(model)
                 .tint(Theme.accent)
-                .task { await model.bootstrap() }
+                .task {
+                    await model.bootstrap()
+                    if let projectID = model.projectID {
+                        await SpotlightIndexer.reindex(projectID: projectID)
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active else { return }
+                    // A widget or Control Center toggle can only record its
+                    // intent; the write itself needs the keychain, the rate-limit
+                    // governor and somewhere to surface a 403 — all of which
+                    // exist here and not in the extension.
+                    Task { await model.consumePendingIntentWork() }
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: IntentDependencies.selectedProjectDidChangeNotification
+                    )
+                ) { _ in
+                    // A Focus filter can switch projects while the app is running.
+                    model.adoptExternallySelectedProject()
+                }
         }
     }
 

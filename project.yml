@@ -44,6 +44,7 @@ targets:
         # purpose string. Used before revealing the stored API key and,
         # optionally, before toggling a live feature flag.
         INFOPLIST_KEY_NSFaceIDUsageDescription: "GetHog asks for Face ID before revealing your PostHog API key or changing a live feature flag."
+        INFOPLIST_KEY_NSUserActivityTypes: app.gethog.browsing
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
@@ -60,6 +61,10 @@ targets:
     platform: iOS
     sources:
       - path: GetHogWidgets
+      # Entities and intents are shared with the app target; FlagQuickToggle /
+      # BiometricGate are the only app-target symbols they depend on.
+      - path: GetHog/Sources/Intents
+      - path: GetHog/Sources/Flags/FlagToggleController.swift
     dependencies:
       - package: GetHogKit
     settings:
