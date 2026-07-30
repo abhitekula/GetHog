@@ -9,8 +9,10 @@ import SwiftUI
 /// screen spends that request once and then answers every question locally.
 ///
 /// In compact width it is also the app's own index: the phone's tab bar holds
-/// five items, four of which are product surfaces, so the way to the other 24
-/// screens and the way to the project's 200 objects share the fifth. Sharing the
+/// five items, four of which are product surfaces, so the way to every screen
+/// beyond those four — `AppTab.secondary`, which has grown steadily and is not
+/// worth restating as a literal that goes stale on the next one — and the way to
+/// the project's 200 objects share the fifth. Sharing the
 /// slot means sharing the field, which is the better outcome anyway — two
 /// separate searches, one for screens and one for objects, is a question the
 /// user should never have had to answer before typing.
