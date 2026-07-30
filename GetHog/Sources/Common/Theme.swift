@@ -42,6 +42,54 @@ enum Theme {
         dark: Color(hex: 0x38342F)
     )
 
+    /// Supporting text, in two steps that both clear WCAG AA.
+    ///
+    /// This exists because the system's semantic label colours do not clear it on
+    /// this app's own surfaces, which was measured rather than assumed. They are
+    /// alpha composites — `secondaryLabel` is `rgba(60,60,67,0.6)`, `tertiaryLabel`
+    /// the same ink at `0.3` — so their contrast is a function of whatever they sit
+    /// on, and on a near-white card that lands at:
+    ///
+    /// | | light card `#FFFFFF` | light page `#F2EFE9` | dark card `#1F1E1C` |
+    /// |---|---|---|---|
+    /// | `.secondary` | **3.44:1** | **3.26:1** | 5.88:1 |
+    /// | `.tertiary`  | **1.73:1** | **1.70:1** | **2.48:1** |
+    ///
+    /// AA wants 4.5:1 for text this size, so three of those six fail and the worst
+    /// is less than half the floor. The failure was found on screen first — an
+    /// earlier pass moved `DataRow`'s footnote off `.tertiary` (measured 1.84:1)
+    /// onto `.secondary` and predicted that `.secondary` would fail the same
+    /// audit; it did, on two devices.
+    ///
+    /// So supporting text gets colours of its own rather than borrowing the
+    /// system's. Opaque, not alpha, so a call site's ratio does not depend on what
+    /// it happens to be layered over. Warm rather than neutral grey, because a
+    /// neutral goes visibly cold against the cream ground.
+    ///
+    /// The ramp is still three steps — `.primary` at 21:1, these two beneath it —
+    /// so hierarchy survives the fix. What changes is that the bottom step now
+    /// recedes by being *lighter than the text above it* rather than by being
+    /// too faint to read.
+    enum Ink {
+        /// 7.98:1 on `cardBackground`, 6.95:1 on `pageBackground`;
+        /// 9.14:1 and 10.09:1 in dark. Replaces `.secondary` on text.
+        static let secondary = Color(
+            light: Color(hex: 0x55504A),
+            dark: Color(hex: 0xC6BFB5)
+        )
+
+        /// 5.97:1 on `cardBackground`, 5.20:1 on `pageBackground`;
+        /// 5.57:1 and 6.15:1 in dark. Replaces `.tertiary` on text.
+        ///
+        /// Deliberately not parked on the 4.5:1 line: the ratios above are
+        /// computed on the flat colours, and rendered glyphs are antialiased
+        /// against the surface, so a value that clears exactly can measure under.
+        static let tertiary = Color(
+            light: Color(hex: 0x6B6259),
+            dark: Color(hex: 0x9C948A)
+        )
+    }
+
     /// A second accent for chrome that needs warmth without competing with the
     /// data — badges, small-caps section headers, selected pills.
     static let accentWarm = Color(

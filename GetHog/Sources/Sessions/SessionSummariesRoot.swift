@@ -200,7 +200,11 @@ struct SessionSummaryRowView: View {
             subtitle: row.outcome?.detail ?? "No narrative recorded.",
             footnote: stats,
             subtitleLineLimit: 3,
-            accessory: .chevron
+            // No accessory: every use of this row is inside a `NavigationLink`
+            // in a `List`, which draws its own disclosure indicator. `DataRow`'s
+            // sat beside it — and lower, because it centres on the text block
+            // while the List's centres on the whole row.
+            accessory: .none
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spoken)

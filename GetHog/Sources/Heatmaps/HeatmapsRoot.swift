@@ -51,12 +51,33 @@ final class HeatmapsStore {
     var loadedAt: Date?
 
     var isLoading: Bool { isLoadingHeatmap || isLoadingElements }
+
+    /// Whether the *click* sections have anything to chart. Scoped to the two
+    /// query responses on purpose — it is what decides skeletons and section
+    /// placeholders, and it says nothing about the rest of the screen.
     var isEmpty: Bool { profile.isEmpty && elementStats.isEmpty }
 
     /// The saved renders this app can actually draw on.
     var renderablePages: [SavedHeatmap] {
         (savedRenders ?? []).filter(\.isRenderable)
     }
+
+    /// Whether *no* section on this screen has anything, which is the only
+    /// condition that justifies replacing the whole page with one state.
+    ///
+    /// The page renders are a third, independent source: they come from their
+    /// own request, they are looked up per project rather than per window, and
+    /// they are what the page overlay is reached through. Testing only the two
+    /// click queries took the overlay off the screen entirely for any project
+    /// with a saved render and no clicks in the window — which is exactly the
+    /// demo project, so the feature could not be reached or reviewed at all.
+    var hasNothingToShow: Bool { isEmpty && renderablePages.isEmpty }
+
+    /// The render lookup has not answered yet. Until it does, "there is nothing
+    /// on this screen" is a claim rather than an observation — the same
+    /// three-state discipline `savedRenders` is documented with, applied to the
+    /// branch that would otherwise assert it a request early.
+    var isResolvingRenders: Bool { savedRenders == nil }
 
     /// Two independent requests. A heatmap outage must not blank the element
     /// list — they answer different questions and either is useful alone.
@@ -178,7 +199,11 @@ struct HeatmapsRoot: View {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let error = store.heatmapError ?? store.elementsError, store.isEmpty {
+        // Both full-screen states test `hasNothingToShow`, not `isEmpty`: either
+        // one drawn over a project that has a saved page render would hide the
+        // one section on this screen that neither query feeds. A failed query
+        // still gets said — inline, on the section it belongs to.
+        } else if let error = store.heatmapError ?? store.elementsError, store.hasNothingToShow {
             EmptyStateView(
                 title: "Couldn't load the clickmap",
                 systemImage: "exclamationmark.triangle",
@@ -186,7 +211,7 @@ struct HeatmapsRoot: View {
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.isEmpty && !store.isLoading {
+        } else if store.hasNothingToShow && !store.isLoading && !store.isResolvingRenders {
             EmptyStateView(
                 title: "No clicks recorded",
                 systemImage: "hand.tap",
@@ -267,12 +292,18 @@ struct HeatmapsRoot: View {
             )
 
             if let error = store.heatmapError {
-                staleNote(error)
+                sectionErrorNote(error, hasEarlierData: !store.profile.isEmpty)
             }
 
             clickTotalsCard
 
-            if store.profile.depthBands.isEmpty {
+            if !store.profile.depthBands.isEmpty {
+                HeatmapDepthChart(profile: store.profile)
+            } else if store.heatmapError == nil {
+                // Only when the request answered. Both wordings below state what
+                // PostHog reported, and a failed request reported nothing — this
+                // branch is now reachable with an error above it, because the
+                // screen no longer replaces itself wholesale when one query dies.
                 EmptyStateView(
                     title: "No scroll-depth data",
                     systemImage: "arrow.down.to.line",
@@ -281,8 +312,6 @@ struct HeatmapsRoot: View {
                         : "No clicks were recorded in this period."
                 )
                 .frame(maxWidth: .infinity)
-            } else {
-                HeatmapDepthChart(profile: store.profile)
             }
 
             fixedClicksCard
@@ -394,17 +423,19 @@ struct HeatmapsRoot: View {
             )
 
             if let error = store.heatmapError {
-                staleNote(error)
+                sectionErrorNote(error, hasEarlierData: !store.profile.isEmpty)
             }
 
             clickTotalsCard
 
-            if store.profile.horizontalBands.isEmpty {
+            if !store.profile.horizontalBands.isEmpty {
+                HeatmapColumnChart(profile: store.profile)
+            } else if store.heatmapError == nil {
+                // See `depthSection`: "no clicks were recorded" is an
+                // observation, and a failed request made none.
                 Text("No clicks were recorded in this period.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-            } else {
-                HeatmapColumnChart(profile: store.profile)
             }
 
             Text("Horizontal position is a fraction of the viewport width, so it is comparable across every screen size — and unlike depth it means something for fixed elements too, which are included here.")
@@ -441,10 +472,12 @@ struct HeatmapsRoot: View {
             }
 
             if let error = store.elementsError {
-                staleNote(error)
+                sectionErrorNote(error, hasEarlierData: !store.elementStats.isEmpty)
             }
 
-            if rankedElements.isEmpty && !store.isLoadingElements {
+            // See `depthSection`: `emptyElementsMessage` reports what PostHog
+            // recorded, so it is only said once PostHog answered.
+            if rankedElements.isEmpty && !store.isLoadingElements && store.elementsError == nil {
                 EmptyStateView(
                     title: "No elements",
                     systemImage: "square.dashed",
@@ -609,10 +642,19 @@ struct HeatmapsRoot: View {
             : "Rendered at \(widths.count) widths, \(first)–\(last) px"
     }
 
-    private func staleNote(_ text: String) -> some View {
-        Label("This section is from an earlier load. \(text)", systemImage: "exclamationmark.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    /// A failed request, said on the section it cost rather than over the page.
+    ///
+    /// The "earlier load" half is conditional because the note is no longer only
+    /// shown beside surviving data: a project with a saved page render keeps the
+    /// screen up when *both* queries fail, and telling that reader their empty
+    /// chart is stale would invent a load that never happened.
+    private func sectionErrorNote(_ text: String, hasEarlierData: Bool) -> some View {
+        Label(
+            hasEarlierData ? "This section is from an earlier load. \(text)" : text,
+            systemImage: "exclamationmark.circle"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private func load() async {

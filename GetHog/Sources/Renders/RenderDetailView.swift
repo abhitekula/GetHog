@@ -189,12 +189,15 @@ struct RenderDetailView: View {
 
                 Text(export.summary)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 if let created = export.createdAt {
                     Text("Queued \(created.formatted(.dateTime.weekday(.abbreviated).month().day().hour().minute()))")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(.tertiary)
+                        // Measured 1.72:1 on `.tertiary` against this white card,
+                        // against a 4.5:1 AA floor. It is the only timestamp on a
+                        // screen whose whole subject is a job that expires.
+                        .foregroundStyle(Theme.Ink.tertiary)
                 }
             }
         }
@@ -256,7 +259,7 @@ struct RenderDetailView: View {
 
             Text("PostHog signs a fresh link for each play. They stop working about an hour after they're issued, so this one is fetched when you press play rather than when the list loaded.")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -268,7 +271,7 @@ struct RenderDetailView: View {
             ProgressView()
             Text("Asking PostHog where the video lives…")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Space.xl)
@@ -303,7 +306,7 @@ struct RenderDetailView: View {
                 }
                 Text("PostHog hasn't finished this render, so there is no file to play yet. Pull to refresh the list to check again.")
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                 if let webURL = replayWebURL {
                     Link(destination: webURL) {
                         Label("Watch the session in PostHog", systemImage: "arrow.up.forward.square")
@@ -338,7 +341,7 @@ struct RenderDetailView: View {
 
                 Text("PostHog reported this while producing the video. It never wrote a file, so there is nothing to play — queue a new render from the replay player if you still need it.")
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 if let webURL = replayWebURL {
                     Link(destination: webURL) {
@@ -366,7 +369,7 @@ struct RenderDetailView: View {
 
                 Text(expiryExplanation)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 if let webURL = replayWebURL {
                     Link(destination: webURL) {
@@ -462,7 +465,7 @@ struct RenderDetailView: View {
                         HStack(alignment: .top, spacing: Theme.Space.s) {
                             Text(row.label)
                                 .font(Theme.Typography.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                             Spacer(minLength: Theme.Space.s)
                             Text(row.value)
                                 .font(Theme.Typography.caption)
@@ -563,7 +566,7 @@ struct RenderDetailView: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(Theme.Typography.caption).foregroundStyle(.secondary)
+                Text(detail).font(Theme.Typography.caption).foregroundStyle(Theme.Ink.secondary)
             }
             Spacer(minLength: 0)
         }

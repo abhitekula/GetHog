@@ -30,8 +30,11 @@ extension IngestionWarningSeverity {
         case .warning: Theme.accentWarm
         case .info: Theme.accent
         // An unrated severity gets no colour opinion, because PostHog gave
-        // none. Tinting it would state a judgement the API never made.
-        case .unknown: .secondary
+        // none. Tinting it would state a judgement the API never made. The
+        // neutral is the app's own ink rather than `.secondary`: as a pill this
+        // tints both the word and its capsule, and `.secondary` put that pair at
+        // 3.2:1 where the app's ink puts it at 6.3:1.
+        case .unknown: Theme.Ink.secondary
         }
     }
 
@@ -125,6 +128,9 @@ final class IngestionWarningsStore {
 /// the SDK sends, which is not a thing anybody does from a phone.
 struct IngestionWarningsRoot: View {
     @Environment(AppModel.self) private var model
+    /// Read because the rows change shape rather than shrinking at accessibility
+    /// sizes; see `row(_:)`.
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var store = IngestionWarningsStore()
 
     var body: some View {
@@ -250,45 +256,106 @@ struct IngestionWarningsRoot: View {
         return "\(rows) warning\(rows == 1 ? "" : "s") · \(events) events"
     }
 
+    /// The row, in the shape the current type size can carry.
+    ///
+    /// This row was written before `DataRow` learned to reflow and never got the
+    /// same treatment. Measured at AX5 on iPhone: the count and the fixed-width
+    /// sparkline held about 40% of the row whatever the type size, so the title
+    /// was squeezed to `Cannot merge…` and the strip left over broke the category
+    /// to `Merg` / `es`. Everything the row is for was in the part that went.
     private func row(_ warning: IngestionWarning) -> some View {
-        HStack(alignment: .top, spacing: Theme.Space.m) {
-            RowGlyph(systemName: warning.severity.glyph, tint: warning.severity.tint)
+        rowLayout(warning)
+            // Nothing here is prose — titles are PostHog's own warning strings,
+            // categories are product nouns — so the hyphenation dictionary has no
+            // business splitting them. `zxx` is the ISO code for "no linguistic
+            // content", which is the same fix `DataRow` uses.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+            .padding(.vertical, Theme.Space.xs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(spoken(warning))
+    }
 
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text(warning.title)
-                    .font(Theme.Typography.title)
-                    .lineLimit(2)
-
+    @ViewBuilder
+    private func rowLayout(_ warning: IngestionWarning) -> some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                HStack(alignment: .top, spacing: Theme.Space.m) {
+                    RowGlyph(systemName: warning.severity.glyph, tint: warning.severity.tint)
+                    title(warning)
+                }
+                severityLine(warning)
+                footnoteText(warning)
+                // Kept, and kept together: the count is the fact the screen is
+                // read for and the sparkline is its shape over time. On its own
+                // line neither has to be paid for out of the title's width.
                 HStack(spacing: Theme.Space.s) {
-                    StatusPill(text: warning.severity.title, tint: warning.severity.tint)
-                    Text(warning.category.title)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(.secondary)
+                    count(warning)
+                    Spacer(minLength: Theme.Space.s)
+                    Sparkline(warning: warning, window: store.window)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .top, spacing: Theme.Space.m) {
+                RowGlyph(systemName: warning.severity.glyph, tint: warning.severity.tint)
+
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    title(warning)
+                    severityLine(warning)
+                    footnoteText(warning)
                 }
 
-                Text(footnote(warning))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
+                Spacer(minLength: Theme.Space.s)
 
-            Spacer(minLength: Theme.Space.s)
-
-            VStack(alignment: .trailing, spacing: Theme.Space.xs) {
-                Text(Double(warning.count).compactFormatted)
-                    .font(Theme.Typography.body.weight(.semibold).monospacedDigit())
-                Sparkline(warning: warning, window: store.window)
+                VStack(alignment: .trailing, spacing: Theme.Space.xs) {
+                    count(warning)
+                    Sparkline(warning: warning, window: store.window)
+                }
             }
         }
-        .padding(.vertical, Theme.Space.xs)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(spoken(warning))
+    }
+
+    private func title(_ warning: IngestionWarning) -> some View {
+        Text(warning.title)
+            .font(Theme.Typography.title)
+            // Uncapped at accessibility sizes, as `DataRow` is: two lines of type
+            // that large is a few words, and the cap exists to keep rows an even
+            // height, which is a scanning concern that no longer applies there.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+    }
+
+    private func severityLine(_ warning: IngestionWarning) -> some View {
+        HStack(spacing: Theme.Space.s) {
+            StatusPill(text: warning.severity.title, tint: warning.severity.tint)
+            Text(warning.category.title)
+                .font(Theme.Typography.caption)
+                // `.secondary` measured 3.44:1 against this white row background,
+                // under the 4.5:1 AA floor for text this size.
+                .foregroundStyle(Theme.Ink.secondary)
+        }
+    }
+
+    private func footnoteText(_ warning: IngestionWarning) -> some View {
+        Text(footnote(warning))
+            .font(Theme.Typography.caption)
+            // Measured 1.84:1 light and 2.27:1 dark on `.tertiary`; this line
+            // carries the only date on the row.
+            .foregroundStyle(Theme.Ink.tertiary)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+    }
+
+    private func count(_ warning: IngestionWarning) -> some View {
+        Text(Double(warning.count).compactFormatted)
+            .font(Theme.Typography.body.weight(.semibold).monospacedDigit())
     }
 
     private func footnote(_ warning: IngestionWarning) -> String {
         var parts: [String] = []
         if let lastSeen = warning.lastSeen {
-            parts.append("Last \(lastSeen.formatted(.relative(presentation: .named)))")
+            // "Last seen", not "Last": the relative formatter yields "8 hours
+            // ago", and without the verb the row read "Last 8 hours ago", which
+            // is a different claim — a window rather than a most-recent sighting.
+            parts.append("Last seen \(lastSeen.formatted(.relative(presentation: .named)))")
         } else {
             // Absence stated rather than left blank: PostHog aggregated this
             // warning without timestamping it, which is a different fact from
@@ -393,7 +460,7 @@ private struct Sparkline: View {
             // to draw, so the absence is said in words instead.
             Text(warning.sparkline.isEmpty ? "No trend" : "Quiet")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
                 .frame(width: 68, alignment: .trailing)
         }
     }

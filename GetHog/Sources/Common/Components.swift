@@ -19,7 +19,13 @@ struct FreshnessLabel: View {
             }
         }
         .font(.caption2)
-        .foregroundStyle(.tertiary)
+        // Measured at 1.69:1 on `.tertiary` against a light card, against an AA
+        // floor of 4.5:1 — the least readable text in the app, on every screen in
+        // it, in the one component whose whole job is to stop stale data being
+        // silent. `Ink.secondary` rather than `Ink.tertiary` because this is the
+        // smallest type the app sets and small type needs the *most* contrast:
+        // 7.98:1 on a card, 6.95:1 on the page.
+        .foregroundStyle(Theme.Ink.secondary)
         .accessibilityLabel(
             date.map { "Data updated \($0.formatted(.relative(presentation: .named)))" }
                 ?? "Data not yet loaded"
@@ -43,10 +49,10 @@ struct UnsupportedInsightCard: View {
         VStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
                 .font(.title2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
             Text("\(friendlyName) insights aren't drawn on mobile yet")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .multilineTextAlignment(.center)
             if let webURL {
                 Link(destination: webURL) {
@@ -143,14 +149,17 @@ struct SectionEmptyState: View {
         Label {
             Text(text)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 // Wraps rather than truncates: the wording names a precondition,
                 // and half of a precondition is not one.
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: systemImage)
                 .font(.subheadline)
-                .foregroundStyle(.tertiary)
+                // Recedes behind the sentence without dropping out of sight:
+                // `.tertiary` put this glyph at 1.73:1, under even the 3:1 that
+                // WCAG asks of a non-text graphic.
+                .foregroundStyle(Theme.Ink.tertiary)
                 .accessibilityHidden(true)
         }
     }
@@ -182,14 +191,14 @@ struct FailureDetail: View {
         DisclosureGroup(isExpanded: $isExpanded) {
             Text(text)
                 .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, Theme.Space.xs)
         } label: {
             Text("Details")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .tint(Theme.accent)
         .accessibilityHint("Shows the technical detail of the failure")
@@ -363,7 +372,10 @@ struct SectionLabel: View {
                 .font(.caption2.weight(.semibold))
                 .tracking(0.6)
         }
-        .foregroundStyle(.secondary)
+        // Uppercase caption2 with letter-spacing is the hardest thing to read the
+        // app sets, and `.secondary` gave it 3.44:1 on a card against a 4.5:1
+        // floor. This header names the section on roughly thirty screens.
+        .foregroundStyle(Theme.Ink.secondary)
         .accessibilityLabel(text)
     }
 }
@@ -396,7 +408,7 @@ struct CardHeader: View {
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .lineLimit(1)
                 }
             }
@@ -418,7 +430,9 @@ struct SelectableRow<Content: View>: View {
                 Spacer(minLength: 8)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Theme.accent : Color(.tertiaryLabel))
+                    // The unselected ring is a control indicator, not decoration,
+                    // so it owes 3:1; `tertiaryLabel` gave it 1.73:1 on a card.
+                    .foregroundStyle(isSelected ? Theme.accent : Theme.Ink.tertiary)
                     .contentTransition(.symbolEffect(.replace))
             }
             .padding(14)
@@ -494,13 +508,23 @@ struct DeltaOrAbsence: View {
         } else {
             Label(absenceReason, systemImage: "minus.circle")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                // Same 1.73:1 failure as the rest of `.tertiary`, and this one
+                // sits in a column of metric tiles where it is the only thing
+                // saying why a delta is missing.
+                .foregroundStyle(Theme.Ink.tertiary)
                 .accessibilityLabel("No comparable previous period")
         }
     }
 }
 
 /// Compact status pill that always carries text, never colour alone.
+///
+/// The word is the whole point — colour is the second encoding, not the first —
+/// so the pill is not allowed to be squeezed until the word stops being one.
+/// Measured at AX5 on the Ingestion rows, where the surrounding row left it a
+/// narrow strip: a five-letter "Error" was set as `Er-` / `ror`, which is a
+/// state control that no longer states anything. Every caller in the app gets
+/// the fix from here.
 struct StatusPill: View {
     let text: String
     let tint: Color
@@ -508,6 +532,14 @@ struct StatusPill: View {
     var body: some View {
         Text(text)
             .font(.caption2.weight(.semibold))
+            // A status word is a token, never prose: `zxx` is the ISO code for
+            // "no linguistic content", so no hyphenation dictionary applies and
+            // the soft hyphen that split "Error" cannot be inserted.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+            .lineLimit(1)
+            // Refuses compression outright rather than truncating to `Er…`,
+            // which would be the same defect spelled differently.
+            .fixedSize()
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(tint.opacity(0.15), in: .capsule)

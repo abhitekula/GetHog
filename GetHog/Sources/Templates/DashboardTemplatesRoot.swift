@@ -96,6 +96,11 @@ struct DashboardTemplatesRoot: View {
                             TemplateCard(template: template)
                         }
                         .buttonStyle(.plain)
+                        // Pairs the row's two cards to the taller of them. The
+                        // card absorbs the slack with a trailing `Spacer`, so the
+                        // extra height goes below the text rather than stretching
+                        // the artwork.
+                        .frame(maxHeight: .infinity)
                     }
                 }
 
@@ -147,43 +152,93 @@ struct DashboardTemplatesRoot: View {
 private struct TemplateCard: View {
     let template: DashboardTemplate
 
+    /// Read because the card changes shape rather than shrinking at accessibility
+    /// sizes; see `titleRow`.
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         Card(padding: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 TemplateArtwork(template: template)
 
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                        Text(template.templateName)
-                            .font(Theme.Typography.title)
-                            .lineLimit(2)
-                        Spacer(minLength: 0)
-                        if template.isFeatured {
-                            // A word, not a star alone: "featured" is a state,
-                            // and this app never encodes one in colour or in a
-                            // glyph by itself.
-                            StatusPill(text: "Featured", tint: Theme.accentWarm)
-                        }
-                    }
+                    titleRow
 
                     if let summary = template.summary {
                         Text(summary)
                             .font(Theme.Typography.body)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
+                            // `.secondary` measured 3.44:1 against this white
+                            // card, under the 4.5:1 AA floor for text this size.
+                            .foregroundStyle(Theme.Ink.secondary)
+                            .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Text(contents)
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
+                        // Measured 1.72:1 light and 2.31:1 dark on `.tertiary`.
+                        .foregroundStyle(Theme.Ink.tertiary)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(Theme.Space.l)
+
+                // Lets the card take the row's height instead of its own.
+                // Measured on iPad: paired cards differed by about 30pt purely
+                // because one description wrapped to three lines and the other to
+                // two, so a grid of identical objects looked ragged.
+                Spacer(minLength: 0)
             }
         }
+        // A template name is a product noun — "Landing Pages Report" — not prose.
+        // Measured at AX5: the hyphenation dictionary set it as `Land-` / `ing
+        // Pa…`, and an invented hyphen is indistinguishable from one that was
+        // always in the name. `zxx` means "no linguistic content", so no
+        // dictionary applies.
+        .typesettingLanguage(Locale.Language(identifier: "zxx"))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spoken)
+    }
+
+    /// Title and badge side by side, stacked at accessibility sizes.
+    ///
+    /// The pill holds its width whatever the type size, so beside it the title —
+    /// the only thing telling one template from another — was left about six
+    /// characters at AX5 and then clipped at two lines, in a card with most of a
+    /// screen of unused height beneath it.
+    @ViewBuilder
+    private var titleRow: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                titleText
+                featuredPill
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                titleText
+                Spacer(minLength: 0)
+                featuredPill
+            }
+        }
+    }
+
+    private var titleText: some View {
+        Text(template.templateName)
+            .font(Theme.Typography.title)
+            // Uncapped at accessibility sizes: two lines of type that large is
+            // half a name, and the cap is there to keep a grid of cards an even
+            // height, which the `Spacer` above now does properly.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var featuredPill: some View {
+        if template.isFeatured {
+            // A word, not a star alone: "featured" is a state, and this app never
+            // encodes one in colour or in a glyph by itself.
+            StatusPill(text: "Featured", tint: Theme.accentWarm)
+        }
     }
 
     /// What this template builds, in the line a card has room for.
@@ -271,7 +326,7 @@ struct DashboardTemplateDetailView: View {
             if let summary = template.summary {
                 Text(summary)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -360,7 +415,7 @@ struct DashboardTemplateDetailView: View {
                         + "made couldn't be deleted from here again."
                 )
                 .font(Theme.Typography.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
                 if let url = model.webURL(path: "dashboard") {

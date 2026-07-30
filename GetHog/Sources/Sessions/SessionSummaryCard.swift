@@ -29,7 +29,9 @@ enum SessionOutcomeStyle {
         // actually broke — so that a screen full of unfinished sessions does not
         // read as a screen full of outages.
         case false: Theme.accentWarm
-        case nil: .secondary
+        // The app's own neutral ink rather than `.secondary`: this tints a pill's
+        // word *and* its capsule, and `.secondary` put that pair at 3.2:1.
+        case nil: Theme.Ink.secondary
         }
     }
 }
@@ -112,7 +114,11 @@ struct SessionSummaryCard: View {
                 // measurement, and the screen should never let that be forgotten.
                 Text(model)
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    // Measured 1.72:1 on `.tertiary` against this white card. A
+                    // provenance stamp nobody can read is the same as no stamp,
+                    // and this is the line that stops a model's reading of the
+                    // session being mistaken for a measurement of it.
+                    .foregroundStyle(Theme.Ink.secondary)
                     .lineLimit(1)
             }
         }
@@ -124,7 +130,7 @@ struct SessionSummaryCard: View {
                 .font(.subheadline)
             Text("Chapter one of four")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .redacted(reason: .placeholder)
@@ -197,7 +203,9 @@ struct SessionSummaryCard: View {
                 if canSeek {
                     Text("Tap a chapter to play it")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        // Measured 1.72:1 on `.tertiary`. This is the only thing
+                        // that discloses the rows are tappable at all.
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
 
@@ -256,7 +264,7 @@ struct SentimentRow: View {
             if !sentiment.signals.isEmpty {
                 Text(signalSummary)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -270,7 +278,7 @@ struct SentimentRow: View {
         HStack(spacing: Theme.Space.xs) {
             Text("Frustration \(FrustrationBand.title(score).lowercased())")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             Text(score.formatted(.number.precision(.fractionLength(1))))
                 .font(.caption.monospacedDigit().weight(.medium))
                 .foregroundStyle(FrustrationBand.tint(score))
@@ -354,7 +362,7 @@ struct SessionChapterRow: View {
                 }
             }
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .frame(width: offsetWidth, alignment: .trailing)
             .padding(.top, 3)
 
@@ -395,7 +403,7 @@ struct SessionChapterRow: View {
                 Text(chapter.title)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(2)
-                if let stats { Text(stats).font(.caption).foregroundStyle(.secondary) }
+                if let stats { Text(stats).font(.caption).foregroundStyle(Theme.Ink.secondary) }
                 if let outcomeWord = chapter.outcome?.title {
                     HStack(spacing: Theme.Space.xs) {
                         Image(systemName: SessionOutcomeStyle.systemImage(chapter.outcome))
@@ -421,7 +429,9 @@ struct SessionChapterRow: View {
 
             Image(systemName: "chevron.right")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                // A disclosure indicator is a control, not decoration, so it owes
+                // 3:1; `.tertiary` gave it 1.73:1 against this card.
+                .foregroundStyle(Theme.Ink.tertiary)
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 .accessibilityHidden(true)
         }
@@ -454,7 +464,7 @@ struct SessionChapterRow: View {
             if let narrative = chapter.outcome?.detail, !narrative.isEmpty {
                 Text(narrative)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -472,7 +482,7 @@ struct SessionChapterRow: View {
             if chapter.reportedNoDifficulty == true {
                 Text("No confusion, abandonment or exceptions reported in this chapter.")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -503,7 +513,7 @@ struct KeyMomentRow: View {
                     .font(.caption)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let context { Text(context).font(.caption2).foregroundStyle(.tertiary) }
+            if let context { Text(context).font(.caption2).foregroundStyle(Theme.Ink.secondary) }
             if !flags.isEmpty {
                 HStack(spacing: Theme.Space.xs) {
                     ForEach(flags, id: \.text) { flag in
@@ -549,7 +559,7 @@ struct SignalRow: View {
         HStack(alignment: .top, spacing: Theme.Space.s) {
             Image(systemName: signal.type.systemImage)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .frame(width: 14)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
@@ -558,7 +568,7 @@ struct SignalRow: View {
                 if !signal.detail.isEmpty {
                     Text(signal.detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

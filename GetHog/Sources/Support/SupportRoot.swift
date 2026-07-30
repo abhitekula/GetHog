@@ -351,10 +351,17 @@ struct SupportTicketRow: View {
     /// The unread count, and only when there is one. "0 unread" on every row is
     /// noise hiding the rows that have some — which is the whole point of
     /// surfacing this field.
+    ///
+    /// The fallback is `.none`, not `.chevron`. This row is always inside a
+    /// `NavigationLink` in a `List`, which draws its own disclosure indicator,
+    /// so the chevron here landed beside it — and lower, because `DataRow`
+    /// centres its accessory on the text block while the List centres on the
+    /// whole row. Only the tickets with nothing unread doubled up, which is what
+    /// made it read as a layout glitch rather than a rule being broken.
     private var unreadAccessory: RowAccessory {
         ticket.hasUnreadForTeam
             ? .pill("\(ticket.unreadTeamCount) unread", Theme.accentWarm)
-            : .chevron
+            : .none
     }
 
     private var metaLine: String {

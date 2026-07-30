@@ -12,6 +12,7 @@ struct FlagDetailView: View {
     let controller: FlagToggleController
 
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// Direction of the change being confirmed. Never cleared on dismissal, so
     /// the dialog's wording doesn't flicker while it animates away.
@@ -39,7 +40,25 @@ struct FlagDetailView: View {
         }
         .pageSurface()
         .navigationTitle(flag.key)
-        .navigationBarTitleDisplayMode(.inline)
+        // Inline only where inline is free. On iPhone the title shares the bar
+        // with the back button and costs nothing, which is why that screen is a
+        // single clean bar. On iPad the floating tab bar owns the centre of the
+        // top bar, so an inline title on a *pushed* screen cannot go there and
+        // takes a row of its own — measured at ~90pt spent centring one string,
+        // with the back chevron stranded far to its left and no other content in
+        // the row. A standard title claims the same row and reads as the page
+        // header every other iPad screen here has: leading-aligned, with the
+        // project under it.
+        //
+        // This is the opposite correction to the one on roots, for the same
+        // reason. A root forced inline *loses* its title, because it has no
+        // second row to fall back to; see `ScreenChrome` in `DesignKit`.
+        .navigationBarTitleDisplayMode(sizeClass == .compact ? .inline : .large)
+        // Regular width only, where there is a row to put it in. Which project
+        // this flag belongs to is not decoration on this screen — it is the one
+        // screen in the app that writes to production, and the confirmation
+        // dialog already names the project for the same reason.
+        .navigationSubtitle(sizeClass == .compact ? "" : model.selectedProject?.name ?? "")
         .toolbar {
             if let url = model.webURL(path: "feature_flags/\(flag.id)") {
                 ToolbarItem(placement: .topBarTrailing) {
