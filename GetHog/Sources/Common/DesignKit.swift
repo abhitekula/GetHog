@@ -215,7 +215,7 @@ struct DataRow: View {
             // names and addresses, subtitles are keys and paths, footnotes are
             // counts and dates. Typesetting them as prose inserted soft hyphens
             // that render as real ones and change what the string says —
-            // `ananya.rohan.0710@example.-com`, person@example.com`,
+            // `sabine.nolan.0710@example.-com`, person@example.com`,
             // `$autocap-ture` — and a reader cannot tell an invented hyphen from
             // one that was always there. `zxx` is the ISO code for "no
             // linguistic content", so no hyphenation dictionary applies and a

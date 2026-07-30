@@ -410,7 +410,7 @@ struct EventRowView: View {
     /// A clock time, not a relative one.
     ///
     /// Measured on iPhone: four consecutive rows read
-    /// `$autocapture / /s/tara-zubin / 10h ago`, indistinguishable from one
+    /// `$autocapture / /s/nina-bruno / 10h ago`, indistinguishable from one
     /// another, because a relative stamp rounds to the hour and these events
     /// arrived seconds apart. The section header above already gives the rough
     /// when — "Just now", "Earlier today" — so the row's remaining job is to
