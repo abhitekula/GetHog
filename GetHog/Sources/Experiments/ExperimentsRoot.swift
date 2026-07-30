@@ -76,18 +76,19 @@ struct ExperimentsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.experiments.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load experiments", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
+            EmptyStateView(
+                title: "Couldn't load experiments",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await load() }
             }
         } else if store.experiments.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No experiments",
+            EmptyStateView(
+                title: "No experiments",
                 systemImage: "flask",
-                description: Text("This project doesn't have any experiments yet.")
+                message: "This project doesn't have any experiments yet."
             )
         } else {
             list
@@ -97,7 +98,7 @@ struct ExperimentsRoot: View {
     private var list: some View {
         List {
             ForEach(store.groups, id: \.status) { group in
-                Section(group.status) {
+                Section {
                     ForEach(group.experiments) { experiment in
                         Button {
                             selected = experiment
@@ -106,13 +107,23 @@ struct ExperimentsRoot: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Shows this experiment's setup")
+                        .listRowBackground(
+                            Theme.cardBackground
+                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                .padding(.vertical, 1)
+                        )
+                        .listRowSeparator(.hidden)
                     }
+                } header: {
+                    SectionLabel(text: group.status, systemImage: experimentStatusSymbol(group.status))
                 }
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.experiments.isEmpty)
     }
 
@@ -126,30 +137,36 @@ struct ExperimentRowView: View {
     let experiment: Experiment
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(experiment.name)
-                .font(.body)
-                .lineLimit(2)
+        DataRow(
+            glyph: "flask.fill",
+            tint: experimentStatusTint(experiment.statusText),
+            title: experiment.name,
+            subtitle: flagKey ?? "No feature flag linked",
+            footnote: experimentRangeText(start: experiment.startDate, end: experiment.endDate),
+            // The flag key is an identifier developers copy verbatim, so it is
+            // set in a monospaced face to keep it unambiguous. The stand-in
+            // sentence is prose and stays in the body face.
+            isSubtitleMonospaced: flagKey != nil,
+            accessory: .pill(experiment.statusText, experimentStatusTint(experiment.statusText))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
 
-            if let key = experiment.featureFlagKey, !key.isEmpty {
-                // The flag key is an identifier developers copy verbatim, so it
-                // is set in a monospaced face to keep it unambiguous.
-                Text(key)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .accessibilityLabel("Feature flag \(key)")
-            } else {
-                Text("No feature flag linked")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+    private var flagKey: String? {
+        guard let key = experiment.featureFlagKey, !key.isEmpty else { return nil }
+        return key
+    }
 
-            Text(experimentRangeText(start: experiment.startDate, end: experiment.endDate))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .contentShape(.rect)
+    /// Keeps the spoken "Feature flag …" prefix that the key's own label used to
+    /// carry, now that the row reads as a single element.
+    private var accessibilityDescription: String {
+        [
+            experiment.name,
+            experiment.statusText,
+            flagKey.map { "Feature flag \($0)" } ?? "No feature flag linked",
+            experimentRangeText(start: experiment.startDate, end: experiment.endDate),
+        ].joined(separator: ", ")
     }
 }
 
@@ -165,7 +182,12 @@ struct ExperimentDetailSheet: View {
         NavigationStack {
             List {
                 Section {
-                    LabeledContent("Status") { Text(experiment.statusText) }
+                    LabeledContent("Status") {
+                        StatusPill(
+                            text: experiment.statusText,
+                            tint: experimentStatusTint(experiment.statusText)
+                        )
+                    }
                     if let key = experiment.featureFlagKey, !key.isEmpty {
                         LabeledContent("Feature flag") {
                             Text(key)
@@ -186,8 +208,10 @@ struct ExperimentDetailSheet: View {
                 }
 
                 if let description = experiment.description, !description.isEmpty {
-                    Section("Description") {
+                    Section {
                         Text(description).font(.callout)
+                    } header: {
+                        SectionLabel(text: "Description", systemImage: "text.alignleft")
                     }
                 }
 
@@ -198,7 +222,7 @@ struct ExperimentDetailSheet: View {
                         }
                     }
                 } header: {
-                    Text("Results")
+                    SectionLabel(text: "Results", systemImage: "chart.bar")
                 } footer: {
                     // Said plainly: this screen shows setup, not outcomes. An
                     // experiment readout that hinted at a winner without running
@@ -206,6 +230,7 @@ struct ExperimentDetailSheet: View {
                     Text("GetHog shows how this experiment is set up. Variant results, exposures and statistical significance are computed by the PostHog web console and are not shown here.")
                 }
             }
+            .pageSurface()
             .navigationTitle(experiment.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -220,6 +245,28 @@ struct ExperimentDetailSheet: View {
 // MARK: - Formatting
 //
 // File-private so concurrent work on other screens can't collide with the name.
+
+/// Chrome tint for a lifecycle status. The status word always travels with it —
+/// in the pill, the section header and the accessibility label — so the colour
+/// is never the only thing saying what state an experiment is in.
+private func experimentStatusTint(_ status: String) -> Color {
+    switch status {
+    case "Running": Theme.Status.good
+    case "Draft": Theme.accentWarm
+    default: Color.secondary
+    }
+}
+
+private func experimentStatusSymbol(_ status: String) -> String {
+    switch status {
+    case "Running": "play.circle"
+    case "Draft": "pencil"
+    case "Complete": "checkmark.circle"
+    case "Archived": "archivebox"
+    // Any status PostHog adds later still gets a header rather than a gap.
+    default: "circle"
+    }
+}
 
 private func experimentRangeText(start: Date?, end: Date?) -> String {
     let format = Date.FormatStyle.dateTime.year().month(.abbreviated).day()

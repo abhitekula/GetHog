@@ -82,8 +82,10 @@ struct PersonDetailView: View {
         List {
             Section { header }
 
+            countsRow
+
             if !person.distinctIDs.isEmpty {
-                Section("Distinct IDs (\(person.distinctIDs.count))") {
+                Section {
                     ForEach(person.distinctIDs, id: \.self) { distinctID in
                         Text(distinctID)
                             .font(.caption.monospaced())
@@ -96,12 +98,18 @@ struct PersonDetailView: View {
                                 }
                             }
                     }
+                } header: {
+                    SectionLabel(
+                        text: "Distinct IDs (\(person.distinctIDs.count))",
+                        systemImage: "number"
+                    )
                 }
             }
 
             recentEventsSection
             propertiesSection
         }
+        .pageSurface()
         .navigationTitle(person.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(model.projectID ?? 0)|\(person.id)") { await loadEvents() }
@@ -133,6 +141,38 @@ struct PersonDetailView: View {
         .padding(.vertical, 4)
     }
 
+    /// The three counts that frame everything below: how many identities this
+    /// person merges, how much is known about them, and how much activity the
+    /// events query actually returned. The last is capped at 50 — the section's
+    /// own footer says so rather than the tile implying a total.
+    private var countsRow: some View {
+        StatStrip {
+            MetricTile(
+                label: "Distinct IDs",
+                value: person.distinctIDs.count.formatted(),
+                compact: true
+            )
+            MetricTile(label: "Properties", value: propertyCount.formatted(), compact: true)
+            MetricTile(
+                label: "Recent events",
+                value: eventsStore.events.count.formatted(),
+                compact: true
+            )
+        }
+        // The strip is chrome, not a row: it sits on the page ground and brings
+        // its own insets.
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var propertyCount: Int {
+        guard let properties = person.properties, case .object(let dict) = properties else {
+            return 0
+        }
+        return dict.count
+    }
+
     // MARK: - Recent events
 
     @ViewBuilder
@@ -161,7 +201,7 @@ struct PersonDetailView: View {
                 .skeleton(eventsStore.isLoading && eventsStore.events.isEmpty)
             }
         } header: {
-            Text("Recent events")
+            SectionLabel(text: "Recent events", systemImage: "clock")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 if let distinctID = queriedDistinctID, person.distinctIDs.count > 1 {
@@ -179,16 +219,20 @@ struct PersonDetailView: View {
     @ViewBuilder
     private var propertiesSection: some View {
         if let properties = person.properties, case .object(let dict) = properties, !dict.isEmpty {
-            Section("Properties (\(dict.count))") {
+            Section {
                 ForEach(dict.keys.sorted(), id: \.self) { key in
                     PropertyRow(key: key, value: dict[key] ?? .null)
                 }
+            } header: {
+                SectionLabel(text: "Properties (\(dict.count))", systemImage: "tag")
             }
         } else {
-            Section("Properties") {
+            Section {
                 Text("This person has no properties set.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } header: {
+                SectionLabel(text: "Properties", systemImage: "tag")
             }
         }
     }
@@ -207,26 +251,30 @@ struct PersonEventRowView: View {
     let event: PersonEvent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                // PostHog's $-prefixed events read as code, so they're monospaced.
-                Text(event.event)
-                    .font(.subheadline.monospaced())
-                    .lineLimit(1)
-                Spacer()
-                if let timestamp = event.timestamp {
-                    Text(timestamp, format: .relative(presentation: .numeric, unitsStyle: .narrow))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            if let location {
-                Text(location)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
+        DataRow(
+            glyph: isPostHogGenerated ? "bolt.horizontal.fill" : "bolt.fill",
+            // PostHog's $-prefixed events are SDK exhaust; the warm secondary
+            // separates them from the events the team chose to send, which is
+            // the distinction worth scanning a timeline for.
+            tint: isPostHogGenerated ? Theme.accentWarm : Theme.accent,
+            title: event.event,
+            subtitle: location,
+            // A path is an identifier: monospacing is what lets a column of them
+            // be compared without reading each one.
+            isSubtitleMonospaced: true,
+            accessory: accessory
+        )
+    }
+
+    private var isPostHogGenerated: Bool { event.event.hasPrefix("$") }
+
+    /// Ages read down the column, so the timestamp is the row's metric rather
+    /// than a tertiary aside.
+    private var accessory: RowAccessory {
+        guard let timestamp = event.timestamp else { return .none }
+        return .metric(
+            timestamp.formatted(.relative(presentation: .numeric, unitsStyle: .narrow))
+        )
     }
 
     /// Prefer the path — the host repeats on every row and buys nothing.

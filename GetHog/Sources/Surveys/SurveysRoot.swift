@@ -79,18 +79,19 @@ struct SurveysRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.surveys.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load surveys", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
+            EmptyStateView(
+                title: "Couldn't load surveys",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await load() }
             }
         } else if store.surveys.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No surveys",
+            EmptyStateView(
+                title: "No surveys",
                 systemImage: "text.bubble",
-                description: Text("This project doesn't have any surveys yet.")
+                message: "This project doesn't have any surveys yet."
             )
         } else {
             list
@@ -100,7 +101,7 @@ struct SurveysRoot: View {
     private var list: some View {
         List {
             ForEach(store.groups, id: \.status) { group in
-                Section(group.status) {
+                Section {
                     ForEach(group.surveys) { survey in
                         Button {
                             selected = survey
@@ -109,13 +110,23 @@ struct SurveysRoot: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Shows the survey's questions")
+                        .listRowBackground(
+                            Theme.cardBackground
+                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                .padding(.vertical, 1)
+                        )
+                        .listRowSeparator(.hidden)
                     }
+                } header: {
+                    SectionLabel(text: group.status, systemImage: surveyStatusSymbol(group.status))
                 }
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.surveys.isEmpty)
     }
 
@@ -129,23 +140,17 @@ struct SurveyRowView: View {
     let survey: Survey
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(survey.name)
-                .font(.body)
-                .lineLimit(2)
-
-            HStack(spacing: 6) {
-                StatusPill(text: surveyTypeLabel(survey.type), tint: Theme.accent)
-                Text(questionCount)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(surveyRangeText(start: survey.startDate, end: survey.endDate))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .contentShape(.rect)
+        DataRow(
+            glyph: surveySymbol(survey.type),
+            tint: surveyStatusTint(survey.statusText),
+            title: survey.name,
+            // The type still travels as a word: the glyph reinforces it, but a
+            // reader should never have to decode an icon to learn how a survey
+            // reaches people.
+            subtitle: "\(surveyTypeLabel(survey.type)) · \(questionCount)",
+            footnote: surveyRangeText(start: survey.startDate, end: survey.endDate),
+            accessory: .pill(survey.statusText, surveyStatusTint(survey.statusText))
+        )
     }
 
     private var questionCount: String {
@@ -165,7 +170,12 @@ struct SurveyDetailSheet: View {
         NavigationStack {
             List {
                 Section {
-                    LabeledContent("Status") { Text(survey.statusText) }
+                    LabeledContent("Status") {
+                        StatusPill(
+                            text: survey.statusText,
+                            tint: surveyStatusTint(survey.statusText)
+                        )
+                    }
                     LabeledContent("Type") { Text(surveyTypeLabel(survey.type)) }
                     if let start = survey.startDate {
                         LabeledContent("Launched") {
@@ -180,12 +190,14 @@ struct SurveyDetailSheet: View {
                 }
 
                 if let description = survey.description, !description.isEmpty {
-                    Section("Description") {
+                    Section {
                         Text(description).font(.callout)
+                    } header: {
+                        SectionLabel(text: "Description", systemImage: "text.alignleft")
                     }
                 }
 
-                Section("Questions (\(survey.questions.count))") {
+                Section {
                     if survey.questions.isEmpty {
                         Text("This survey has no questions defined.")
                             .font(.caption)
@@ -195,6 +207,11 @@ struct SurveyDetailSheet: View {
                             SurveyQuestionRowView(index: index, question: question)
                         }
                     }
+                } header: {
+                    SectionLabel(
+                        text: "Questions (\(survey.questions.count))",
+                        systemImage: "list.number"
+                    )
                 }
 
                 if let webURL {
@@ -209,6 +226,7 @@ struct SurveyDetailSheet: View {
                     }
                 }
             }
+            .pageSurface()
             .navigationTitle(survey.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -265,6 +283,42 @@ struct SurveyQuestionRowView: View {
 //
 // File-private so concurrent work on other screens can't collide with these
 // names; they are three lines each and not worth a shared surface.
+
+/// The glyph says how a survey reaches people, which is what makes one survey a
+/// different kind of thing from another. The type label travels beside it in
+/// words — the icon is reinforcement, never the only carrier.
+private func surveySymbol(_ type: String) -> String {
+    switch type {
+    case "popover": "bubble.left.fill"
+    case "widget": "square.on.square"
+    case "api": "curlybraces"
+    case "external_survey": "arrow.up.forward.app"
+    default: "text.bubble.fill"
+    }
+}
+
+/// Chrome tint for a lifecycle status. The status word always travels with it —
+/// in the pill and in the section header — so the colour never carries the
+/// state on its own.
+private func surveyStatusTint(_ status: String) -> Color {
+    switch status {
+    case "Running": Theme.Status.good
+    case "Draft": Theme.accentWarm
+    default: Color.secondary
+    }
+}
+
+private func surveyStatusSymbol(_ status: String) -> String {
+    switch status {
+    case "Running": "play.circle"
+    case "Draft": "pencil"
+    case "Stopped": "stop.circle"
+    case "Archived": "archivebox"
+    // Anything PostHog starts reporting that we don't know about still gets a
+    // header rather than a gap.
+    default: "circle"
+    }
+}
 
 private func surveyTypeLabel(_ type: String) -> String {
     switch type {

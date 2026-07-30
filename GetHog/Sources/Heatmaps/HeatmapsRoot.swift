@@ -151,59 +151,67 @@ struct HeatmapsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.heatmapError ?? store.elementsError, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load the clickmap", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load the clickmap",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No clicks recorded",
+            EmptyStateView(
+                title: "No clicks recorded",
                 systemImage: "hand.tap",
-                description: Text(
-                    "PostHog captured no clicks in the \(window.spokenTitle.lowercased()). Heatmap data needs autocapture enabled in your web SDK."
-                )
+                message: "PostHog captured no clicks in the \(window.spokenTitle.lowercased()). Heatmap data needs autocapture enabled in your web SDK."
             )
         } else {
             report
         }
     }
 
+    /// Both selectors share one glass bar. They are read together — a lens is
+    /// always a lens *over a period* — and two separate bars would imply the
+    /// screen has two unrelated controls.
     private var report: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                adaptivelyStyled(
-                    Picker("Date range", selection: $window) {
-                        ForEach(AnalyticsWindow.allCases) { option in
-                            Text(option.title).accessibilityLabel(option.spokenTitle).tag(option)
-                        }
-                    }
-                )
+            VStack(alignment: .leading, spacing: Theme.Space.l) {
+                GlassFilterBar {
+                    VStack(spacing: Theme.Space.s) {
+                        adaptivelyStyled(
+                            Picker("Date range", selection: $window) {
+                                ForEach(AnalyticsWindow.allCases) { option in
+                                    Text(option.title).accessibilityLabel(option.spokenTitle).tag(option)
+                                }
+                            }
+                        )
 
-                adaptivelyStyled(
-                    Picker("View", selection: $lens) {
-                        ForEach(HeatmapLens.allCases) { option in
-                            Text(option.title).accessibilityLabel(option.spokenTitle).tag(option)
-                        }
+                        adaptivelyStyled(
+                            Picker("View", selection: $lens) {
+                                ForEach(HeatmapLens.allCases) { option in
+                                    Text(option.title).accessibilityLabel(option.spokenTitle).tag(option)
+                                }
+                            }
+                        )
                     }
-                )
-
-                switch lens {
-                case .depth: depthSection
-                case .across: horizontalSection
-                case .elements: elementsSection
                 }
 
-                noScreenshotNote
+                Group {
+                    switch lens {
+                    case .depth: depthSection
+                    case .across: horizontalSection
+                    case .elements: elementsSection
+                    }
 
-                FreshnessLabel(date: store.loadedAt)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    noScreenshotNote
+
+                    FreshnessLabel(date: store.loadedAt)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, Theme.Space.l)
             }
-            .padding(16)
+            .padding(.vertical, Theme.Space.l)
         }
-        .background(Theme.pageBackground)
+        .pageSurface()
     }
 
     /// Segmented controls shrink their labels to slivers at accessibility text
@@ -221,9 +229,12 @@ struct HeatmapsRoot: View {
 
     @ViewBuilder
     private var depthSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Where down the page people click")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            sectionHeader(
+                "Click depth",
+                systemImage: "arrow.down.to.line",
+                subtitle: "Where down the page people click"
+            )
 
             if let error = store.heatmapError {
                 staleNote(error)
@@ -232,17 +243,14 @@ struct HeatmapsRoot: View {
             clickTotalsCard
 
             if store.profile.depthBands.isEmpty {
-                Card {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("No scroll-depth data")
-                            .font(.subheadline.weight(.semibold))
-                        Text(store.profile.fixedClicks > 0
-                            ? "Every recorded click was on a fixed-position element, so none of them has a scroll depth."
-                            : "No clicks were recorded in this period.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                EmptyStateView(
+                    title: "No scroll-depth data",
+                    systemImage: "arrow.down.to.line",
+                    message: store.profile.fixedClicks > 0
+                        ? "Every recorded click was on a fixed-position element, so none of them has a scroll depth."
+                        : "No clicks were recorded in this period."
+                )
+                .frame(maxWidth: .infinity)
             } else {
                 HeatmapDepthChart(profile: store.profile)
             }
@@ -348,9 +356,12 @@ struct HeatmapsRoot: View {
 
     @ViewBuilder
     private var horizontalSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Where across the page people click")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            sectionHeader(
+                "Click position",
+                systemImage: "arrow.left.and.right",
+                subtitle: "Where across the page people click"
+            )
 
             if let error = store.heatmapError {
                 staleNote(error)
@@ -377,9 +388,12 @@ struct HeatmapsRoot: View {
 
     @ViewBuilder
     private var elementsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Most clicked elements")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            sectionHeader(
+                "Most clicked elements",
+                systemImage: "cursorarrow.rays",
+                subtitle: "What visitors actually hit, ranked by clicks"
+            )
 
             adaptivelyStyled(
                 Picker("Click type", selection: $kindFilter) {
@@ -401,10 +415,10 @@ struct HeatmapsRoot: View {
             }
 
             if rankedElements.isEmpty && !store.isLoadingElements {
-                ContentUnavailableView(
-                    "No elements",
+                EmptyStateView(
+                    title: "No elements",
                     systemImage: "square.dashed",
-                    description: Text(emptyElementsMessage)
+                    message: emptyElementsMessage
                 )
                 .frame(maxWidth: .infinity)
             } else {
@@ -425,10 +439,12 @@ struct HeatmapsRoot: View {
         .skeleton(store.isLoadingElements && store.elementStats.isEmpty)
     }
 
+    /// Hand-rolled container rather than `Card`: the proportional bars need to
+    /// reach the container's edges, which a card's inner padding would inset.
     private var elementList: some View {
         VStack(spacing: 0) {
             ForEach(Array(rankedElements.enumerated()), id: \.offset) { index, stat in
-                if index > 0 { Divider().padding(.leading, 12) }
+                if index > 0 { Divider().padding(.leading, Theme.Space.m) }
                 ElementStatRowView(
                     stat: stat,
                     rank: index + 1,
@@ -438,7 +454,10 @@ struct HeatmapsRoot: View {
                 )
             }
         }
-        .background(Theme.cardBackground, in: .rect(cornerRadius: 14))
+        .background(
+            Theme.cardBackground,
+            in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous)
+        )
     }
 
     /// The bar scale is pinned to the top row of the *current* filter, so
@@ -459,6 +478,23 @@ struct HeatmapsRoot: View {
     }
 
     // MARK: - Chrome
+
+    /// The sentence under the label is not decoration: "Depth" alone does not
+    /// say depth *of what*, and the lens picker's own labels are abbreviated.
+    private func sectionHeader(
+        _ title: String,
+        systemImage: String,
+        subtitle: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            SectionLabel(text: title, systemImage: systemImage)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(subtitle)")
+    }
 
     private var noScreenshotNote: some View {
         Text("PostHog's web heatmap paints these clicks over a screenshot of the page. That render isn't available to this app, so nothing here is drawn over a page image — the numbers stand on their own.")
@@ -715,48 +751,22 @@ struct ElementStatRowView: View {
     let fraction: Double
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("\(rank)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(minWidth: 20, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(stat.label)
-                    .font(.subheadline)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-
-                HStack(spacing: 6) {
-                    if let tag = stat.tagName {
-                        // Monospaced so a tag reads as markup, not prose.
-                        Text("<\(tag)>")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                    if let ancestor = stat.ancestorLabel {
-                        Text("in “\(ancestor)”")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-
-            Spacer(minLength: 12)
-
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(Double(stat.count).compactFormatted)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                // The kind is never left to the number alone: 40 dead clicks and
-                // 40 real clicks are opposite findings.
-                StatusPill(text: stat.kind.title, tint: clickKindTint(stat.kind))
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
+        DataRow(
+            glyph: stat.kind.systemImage,
+            tint: clickKindTint(stat.kind),
+            title: stat.label,
+            // Monospaced so a tag reads as markup, not prose.
+            subtitle: stat.tagName.map { "<\($0)>" },
+            footnote: stat.ancestorLabel.map { "in “\($0)”" },
+            isSubtitleMonospaced: true,
+            // The kind is never left to the number alone: 40 dead clicks and
+            // 40 real clicks are opposite findings, so the noun travels with
+            // the count instead of relying on the glyph's colour.
+            accessory: .metric("\(Double(stat.count).compactFormatted) \(stat.kind.noun)")
+        )
+        .truncationMode(.middle)
+        .padding(.vertical, Theme.Space.xs)
+        .padding(.horizontal, Theme.Space.m)
         .background(alignment: .leading) { proportionBar }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
@@ -786,11 +796,16 @@ struct ElementStatRowView: View {
 // File-private so concurrent work on other screens can't collide with the name.
 
 /// Tint for a click kind. Always paired with the kind's name, never used alone.
+///
+/// Drawn entirely from the chrome palette. A dead click used to borrow a hue
+/// from `SeriesPalette`, which implied a relationship to a plotted series that
+/// does not exist — the warm secondary says "worth a look, not an emergency"
+/// without spending a data colour on a row.
 private func clickKindTint(_ kind: ElementClickKind) -> Color {
     switch kind {
     case .autocapture: Theme.accent
     case .rageClick: Theme.Status.critical
-    case .deadClick: SeriesPalette.color(at: 3)
+    case .deadClick: Theme.accentWarm
     case .other: .secondary
     }
 }

@@ -63,6 +63,18 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
         case .country: "countries"
         }
     }
+
+    /// Leads every row of the breakdown, so switching dimension is visible
+    /// before a single value is read.
+    var glyph: String {
+        switch self {
+        case .page: "doc.text"
+        case .referrer: "arrow.turn.down.right"
+        case .device: "iphone"
+        case .browser: "safari"
+        case .country: "globe"
+        }
+    }
 }
 
 @MainActor
@@ -308,42 +320,51 @@ struct WebAnalyticsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.anyError, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load web analytics", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await reloadAll() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load web analytics",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await reloadAll() } }
+            )
         } else if store.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No web traffic",
+            EmptyStateView(
+                title: "No web traffic",
                 systemImage: "globe",
-                description: Text("Nothing was recorded in the \(window.spokenTitle.lowercased()).")
+                message: "Nothing was recorded in the \(window.spokenTitle.lowercased())."
             )
         } else {
             report
         }
     }
 
+    /// Each section owns its horizontal inset rather than inheriting one from
+    /// the stack, so the KPI strip can scroll edge to edge while everything else
+    /// stays on the page margin.
     private var report: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                windowPicker
+                GlassFilterBar { windowPicker }
                 overviewSection
                 // Between the totals and the detail: the headline figures give
                 // it context, and it names what to open in the breakdown below.
                 notableChangesSection
+                    .padding(.horizontal, Theme.Space.l)
                 breakdownSection
+                    .padding(.horizontal, Theme.Space.l)
                 vitalsSection
+                    .padding(.horizontal, Theme.Space.l)
                 outboundSection
+                    .padding(.horizontal, Theme.Space.l)
                 marketingSection
+                    .padding(.horizontal, Theme.Space.l)
                 FreshnessLabel(date: store.loadedAt)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Space.l)
             }
-            .padding(Theme.Space.l)
+            .padding(.vertical, Theme.Space.l)
         }
-        .background(Theme.pageBackground)
+        .pageSurface()
     }
 
     // MARK: - Controls
@@ -384,16 +405,14 @@ struct WebAnalyticsRoot: View {
     // MARK: - Sections
 
     private var overviewSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
-            Text("Overview")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            SectionLabel(text: "Overview", systemImage: "chart.bar.xaxis")
+                .padding(.horizontal, Theme.Space.l)
 
-            // An adaptive grid rather than a fixed row: at large text sizes the
-            // tiles reflow to one column instead of clipping their figures.
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 165), spacing: Theme.Space.m)],
-                spacing: Theme.Space.m
-            ) {
+            // A scrolling strip rather than a reflowing grid: a tile squeezed
+            // until its figure truncates has stopped being a metric, and the
+            // grid did exactly that at large text sizes.
+            StatStrip {
                 ForEach(store.metrics) { metric in
                     WebKPITile(metric: metric)
                 }
@@ -402,26 +421,24 @@ struct WebAnalyticsRoot: View {
 
             if let error = store.overviewError, !store.metrics.isEmpty {
                 staleNote("These figures are from an earlier load. \(error)")
+                    .padding(.horizontal, Theme.Space.l)
             }
         }
     }
 
     private var breakdownSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
-            Text("Breakdown")
-                .font(.headline)
+            SectionLabel(text: "Breakdown", systemImage: "list.number")
 
             dimensionPicker
 
             if filteredRows.isEmpty && !store.isLoadingRows {
-                ContentUnavailableView(
-                    search.isEmpty ? "No \(dimension.pluralTitle)" : "No matches",
+                EmptyStateView(
+                    title: search.isEmpty ? "No \(dimension.pluralTitle)" : "No matches",
                     systemImage: "magnifyingglass",
-                    description: Text(
-                        search.isEmpty
-                            ? "PostHog returned no \(dimension.pluralTitle) for this period."
-                            : "No \(dimension.pluralTitle) matched “\(search)”."
-                    )
+                    message: search.isEmpty
+                        ? "PostHog returned no \(dimension.pluralTitle) for this period."
+                        : "No \(dimension.pluralTitle) matched “\(search)”."
                 )
                 .frame(maxWidth: .infinity)
             } else {
@@ -445,7 +462,8 @@ struct WebAnalyticsRoot: View {
                 WebStatsRowView(
                     row: row,
                     rank: index + 1,
-                    fraction: store.peakVisitors > 0 ? row.visitors / store.peakVisitors : 0
+                    fraction: store.peakVisitors > 0 ? row.visitors / store.peakVisitors : 0,
+                    glyph: dimension.glyph
                 )
             }
         }
@@ -465,12 +483,10 @@ struct WebAnalyticsRoot: View {
             )
 
             if store.notableChanges.isEmpty && !store.isLoadingChanges {
-                ContentUnavailableView(
-                    "Nothing notable",
+                EmptyStateView(
+                    title: "Nothing notable",
                     systemImage: "sparkles",
-                    description: Text(
-                        "PostHog flagged no standout dimensions in the \(window.spokenTitle.lowercased())."
-                    )
+                    message: "PostHog flagged no standout dimensions in the \(window.spokenTitle.lowercased())."
                 )
                 .frame(maxWidth: .infinity)
             } else {
@@ -508,15 +524,13 @@ struct WebAnalyticsRoot: View {
             )
 
             if topExternalClicks.isEmpty && !store.isLoadingClicks {
-                ContentUnavailableView(
-                    "No outbound clicks",
+                EmptyStateView(
+                    title: "No outbound clicks",
                     systemImage: "arrow.up.forward.square",
-                    description: Text(
-                        """
+                    message: """
                         Nothing led off the site in the \(window.spokenTitle.lowercased()). \
                         PostHog only records these when external link tracking is switched on.
                         """
-                    )
                 )
                 .frame(maxWidth: .infinity)
             } else {
@@ -658,59 +672,33 @@ struct WebKPITile: View {
     let metric: WebOverviewMetric
 
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text(metric.title)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+        VStack(alignment: .leading, spacing: 2) {
+            // The arrow inside the delta always points the way the number
+            // actually moved; the colour says whether that movement was good.
+            // Splitting the two is the only way to stay honest about metrics
+            // like bounce rate, where falling is a win — and it keeps direction
+            // legible without relying on colour. `isIncreaseBad` is carried
+            // straight from the API rather than decided here.
+            MetricTile(
+                label: metric.title,
+                value: metric.formattedValue,
+                delta: metric.value.map { (current: $0, previous: metric.previous) },
+                isIncreaseBad: metric.isIncreaseBad ?? false,
+                compact: true
+            )
 
-                Text(metric.formattedValue)
-                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-
-                changeIndicator
+            // Without this, a green downward arrow just looks like a bug.
+            if metric.isIncreaseBad == true {
+                Text("Lower is better")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
+        // A floor rather than a fixed width: tiles stay comparable down the
+        // strip without clipping a long metric name.
+        .frame(minWidth: 132, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
-    }
-
-    /// The arrow always points the way the number actually moved; the colour
-    /// says whether that movement was good. Splitting the two is the only way to
-    /// stay honest about metrics like bounce rate, where falling is a win — and
-    /// it keeps direction legible without relying on colour.
-    @ViewBuilder
-    private var changeIndicator: some View {
-        if let change = metric.changeFromPreviousPct, change != 0 {
-            VStack(alignment: .leading, spacing: 2) {
-                Label {
-                    Text(abs(change) / 100, format: .percent.precision(.fractionLength(0...1)))
-                } icon: {
-                    Image(systemName: change > 0 ? "arrow.up.right" : "arrow.down.right")
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(verdictTint)
-
-                // Without this, a green downward arrow just looks like a bug.
-                if metric.isIncreaseBad == true {
-                    Text("Lower is better")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        } else {
-            Text("No prior period")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private var verdictTint: Color {
-        guard let improvement = metric.isImprovement else { return .secondary }
-        return improvement ? Theme.Status.good : Theme.Status.critical
     }
 
     private var spokenSummary: String {
@@ -735,39 +723,25 @@ struct WebStatsRowView: View {
     let row: WebStatsRow
     let rank: Int
     let fraction: Double
+    let glyph: String
 
     private var label: String {
         row.breakdownValue.isEmpty ? "(not set)" : row.breakdownValue
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-            Text("\(rank)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(minWidth: 20, alignment: .trailing)
-
-            Text(label)
-                .font(.subheadline)
-                .lineLimit(2)
-                .truncationMode(.middle)
-
-            Spacer(minLength: Theme.Space.m)
-
-            // Direct labels: the figures never depend on a column header that
-            // may have scrolled out of view.
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("\(row.visitors.compactFormatted) visitors")
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                Text("\(row.views.compactFormatted) views")
-                    .font(.caption2)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.vertical, Theme.Space.s)
+        // Direct labels on both figures: neither depends on a column header
+        // that may have scrolled out of view.
+        DataRow(
+            glyph: glyph,
+            title: label,
+            subtitle: "\(row.views.compactFormatted) views",
+            accessory: .metric("\(row.visitors.compactFormatted) visitors")
+        )
+        // Middle truncation for the whole row: page paths and referrer domains
+        // share long prefixes, so the tail is what tells two of them apart.
+        .truncationMode(.middle)
+        .padding(.vertical, Theme.Space.xs)
         .padding(.horizontal, Theme.Space.m)
         .background(alignment: .leading) { proportionBar }
         .accessibilityElement(children: .combine)

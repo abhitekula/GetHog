@@ -25,6 +25,16 @@ enum FlagStatusGroup: String, CaseIterable, Identifiable {
         case .disabled, .archived: Color.secondary
         }
     }
+
+    /// Section header symbol. Deliberately about *state* — the row glyphs below
+    /// it are about the kind of flag, so the two don't say the same thing twice.
+    var symbol: String {
+        switch self {
+        case .enabled: "flag.fill"
+        case .disabled: "flag.slash"
+        case .archived: "archivebox"
+        }
+    }
 }
 
 @MainActor
@@ -115,18 +125,19 @@ struct FlagsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.flags.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load flags", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
+            EmptyStateView(
+                title: "Couldn't load flags",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await load() }
             }
         } else if store.flags.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No feature flags",
+            EmptyStateView(
+                title: "No feature flags",
                 systemImage: "flag",
-                description: Text("This project doesn't have any feature flags yet.")
+                message: "This project doesn't have any feature flags yet."
             )
         } else {
             list
@@ -140,12 +151,20 @@ struct FlagsRoot: View {
             ForEach(FlagStatusGroup.allCases) { group in
                 let items = store.flags(in: group, search: search)
                 if !items.isEmpty {
-                    Section(group.title) {
+                    Section {
                         ForEach(items) { flag in
                             NavigationLink(value: flag) {
                                 FlagRowView(flag: flag, group: group)
                             }
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
                         }
+                    } header: {
+                        SectionLabel(text: group.title, systemImage: group.symbol)
                     }
                 }
             }
@@ -154,10 +173,16 @@ struct FlagsRoot: View {
                     .listRowBackground(Color.clear)
             }
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.flags.isEmpty)
         .overlay {
             if !search.isEmpty && store.matchCount(search: search) == 0 {
-                ContentUnavailableView.search(text: search)
+                EmptyStateView(
+                    title: "No matching flags",
+                    systemImage: "magnifyingglass",
+                    message: "No flag key or name matched “\(search)”."
+                )
             }
         }
     }
@@ -177,36 +202,39 @@ struct FlagRowView: View {
     let group: FlagStatusGroup
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(flag.key)
-                    .font(.body.monospaced())
-                    .lineLimit(2)
-                Spacer(minLength: 8)
-                StatusPill(text: group.title, tint: group.tint)
-            }
-
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            if !facts.isEmpty {
-                Text(facts.joined(separator: " · "))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+        DataRow(
+            glyph: glyph,
+            tint: tint,
+            title: name ?? flag.key,
+            // The key is what developers copy verbatim, so it takes the
+            // monospaced line — except where it is already carrying the title,
+            // because printing it twice buys nothing.
+            subtitle: name == nil ? nil : flag.key,
+            footnote: facts.isEmpty ? nil : facts.joined(separator: " · "),
+            isSubtitleMonospaced: true,
+            accessory: .pill(group.title, group.tint)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
 
-    /// Only shown when it adds something: `displayName` falls back to the key.
-    private var subtitle: String? {
-        let name = flag.displayName
-        return name == flag.key ? nil : name
+    /// The glyph carries the *kind* of flag, leaving the pill to carry its
+    /// state. A multivariate flag takes the warm secondary the way generated
+    /// dashboards do: it is a different thing to reason about than a switch.
+    private var glyph: String {
+        if group == .archived { return "archivebox" }
+        return flag.isMultivariate ? "arrow.triangle.branch" : "flag.fill"
+    }
+
+    private var tint: Color {
+        if group == .archived { return .secondary }
+        return flag.isMultivariate ? Theme.accentWarm : Theme.accent
+    }
+
+    /// Only present when it adds something: `displayName` falls back to the key.
+    private var name: String? {
+        let displayName = flag.displayName
+        return displayName == flag.key ? nil : displayName
     }
 
     private var facts: [String] {
@@ -221,7 +249,7 @@ struct FlagRowView: View {
     }
 
     private var accessibilityDescription: String {
-        ([flag.key, group.title] + (subtitle.map { [$0] } ?? []) + facts)
+        ([flag.key, group.title] + (name.map { [$0] } ?? []) + facts)
             .joined(separator: ", ")
     }
 }

@@ -92,19 +92,19 @@ struct TaxonomyRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load the taxonomy", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load the taxonomy",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
-            ContentUnavailableView {
-                Label("No events yet", systemImage: "list.bullet.rectangle")
-            } description: {
-                Text("This project hasn't received any events, so there is no taxonomy to show. Send an event from your SDK and it will appear here.")
-            }
+            EmptyStateView(
+                title: "No events yet",
+                systemImage: "list.bullet.rectangle",
+                message: "This project hasn't received any events, so there is no taxonomy to show. Send an event from your SDK and it will appear here."
+            )
         } else {
             list
         }
@@ -126,12 +126,14 @@ struct TaxonomyRoot: View {
             section(
                 for: .active,
                 header: "Events by volume",
+                systemImage: "bolt.fill",
                 footer: "Counted over the last 30 days — the window PostHog's taxonomy query uses, which isn't adjustable."
             )
 
             section(
                 for: .quiet,
                 header: "Quiet",
+                systemImage: "moon.zzz",
                 footer: "Not received in the last 30 days."
             )
 
@@ -153,6 +155,8 @@ struct TaxonomyRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -160,6 +164,7 @@ struct TaxonomyRoot: View {
     private func section(
         for status: TaxonomyEvent.Status,
         header: String,
+        systemImage: String,
         footer: String
     ) -> some View {
         let events = filtered.filter { $0.status == status }
@@ -169,9 +174,15 @@ struct TaxonomyRoot: View {
                     NavigationLink(value: event) {
                         TaxonomyEventRowView(event: event)
                     }
+                    .listRowBackground(
+                        Theme.cardBackground
+                            .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                            .padding(.vertical, 1)
+                    )
+                    .listRowSeparator(.hidden)
                 }
             } header: {
-                Text(header)
+                SectionLabel(text: header, systemImage: systemImage)
             } footer: {
                 Text(footer)
             }
@@ -197,7 +208,7 @@ struct TaxonomyRoot: View {
                     }
                 }
             } header: {
-                Text("Never sent")
+                SectionLabel(text: "Never sent", systemImage: "questionmark.circle")
             } footer: {
                 Text("PostHog pads its taxonomy answer with event names it recognises. These have no definition in this project, so nothing has ever sent them.")
             }
@@ -254,11 +265,10 @@ struct TaxonomySummaryCard: View {
 
     private func stat(value: String, label: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.title2.weight(.semibold))
-                .monospacedDigit()
-            Text(label)
-                .font(.caption.weight(.medium))
+            MetricTile(label: label, value: value, compact: true)
+            // The window each figure was measured over is the whole point of
+            // showing two of them, so it rides under the tile rather than being
+            // folded into the label.
             Text(detail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -279,37 +289,27 @@ struct TaxonomyEventRowView: View {
     let event: TaxonomyEvent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                // An event name is an identifier a developer types, so it is set
-                // monospaced to keep underscores and dollar signs unambiguous.
-                Text(event.name)
-                    .font(.subheadline.monospaced())
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                if event.isVerified {
-                    StatusPill(text: "Verified", tint: Theme.Status.good)
-                }
-                if event.isHidden {
-                    StatusPill(text: "Hidden", tint: .secondary)
-                }
-            }
-
-            if let description = event.description {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Text(volumeText)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+        // The event name leads the row rather than sitting in a monospaced
+        // second line: it is what the row is *about*, and the glyph beside it
+        // now carries the "this is an event" signal the monospacing used to.
+        DataRow(
+            glyph: "bolt",
+            title: event.name,
+            subtitle: event.description,
+            footnote: volumeText,
+            accessory: curationAccessory
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// Verified and hidden are mutually exclusive in PostHog, so this reads as
+    /// one state rather than two flags — and an ordinary event gets no pill at
+    /// all, because "not verified" on every row is noise.
+    private var curationAccessory: RowAccessory {
+        if event.isHidden { return .pill("Hidden", .secondary) }
+        if event.isVerified { return .pill("Verified", Theme.Status.good) }
+        return .none
     }
 
     private var volumeText: String {

@@ -49,13 +49,15 @@ struct AboutView: View {
                 Text("PostHog is a trademark of PostHog, Inc. GetHog is not affiliated with, endorsed by, or sponsored by PostHog, and uses none of its logos or wordmarks. It reaches your PostHog instance only with the personal API key you supply.")
             }
 
-            Section("Privacy") {
+            Section {
                 Label("Your API key stays in this device's Keychain", systemImage: "lock.shield")
                 Label("Requests go only to your own PostHog host", systemImage: "network")
                 Label("Cached responses stay on this device", systemImage: "internaldrive")
+            } header: {
+                SectionLabel(text: "Privacy", systemImage: "hand.raised")
             }
 
-            Section("Learn more") {
+            Section {
                 Link(destination: Self.docsURL) {
                     Label("PostHog documentation", systemImage: "book")
                 }
@@ -65,9 +67,12 @@ struct AboutView: View {
                 Link(destination: Self.scopesURL) {
                     Label("About personal API keys and scopes", systemImage: "key")
                 }
+            } header: {
+                SectionLabel(text: "Learn more", systemImage: "book")
             }
         }
         .listStyle(.insetGrouped)
+        .pageSurface()
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
     }

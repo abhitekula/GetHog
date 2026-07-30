@@ -70,20 +70,19 @@ struct PlaylistsView: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.playlists.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load playlists", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load playlists",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.playlists.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No playlists",
+            EmptyStateView(
+                title: "No playlists",
                 systemImage: "rectangle.stack",
-                description: Text(
+                message:
                     "Collections and saved replay filters made in the PostHog web console will appear here."
-                )
             )
         } else {
             list
@@ -94,17 +93,17 @@ struct PlaylistsView: View {
         List {
             if !store.own.isEmpty {
                 Section {
-                    ForEach(store.own) { PlaylistRowView(playlist: $0) }
+                    ForEach(store.own) { row($0) }
                 } header: {
-                    Text("Saved in this project")
+                    SectionLabel(text: "Saved in this project", systemImage: "bookmark.fill")
                 }
             }
 
             if !store.builtIn.isEmpty {
                 Section {
-                    ForEach(store.builtIn) { PlaylistRowView(playlist: $0) }
+                    ForEach(store.builtIn) { row($0) }
                 } header: {
-                    Text("Built in")
+                    SectionLabel(text: "Built in", systemImage: "wand.and.stars")
                 } footer: {
                     // Named as PostHog's, not the team's, because these appear in
                     // the same response and would otherwise read as playlists
@@ -115,8 +114,21 @@ struct PlaylistsView: View {
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.playlists.isEmpty)
+    }
+
+    private func row(_ playlist: SessionRecordingPlaylist) -> some View {
+        PlaylistRowView(playlist: playlist)
+            .listRowBackground(
+                Theme.cardBackground
+                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                    .padding(.vertical, 1)
+            )
+            .listRowSeparator(.hidden)
     }
 
     private func load() async {
@@ -131,30 +143,18 @@ struct PlaylistRowView: View {
     let playlist: SessionRecordingPlaylist
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label {
-                    Text(playlist.name).lineLimit(2)
-                } icon: {
-                    Image(systemName: playlist.pinned ? "pin.fill" : playlist.kind.systemImage)
-                }
-                .font(.body)
-
-                Spacer(minLength: 8)
-
-                StatusPill(text: playlist.kind.title, tint: .secondary)
-            }
-
-            if let description = playlist.description {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Text(playlist.countSummary)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            DataRow(
+                glyph: playlist.pinned ? "pin.fill" : playlist.kind.systemImage,
+                // PostHog's own views take the warm secondary rather than the app
+                // accent: they are real playlists, but they arrive in the same
+                // response and should not compete with the ones a team made.
+                tint: playlist.isSynthetic ? Theme.accentWarm : Theme.accent,
+                title: playlist.name,
+                subtitle: playlist.description,
+                footnote: playlist.countSummary,
+                accessory: .pill(playlist.kind.title, .secondary)
+            )
 
             if let progress = playlist.watchedProgress {
                 ProgressView(value: progress)

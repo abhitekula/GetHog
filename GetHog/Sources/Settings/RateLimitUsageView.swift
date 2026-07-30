@@ -43,8 +43,7 @@ struct RateLimitUsageView: View {
 
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
-                Text(Self.title(for: category))
-                    .font(.subheadline.weight(.medium))
+                SectionLabel(text: Self.title(for: category))
                 Spacer(minLength: 8)
                 // The number carries the state; colour only reinforces it, so
                 // the meter still reads correctly in greyscale.
@@ -106,10 +105,13 @@ struct RateLimitUsageView: View {
         }
     }
 
+    /// The middle band takes the app's warm secondary rather than a raw system
+    /// orange, so the meter sits in the same palette as every other chrome
+    /// warning. The number beside it still carries the state on its own.
     private static func tint(for fraction: Double) -> Color {
         switch fraction {
         case ..<0.5: Theme.Status.good
-        case ..<0.85: .orange
+        case ..<0.85: Theme.accentWarm
         default: Theme.Status.critical
         }
     }

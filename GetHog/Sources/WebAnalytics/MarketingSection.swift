@@ -72,23 +72,21 @@ struct MarketingSection: View {
     @ViewBuilder
     private var emptyOrError: some View {
         if let error {
-            ContentUnavailableView {
-                Label("Couldn't load marketing", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again", action: onRetry)
-            }
+            EmptyStateView(
+                title: "Couldn't load marketing",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: onRetry
+            )
         } else {
-            ContentUnavailableView(
-                "No campaign data",
+            EmptyStateView(
+                title: "No campaign data",
                 systemImage: "megaphone",
-                description: Text(
-                    """
+                message: """
                     PostHog builds this from ad spend synced by a connected advertising source. \
                     Connect one in Data pipelines to see campaigns, cost and return here.
                     """
-                )
             )
             .frame(maxWidth: .infinity)
         }

@@ -175,16 +175,18 @@ struct EventsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.events.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load events", systemImage: "exclamationmark.triangle")
-            } description: { Text(error) } actions: {
-                Button("Try again") { Task { await reload() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load events",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await reload() } }
+            )
         } else if store.events.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No events",
+            EmptyStateView(
+                title: "No events",
                 systemImage: "bolt.slash",
-                description: Text("No events matched. Try a different filter.")
+                message: "No events matched. Try a different filter."
             )
         } else {
             list
@@ -194,10 +196,18 @@ struct EventsRoot: View {
     private var list: some View {
         List(selection: $selected) {
             ForEach(store.buckets, id: \.title) { bucket in
-                Section(bucket.title) {
+                Section {
                     ForEach(bucket.events) { event in
                         NavigationLink(value: event) { EventRowView(event: event) }
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
                     }
+                } header: {
+                    SectionLabel(text: bucket.title, systemImage: "clock")
                 }
             }
 
@@ -209,11 +219,15 @@ struct EventsRoot: View {
                 }
                 .task { await loadMore() }
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.events.isEmpty)
     }
 
@@ -242,31 +256,54 @@ struct EventRowView: View {
     let event: EventRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                // PostHog's $-prefixed events read as code, so they're monospaced.
-                Text(event.event)
-                    .font(.subheadline.monospaced())
-                    .lineLimit(1)
-                Spacer()
-                if let ts = event.timestamp {
-                    Text(ts, format: .relative(presentation: .numeric, unitsStyle: .narrow))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            if let url = event.currentURL, let path = URL(string: url)?.path, !path.isEmpty {
-                Text(path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            } else if let distinctID = event.distinctID {
-                Text(distinctID)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+        DataRow(
+            glyph: glyph,
+            tint: tint,
+            title: event.event,
+            subtitle: subtitle,
+            footnote: footnote,
+            // The event name leads the row as its title now. The identifier
+            // beneath it — a URL path or a distinct id — is what stays
+            // monospaced, since that is the column being compared downwards.
+            isSubtitleMonospaced: true,
+            accessory: .none
+        )
+    }
+
+    /// Anything without PostHog's `$` prefix was instrumented by the product
+    /// team, which is usually what someone is scanning a feed for.
+    private var isCustom: Bool { !event.event.hasPrefix("$") }
+
+    /// Says what *kind* of event the row is before the name is read.
+    private var glyph: String {
+        switch event.event {
+        case "$pageview", "$screen": "doc.richtext"
+        case "$pageleave": "rectangle.portrait.and.arrow.right"
+        case "$autocapture": "hand.tap"
+        case "$rageclick": "hand.tap.fill"
+        case "$exception": "exclamationmark.triangle.fill"
+        case "$identify", "$set": "person.crop.circle"
+        default: isCustom ? "bolt.fill" : "bolt"
         }
+    }
+
+    /// Custom events take the warm secondary and PostHog's own autocapture
+    /// recedes to the app accent, so a feed that is mostly `$autocapture` does
+    /// not bury the handful of rows somebody deliberately instrumented.
+    private var tint: Color {
+        if event.event == "$exception" { return Theme.Status.critical }
+        return isCustom ? Theme.accentWarm : Theme.accent
+    }
+
+    private var subtitle: String? {
+        if let url = event.currentURL, let path = URL(string: url)?.path, !path.isEmpty {
+            return path
+        }
+        return event.distinctID
+    }
+
+    private var footnote: String? {
+        event.timestamp?.formatted(.relative(presentation: .numeric, unitsStyle: .narrow))
     }
 }
 

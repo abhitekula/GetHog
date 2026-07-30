@@ -44,8 +44,21 @@ extension LogSeverity {
         switch self {
         case .fatal, .error: Theme.Status.critical
         case .warn: Theme.accentWarm
-        case .info: Theme.accent
-        case .debug, .trace, .unknown: .secondary
+        case .info, .debug: Theme.accent
+        case .trace, .unknown: .secondary
+        }
+    }
+
+    /// A second, non-colour encoding of severity, so the shape of a row's glyph
+    /// separates a fatal from an info before its pill has been read.
+    var glyph: String {
+        switch self {
+        case .fatal: "exclamationmark.octagon.fill"
+        case .error: "exclamationmark.triangle.fill"
+        case .warn: "exclamationmark.circle.fill"
+        case .info: "info.circle.fill"
+        case .debug, .trace: "ladybug.fill"
+        case .unknown: "questionmark.circle.fill"
         }
     }
 }
@@ -144,22 +157,22 @@ struct LogsRoot: View {
                 }
 
             case .failed(let message):
-                ContentUnavailableView {
-                    Label(store.state.headline, systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("Try again") { Task { await load() } }
-                }
+                EmptyStateView(
+                    title: store.state.headline,
+                    systemImage: "exclamationmark.triangle",
+                    message: message,
+                    actionTitle: "Try again",
+                    action: { Task { await load() } }
+                )
 
             case .empty:
                 VStack(spacing: 0) {
                     filterBar
-                    ContentUnavailableView(
+                    EmptyStateView(
                         // Short on purpose: the title truncates to one line.
-                        store.state.headline,
+                        title: store.state.headline,
                         systemImage: "text.alignleft",
-                        description: Text(emptyDescription)
+                        message: emptyDescription
                     )
                     .frame(maxHeight: .infinity)
                 }
@@ -184,11 +197,13 @@ struct LogsRoot: View {
         return clauses.joined(separator: " ") + "."
     }
 
+    /// The glass bar rides a horizontal scroll view because its controls grow
+    /// with Dynamic Type and would otherwise be clipped rather than reachable.
     private var filterBar: some View {
         @Bindable var store = store
 
         return ScrollView(.horizontal) {
-            HStack(spacing: Theme.Space.s) {
+            GlassFilterBar {
                 Picker("Time range", selection: $store.window) {
                     ForEach(LogsWindow.allCases) { Text($0.title).tag($0) }
                 }
@@ -201,7 +216,6 @@ struct LogsRoot: View {
                 .toggleStyle(.button)
                 .font(.footnote)
             }
-            .padding(.horizontal, Theme.Space.l)
             .padding(.vertical, Theme.Space.s)
         }
         .scrollIndicators(.hidden)
@@ -215,21 +229,35 @@ struct LogsRoot: View {
                     // Reached only by the client-side severity filter: the rows
                     // exist, none of them are problems. Saying so beats an empty
                     // list that looks like a failed load.
-                    Text("No error or fatal lines in the last \(store.window.title.lowercased()).")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    EmptyStateView(
+                        title: "No problems in this window",
+                        systemImage: "checkmark.circle",
+                        message: "No error or fatal lines in the last \(store.window.title.lowercased())."
+                    )
+                    .listRowBackground(Color.clear)
                 } else {
                     ForEach(store.visibleRows) { row in
                         LogRowView(row: row)
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
                     }
                 }
             } header: {
-                Text("\(store.visibleRows.count) line\(store.visibleRows.count == 1 ? "" : "s")")
+                SectionLabel(
+                    text: "\(store.visibleRows.count) line\(store.visibleRows.count == 1 ? "" : "s")",
+                    systemImage: "text.alignleft"
+                )
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -283,43 +311,32 @@ struct LogRowView: View {
     let row: LogRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                StatusPill(text: row.severity.title, tint: row.severity.tint)
-
-                Spacer(minLength: Theme.Space.s)
-
-                if let timestamp = row.timestamp {
-                    Text(timestamp, format: .relative(presentation: .named))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            // Monospaced and selectable: a log line is something you copy into a
-            // search box, and alignment carries meaning in structured output.
-            Text(row.body)
-                .font(.caption.monospaced())
-                .lineLimit(6)
-                .textSelection(.enabled)
-
-            if row.serviceName != nil || row.traceID != nil {
-                HStack(spacing: Theme.Space.m) {
-                    if let service = row.serviceName {
-                        Text(service)
-                    }
-                    if let traceID = row.traceID {
-                        Text(traceID.prefix(12))
-                            .font(.caption2.monospaced())
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.vertical, Theme.Space.xs)
+        DataRow(
+            glyph: row.severity.glyph,
+            tint: row.severity.tint,
+            title: row.serviceName ?? "Unknown service",
+            subtitle: row.body,
+            footnote: provenance,
+            // Alignment carries meaning in structured output, so the line keeps
+            // code type even at one line.
+            isSubtitleMonospaced: true,
+            accessory: .pill(row.severity.title, row.severity.tint)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// When it happened and which trace it belongs to — the two things needed to
+    /// find the same line again in the web console.
+    private var provenance: String {
+        var parts: [String] = []
+        if let timestamp = row.timestamp {
+            parts.append(timestamp.formatted(.relative(presentation: .named)))
+        }
+        if let traceID = row.traceID {
+            parts.append(String(traceID.prefix(12)))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var spokenSummary: String {

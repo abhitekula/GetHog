@@ -135,23 +135,21 @@ struct WebVitalsSection: View {
     @ViewBuilder
     private var emptyOrError: some View {
         if let error {
-            ContentUnavailableView {
-                Label("Couldn't load vitals", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again", action: onRetry)
-            }
+            EmptyStateView(
+                title: "Couldn't load vitals",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: onRetry
+            )
         } else {
-            ContentUnavailableView(
-                "No \(metric.rawValue) data",
+            EmptyStateView(
+                title: "No \(metric.rawValue) data",
                 systemImage: "gauge.with.needle",
-                description: Text(
-                    """
+                message: """
                     No pages reported \(metric.title) in this window. \
                     Core Web Vitals need performance capture switched on in the PostHog browser SDK.
                     """
-                )
             )
             .frame(maxWidth: .infinity)
         }
@@ -213,26 +211,21 @@ struct WebVitalEntryRow: View {
     let metric: WebVitalMetric
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                // Middle truncation: these paths share long prefixes, so the tail
-                // is what tells two of them apart.
-                Text(entry.path)
-                    .font(.subheadline)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-
-                if let band = entry.band {
-                    StatusPill(text: band.title, tint: band.tint)
-                }
-            }
-
-            Spacer(minLength: Theme.Space.s)
-
-            Text(metric.format(entry.value))
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-        }
+        DataRow(
+            glyph: "doc.text",
+            // The band tints the glyph as well as the pill, but it never travels
+            // alone: the pill always carries the band's name.
+            tint: entry.band?.tint ?? Theme.accent,
+            title: entry.path,
+            subtitle: metric.format(entry.value),
+            // Monospaced for the same reason a key is: it is the figure being
+            // compared down the column, and proportional digits misalign it.
+            isSubtitleMonospaced: true,
+            accessory: bandAccessory
+        )
+        // Middle truncation: these paths share long prefixes, so the tail is
+        // what tells two of them apart.
+        .truncationMode(.middle)
         .padding(.vertical, Theme.Space.xs)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
@@ -241,5 +234,12 @@ struct WebVitalEntryRow: View {
             \(entry.band.map { ", \($0.title)" } ?? "")
             """
         )
+    }
+
+    /// A page PostHog reported without a band is left unlabelled rather than
+    /// given a neutral pill, which would read as a verdict nobody made.
+    private var bandAccessory: RowAccessory {
+        guard let band = entry.band else { return .none }
+        return .pill(band.title, band.tint)
     }
 }

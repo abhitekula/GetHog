@@ -49,18 +49,23 @@ enum AutomationSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Says what the resource *is* and why a project reasonably has none of it.
+    ///
+    /// Empty is the normal state on all five of these — a plain "nothing here"
+    /// reads as a screen that failed rather than a project that never needed the
+    /// feature, and that is the wrong impression to leave.
     var emptyDescription: String {
         switch self {
         case .workflows:
-            "Messaging and automation workflows built in PostHog will appear here."
+            "A workflow chains messaging and automation steps behind a trigger. None have been built in this project."
         case .endpoints:
-            "Saved queries published over HTTP will appear here."
+            "An endpoint publishes a saved query over HTTP so another service can call it. None are defined here, which is what the zero counts above are reporting."
         case .alerts:
-            "Alerts watching an insight's value will appear here."
+            "An alert watches one insight's value and fires when it crosses a threshold. Nothing on this project is being watched."
         case .subscriptions:
-            "Scheduled insight and dashboard deliveries will appear here."
+            "A subscription mails or posts an insight or dashboard on a schedule. Nobody has scheduled a delivery from this project."
         case .exports:
-            "Scheduled bulk exports to a warehouse or object store will appear here."
+            "A batch export copies events or persons out to a warehouse or object store on a schedule. Nothing is leaving this project in bulk."
         }
     }
 
@@ -284,18 +289,20 @@ struct AutomationRoot: View {
     /// VoiceOver, and the section header directly below always names the
     /// selected one in full, so nothing is left to the glyph alone.
     private var picker: some View {
-        Picker("Resource", selection: $section) {
-            ForEach(AutomationSection.allCases) { section in
-                Label(section.title, systemImage: section.systemImage)
-                    .labelStyle(.iconOnly)
-                    .tag(section)
+        GlassFilterBar {
+            Picker("Resource", selection: $section) {
+                ForEach(AutomationSection.allCases) { section in
+                    Label(section.title, systemImage: section.systemImage)
+                        .labelStyle(.iconOnly)
+                        .tag(section)
+                }
             }
+            .pickerStyle(.segmented)
+            // Stays on the picker rather than on the glass bar around it: a
+            // label on the container would not reach the control.
+            .accessibilityLabel("Automation resource")
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .accessibilityLabel("Automation resource")
+        .padding(.vertical, Theme.Space.s)
     }
 
     private var list: some View {
@@ -311,7 +318,7 @@ struct AutomationRoot: View {
             Section {
                 sectionBody
             } header: {
-                Label(section.title, systemImage: section.systemImage)
+                SectionLabel(text: section.title, systemImage: section.systemImage)
             } footer: {
                 if let footer = section.footer {
                     Text(footer)
@@ -321,42 +328,56 @@ struct AutomationRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
     @ViewBuilder
     private var sectionBody: some View {
         if let error = store.errors[section] {
-            ContentUnavailableView {
-                Label("Couldn't load \(section.title.lowercased())", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load \(section.title.lowercased())",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         } else if section == .endpoints {
             // Endpoints alone carry a usage panel, which has to render even when
             // the list is empty — "no endpoints" is precisely what explains the
             // zeros, so the two belong on screen together.
             endpointsBody
         } else if store.count(for: section) == 0 && !store.isLoading {
-            ContentUnavailableView(
-                section.emptyTitle,
+            EmptyStateView(
+                title: section.emptyTitle,
                 systemImage: section.systemImage,
-                description: Text(section.emptyDescription)
+                message: section.emptyDescription
             )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         } else {
             switch section {
             case .workflows:
-                ForEach(store.workflows) { WorkflowRowView(workflow: $0) }
+                ForEach(store.workflows) {
+                    WorkflowRowView(workflow: $0).automationRowCard()
+                }
             case .endpoints:
                 EmptyView()
             case .alerts:
-                ForEach(store.alerts) { InsightAlertRowView(alert: $0) }
+                ForEach(store.alerts) {
+                    InsightAlertRowView(alert: $0).automationRowCard()
+                }
             case .subscriptions:
-                ForEach(store.subscriptions) { SubscriptionRowView(subscription: $0) }
+                ForEach(store.subscriptions) {
+                    SubscriptionRowView(subscription: $0).automationRowCard()
+                }
             case .exports:
-                ForEach(store.exports) { BatchExportRowView(export: $0) }
+                ForEach(store.exports) {
+                    BatchExportRowView(export: $0).automationRowCard()
+                }
             }
         }
     }
@@ -366,13 +387,17 @@ struct AutomationRoot: View {
         EndpointUsagePanel(store: store) { Task { await reloadUsage() } }
 
         if store.endpoints.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                section.emptyTitle,
+            EmptyStateView(
+                title: section.emptyTitle,
                 systemImage: section.systemImage,
-                description: Text(section.emptyDescription)
+                message: section.emptyDescription
             )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         } else {
-            ForEach(store.endpoints) { QueryEndpointRowView(endpoint: $0) }
+            ForEach(store.endpoints) {
+                QueryEndpointRowView(endpoint: $0).automationRowCard()
+            }
         }
     }
 
@@ -549,24 +574,14 @@ struct WorkflowRowView: View {
     let workflow: Workflow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(workflow.name).font(.body).lineLimit(2)
-                Spacer(minLength: 8)
-                StatusPill(text: workflow.status.title, tint: automationTint(workflow.status))
-            }
-
-            Text(workflow.triggerSummary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let description = workflow.description {
-                Text(description)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-            }
-        }
+        DataRow(
+            glyph: "arrow.triangle.branch",
+            tint: workflow.status == .active ? Theme.accent : .secondary,
+            title: workflow.name,
+            subtitle: workflow.triggerSummary,
+            footnote: workflow.description,
+            accessory: .pill(workflow.status.title, automationTint(workflow.status))
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(workflow.name), \(workflow.status.title), \(workflow.triggerSummary)"
@@ -578,38 +593,40 @@ struct QueryEndpointRowView: View {
     let endpoint: QueryEndpoint
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                // The name is what a caller puts in a URL, so it stays monospaced.
-                Text(endpoint.name).font(.subheadline.monospaced()).lineLimit(1)
-                Spacer(minLength: 8)
-                StatusPill(
-                    text: endpoint.statusText,
-                    tint: endpoint.isActive ? Theme.Status.good : .secondary
-                )
-            }
-
-            if let description = endpoint.description {
-                Text(description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-
-            Text(detailLine)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+        DataRow(
+            glyph: "network",
+            tint: Theme.accent,
+            // The name is what a caller puts in a URL. It leads the row as its
+            // title rather than as a monospaced second line, because it is also
+            // the only label an endpoint has.
+            title: endpoint.name,
+            subtitle: endpoint.description ?? endpoint.queryKind,
+            footnote: detailLine,
+            // The fallback is the stored query node's own `kind` — a schema type
+            // name, so it is set as one.
+            isSubtitleMonospaced: endpoint.description == nil,
+            accessory: .pill(
+                endpoint.statusText,
+                endpoint.isActive ? Theme.Status.good : .secondary
+            )
+        )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(endpoint.name), \(endpoint.statusText), \(detailLine)")
+        .accessibilityLabel(
+            "\(endpoint.name), \(endpoint.statusText), "
+                + "\(endpoint.description ?? endpoint.queryKind ?? "query kind unknown"), "
+                + detailLine
+        )
     }
 
+    /// Freshness and shape, minus the query kind — that now leads the row's
+    /// second line when there is no description to put there.
     private var detailLine: String {
-        var parts: [String] = []
-        parts.append(endpoint.queryKind ?? "Query kind unknown")
+        var parts = [
+            endpoint.lastExecutedAt
+                .map { "Last run \($0.formatted(.relative(presentation: .named)))" }
+                ?? "Never run"
+        ]
         if endpoint.isMaterialized { parts.append("materialised") }
-        if let last = endpoint.lastExecutedAt {
-            parts.append("last run \(last.formatted(.relative(presentation: .named)))")
-        } else {
-            parts.append("never run")
-        }
         return parts.joined(separator: " · ")
     }
 }
@@ -618,23 +635,16 @@ struct InsightAlertRowView: View {
     let alert: InsightAlert
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(alert.displayTitle).font(.body).lineLimit(2)
-                Spacer(minLength: 8)
-                StatusPill(text: alert.state.title, tint: alertTint(alert.state))
-            }
-
-            Text(detailLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if !alert.enabled {
-                Text("Not being evaluated")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+        DataRow(
+            // A firing alert gets the badged bell and the critical tint, so the
+            // one row worth acting on is findable before the pill is read.
+            glyph: alert.state == .firing ? "bell.badge" : "bell",
+            tint: alert.state == .firing ? Theme.Status.critical : Theme.accent,
+            title: alert.displayTitle,
+            subtitle: detailLine,
+            footnote: alert.enabled ? nil : "Not being evaluated",
+            accessory: .pill(alert.state.title, alertTint(alert.state))
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(alert.displayTitle), \(alert.state.title), \(detailLine)"
@@ -657,33 +667,31 @@ struct SubscriptionRowView: View {
     let subscription: InsightSubscription
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label(subscription.displayTitle, systemImage: subscription.target.systemImage)
-                    .font(.body)
-                    .lineLimit(2)
-                Spacer(minLength: 8)
-                StatusPill(
-                    text: subscription.statusText,
-                    tint: subscription.enabled ? Theme.Status.good : .secondary
-                )
-            }
-
-            Text(detailLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            if let next = subscription.nextDeliveryDate, subscription.enabled {
-                Text("Next \(next.formatted(.relative(presentation: .named)))")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+        DataRow(
+            // The destination is the row's kind — an email digest and a webhook
+            // post are different things to go looking for.
+            glyph: subscription.target.systemImage,
+            tint: subscription.enabled ? Theme.accent : .secondary,
+            title: subscription.displayTitle,
+            subtitle: detailLine,
+            footnote: nextDeliveryText,
+            accessory: .pill(
+                subscription.statusText,
+                subscription.enabled ? Theme.Status.good : .secondary
+            )
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(subscription.displayTitle), \(subscription.target.title), \(subscription.statusText), \(detailLine)"
         )
+    }
+
+    /// Only promised for an enabled subscription: PostHog keeps sending a next
+    /// date for paused ones, and printing it would state a delivery that is not
+    /// going to happen.
+    private var nextDeliveryText: String? {
+        guard subscription.enabled, let next = subscription.nextDeliveryDate else { return nil }
+        return "Next \(next.formatted(.relative(presentation: .named)))"
     }
 
     private var detailLine: String {
@@ -697,37 +705,40 @@ struct BatchExportRowView: View {
     let export: BatchExport
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(export.name).font(.body).lineLimit(2)
-                Spacer(minLength: 8)
-                StatusPill(
-                    text: export.statusText,
-                    tint: export.paused ? .secondary : Theme.Status.good
-                )
-            }
-
-            Text(detailLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let error = export.lastRunError {
-                Text(error)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Status.critical)
-                    .lineLimit(2)
-            } else if let last = export.lastRunAt {
-                Text("Last run \(last.formatted(.relative(presentation: .named))) · \(export.lastRunHealth.title)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            } else {
-                Text("Never run")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+        DataRow(
+            glyph: "shippingbox",
+            tint: export.lastRunHealth == .failed ? Theme.Status.critical : Theme.accent,
+            title: export.name,
+            subtitle: detailLine,
+            footnote: runLine,
+            accessory: accessory
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// The pill reports the run, not the schedule — an export that is nominally
+    /// running but whose last run errored is not doing its job, and "Running"
+    /// alone would say it is. A paused export is the exception: it has no
+    /// current run to report on.
+    private var accessory: RowAccessory {
+        if export.paused { return .pill("Paused", .secondary) }
+        switch export.lastRunHealth {
+        case .healthy: return .pill("Succeeded", Theme.Status.good)
+        case .failed: return .pill("Failed", Theme.Status.critical)
+        case .running: return .pill("Running", Theme.accent)
+        case .paused: return .pill("Cancelled", .secondary)
+        // `latest_runs` was empty, which is not a run that reported nothing.
+        case .unknown: return .pill("Never run", .secondary)
+        }
+    }
+
+    private var runLine: String {
+        if let error = export.lastRunError { return error }
+        if let last = export.lastRunAt {
+            return "Last run \(last.formatted(.relative(presentation: .named))) · \(export.lastRunHealth.title)"
+        }
+        return "Never run"
     }
 
     private var detailLine: String {
@@ -751,9 +762,23 @@ struct BatchExportRowView: View {
     }
 }
 
-// MARK: - Formatting
+// MARK: - Row chrome and formatting
 //
 // File-private so concurrent work on other screens can't collide with the name.
+
+private extension View {
+    /// The list treatment from the dashboards screen: every row is its own card
+    /// on the page ground, with the system separator suppressed because the gap
+    /// between cards already does that work.
+    func automationRowCard() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
+    }
+}
 
 /// Tint for a workflow state. Always paired with the state's own words.
 private func automationTint(_ status: WorkflowStatus) -> Color {

@@ -11,6 +11,21 @@ import SwiftUI
 /// below is therefore explicit and named rather than inferred from whether a
 /// list happens to be empty.
 
+// MARK: - Row surface
+
+private extension View {
+    /// The reference screens' card row, applied in one place because four lists
+    /// on this screen carry it.
+    func cardRow() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
+    }
+}
+
 // MARK: - Time range
 
 /// The windows offered for a span search.
@@ -153,22 +168,22 @@ struct TracingRoot: View {
                 }
 
             case .failed(let message):
-                ContentUnavailableView {
-                    Label("Couldn't load spans", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("Try again") { Task { await load() } }
-                }
+                EmptyStateView(
+                    title: "Couldn't load spans",
+                    systemImage: "exclamationmark.triangle",
+                    message: message,
+                    actionTitle: "Try again",
+                    action: { Task { await load() } }
+                )
 
             case .empty:
                 VStack(spacing: 0) {
                     filterBar
-                    ContentUnavailableView(
+                    EmptyStateView(
                         // Short on purpose: the title gets one line and truncates.
-                        store.state.headline,
+                        title: store.state.headline,
                         systemImage: "point.3.connected.trianglepath.dotted",
-                        description: Text(emptyDescription)
+                        message: emptyDescription
                     )
                     .frame(maxHeight: .infinity)
                 }
@@ -194,11 +209,13 @@ struct TracingRoot: View {
         return clauses.joined(separator: " ") + "."
     }
 
+    /// The glass bar rides a horizontal scroll view because three controls plus
+    /// Dynamic Type outgrow the width, and a clipped filter is an unusable one.
     private var filterBar: some View {
         @Bindable var store = store
 
         return ScrollView(.horizontal) {
-            HStack(spacing: Theme.Space.s) {
+            GlassFilterBar {
                 Picker("Time range", selection: $store.window) {
                     ForEach(TracingWindow.allCases) { Text($0.title).tag($0) }
                 }
@@ -220,7 +237,6 @@ struct TracingRoot: View {
                 .font(.footnote)
                 .onChange(of: store.errorsOnly) { Task { await load() } }
             }
-            .padding(.horizontal, Theme.Space.l)
             .padding(.vertical, Theme.Space.s)
         }
         .scrollIndicators(.hidden)
@@ -234,9 +250,13 @@ struct TracingRoot: View {
                     NavigationLink(value: trace) {
                         TraceRowView(trace: trace)
                     }
+                    .cardRow()
                 }
             } header: {
-                Text("\(store.traces.count) trace\(store.traces.count == 1 ? "" : "s")")
+                SectionLabel(
+                    text: "\(store.traces.count) trace\(store.traces.count == 1 ? "" : "s")",
+                    systemImage: "point.3.connected.trianglepath.dotted"
+                )
             } footer: {
                 Text("One row per trace, showing its entry span. Tap for the spans inside it.")
             }
@@ -244,6 +264,8 @@ struct TracingRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -296,40 +318,35 @@ struct TraceRowView: View {
     let trace: TraceGroup
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                Text(trace.name)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(2)
-
-                Spacer(minLength: Theme.Space.s)
-
-                if trace.hasError {
-                    StatusPill(text: "Error", tint: Theme.Status.critical)
-                }
-            }
-
-            HStack(spacing: 10) {
-                Text(trace.serviceName)
-                Text(trace.formattedDuration)
-                Text("\(trace.spans.count) span\(trace.spans.count == 1 ? "" : "s")")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                // The trace id is what you paste into the web console, so it
-                // stays monospaced even truncated.
-                Text(trace.shortID).font(.caption2.monospaced())
-                if let started = trace.startedAt {
-                    Text(started, format: .relative(presentation: .named))
-                }
-            }
-            .foregroundStyle(.tertiary)
-            .font(.caption2)
-        }
+        DataRow(
+            glyph: trace.hasError
+                ? "exclamationmark.triangle.fill"
+                : "point.3.connected.trianglepath.dotted",
+            tint: trace.hasError ? Theme.Status.critical : Theme.accent,
+            title: trace.name,
+            // The trace id is what you paste into the web console, so it stays
+            // monospaced even truncated.
+            subtitle: trace.shortID,
+            footnote: shape,
+            isSubtitleMonospaced: true,
+            accessory: trace.hasError
+                ? .pill("Error", Theme.Status.critical)
+                : .metric(trace.formattedDuration)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var shape: String {
+        var parts = [trace.serviceName]
+        // A failing trace spends its trailing slot on the error pill, so wall
+        // time moves down here rather than dropping off the row entirely.
+        if trace.hasError { parts.append(trace.formattedDuration) }
+        parts.append("\(trace.spans.count) span\(trace.spans.count == 1 ? "" : "s")")
+        if let started = trace.startedAt {
+            parts.append(started.formatted(.relative(presentation: .named)))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var spokenSummary: String {
@@ -351,16 +368,34 @@ struct TraceDetailView: View {
 
     var body: some View {
         List {
-            Section("Trace") {
-                LabeledContent("ID") {
-                    Text(trace.id).font(.caption.monospaced()).textSelection(.enabled)
+            Section {
+                StatStrip {
+                    MetricTile(label: "Duration", value: trace.formattedDuration, compact: true)
+                    MetricTile(label: "Spans", value: trace.spans.count.formatted(), compact: true)
+                    MetricTile(
+                        label: "Errors",
+                        value: trace.errorCount.formatted(),
+                        compact: true
+                    )
                 }
-                LabeledContent("Service") { Text(trace.serviceName) }
-                LabeledContent("Duration") { Text(trace.formattedDuration) }
-                if let started = trace.startedAt {
-                    LabeledContent("Started") { Text(started, format: .dateTime) }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+            Section {
+                Group {
+                    LabeledContent("ID") {
+                        Text(trace.id).font(.caption.monospaced()).textSelection(.enabled)
+                    }
+                    LabeledContent("Service") { Text(trace.serviceName) }
+                    if let started = trace.startedAt {
+                        LabeledContent("Started") { Text(started, format: .dateTime) }
+                    }
                 }
-                LabeledContent("Spans") { Text(trace.spans.count.formatted()) }
+                .cardRow()
+            } header: {
+                SectionLabel(text: "Trace", systemImage: "point.3.connected.trianglepath.dotted")
             }
 
             if let root = trace.root {
@@ -372,9 +407,16 @@ struct TraceDetailView: View {
                             window: window
                         )
                     } label: {
-                        Label("Call tree for \(root.name)", systemImage: "list.bullet.indent")
-                            .lineLimit(2)
+                        DataRow(
+                            glyph: "list.bullet.indent",
+                            title: "Call tree",
+                            subtitle: root.name,
+                            isSubtitleMonospaced: true,
+                            accessory: .none
+                        )
                     }
+                    .accessibilityLabel("Call tree for \(root.name)")
+                    .cardRow()
                 } footer: {
                     Text("Aggregates every trace that entered through this span in the window, not just this one.")
                 }
@@ -387,11 +429,14 @@ struct TraceDetailView: View {
                     } label: {
                         SpanRowView(span: span, traceDuration: trace.durationNanos)
                     }
+                    .cardRow()
                 }
             } header: {
-                Text("Spans")
+                SectionLabel(text: "Spans", systemImage: "rectangle.stack")
             }
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .navigationTitle(trace.name)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -408,15 +453,21 @@ struct SpanRowView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                Text(span.name).font(.subheadline).lineLimit(2)
-                Spacer(minLength: Theme.Space.s)
-                Text(span.formattedDuration)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            DataRow(
+                glyph: span.isError ? "exclamationmark.triangle.fill" : "circle.dashed",
+                tint: span.isError ? Theme.Status.critical : Theme.accent,
+                title: span.name,
+                subtitle: span.serviceName,
+                footnote: qualifiers,
+                isSubtitleMonospaced: true,
+                accessory: span.isError
+                    ? .pill(span.status.title, Theme.Status.critical)
+                    : .metric(span.formattedDuration)
+            )
 
+            // The bar is what makes a slow span findable without reading a
+            // single duration, so it survives the move to `DataRow`.
             GeometryReader { proxy in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(span.isError ? Theme.Status.critical : Theme.accent)
@@ -425,24 +476,23 @@ struct SpanRowView: View {
             .frame(height: 4)
             .background(Color.secondary.opacity(0.15), in: .rect(cornerRadius: 2))
             .accessibilityHidden(true)
-
-            HStack(spacing: Theme.Space.s) {
-                Text(span.serviceName)
-                if span.isRoot { Text("Root") }
-                if span.isError {
-                    Text(span.status.title).foregroundStyle(Theme.Status.critical)
-                }
-                if !span.matchedFilter {
-                    // Present only because it shares a trace with a match.
-                    // Saying so keeps the filter's result honest.
-                    Text("Context")
-                }
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var qualifiers: String {
+        var parts: [String] = []
+        // An erroring span spends its trailing slot on the status pill, so its
+        // duration is stated here instead.
+        if span.isError { parts.append(span.formattedDuration) }
+        if span.isRoot { parts.append("Root") }
+        if !span.matchedFilter {
+            // Present only because it shares a trace with a match. Saying so
+            // keeps the filter's result honest.
+            parts.append("Context")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var spokenSummary: String {
@@ -466,25 +516,37 @@ struct SpanDetailView: View {
 
     var body: some View {
         List {
-            Section("Span") {
-                LabeledContent("Name") { Text(span.name) }
-                LabeledContent("Service") { Text(span.serviceName) }
-                LabeledContent("Status") { Text(span.status.title) }
-                LabeledContent("Duration") { Text(span.formattedDuration) }
-                if let kind = span.kind {
-                    LabeledContent("Kind") { Text(kind) }
-                }
-                if let timestamp = span.timestamp {
-                    LabeledContent("Started") { Text(timestamp, format: .dateTime) }
-                }
-                LabeledContent("Span ID") {
-                    Text(span.spanID).font(.caption.monospaced()).textSelection(.enabled)
-                }
-                if let parent = span.parentSpanID {
-                    LabeledContent("Parent") {
-                        Text(parent).font(.caption.monospaced()).textSelection(.enabled)
+            Section {
+                Group {
+                    LabeledContent("Name") { Text(span.name) }
+                    LabeledContent("Service") { Text(span.serviceName) }
+                    LabeledContent("Status") {
+                        // The status reads as a word here too: severity never
+                        // rests on the row's tint alone.
+                        StatusPill(
+                            text: span.status.title,
+                            tint: span.isError ? Theme.Status.critical : Theme.Status.good
+                        )
+                    }
+                    LabeledContent("Duration") { Text(span.formattedDuration) }
+                    if let kind = span.kind {
+                        LabeledContent("Kind") { Text(kind) }
+                    }
+                    if let timestamp = span.timestamp {
+                        LabeledContent("Started") { Text(timestamp, format: .dateTime) }
+                    }
+                    LabeledContent("Span ID") {
+                        Text(span.spanID).font(.caption.monospaced()).textSelection(.enabled)
+                    }
+                    if let parent = span.parentSpanID {
+                        LabeledContent("Parent") {
+                            Text(parent).font(.caption.monospaced()).textSelection(.enabled)
+                        }
                     }
                 }
+                .cardRow()
+            } header: {
+                SectionLabel(text: "Span", systemImage: "circle.dashed")
             }
 
             Section {
@@ -492,6 +554,7 @@ struct SpanDetailView: View {
                     Text("This span carries no attributes.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .cardRow()
                 } else {
                     ForEach(sortedAttributes, id: \.key) { attribute in
                         VStack(alignment: .leading, spacing: 2) {
@@ -504,12 +567,15 @@ struct SpanDetailView: View {
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("\(attribute.key): \(attribute.value)")
+                        .cardRow()
                     }
                 }
             } header: {
-                Text("Attributes")
+                SectionLabel(text: "Attributes", systemImage: "tag")
             }
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .navigationTitle(span.name)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -550,21 +616,19 @@ struct TraceSpanTreeView: View {
             }
 
         case .failed(let message):
-            ContentUnavailableView {
-                Label("Couldn't load the call tree", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load the call tree",
+                systemImage: "exclamationmark.triangle",
+                message: message,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
 
         case .empty:
-            ContentUnavailableView(
-                "No call tree",
+            EmptyStateView(
+                title: "No call tree",
                 systemImage: "list.bullet.indent",
-                description: Text(
-                    "No trace entered through \(spanName) in \(serviceName) during the last \(window.title.lowercased())."
-                )
+                message: "No trace entered through \(spanName) in \(serviceName) during the last \(window.title.lowercased())."
             )
 
         case .loading, .loaded:
@@ -577,9 +641,10 @@ struct TraceSpanTreeView: View {
             Section {
                 ForEach(flattened, id: \.node.id) { entry in
                     TreeEdgeRowView(node: entry.node, depth: entry.depth)
+                        .cardRow()
                 }
             } header: {
-                Text(spanName)
+                SectionLabel(text: spanName, systemImage: "list.bullet.indent")
             } footer: {
                 Text("Percentiles are across every matching span in the window. A child can exceed its parent's total by running more than once per call.")
             }
@@ -587,6 +652,8 @@ struct TraceSpanTreeView: View {
             FreshnessLabel(date: loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(state == .loading)
     }
 
@@ -623,34 +690,36 @@ struct TreeEdgeRowView: View {
     private var edge: TraceSpanTreeEdge { node.edge }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                Text(edge.name)
-                    .font(.subheadline)
-                    .lineLimit(2)
-                Spacer(minLength: Theme.Space.s)
-                if edge.hasErrors {
-                    StatusPill(text: "\(edge.errorCount) err", tint: Theme.Status.critical)
-                }
-            }
-
-            HStack(spacing: 10) {
-                Text("\(Double(edge.count).compactFormatted) calls")
-                Text("p50 \(TraceSpan.formatDuration(nanos: edge.p50Nanos))")
-                Text("p95 \(TraceSpan.formatDuration(nanos: edge.p95Nanos))")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Text(secondLine)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+        DataRow(
+            // A child edge is drawn as a branch so nesting survives the moment
+            // the indentation runs out of width.
+            glyph: depth == 0 ? "list.bullet.indent" : "arrow.turn.down.right",
+            tint: edge.hasErrors ? Theme.Status.critical : Theme.accent,
+            title: edge.name,
+            subtitle: timings,
+            footnote: secondLine,
+            accessory: edge.hasErrors
+                ? .pill("\(edge.errorCount) err", Theme.Status.critical)
+                : .metric(TraceSpan.formatDuration(nanos: edge.p95Nanos))
+        )
         // Indentation is the only thing conveying nesting, so it is stated in
         // the accessibility label too rather than left to the visual offset.
         .padding(.leading, CGFloat(depth) * 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var timings: String {
+        var parts = [
+            "\(Double(edge.count).compactFormatted) calls",
+            "p50 \(TraceSpan.formatDuration(nanos: edge.p50Nanos))",
+        ]
+        // The error pill takes the trailing slot on a failing edge, so p95 —
+        // the number this tree is read for — moves inline rather than away.
+        if edge.hasErrors {
+            parts.append("p95 \(TraceSpan.formatDuration(nanos: edge.p95Nanos))")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var secondLine: String {

@@ -12,40 +12,26 @@ struct WebNotableChangeRow: View {
     let rank: Int
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-            Text("\(rank)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(minWidth: 20, alignment: .trailing)
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            // The score keeps its word: this column is the whole reason the list
+            // is ordered the way it is, and a bare number trailing every row
+            // would leave that to be guessed.
+            DataRow(
+                glyph: dimensionGlyph,
+                title: change.displayValue,
+                subtitle: "\(change.currentValue.compactFormatted) \(change.metric)",
+                footnote: change.displayDimension,
+                accessory: .metric(
+                    "\(change.impactScore.formatted(.number.precision(.fractionLength(0...1)))) impact"
+                )
+            )
+            .truncationMode(.middle)
 
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                HStack(spacing: Theme.Space.xs) {
-                    StatusPill(text: change.displayDimension, tint: dimensionTint)
-                    Text(change.displayValue)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                }
-
-                Text("\(change.currentValue.compactFormatted) \(change.metric)")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-
-                comparison
-            }
-
-            Spacer(minLength: Theme.Space.m)
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(change.impactScore.formatted(.number.precision(.fractionLength(0...1))))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                Text("impact")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .fixedSize(horizontal: false, vertical: true)
+            comparison
+                // Aligned under the row's text column rather than its glyph
+                // (32pt tile plus the row's own gap), so the badge reads as part
+                // of this entry and not as a new one.
+                .padding(.leading, 32 + Theme.Space.m)
         }
         .padding(.vertical, Theme.Space.xs)
         .accessibilityElement(children: .combine)
@@ -69,12 +55,24 @@ struct WebNotableChangeRow: View {
         )
     }
 
-    /// Colour follows the dimension type's fixed slot, never the row's rank, so
-    /// a re-ranked list never repaints itself.
-    private var dimensionTint: Color {
-        let slots = ["Page", "Referrer", "Device", "Browser", "Country", "Channel"]
-        guard let slot = slots.firstIndex(of: change.dimensionType) else { return .secondary }
-        return SeriesPalette.color(at: slot)
+    /// The glyph follows the dimension type, never the row's rank, so a
+    /// re-ranked list never redraws a row as a different kind of thing.
+    ///
+    /// It used to be a colour taken from `SeriesPalette`, which was wrong twice
+    /// over: that palette belongs to chart series, and borrowing it for chrome
+    /// implied a relationship between a row and a plotted line that does not
+    /// exist. Shape carries the distinction instead, and the type is still
+    /// spelled out in the row's footnote.
+    private var dimensionGlyph: String {
+        switch change.dimensionType {
+        case "Page": "doc.text"
+        case "Referrer": "arrow.turn.down.right"
+        case "Device": "iphone"
+        case "Browser": "safari"
+        case "Country": "globe"
+        case "Channel": "arrow.triangle.branch"
+        default: "square.grid.2x2"
+        }
     }
 
     private var spokenSummary: String {
@@ -123,43 +121,22 @@ struct WebExternalClickRowView: View {
         .padding(.vertical, Theme.Space.xs)
     }
 
+    /// Direct labels rather than a header row, which would scroll away.
     private var summary: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-            Text("\(rank)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(minWidth: 20, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.host ?? "Unknown destination")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                // Truncated in the middle, not the end: what distinguishes two
-                // tracked outbound URLs is usually in the query string, which
-                // sits at the very tail.
-                Text(row.url)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: Theme.Space.m)
-
-            // Direct labels rather than a header row, which would scroll away.
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("\(row.clicks.compactFormatted) clicks")
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                Text("\(row.visitors.compactFormatted) visitors")
-                    .font(.caption2)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
+        DataRow(
+            glyph: "arrow.up.forward.square",
+            title: row.host ?? "Unknown destination",
+            subtitle: row.url,
+            footnote: "\(row.visitors.compactFormatted) visitors",
+            // A URL is an identifier, and character alignment is what makes two
+            // near-identical destinations comparable down the column.
+            isSubtitleMonospaced: true,
+            accessory: .metric("\(row.clicks.compactFormatted) clicks")
+        )
+        // Truncated in the middle, not the end: what distinguishes two tracked
+        // outbound URLs is usually in the query string, which sits at the very
+        // tail.
+        .truncationMode(.middle)
     }
 
     private var spokenSummary: String {

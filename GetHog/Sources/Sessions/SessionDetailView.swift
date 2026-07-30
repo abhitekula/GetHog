@@ -25,11 +25,17 @@ struct SessionDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            // Padding is per-child rather than on the stack so the stat strip can
+            // run to the screen edge: it scrolls horizontally, and a strip that
+            // stops short of the bezel reads as a truncated card.
+            VStack(spacing: Theme.Space.l) {
                 SessionHeaderCard(
                     recording: recording,
                     environment: SessionEnvironment(events: timeline.events, person: recording.person)
                 )
+                .padding(.horizontal, Theme.Space.l)
+
+                counters
 
                 // The player sits above the timeline even though it is the
                 // fragile half: the timeline is unbounded, and burying a video
@@ -42,8 +48,10 @@ struct SessionDetailView: View {
                     onOpenInPostHog: openInPostHog,
                     onRetry: { retryReplay() }
                 )
+                .padding(.horizontal, Theme.Space.l)
 
                 watchInPostHogCard
+                    .padding(.horizontal, Theme.Space.l)
 
                 SessionTimelineView(
                     recording: recording,
@@ -55,12 +63,13 @@ struct SessionDetailView: View {
                     canSeek: player.isReady,
                     onSeek: { offset in player.seek(to: offset, resume: true) }
                 )
+                .padding(.horizontal, Theme.Space.l)
 
                 FreshnessLabel(date: timeline.loadedAt)
             }
-            .padding(16)
+            .padding(.vertical, Theme.Space.l)
         }
-        .background(Theme.pageBackground)
+        .pageSurface()
         .navigationTitle(recording.personDisplayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -79,6 +88,26 @@ struct SessionDetailView: View {
         .sheet(item: $webLink) { link in
             SessionSafariView(url: link.url).ignoresSafeArea()
         }
+    }
+
+    /// What the session amounted to, before the replay is asked to load.
+    private var counters: some View {
+        StatStrip {
+            metric("Clicks", Double(recording.clickCount).compactFormatted)
+            metric("Keypresses", Double(recording.keypressCount).compactFormatted)
+            metric("Console errors", Double(recording.consoleErrorCount).compactFormatted)
+            if let active = recording.activeSeconds {
+                metric("Active", SessionClock.clock(active))
+            }
+        }
+    }
+
+    /// `MetricTile` combines its own children into "label, value". These numbers
+    /// were spoken value-first before the strip replaced the hand-rolled
+    /// counters, and that is the order they are actually scanned in.
+    private func metric(_ label: String, _ value: String) -> some View {
+        MetricTile(label: label, value: value, compact: true)
+            .accessibilityLabel("\(value) \(label)")
     }
 
     /// Always present, whatever the native player managed to do. PostHog's own
@@ -144,7 +173,6 @@ struct SessionHeaderCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 identity
                 Divider()
-                counters
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(detailRows, id: \.label) { row in
                         detailRow(row)
@@ -180,6 +208,15 @@ struct SessionHeaderCard: View {
 
             Spacer()
 
+            if recording.hasErrors {
+                // The stat strip below states this number plainly, and
+                // `MetricTile` is deliberately untinted — so the alarm the red
+                // counter used to raise is carried here as a word instead.
+                StatusPill(
+                    text: "\(recording.consoleErrorCount) errors",
+                    tint: Theme.Status.critical
+                )
+            }
             if !recording.isReplayable {
                 StatusPill(text: "Mobile", tint: .secondary)
             }
@@ -188,45 +225,6 @@ struct SessionHeaderCard: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-
-    private var counters: some View {
-        HStack(alignment: .top, spacing: 0) {
-            counter(
-                value: Double(recording.clickCount).compactFormatted,
-                label: "Clicks",
-                tint: .primary
-            )
-            counter(
-                value: Double(recording.keypressCount).compactFormatted,
-                label: "Keypresses",
-                tint: .primary
-            )
-            counter(
-                value: Double(recording.consoleErrorCount).compactFormatted,
-                label: "Console errors",
-                // Colour is a reinforcement here, never the only signal: the
-                // label always says what the number is.
-                tint: recording.consoleErrorCount > 0 ? Theme.Status.critical : .primary
-            )
-            if let active = recording.activeSeconds {
-                counter(value: SessionClock.clock(active), label: "Active", tint: .primary)
-            }
-        }
-    }
-
-    private func counter(value: String, label: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.title3.weight(.semibold).monospacedDigit())
-                .foregroundStyle(tint)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(value) \(label)")
     }
 
     private struct DetailRow {

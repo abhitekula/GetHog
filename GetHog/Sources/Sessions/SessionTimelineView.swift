@@ -199,8 +199,7 @@ struct SessionTimelineView: View {
 
     private var header: some View {
         HStack {
-            Label("Timeline", systemImage: "list.bullet.indent")
-                .font(.subheadline.weight(.semibold))
+            SectionLabel(text: "Timeline", systemImage: "list.bullet.indent")
             Spacer()
             Text("\(visible.count) of \(entries.count)")
                 .font(.caption.monospacedDigit())
@@ -224,16 +223,12 @@ struct SessionTimelineView: View {
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(
-                            filter == option ? Theme.accent.opacity(0.18) : Color.clear,
-                            in: .capsule
-                        )
-                        .overlay {
-                            Capsule().strokeBorder(
-                                filter == option ? Theme.accent.opacity(0.5) : Color.secondary.opacity(0.25)
-                            )
-                        }
                         .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
+                        // Glass rather than a drawn capsule, so the chips read as
+                        // chrome over the card instead of as four small tiles.
+                        // The active tint is the app accent, which is what makes
+                        // the selected chip read as "on" and not merely filled.
+                        .warmGlass(active: filter == option)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(option.rawValue), \(count) events")

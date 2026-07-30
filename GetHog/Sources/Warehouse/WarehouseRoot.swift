@@ -105,18 +105,18 @@ struct WarehouseRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load the warehouse", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load the warehouse",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No warehouse data",
+            EmptyStateView(
+                title: "Nothing in the warehouse",
                 systemImage: "cylinder.split.1x2",
-                description: Text("This project has no external data sources or warehouse tables.")
+                message: "The warehouse holds tables imported from outside PostHog — a Stripe account, a Postgres replica, files in an S3 bucket. This project has no sources connected and no tables, which is where every project starts."
             )
         } else {
             list
@@ -138,13 +138,16 @@ struct WarehouseRoot: View {
                     Text(store.sources.isEmpty ? "No external data sources." : "No matching sources.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredSources) { source in
                         WarehouseSourceRowView(source: source)
+                            .warehouseRowCard()
                     }
                 }
             } header: {
-                Text("Sources")
+                SectionLabel(text: "Sources", systemImage: "arrow.down.circle")
             } footer: {
                 Text("Managed imports that write into the warehouse on a schedule.")
             }
@@ -154,15 +157,18 @@ struct WarehouseRoot: View {
                     Text(store.tables.isEmpty ? "No warehouse tables." : "No matching tables.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredTables) { table in
                         NavigationLink(value: table) {
                             WarehouseTableRowView(table: table)
                         }
+                        .warehouseRowCard()
                     }
                 }
             } header: {
-                Text("Tables")
+                SectionLabel(text: "Tables", systemImage: "tablecells")
             }
 
             if let error = store.error, !store.isEmpty {
@@ -175,6 +181,8 @@ struct WarehouseRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -243,38 +251,26 @@ struct WarehouseSourceRowView: View {
     let source: ExternalDataSource
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(source.displayName)
-                    .font(.body)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                StatusPill(text: source.health.title, tint: warehouseTint(source.health))
-            }
-
-            Text(source.syncSummary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let error = source.latestError {
-                Text(error)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Status.critical)
-                    .lineLimit(2)
-            } else if let lastRun = source.lastRunAt {
-                Text("Last run \(lastRun.formatted(.relative(presentation: .named)))")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            } else {
-                Text("Never run")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+        DataRow(
+            glyph: "arrow.down.circle",
+            // The glyph takes the health tint so a failing import is findable by
+            // colour down the column; the pill beside it still carries the word.
+            tint: warehouseTint(source.health),
+            title: source.displayName,
+            subtitle: source.syncSummary,
+            footnote: runLine,
+            accessory: .pill(source.health.title, warehouseTint(source.health))
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var runLine: String {
+        if let error = source.latestError { return error }
+        if let lastRun = source.lastRunAt {
+            return "Last run \(lastRun.formatted(.relative(presentation: .named)))"
+        }
+        return "Never run"
     }
 
     private var spokenSummary: String {
@@ -294,33 +290,38 @@ struct WarehouseTableRowView: View {
     let table: WarehouseTable
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // The table name is what a developer types into a query, so it is
-            // set monospaced to keep underscores unambiguous.
-            Text(table.name)
-                .font(.subheadline.monospaced())
-                .lineLimit(1)
-
-            HStack(spacing: 10) {
-                if let format = table.format { Text(format) }
-                Text("\(table.columns.count) columns")
-                if let rows = table.rowCount {
-                    Text("\(Double(rows).compactFormatted) rows")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            if let sourceType = table.sourceType {
-                Text(
-                    table.schemaName.map { "From \(sourceType) · \($0)" } ?? "From \(sourceType)"
-                )
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            }
-        }
+        DataRow(
+            glyph: "tablecells",
+            // Imported tables and query-built ones behave differently — only the
+            // first can go stale — so they are told apart before the name is
+            // read, the way the dashboard list marks generated tiles.
+            tint: table.isManaged ? Theme.accent : Theme.accentWarm,
+            // The table name is what a developer types into a query, so it leads
+            // the row rather than sitting on a secondary line. `DataRow` sets a
+            // title in the app's headline face, which carries underscores at a
+            // larger size than the monospaced caption it replaces.
+            title: table.name,
+            subtitle: shapeLine,
+            footnote: provenance,
+            accessory: .none
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var shapeLine: String {
+        var parts: [String] = []
+        if let format = table.format { parts.append(format) }
+        parts.append("\(table.columns.count) columns")
+        // Absent from the list payload; "0 rows" would be a claim about an empty
+        // table that the API never made.
+        if let rows = table.rowCount { parts.append("\(Double(rows).compactFormatted) rows") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var provenance: String? {
+        guard let sourceType = table.sourceType else { return nil }
+        return table.schemaName.map { "From \(sourceType) · \($0)" } ?? "From \(sourceType)"
     }
 
     private var spokenSummary: String {
@@ -343,7 +344,7 @@ struct WarehouseTableDetailView: View {
 
     var body: some View {
         List {
-            Section("Table") {
+            Section {
                 LabeledContent("Name") {
                     Text(table.name).font(.caption.monospaced()).textSelection(.enabled)
                 }
@@ -369,6 +370,8 @@ struct WarehouseTableDetailView: View {
                         Text(synced, format: .relative(presentation: .named))
                     }
                 }
+            } header: {
+                SectionLabel(text: "Table", systemImage: "tablecells")
             }
 
             Section {
@@ -397,9 +400,10 @@ struct WarehouseTableDetailView: View {
                     }
                 }
             } header: {
-                Text("\(table.columns.count) columns")
+                SectionLabel(text: "\(table.columns.count) columns", systemImage: "list.bullet")
             }
         }
+        .pageSurface()
         .navigationTitle(table.name)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Search columns")
@@ -414,9 +418,23 @@ struct WarehouseTableDetailView: View {
     }
 }
 
-// MARK: - Formatting
+// MARK: - Row chrome and formatting
 //
 // File-private so concurrent work on other screens can't collide with the name.
+
+private extension View {
+    /// The list treatment from the dashboards screen: every row is its own card
+    /// on the page ground, with the system separator suppressed because the gap
+    /// between cards already does that work.
+    func warehouseRowCard() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
+    }
+}
 
 /// Tint for a sync state. Always paired with the state's text, never used alone.
 private func warehouseTint(_ health: SyncHealth) -> Color {

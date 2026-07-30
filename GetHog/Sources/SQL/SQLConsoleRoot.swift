@@ -202,7 +202,7 @@ struct SQLConsoleRoot: View {
             results
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Theme.pageBackground)
+        .pageSurface()
     }
 
     private var editor: some View {
@@ -260,43 +260,51 @@ struct SQLConsoleRoot: View {
                 title: "\(keyword) statements are blocked",
                 systemImage: "hand.raised",
                 // Not a crash and not a bug — the console only reads.
-                detail: "This console only runs read queries. PostHog's query API is read-only too, so a \(keyword) would be rejected server-side; refusing it here just says so sooner. Start the statement with SELECT."
+                detail: "This console only runs read queries. PostHog's query API is read-only too, so a \(keyword) would be rejected server-side; refusing it here just says so sooner. Start the statement with SELECT.",
+                // Warm rather than red: the statement was refused, but nothing
+                // went wrong.
+                accent: Theme.accentWarm
             )
         } else if let error = store.error {
             noticeCard(
                 title: "Query failed",
                 systemImage: "exclamationmark.triangle",
                 detail: error,
+                accent: Theme.Status.critical,
                 monospacedDetail: true
             )
         } else if let response = store.response {
             if response.rows.isEmpty {
-                ContentUnavailableView(
-                    "No rows",
+                EmptyStateView(
+                    title: "No rows",
                     systemImage: "tablecells",
-                    description: Text("The query ran successfully and matched nothing.")
+                    message: "The query ran successfully and matched nothing."
                 )
             } else {
                 QueryResultsTable(response: response)
             }
         } else {
-            ContentUnavailableView(
-                "Run a query",
+            EmptyStateView(
+                title: "Run a query",
                 systemImage: "terminal",
-                description: Text("Results appear here. HogQL reads like ClickHouse SQL over your `events`, `persons` and `sessions` tables.")
+                message: "Results appear here. HogQL reads like ClickHouse SQL over your `events`, `persons` and `sessions` tables."
             )
         }
     }
 
+    /// Not an `EmptyStateView`: both notices carry a message that has to stay
+    /// selectable and, for a HogQL error, monospaced — a syntax error is
+    /// something you copy back into the editor, not something you read past.
     private func noticeCard(
         title: String,
         systemImage: String,
         detail: String,
+        accent: Color,
         monospacedDetail: Bool = false
     ) -> some View {
         ScrollView {
-            Card {
-                VStack(alignment: .leading, spacing: 8) {
+            Card(accent: accent) {
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
                     Label(title, systemImage: systemImage)
                         .font(.headline)
                     Text(detail)
@@ -306,7 +314,7 @@ struct SQLConsoleRoot: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(16)
+            .padding(Theme.Space.l)
         }
     }
 
@@ -427,14 +435,17 @@ struct SQLHistorySheet: View {
         NavigationStack {
             Group {
                 if store.history.isEmpty {
-                    ContentUnavailableView(
-                        "No history yet",
+                    EmptyStateView(
+                        title: "No history yet",
                         systemImage: "clock",
-                        description: Text("Queries that run successfully are kept here.")
+                        message: "Queries that run successfully are kept here."
                     )
                 } else {
                     List {
                         Section {
+                            // Deliberately not a `DataRow`: the whole row is SQL,
+                            // and a row type that can only monospace its second
+                            // line would set the statement in prose type.
                             ForEach(Array(store.history.enumerated()), id: \.offset) { _, query in
                                 Button {
                                     onSelect(query)
@@ -446,12 +457,22 @@ struct SQLHistorySheet: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.plain)
+                                .listRowBackground(
+                                    Theme.cardBackground
+                                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                        .padding(.vertical, 1)
+                                )
+                                .listRowSeparator(.hidden)
                             }
                             .onDelete { store.removeHistory(at: $0) }
+                        } header: {
+                            SectionLabel(text: "Recent queries", systemImage: "clock.arrow.circlepath")
                         } footer: {
                             Text("The last 20 successful queries, kept on this device only.")
                         }
                     }
+                    .listRowSpacing(Theme.Space.xs)
+                    .pageSurface()
                 }
             }
             .navigationTitle("History")

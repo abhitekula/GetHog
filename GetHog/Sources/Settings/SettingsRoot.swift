@@ -36,6 +36,7 @@ struct SettingsRoot: View {
                 aboutSection
             }
             .listStyle(.insetGrouped)
+            .pageSurface()
             .navigationTitle("Settings")
             // No `ProjectSwitcher()` here: the Project section below already is
             // the switcher, and two controls for one piece of state on one
@@ -71,7 +72,7 @@ struct SettingsRoot: View {
     // MARK: - Account
 
     private var accountSection: some View {
-        Section("Account") {
+        Section {
             LabeledContent("Name", value: model.me?.displayName ?? "—")
             if let email = model.me?.email {
                 LabeledContent("Email", value: email)
@@ -82,6 +83,8 @@ struct SettingsRoot: View {
             if let region = model.client?.region {
                 LabeledContent("Region", value: region.displayName)
             }
+        } header: {
+            SectionLabel(text: "Account", systemImage: "person.crop.circle")
         }
     }
 
@@ -100,7 +103,7 @@ struct SettingsRoot: View {
                 }
             }
         } header: {
-            Text("Project")
+            SectionLabel(text: "Project", systemImage: "folder")
         } footer: {
             // Timezone is not trivia: it sets every chart's day boundary, so the
             // same query can disagree with a tool configured to local time.
@@ -136,7 +139,7 @@ struct SettingsRoot: View {
             }
             .disabled(isRechecking || model.client == nil)
         } header: {
-            Text("Permissions")
+            SectionLabel(text: "Permissions", systemImage: "key")
         } footer: {
             Text("Scopes are chosen when you create a personal API key. Add a missing one in PostHog, then re-check.\n\nToggling a flag also needs `feature_flag:write`, which PostHog only reveals on the first toggle attempt — it can't be probed here.")
         }
@@ -194,7 +197,7 @@ struct SettingsRoot: View {
                 Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
             }
         } header: {
-            Text("API key")
+            SectionLabel(text: "API key", systemImage: "lock")
         } footer: {
             Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Face ID, Touch ID, or your passcode, and it re-hides itself after 30 seconds.")
         }
@@ -218,7 +221,7 @@ struct SettingsRoot: View {
             }
             .disabled(cacheBytes == 0)
         } header: {
-            Text("Data & limits")
+            SectionLabel(text: "Data & limits", systemImage: "gauge.with.needle")
         } footer: {
             // The whole reason this meter exists. PostHog's limits are counted
             // per organisation, so requests this app makes come out of the same
@@ -305,10 +308,13 @@ private struct PermissionRow: View {
         }
     }
 
+    /// Locked takes the warm secondary rather than a raw system orange: a
+    /// missing scope is something to fix, not a failure, and the app's own warm
+    /// tone says that without borrowing a third traffic-light hue.
     private var tint: Color {
         switch status {
         case .available: Theme.Status.good
-        case .locked: .orange
+        case .locked: Theme.accentWarm
         case .failed: Theme.Status.critical
         case nil: .secondary
         }
@@ -330,19 +336,25 @@ private struct PermissionRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: symbol)
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
+        HStack(spacing: Theme.Space.m) {
+            RowGlyph(systemName: symbol, tint: tint)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(capability.title)
+                    .font(Theme.Typography.title)
+
+                // Assembled here rather than handed to `DataRow`: a failed probe
+                // puts the server's own message in this line, and a row type
+                // that clips its subtitle to one line would hide the sentence
+                // that says what to fix.
                 Text(detail)
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
         }
+        .padding(.vertical, Theme.Space.xs)
         // State is in the text as well as the icon, so combining the row reads
         // "Feature flags, Missing scope: feature_flag:read" in one pass.
         .accessibilityElement(children: .combine)

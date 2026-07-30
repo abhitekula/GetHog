@@ -107,16 +107,18 @@ struct SessionsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.recordings.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load sessions", systemImage: "exclamationmark.triangle")
-            } description: { Text(error) } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load sessions",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.recordings.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No sessions",
+            EmptyStateView(
+                title: "No sessions",
                 systemImage: "rectangle.stack",
-                description: Text("No session recordings in this project yet.")
+                message: "No session recordings in this project yet."
             )
         } else {
             List(selection: $selection) {
@@ -124,9 +126,19 @@ struct SessionsRoot: View {
                     NavigationLink(value: recording) {
                         SessionRowView(recording: recording)
                     }
+                    .listRowBackground(
+                        Theme.cardBackground
+                            .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                            .padding(.vertical, 1)
+                    )
+                    .listRowSeparator(.hidden)
                 }
-                FreshnessLabel(date: store.loadedAt).listRowBackground(Color.clear)
+                FreshnessLabel(date: store.loadedAt)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
+            .listRowSpacing(Theme.Space.xs)
+            .pageSurface()
             .skeleton(store.isLoading && store.recordings.isEmpty)
         }
     }
@@ -141,52 +153,48 @@ struct SessionRowView: View {
     let recording: SessionRecording
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(recording.person?.initials ?? "?")
-                .font(.caption.weight(.semibold))
-                .frame(width: 34, height: 34)
-                .background(Theme.accent.opacity(0.15), in: .circle)
-                .foregroundStyle(Theme.accent)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(recording.personDisplayName)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(recording.durationText)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-
-                Text(recording.pathComponent)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                HStack(spacing: 10) {
-                    Label("\(recording.clickCount)", systemImage: "hand.tap")
-                    if recording.hasErrors {
-                        Label("\(recording.consoleErrorCount)", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(Theme.Status.critical)
-                    }
-                    if !recording.isReplayable {
-                        // Set expectations in the list, not after a failed load.
-                        Label("Mobile", systemImage: "iphone")
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    if let start = recording.startTime {
-                        Text(start, format: .relative(presentation: .numeric, unitsStyle: .narrow))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .font(.caption2)
-                .labelStyle(.titleAndIcon)
-            }
-        }
+        DataRow(
+            glyph: glyph,
+            tint: tint,
+            title: recording.personDisplayName,
+            subtitle: recording.pathComponent,
+            footnote: stats,
+            // The start URL's path is an identifier, and a column of aligned
+            // paths is what makes one session's entry point comparable to the
+            // next one's.
+            isSubtitleMonospaced: true,
+            accessory: .none
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+    }
+
+    /// The glyph carries whatever is unusual about the session — errors first,
+    /// then the mobile recordings this app cannot play — so the list can be
+    /// triaged by shape before a name is read.
+    private var glyph: String {
+        if recording.hasErrors { return "exclamationmark.triangle.fill" }
+        if !recording.isReplayable { return "iphone" }
+        return "play.rectangle"
+    }
+
+    private var tint: Color {
+        recording.hasErrors ? Theme.Status.critical : Theme.accent
+    }
+
+    /// Duration, activity and the caveats on the row's one caption line. The
+    /// error count used to be a bare number behind a red triangle, so it says
+    /// "errors" now; and the order puts what is worth acting on ahead of the
+    /// timestamp, which is the part that gets truncated away first.
+    private var stats: String {
+        var parts = [recording.durationText, "\(recording.clickCount) clicks"]
+        if recording.hasErrors { parts.append("\(recording.consoleErrorCount) errors") }
+        // Set expectations in the list, not after a failed load.
+        if !recording.isReplayable { parts.append("Mobile, not playable") }
+        if let start = recording.startTime {
+            parts.append(start.formatted(.relative(presentation: .numeric, unitsStyle: .narrow)))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var accessibilityDescription: String {

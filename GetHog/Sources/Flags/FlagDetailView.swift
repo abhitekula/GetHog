@@ -31,11 +31,13 @@ struct FlagDetailView: View {
     var body: some View {
         List {
             identitySection
+            reachRow
             toggleSection
             quickToggleSection
             releaseConditionsSection
             if flag.isMultivariate { variantsSection }
         }
+        .pageSurface()
         .navigationTitle(flag.key)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -100,6 +102,34 @@ struct FlagDetailView: View {
         }
     }
 
+    /// How far this flag reaches, stated before the switch is in view. The
+    /// numbers that decide whether flipping it is a small act or a large one
+    /// should not be something the reader has to scroll for.
+    private var reachRow: some View {
+        StatStrip {
+            // No rollout cap means everyone the conditions match, which is
+            // 100% — not zero.
+            MetricTile(
+                label: "Rollout",
+                value: FlagFormat.percent(flag.rolloutPercentage ?? 100),
+                compact: true
+            )
+            MetricTile(
+                label: "Condition sets",
+                value: (flag.filters?.groups?.count ?? 0).formatted(),
+                compact: true
+            )
+            if flag.isMultivariate {
+                MetricTile(label: "Variants", value: flag.variants.count.formatted(), compact: true)
+            }
+        }
+        // The strip is chrome, not a row: it sits on the page ground and brings
+        // its own insets.
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
     private var toggleSection: some View {
         Section {
             Toggle(isOn: activationRequest) {
@@ -120,7 +150,7 @@ struct FlagDetailView: View {
                 ToggleMessageView(message: message) { controller.dismissMessage() }
             }
         } header: {
-            Text("Live state")
+            SectionLabel(text: "Live state", systemImage: "switch.2")
         } footer: {
             Text(
                 "Changing this writes to PostHog straight away and affects users in production. You'll be asked to confirm first."
@@ -142,7 +172,7 @@ struct FlagDetailView: View {
     }
 
     private var releaseConditionsSection: some View {
-        Section("Release conditions") {
+        Section {
             let groups = flag.filters?.groups ?? []
             if groups.isEmpty {
                 Text("No conditions set. This flag applies to everyone it's evaluated for.")
@@ -153,17 +183,21 @@ struct FlagDetailView: View {
                     ReleaseConditionRow(index: index, group: group)
                 }
             }
+        } header: {
+            SectionLabel(text: "Release conditions", systemImage: "line.3.horizontal.decrease.circle")
         }
     }
 
     private var variantsSection: some View {
-        Section("Variants") {
+        Section {
             VariantDistributionBar(variants: flag.variants)
                 .listRowSeparator(.hidden)
 
             ForEach(Array(flag.variants.enumerated()), id: \.element.id) { index, variant in
                 VariantRow(index: index, variant: variant)
             }
+        } header: {
+            SectionLabel(text: "Variants", systemImage: "arrow.triangle.branch")
         }
     }
 
@@ -208,9 +242,7 @@ private struct ReleaseConditionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Set \(index + 1)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            SectionLabel(text: "Set \(index + 1)")
 
             // A missing rollout percentage means "no cap", not "nobody".
             Text("Rolled out to \(FlagFormat.percent(group.rolloutPercentage ?? 100)) of matching users")

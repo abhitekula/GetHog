@@ -67,14 +67,17 @@ struct GroupsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load groups", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load groups",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
+            // Keeps its own `ContentUnavailableView`: the action here is a link
+            // out to PostHog rather than a button, which `EmptyStateView` does
+            // not model.
             ContentUnavailableView {
                 Label("No group types", systemImage: "person.3")
             } description: {
@@ -96,7 +99,15 @@ struct GroupsRoot: View {
                     NavigationLink(value: type) {
                         GroupTypeRowView(groupType: type)
                     }
+                    .listRowBackground(
+                        Theme.cardBackground
+                            .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                            .padding(.vertical, 1)
+                    )
+                    .listRowSeparator(.hidden)
                 }
+            } header: {
+                SectionLabel(text: "Group types", systemImage: "person.3")
             } footer: {
                 Text("Each type holds its own set of groups. Events carry a group key for every type they belong to.")
             }
@@ -104,6 +115,8 @@ struct GroupsRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -126,22 +139,16 @@ struct GroupTypeRowView: View {
     let groupType: GroupType
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(groupType.pluralName)
-                .font(.body)
-                .lineLimit(1)
-
+        DataRow(
+            glyph: "person.3",
+            title: groupType.pluralName,
             // The raw type is the string a developer passes to `group()` in the
             // SDK and types into a filter, so it stays monospaced and unaltered.
-            Text(groupType.groupType)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Text("Group type index \(groupType.index)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+            subtitle: groupType.groupType,
+            footnote: "Group type index \(groupType.index)",
+            isSubtitleMonospaced: true,
+            accessory: .none
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(groupType.pluralName), type \(groupType.groupType), index \(groupType.index)"
@@ -153,29 +160,17 @@ struct GroupRowView: View {
     let group: GroupRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(group.displayName)
-                .font(group.hasDisplayName ? .body : .body.monospaced())
-                .lineLimit(1)
-
-            if group.hasDisplayName {
-                Text(group.key)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            } else {
-                Text("No name property set")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 10) {
-                Text(createdText)
-                Text("\(group.propertyCount) propert\(group.propertyCount == 1 ? "y" : "ies")")
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-        }
+        DataRow(
+            glyph: "building.2",
+            title: group.displayName,
+            // A group key is an identifier, so it is set monospaced. An unnamed
+            // group has its key as the title already and says so here instead of
+            // printing the same string twice.
+            subtitle: group.hasDisplayName ? group.key : "No name property set",
+            footnote: "\(createdText) · \(group.propertyCount) propert\(group.propertyCount == 1 ? "y" : "ies")",
+            isSubtitleMonospaced: group.hasDisplayName,
+            accessory: .none
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
     }

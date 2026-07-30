@@ -36,6 +36,7 @@ final class AnnotationsStore {
 /// only means anything next to the other things that happened that day.
 struct AnnotationsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     @State private var store = AnnotationsStore()
     @State private var search = ""
 
@@ -64,23 +65,23 @@ struct AnnotationsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load annotations", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load annotations",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
-            ContentUnavailableView {
-                Label("No annotations", systemImage: "text.bubble")
-            } description: {
-                Text("Nobody has annotated this project yet. Annotations mark a release or an incident on a date so charts can be read against it.")
-            } actions: {
-                if let url = model.webURL(path: "data-management/annotations") {
-                    Link("Add one in PostHog", destination: url)
-                }
-            }
+            EmptyStateView(
+                title: "No annotations",
+                systemImage: "text.bubble",
+                message: "An annotation pins a note to a date — a release, an incident, the day a campaign started — so a spike on a chart has an explanation beside it. Nobody has written one for this project, and a project can run a long time without needing to.",
+                // Annotations are read here and written in the console; the app
+                // has no way to create one.
+                actionTitle: consoleURL == nil ? nil : "Add one in PostHog",
+                action: openConsole
+            )
         } else {
             list
         }
@@ -92,21 +93,26 @@ struct AnnotationsRoot: View {
                 Text("No annotations matched “\(search)”.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             ForEach(filtered) { day in
                 Section {
                     ForEach(day.annotations) { annotation in
                         AnnotationRowView(annotation: annotation)
+                            .annotationsRowCard()
                     }
                 } header: {
-                    Text(header(for: day))
+                    SectionLabel(text: header(for: day), systemImage: "calendar")
                 }
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -132,6 +138,13 @@ struct AnnotationsRoot: View {
         }
     }
 
+    private var consoleURL: URL? { model.webURL(path: "data-management/annotations") }
+
+    private var openConsole: (() -> Void)? {
+        guard let consoleURL else { return nil }
+        return { openURL(consoleURL) }
+    }
+
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID)
@@ -144,51 +157,47 @@ struct AnnotationRowView: View {
     let annotation: Annotation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                if let emoji = annotation.emoji {
-                    // Decorative: the emoji is the author's badge choice and
-                    // carries no information the text doesn't already have.
-                    Text(emoji)
-                        .font(.title3)
-                        .accessibilityHidden(true)
-                }
-
-                Text(annotation.displayContent)
-                    .font(.body)
-                    .foregroundStyle(annotation.content == nil ? .secondary : .primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 6) {
-                // Origin and scope are both stated in words. "GIT" on its own is
-                // meaningless, and `dashboard_item` actively misleads — it means
-                // insight, not "an item on a dashboard".
-                StatusPill(
-                    text: annotation.creationType.shortTitle,
-                    tint: annotation.creationType == .gitIntegration ? SeriesPalette.color(at: 6) : Theme.accent
-                )
-                StatusPill(text: annotation.scope.title, tint: .secondary)
-
-                if annotation.isHidden {
-                    StatusPill(text: "Hidden", tint: .secondary)
-                }
-            }
-
-            if let attachment = annotation.attachment {
-                Text(attachment)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            Text(byline)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 2)
+        DataRow(
+            // The glyph carries the origin — a person, a branch — which is the
+            // first thing a reader wants to tell apart in a mixed list.
+            glyph: annotation.creationType.systemImage,
+            // Warm secondary for machine-stamped rows so a wall of deploy
+            // markers doesn't read as a wall of hand-written notes. Never a
+            // series colour: the palette belongs to chart data.
+            tint: annotation.creationType == .gitIntegration ? Theme.accentWarm : Theme.accent,
+            title: titleText,
+            subtitle: originAndScope,
+            footnote: byline,
+            accessory: accessory
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// Hidden is the only state an annotation has, and the row does not push
+    /// anything, so every other row ends without an accessory rather than with a
+    /// chevron that leads nowhere.
+    private var accessory: RowAccessory {
+        if annotation.isHidden { return .pill("Hidden", .secondary) }
+        return .none
+    }
+
+    /// The author's emoji rides in the title rather than as a view of its own:
+    /// `DataRow` leads with a symbol glyph, and the explicit label below keeps
+    /// the emoji out of VoiceOver, which is where it was always decorative — it
+    /// is the author's badge choice and says nothing the text doesn't.
+    private var titleText: String {
+        guard let emoji = annotation.emoji else { return annotation.displayContent }
+        return "\(emoji) \(annotation.displayContent)"
+    }
+
+    /// Origin and scope are both stated in words. "GIT" on its own is
+    /// meaningless, and `dashboard_item` actively misleads — it means insight,
+    /// not "an item on a dashboard". The attachment supersedes the bare scope
+    /// where there is one, since "On insight Signups" says both at once.
+    private var originAndScope: String {
+        [annotation.creationType.shortTitle, annotation.attachment ?? annotation.scope.title]
+            .joined(separator: " · ")
     }
 
     private var byline: String {
@@ -214,5 +223,23 @@ struct AnnotationRowView: View {
         if let author = annotation.createdByName { parts.append("by \(author)") }
         if annotation.isHidden { parts.append("hidden in the PostHog interface") }
         return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Row chrome
+//
+// File-private so concurrent work on other screens can't collide with the name.
+
+private extension View {
+    /// The list treatment from the dashboards screen: every row is its own card
+    /// on the page ground, with the system separator suppressed because the gap
+    /// between cards already does that work.
+    func annotationsRowCard() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
     }
 }

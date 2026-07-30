@@ -62,20 +62,18 @@ struct ConversationsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.conversations.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load conversations", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load conversations",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.conversations.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No Max conversations",
+            EmptyStateView(
+                title: "No Max conversations",
                 systemImage: "sparkles",
-                description: Text(
-                    "Threads you start with Max in PostHog will appear here. Only titled conversations are listed."
-                )
+                message: "Threads you start with Max in PostHog will appear here. Only titled conversations are listed."
             )
         } else {
             list
@@ -89,13 +87,22 @@ struct ConversationsRoot: View {
                     Text("No conversations matched “\(search)”.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
                 } else {
                     ForEach(filtered) { conversation in
                         NavigationLink(value: conversation) {
                             ConversationRowView(conversation: conversation)
                         }
+                        .listRowBackground(
+                            Theme.cardBackground
+                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                .padding(.vertical, 1)
+                        )
+                        .listRowSeparator(.hidden)
                     }
                 }
+            } header: {
+                SectionLabel(text: "Threads", systemImage: "bubble.left.and.bubble.right")
             } footer: {
                 Text("GetHog reads Max threads. Asking Max something new stays in the PostHog web console.")
             }
@@ -103,6 +110,8 @@ struct ConversationsRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.conversations.isEmpty)
     }
 
@@ -126,27 +135,23 @@ struct ConversationRowView: View {
     let conversation: MaxConversation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(conversation.title).font(.body).lineLimit(2)
-                Spacer(minLength: 8)
-                if conversation.status == .inProgress {
-                    // Only surfaced while Max is still working; "Idle" on every
-                    // row would be noise hiding the one row that isn't.
-                    StatusPill(text: conversation.status.title, tint: Theme.accent)
-                }
-            }
-
-            Label(conversation.kind.title, systemImage: conversation.kind.systemImage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(secondaryLine)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+        DataRow(
+            glyph: conversation.kind.systemImage,
+            title: conversation.title,
+            subtitle: conversation.kind.title,
+            footnote: secondaryLine,
+            accessory: statusAccessory
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// Only surfaced while Max is still working; "Idle" on every row would be
+    /// noise hiding the one row that isn't.
+    private var statusAccessory: RowAccessory {
+        conversation.status == .inProgress
+            ? .pill(conversation.status.title, Theme.accent)
+            : .none
     }
 
     private var secondaryLine: String {
@@ -221,6 +226,8 @@ struct ConversationDetailView: View {
                 if let workspace = conversation.slackWorkspace {
                     LabeledContent("Slack workspace") { Text(workspace) }
                 }
+            } header: {
+                SectionLabel(text: "Thread", systemImage: conversation.kind.systemImage)
             }
 
             transcript
@@ -235,6 +242,7 @@ struct ConversationDetailView: View {
                 Text("Read-only. GetHog does not send messages to Max — that would start a new agent run on your account.")
             }
         }
+        .pageSurface()
         .navigationTitle(conversation.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -249,21 +257,19 @@ struct ConversationDetailView: View {
                     .font(.callout)
                     .skeleton(true)
             } else if let error = store.error {
-                ContentUnavailableView {
-                    Label("Couldn't load this conversation", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(error)
-                } actions: {
-                    Button("Try again") { Task { await load() } }
-                }
+                EmptyStateView(
+                    title: "Couldn't load this conversation",
+                    systemImage: "exclamationmark.triangle",
+                    message: error,
+                    actionTitle: "Try again",
+                    action: { Task { await load() } }
+                )
             } else if let thread = store.thread {
                 if thread.messages.isEmpty {
-                    ContentUnavailableView(
-                        "No messages stored",
+                    EmptyStateView(
+                        title: "No messages stored",
                         systemImage: "bubble.left",
-                        description: Text(
-                            "PostHog kept the conversation's title but not its transcript."
-                        )
+                        message: "PostHog kept the conversation's title but not its transcript."
                     )
                 } else {
                     ForEach(thread.messages) { message in
@@ -272,7 +278,7 @@ struct ConversationDetailView: View {
                 }
             }
         } header: {
-            Text("Transcript")
+            SectionLabel(text: "Transcript", systemImage: "text.bubble")
         } footer: {
             if store.thread?.hasUnsupportedContent == true {
                 Text("PostHog reports that part of this thread cannot be rendered outside its own editor.")

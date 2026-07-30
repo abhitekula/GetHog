@@ -62,7 +62,7 @@ struct TaxonomyEventDetailView: View {
 
     var body: some View {
         List {
-            Section("Event") {
+            Section {
                 LabeledContent("Name") {
                     Text(event.name)
                         .font(.caption.monospaced())
@@ -94,6 +94,8 @@ struct TaxonomyEventDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
+            } header: {
+                SectionLabel(text: "Event", systemImage: "bolt")
             }
 
             propertiesSection
@@ -109,6 +111,7 @@ struct TaxonomyEventDetailView: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .pageSurface()
         .navigationTitle(event.name)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Search properties")
@@ -128,13 +131,13 @@ struct TaxonomyEventDetailView: View {
     private var propertiesSection: some View {
         Section {
             if let error = store.error, store.isEmpty {
-                ContentUnavailableView {
-                    Label("Couldn't load properties", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(error)
-                } actions: {
-                    Button("Try again") { Task { await load() } }
-                }
+                EmptyStateView(
+                    title: "Couldn't load properties",
+                    systemImage: "exclamationmark.triangle",
+                    message: error,
+                    actionTitle: "Try again",
+                    action: { Task { await load() } }
+                )
             } else if store.isEmpty && store.isLoading {
                 // Placeholder rows rather than a spinner, so the section keeps
                 // its height and the list does not jump when the data lands.
@@ -150,11 +153,11 @@ struct TaxonomyEventDetailView: View {
                 }
                 .skeleton(true)
             } else if store.isEmpty {
-                ContentUnavailableView {
-                    Label("No properties", systemImage: "tag")
-                } description: {
-                    Text("No properties were found in the sampled events. PostHog samples the 100 most recent, and omits internal keys such as $ip and $set.")
-                }
+                EmptyStateView(
+                    title: "No properties",
+                    systemImage: "tag",
+                    message: "No properties were found in the sampled events. PostHog samples the 100 most recent, and omits internal keys such as $ip and $set."
+                )
             } else if filtered.isEmpty {
                 Text("No properties matched “\(search)”.")
                     .font(.callout)
@@ -168,7 +171,10 @@ struct TaxonomyEventDetailView: View {
                 }
             }
         } header: {
-            Text(store.isEmpty ? "Properties" : "\(store.properties.count) properties")
+            SectionLabel(
+                text: store.isEmpty ? "Properties" : "\(store.properties.count) properties",
+                systemImage: "tag"
+            )
         } footer: {
             // Says exactly what the API measured. `sample_count` is the number of
             // distinct values inside a 100-event sample, not a total.
@@ -194,41 +200,34 @@ struct TaxonomyPropertyRowView: View {
     let definition: PropertyDefinitionSummary?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(sample.property)
-                    .font(.subheadline.monospaced())
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                if definition?.isVerified == true {
-                    StatusPill(text: "Verified", tint: Theme.Status.good)
-                }
-                if definition?.isHidden == true {
-                    StatusPill(text: "Hidden", tint: .secondary)
-                }
-            }
-
-            HStack(spacing: 10) {
-                if let type = definition?.propertyType {
-                    Text(type)
-                }
-                Text(sample.sampleSummary)
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-
-            if !sample.sampleValues.isEmpty {
-                Text(sample.sampleValues.joined(separator: " · "))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .textSelection(.enabled)
-            }
-        }
+        DataRow(
+            glyph: "tag",
+            title: sample.property,
+            subtitle: sample.sampleValues.joined(separator: " · "),
+            footnote: detailLine,
+            // Sample values are raw data as it was sent, so they keep the
+            // monospacing that makes two near-identical values comparable.
+            isSubtitleMonospaced: true,
+            accessory: curationAccessory
+        )
+        // Kept selectable so a property key or a sample value can be copied
+        // straight into a filter.
+        .textSelection(.enabled)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// Verified and hidden are mutually exclusive in PostHog, so this reads as
+    /// one state rather than two flags.
+    private var curationAccessory: RowAccessory {
+        if definition?.isHidden == true { return .pill("Hidden", .secondary) }
+        if definition?.isVerified == true { return .pill("Verified", Theme.Status.good) }
+        return .none
+    }
+
+    private var detailLine: String {
+        guard let type = definition?.propertyType else { return sample.sampleSummary }
+        return "\(type) · \(sample.sampleSummary)"
     }
 
     private var spokenSummary: String {

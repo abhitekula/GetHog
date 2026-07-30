@@ -50,21 +50,21 @@ struct GroupListView: View {
     @ViewBuilder
     private var content: some View {
         if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load groups", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load groups",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
             // A defined type with no groups is a real, common state — the type
             // exists because someone configured it, not because data arrived.
-            ContentUnavailableView {
-                Label("No groups yet", systemImage: "person.3")
-            } description: {
-                Text("Nothing has been identified as a “\(groupType.singularName)” in this project. Groups appear once your SDK sends a $groupidentify event for this type.")
-            }
+            EmptyStateView(
+                title: "No groups yet",
+                systemImage: "person.3",
+                message: "Nothing has been identified as a “\(groupType.singularName)” in this project. Groups appear once your SDK sends a $groupidentify event for this type."
+            )
         } else {
             list
         }
@@ -77,15 +77,22 @@ struct GroupListView: View {
                     Text("No \(groupType.pluralName.lowercased()) matched “\(search)”.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
                 } else {
                     ForEach(filtered) { group in
                         NavigationLink(value: GroupDetailTarget(group: group, groupType: groupType)) {
                             GroupRowView(group: group)
                         }
+                        .listRowBackground(
+                            Theme.cardBackground
+                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                .padding(.vertical, 1)
+                        )
+                        .listRowSeparator(.hidden)
                     }
                 }
             } header: {
-                Text("\(store.groups.count) loaded")
+                SectionLabel(text: "\(store.groups.count) loaded", systemImage: "building.2")
             } footer: {
                 Text("Newest first. Search matches the name and the group key.")
             }
@@ -93,6 +100,8 @@ struct GroupListView: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -124,7 +133,7 @@ struct GroupDetailView: View {
 
     var body: some View {
         List {
-            Section(groupType.singularName) {
+            Section {
                 LabeledContent("Name") {
                     Text(group.hasDisplayName ? group.displayName : "Not set")
                         .foregroundStyle(group.hasDisplayName ? .primary : .secondary)
@@ -142,6 +151,8 @@ struct GroupDetailView: View {
                 LabeledContent("Type") {
                     Text(groupType.groupType).font(.caption.monospaced())
                 }
+            } header: {
+                SectionLabel(text: groupType.singularName, systemImage: "building.2")
             }
 
             propertiesSection
@@ -154,6 +165,7 @@ struct GroupDetailView: View {
                 }
             }
         }
+        .pageSurface()
         .navigationTitle(group.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -161,16 +173,20 @@ struct GroupDetailView: View {
     @ViewBuilder
     private var propertiesSection: some View {
         if case .object(let dict) = group.properties, !dict.isEmpty {
-            Section("Properties (\(dict.count))") {
+            Section {
                 ForEach(dict.keys.sorted(), id: \.self) { key in
                     PropertyRow(key: key, value: dict[key] ?? .null)
                 }
+            } header: {
+                SectionLabel(text: "Properties (\(dict.count))", systemImage: "tag")
             }
         } else {
-            Section("Properties") {
+            Section {
                 Text("This \(groupType.singularName.lowercased()) has no properties set.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            } header: {
+                SectionLabel(text: "Properties", systemImage: "tag")
             }
         }
     }

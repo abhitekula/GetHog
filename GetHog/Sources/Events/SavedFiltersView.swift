@@ -88,12 +88,11 @@ struct ManageSavedFiltersView: View {
         NavigationStack {
             Group {
                 if filters.isEmpty {
-                    ContentUnavailableView(
-                        "No saved filters",
+                    EmptyStateView(
+                        title: "No saved filters",
                         systemImage: "bookmark",
-                        description: Text(
+                        message:
                             "Add search chips on the Events screen, then choose Save current filters to keep them here."
-                        )
                     )
                 } else {
                     list
@@ -129,13 +128,26 @@ struct ManageSavedFiltersView: View {
     private var list: some View {
         List {
             ForEach(filters) { filter in
-                VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    Text(filter.name)
-                    Text(filter.tokens.map(\.displayText).joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                DataRow(
+                    glyph: "bookmark.fill",
+                    title: filter.name,
+                    subtitle: filter.tokens.map(\.displayText).joined(separator: " · "),
+                    // The chip line truncates, so the count is spelled out here
+                    // rather than left as a bare number on the trailing edge.
+                    footnote: summary(filter),
+                    // Chips read as `key: value`, and aligned keys are what make
+                    // one saved set comparable with the next.
+                    isSubtitleMonospaced: true,
+                    // Nothing to push: applying a set happens from the menu that
+                    // opened this sheet, not from the row.
+                    accessory: .none
+                )
+                .listRowBackground(
+                    Theme.cardBackground
+                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                        .padding(.vertical, 1)
+                )
+                .listRowSeparator(.hidden)
                 .swipeActions(edge: .trailing) {
                     Button("Delete", systemImage: "trash", role: .destructive) {
                         pendingDeletion = filter
@@ -151,6 +163,14 @@ struct ManageSavedFiltersView: View {
                 }
             }
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
+    }
+
+    private func summary(_ filter: SavedEventFilter) -> String {
+        let count = filter.tokens.count
+        let chips = "\(count) filter\(count == 1 ? "" : "s")"
+        return "\(chips) · saved \(filter.createdAt.formatted(.relative(presentation: .named)))"
     }
 
     // Alerts want a `Bool` binding while the payload lives in an optional, so

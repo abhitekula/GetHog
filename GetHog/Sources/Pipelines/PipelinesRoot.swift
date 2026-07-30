@@ -78,20 +78,18 @@ struct PipelinesRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.functions.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load pipelines", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load pipelines",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.functions.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No pipelines",
+            EmptyStateView(
+                title: "No pipelines",
                 systemImage: "arrow.triangle.branch",
-                description: Text(
-                    "This project has no transformations or destinations configured."
-                )
+                message: "A pipeline is either a transformation that rewrites events as they arrive or a destination that forwards them somewhere else. This project has neither, so events land in PostHog and stay there — which is all most projects ever ask of it."
             )
         } else {
             list
@@ -110,9 +108,10 @@ struct PipelinesRoot: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Shows this pipeline's configuration")
+                        .pipelinesRowCard()
                     }
                 } header: {
-                    Label(group.kind.title, systemImage: group.kind.systemImage)
+                    SectionLabel(text: group.kind.title, systemImage: group.kind.systemImage)
                 } footer: {
                     Text(footerText(for: group.kind))
                 }
@@ -123,11 +122,14 @@ struct PipelinesRoot: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.functions.isEmpty)
     }
 
@@ -173,38 +175,40 @@ struct PipelineRowView: View {
     let function: HogFunction
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(function.name)
-                    .font(.body)
-                    .lineLimit(2)
-
-                Spacer(minLength: 8)
-
-                StatusPill(
-                    text: function.statusText,
-                    tint: function.enabled ? Theme.Status.good : .secondary
-                )
-            }
-
-            if let description = function.description {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
+        DataRow(
+            glyph: function.kind.systemImage,
+            // Red when the function is in trouble, so the one row that needs
+            // attention is findable in a column of pills that all say "Enabled".
+            // The state's own words stay on the footnote line below, so the
+            // colour is never carrying the meaning by itself.
+            tint: isTroubled ? Theme.Status.critical : kindTint,
+            title: function.name,
+            subtitle: function.description,
             // Only surfaced when it is bad news; "healthy" on every row would be
             // noise that hides the one row that isn't.
-            if function.state != .healthy && function.state != .unknown {
-                Text(function.state.title)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Status.critical)
-            }
-        }
+            footnote: isTroubled ? function.state.title : nil,
+            accessory: .pill(
+                function.statusText,
+                function.enabled ? Theme.Status.good : .secondary
+            )
+        )
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var isTroubled: Bool {
+        function.state != .healthy && function.state != .unknown
+    }
+
+    /// Transformations and destinations do opposite things to an event, so they
+    /// are told apart by tint as well as by section.
+    private var kindTint: Color {
+        switch function.kind {
+        case .transformation: Theme.accent
+        case .destination: Theme.accentWarm
+        case .other: .secondary
+        }
     }
 
     private var spokenSummary: String {
@@ -243,11 +247,15 @@ struct PipelineDetailSheet: View {
                             Text(updated, format: .relative(presentation: .named))
                         }
                     }
+                } header: {
+                    SectionLabel(text: "Configuration", systemImage: function.kind.systemImage)
                 }
 
                 if let description = function.description {
-                    Section("Description") {
+                    Section {
                         Text(description).font(.callout)
+                    } header: {
+                        SectionLabel(text: "Description", systemImage: "text.alignleft")
                     }
                 }
 
@@ -258,7 +266,7 @@ struct PipelineDetailSheet: View {
                         }
                     }
                 } header: {
-                    Text("Editing")
+                    SectionLabel(text: "Editing", systemImage: "pencil")
                 } footer: {
                     // Said plainly: this screen reads configuration. Editing Hog
                     // source, inputs or filters on a phone would be a worse
@@ -266,6 +274,7 @@ struct PipelineDetailSheet: View {
                     Text("GetHog shows how this pipeline is configured. Editing its code, inputs and filters stays in the PostHog web console.")
                 }
             }
+            .pageSurface()
             .navigationTitle(function.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -274,5 +283,23 @@ struct PipelineDetailSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Row chrome
+//
+// File-private so concurrent work on other screens can't collide with the name.
+
+private extension View {
+    /// The list treatment from the dashboards screen: every row is its own card
+    /// on the page ground, with the system separator suppressed because the gap
+    /// between cards already does that work.
+    func pipelinesRowCard() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
     }
 }

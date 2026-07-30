@@ -193,33 +193,46 @@ struct ErrorTrackingRoot: View {
     private var list: some View {
         List(selection: $selection) {
             if visibleIssues.isEmpty {
-                ContentUnavailableView {
-                    Label("No \(filter.title.lowercased()) issues", systemImage: "line.3.horizontal.decrease.circle")
-                } description: {
-                    Text("\(store.issues.count) issue\(store.issues.count == 1 ? "" : "s") are hidden by this filter.")
-                } actions: {
-                    Button("Show all") { filter = .all }
-                }
+                EmptyStateView(
+                    title: "No \(filter.title.lowercased()) issues",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    message: "\(store.issues.count) issue\(store.issues.count == 1 ? "" : "s") are hidden by this filter.",
+                    actionTitle: "Show all",
+                    action: { filter = .all }
+                )
                 .listRowBackground(Color.clear)
             } else {
-                ForEach(visibleIssues, id: \.self) { issue in
-                    NavigationLink(value: issue) {
-                        ErrorIssueRow(issue: issue)
+                Section {
+                    ForEach(visibleIssues, id: \.self) { issue in
+                        NavigationLink(value: issue) {
+                            ErrorIssueRow(issue: issue)
+                        }
+                        .listRowBackground(
+                            Theme.cardBackground
+                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                .padding(.vertical, 1)
+                        )
+                        .listRowSeparator(.hidden)
                     }
+                } header: {
+                    SectionLabel(
+                        text: "\(visibleIssues.count) issue\(visibleIssues.count == 1 ? "" : "s")",
+                        systemImage: "ladybug.fill"
+                    )
                 }
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.issues.isEmpty)
         // Pinned rather than scrolled away: the filter explains what the list is
         // showing, so it has to stay visible while reading it.
         .safeAreaInset(edge: .top) {
-            statusFilter
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.bar)
+            GlassFilterBar { statusFilter }
+                .padding(.bottom, Theme.Space.s)
         }
     }
 
@@ -255,54 +268,35 @@ struct ErrorIssueRow: View {
     let issue: ErrorIssue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                // Error class names are code, so they read as code.
-                Text(issue.name)
-                    .font(.subheadline.monospaced())
-                    .lineLimit(1)
-
-                Spacer(minLength: 4)
-
-                // Active is the default and needs no badge; anything else is a
-                // deliberate human decision worth surfacing.
-                if !issue.isActive {
-                    StatusPill(text: issue.statusTitle, tint: issue.statusTint)
-                }
-            }
-
-            if let description = issue.issueDescription, !description.isEmpty {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 10) {
-                figure(issue.users, "users")
-                figure(issue.sessions, "sessions")
-                figure(issue.occurrences, "occurrences")
-
-                Spacer(minLength: 4)
-
-                if let lastSeen = issue.lastSeen {
-                    Text(lastSeen, format: .relative(presentation: .numeric, unitsStyle: .narrow))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-        .padding(.vertical, 2)
+        DataRow(
+            glyph: "ladybug.fill",
+            tint: issue.statusTint,
+            title: issue.name,
+            // The class name and the message both come out of a stack trace, so
+            // the message keeps code type where the headline title cannot.
+            subtitle: issue.issueDescription,
+            footnote: impactLine,
+            isSubtitleMonospaced: true,
+            // Unconditional now that the glyph is tinted by status: resolved and
+            // suppressed must never be carried by colour alone.
+            accessory: .pill(issue.statusTitle, issue.statusTint)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
     }
 
-    private func figure(_ value: Double, _ noun: String) -> some View {
-        Text("\(value.compactFormatted) \(noun)")
-            .font(.caption2)
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+    /// Impact and recency share one line: the counts are what the list is
+    /// ordered by, and "when did it last happen" is the next question asked.
+    private var impactLine: String {
+        var parts = [
+            "\(issue.users.compactFormatted) users",
+            "\(issue.sessions.compactFormatted) sessions",
+            "\(issue.occurrences.compactFormatted) occurrences",
+        ]
+        if let lastSeen = issue.lastSeen {
+            parts.append(lastSeen.formatted(.relative(presentation: .numeric, unitsStyle: .narrow)))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var spokenSummary: String {
@@ -320,9 +314,7 @@ struct ErrorIssueRow: View {
         if let lastSeen = issue.lastSeen {
             parts.append("last seen \(lastSeen.formatted(.relative(presentation: .named)))")
         }
-        if !issue.isActive {
-            parts.append(issue.statusTitle)
-        }
+        parts.append(issue.statusTitle)
         return parts.joined(separator: ". ")
     }
 }

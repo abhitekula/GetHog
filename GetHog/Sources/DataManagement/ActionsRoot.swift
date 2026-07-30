@@ -42,6 +42,7 @@ final class ActionsStore {
 /// nothing about whether the action is still catching the right clicks.
 struct ActionsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     @State private var store = ActionsStore()
     @State private var search = ""
 
@@ -68,23 +69,23 @@ struct ActionsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load actions", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load actions",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
-            ContentUnavailableView {
-                Label("No actions", systemImage: "cursorarrow.click.badge.clock")
-            } description: {
-                Text("This project hasn't defined any actions. Actions group several events or clicks under one name so insights can use them as a single step.")
-            } actions: {
-                if let url = model.webURL(path: "data-management/actions") {
-                    Link("Create one in PostHog", destination: url)
-                }
-            }
+            EmptyStateView(
+                title: "No actions",
+                systemImage: "cursorarrow.click.badge.clock",
+                message: "An action groups several events or clicks under one name so an insight can use them as a single step. Nobody has defined one in this project — actions are optional, and a project that queries raw events directly never needs any.",
+                // GetHog reads actions and cannot create one, so the only
+                // thing on offer is the console that can.
+                actionTitle: consoleURL == nil ? nil : "Define one in PostHog",
+                action: openConsole
+            )
         } else {
             list
         }
@@ -97,11 +98,14 @@ struct ActionsRoot: View {
                     Text("No actions matched “\(search)”.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 } else {
                     ForEach(filtered) { action in
                         NavigationLink(value: action) {
                             ActionRowView(action: action)
                         }
+                        .actionsRowCard()
                     }
                 }
             } footer: {
@@ -111,6 +115,8 @@ struct ActionsRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -121,6 +127,13 @@ struct ActionsRoot: View {
                 || ($0.description ?? "").localizedCaseInsensitiveContains(search)
                 || $0.matchedEvents.contains { $0.localizedCaseInsensitiveContains(search) }
         }
+    }
+
+    private var consoleURL: URL? { model.webURL(path: "data-management/actions") }
+
+    private var openConsole: (() -> Void)? {
+        guard let consoleURL else { return nil }
+        return { openURL(consoleURL) }
     }
 
     private func load() async {
@@ -135,38 +148,40 @@ struct ActionRowView: View {
     let action: PostHogAction
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(action.name)
-                    .font(.body)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                if action.isCalculating {
-                    StatusPill(text: "Calculating", tint: Theme.accent)
-                } else if action.steps.isEmpty {
-                    StatusPill(text: "No steps", tint: Theme.Status.critical)
-                }
-            }
-
-            if let description = action.description {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Text(action.stepSummary)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-
-            Text(calculationText)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+        DataRow(
+            glyph: "cursorarrow.click",
+            // Pinned actions take the warm secondary, the way the dashboard list
+            // marks generated tiles: the sort already floats them to the top,
+            // and the tint is what says *why* they are up there.
+            tint: action.isPinned ? Theme.accentWarm : Theme.accent,
+            title: action.name,
+            subtitle: action.description ?? matchSummary,
+            footnote: calculationText,
+            // Only the fallback is an identifier list — a description is prose
+            // and monospacing it would read as code.
+            isSubtitleMonospaced: action.description == nil && !action.matchedEvents.isEmpty,
+            accessory: accessory
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// The events this action can fire on, which is the thing a name alone never
+    /// tells you. Falls back to the step count when no step names an event —
+    /// a selector-only action matches clicks, not a named event.
+    private var matchSummary: String {
+        let events = action.matchedEvents
+        return events.isEmpty ? action.stepSummary : events.joined(separator: ", ")
+    }
+
+    /// A stepless action is broken rather than merely idle, so it keeps the
+    /// critical tint even though nothing is running.
+    private var accessory: RowAccessory {
+        if action.isCalculating { return .pill("Calculating", Theme.accent) }
+        if action.steps.isEmpty { return .pill("No steps", Theme.Status.critical) }
+        // The row pushes a detail screen, so there is nothing to add here — the
+        // link draws its own disclosure.
+        return .none
     }
 
     /// Never invents a time. An action PostHog has not yet counted says so.
@@ -194,7 +209,7 @@ struct ActionDetailView: View {
 
     var body: some View {
         List {
-            Section("Action") {
+            Section {
                 if let description = action.description {
                     Text(description).font(.callout)
                 }
@@ -220,6 +235,8 @@ struct ActionDetailView: View {
                 if !action.tags.isEmpty {
                     LabeledContent("Tags") { Text(action.tags.joined(separator: ", ")) }
                 }
+            } header: {
+                SectionLabel(text: "Action", systemImage: "cursorarrow.click")
             }
 
             Section {
@@ -242,7 +259,7 @@ struct ActionDetailView: View {
                     }
                 }
             } header: {
-                Text("Steps")
+                SectionLabel(text: "Steps", systemImage: "list.number")
             } footer: {
                 Text("Any single step matching is enough to fire the action.")
             }
@@ -255,7 +272,26 @@ struct ActionDetailView: View {
                 }
             }
         }
+        .pageSurface()
         .navigationTitle(action.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Row chrome
+//
+// File-private so concurrent work on other screens can't collide with the name.
+
+private extension View {
+    /// The list treatment from the dashboards screen: every row is its own card
+    /// on the page ground, with the system separator suppressed because the gap
+    /// between cards already does that work.
+    func actionsRowCard() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
     }
 }

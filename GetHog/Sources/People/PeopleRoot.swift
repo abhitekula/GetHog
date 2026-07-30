@@ -124,17 +124,22 @@ struct PeopleRoot: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            Picker("View", selection: $segment) {
-                ForEach(PeopleStore.Segment.allCases) { segment in
-                    Text(segment.title).tag(segment)
+            GlassFilterBar {
+                Picker("View", selection: $segment) {
+                    ForEach(PeopleStore.Segment.allCases) { segment in
+                        Text(segment.title).tag(segment)
+                    }
                 }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.vertical, Theme.Space.s)
 
             content
         }
+        // The list below paints its own ground; this covers the strip the
+        // filter bar sits on, which would otherwise stay system grey and leave
+        // the warm glass floating on the wrong surface.
+        .background(Theme.pageBackground)
         .navigationTitle("People")
         .toolbar { ProjectSwitcher() }
         .searchable(
@@ -182,33 +187,40 @@ struct PeopleRoot: View {
     @ViewBuilder
     private var personsContent: some View {
         if let error = store.personsError, store.persons.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load persons", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await loadPersons() } }
+            EmptyStateView(
+                title: "Couldn't load persons",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await loadPersons() }
             }
         } else if store.persons.isEmpty && !store.isLoadingPersons {
-            ContentUnavailableView(
-                search.isEmpty ? "No persons" : "No matches",
+            EmptyStateView(
+                title: search.isEmpty ? "No persons" : "No matches",
                 systemImage: "person.slash",
-                description: Text(
-                    search.isEmpty
-                        ? "This project hasn't identified anyone yet."
-                        : "No person matched “\(search)”."
-                )
+                message: search.isEmpty
+                    ? "This project hasn't identified anyone yet."
+                    : "No person matched “\(search)”."
             )
         } else {
             List(selection: $selection) {
                 Section {
                     ForEach(store.persons, id: \.self) { person in
                         NavigationLink(value: person) { PersonRowView(person: person) }
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
                     }
                 } footer: {
                     personsFooter
                 }
             }
+            .listRowSpacing(Theme.Space.xs)
+            .pageSurface()
             .skeleton(store.isLoadingPersons && store.persons.isEmpty)
         }
     }
@@ -228,27 +240,34 @@ struct PeopleRoot: View {
     @ViewBuilder
     private var cohortsContent: some View {
         if let error = store.cohortsError, store.cohorts.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load cohorts", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await loadCohorts(force: true) } }
+            EmptyStateView(
+                title: "Couldn't load cohorts",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again"
+            ) {
+                Task { await loadCohorts(force: true) }
             }
         } else if filteredCohorts.isEmpty && !store.isLoadingCohorts {
-            ContentUnavailableView(
-                search.isEmpty ? "No cohorts" : "No matches",
+            EmptyStateView(
+                title: search.isEmpty ? "No cohorts" : "No matches",
                 systemImage: "person.3",
-                description: Text(
-                    search.isEmpty
-                        ? "This project doesn't define any cohorts yet."
-                        : "No cohort matched “\(search)”."
-                )
+                message: search.isEmpty
+                    ? "This project doesn't define any cohorts yet."
+                    : "No cohort matched “\(search)”."
             )
         } else {
             List {
                 Section {
-                    ForEach(filteredCohorts) { CohortRowView(cohort: $0) }
+                    ForEach(filteredCohorts) { cohort in
+                        CohortRowView(cohort: cohort)
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
+                    }
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
                         // The static/dynamic split is the thing that decides how
@@ -259,6 +278,8 @@ struct PeopleRoot: View {
                     }
                 }
             }
+            .listRowSpacing(Theme.Space.xs)
+            .pageSurface()
             .skeleton(store.isLoadingCohorts && store.cohorts.isEmpty)
         }
     }
@@ -301,31 +322,36 @@ struct PersonRowView: View {
     let person: PersonSummary
 
     var body: some View {
-        HStack(spacing: 12) {
-            PersonAvatar(initials: person.initials)
+        DataRow(
+            // Whether PostHog knows who this is changes how the row should be
+            // read, so it is the distinction the glyph carries.
+            glyph: person.isIdentified ? "person.fill" : "person.fill.questionmark",
+            tint: person.isIdentified ? Theme.accent : .secondary,
+            title: person.displayName,
+            // The distinct ID is the identifier everything else joins on, so it
+            // takes the monospaced line — unless it is already the title, which
+            // is what `displayName` falls back to for anonymous people.
+            subtitle: distinctID,
+            footnote: footnote,
+            isSubtitleMonospaced: true,
+            accessory: .pill(
+                person.isIdentified ? "Identified" : "Anonymous",
+                person.isIdentified ? Theme.accent : .secondary
+            )
+        )
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(person.displayName)
-                    .font(.body)
-                    .lineLimit(1)
+    private var distinctID: String? {
+        guard let first = person.distinctIDs.first, first != person.displayName else { return nil }
+        return first
+    }
 
-                HStack(spacing: 6) {
-                    StatusPill(
-                        text: person.isIdentified ? "Identified" : "Anonymous",
-                        tint: person.isIdentified ? Theme.accent : .secondary
-                    )
-                    Text(distinctIDSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let created = person.createdAt {
-                    Text("First seen \(created, format: .dateTime.year().month().day())")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
+    private var footnote: String? {
+        var parts = [distinctIDSummary]
+        if let created = person.createdAt {
+            parts.append("First seen \(created.formatted(.dateTime.year().month().day()))")
         }
+        return parts.joined(separator: " · ")
     }
 
     private var distinctIDSummary: String {
@@ -338,34 +364,25 @@ struct CohortRowView: View {
     let cohort: Cohort
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(cohort.name)
-                .font(.body)
-                .lineLimit(2)
+        DataRow(
+            glyph: "person.3.fill",
+            // A dynamic cohort re-evaluates itself, so it takes the app accent;
+            // a static snapshot recedes. The pill says which in words — the
+            // footer below the list explains why the difference matters.
+            tint: cohort.isStatic ? .secondary : Theme.accent,
+            title: cohort.name,
+            subtitle: cohort.description,
+            footnote: countText,
+            accessory: .pill(
+                cohort.isStatic ? "Static" : "Dynamic",
+                cohort.isStatic ? .secondary : Theme.accent
+            )
+        )
+    }
 
-            if let description = cohort.description, !description.isEmpty {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 6) {
-                StatusPill(
-                    text: cohort.isStatic ? "Static" : "Dynamic",
-                    tint: cohort.isStatic ? .secondary : Theme.accent
-                )
-                if let count = cohort.count {
-                    Text("\(Double(count).compactFormatted) people")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Count not calculated")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
+    private var countText: String {
+        guard let count = cohort.count else { return "Count not calculated" }
+        return "\(Double(count).compactFormatted) people"
     }
 }
 

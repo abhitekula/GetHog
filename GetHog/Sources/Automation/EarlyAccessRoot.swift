@@ -69,20 +69,18 @@ struct EarlyAccessRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.features.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load early access features", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load early access",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.features.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No early access features",
+            EmptyStateView(
+                title: "No early access features",
                 systemImage: "sparkles",
-                description: Text(
-                    "Features offered for opt-in in the PostHog web console will appear here."
-                )
+                message: "An early access feature lets people opt themselves into a beta from inside your product, backed by a feature flag. This project offers none — it is a surface teams add when they have something to invite users into, and many never do."
             )
         } else {
             list
@@ -100,9 +98,10 @@ struct EarlyAccessRoot: View {
                                 model.webURL(path: "feature_flags/\($0)")
                             }
                         )
+                        .earlyAccessRowCard()
                     }
                 } header: {
-                    Text(group.stage.title)
+                    SectionLabel(text: group.stage.title, systemImage: "sparkles")
                 } footer: {
                     Text(group.stage.explanation)
                 }
@@ -113,11 +112,14 @@ struct EarlyAccessRoot: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.features.isEmpty)
     }
 
@@ -146,49 +148,54 @@ struct EarlyAccessRowView: View {
     let flagURL: URL?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(feature.name).font(.body).lineLimit(2)
-                Spacer(minLength: 8)
-                StatusPill(text: feature.stage.title, tint: stageTint(feature.stage))
-            }
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            DataRow(
+                glyph: "sparkles",
+                tint: stageTint(feature.stage),
+                title: feature.name,
+                // A feature can be created before its flag exists; saying so
+                // beats a blank line the reader has to interpret.
+                subtitle: feature.flagKey ?? "No feature flag attached yet",
+                footnote: feature.description,
+                // Only the key is an identifier — the stand-in sentence is prose
+                // and would read as code set in the same face.
+                isSubtitleMonospaced: feature.flagKey != nil,
+                accessory: .pill(feature.stage.title, stageTint(feature.stage))
+            )
 
-            if let description = feature.description {
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-            }
-
-            if let key = feature.flagKey {
-                HStack(spacing: 8) {
-                    Text(key)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
+            // Kept out of `DataRow` on purpose: the link is a focusable element
+            // in its own right, and folding it into the row would take it away
+            // from VoiceOver, which is why this row combines its children as
+            // `.contain` rather than `.combine`.
+            if showsFlagAffordances {
+                HStack(spacing: Theme.Space.s) {
                     if feature.flagActive == false {
-                        Text("flag off")
-                            .font(.caption2)
+                        Text("Flag off")
+                            .font(Theme.Typography.caption)
                             .foregroundStyle(.tertiary)
                     }
-                    if let flagURL {
+                    if let flagURL, let key = feature.flagKey {
                         Link(destination: flagURL) {
                             Label("Open flag", systemImage: "arrow.up.forward.square")
-                                .font(.caption2)
+                                .font(Theme.Typography.caption)
                                 .labelStyle(.titleAndIcon)
                         }
                         .accessibilityLabel("Open the \(key) feature flag in PostHog")
                     }
                 }
-            } else {
-                // A feature can be created before its flag exists; saying so beats
-                // a blank line the reader has to interpret.
-                Text("No feature flag attached yet")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                // Indents past the glyph so the line hangs under the title
+                // rather than under the row's leading edge.
+                .padding(.leading, 44)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// Both halves of the line are conditional, so the row asks before laying it
+    /// out rather than reserving space for a line that renders empty.
+    private var showsFlagAffordances: Bool {
+        feature.flagActive == false || (flagURL != nil && feature.flagKey != nil)
     }
 
     private var spokenSummary: String {
@@ -203,7 +210,23 @@ struct EarlyAccessRowView: View {
     }
 }
 
-// MARK: - Formatting
+// MARK: - Row chrome and formatting
+//
+// File-private so concurrent work on other screens can't collide with the name.
+
+private extension View {
+    /// The list treatment from the dashboards screen: every row is its own card
+    /// on the page ground, with the system separator suppressed because the gap
+    /// between cards already does that work.
+    func earlyAccessRowCard() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
+    }
+}
 
 /// Tint for a lifecycle stage, always beside the stage's own word.
 private func stageTint(_ stage: EarlyAccessStage) -> Color {

@@ -1,6 +1,19 @@
 import GetHogKit
 import SwiftUI
 
+private extension View {
+    /// The reference screens' card row, named once because the trace list and
+    /// every section of the detail sheet carry it.
+    func cardRow() -> some View {
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
+    }
+}
+
 @MainActor
 @Observable
 final class LLMAnalyticsStore {
@@ -89,24 +102,25 @@ struct LLMAnalyticsRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load traces", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load traces",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.isEmpty && !store.isLoading {
             VStack(spacing: 0) {
-                rangePicker.padding(16)
-                ContentUnavailableView(
-                    "No LLM traces",
+                GlassFilterBar { rangePicker }
+                    .padding(.vertical, Theme.Space.s)
+                EmptyStateView(
+                    title: "No LLM traces",
                     systemImage: "brain",
-                    description: Text(
-                        "Nothing was recorded in the \(range.accessibleTitle.lowercased()). Traces appear here once an SDK sends $ai_generation events."
-                    )
+                    message: "Nothing was recorded in the \(range.accessibleTitle.lowercased()). Traces appear here once an SDK sends $ai_generation events."
                 )
+                .frame(maxHeight: .infinity)
             }
+            .background(Theme.pageBackground)
         } else {
             list
         }
@@ -115,15 +129,18 @@ struct LLMAnalyticsRoot: View {
     private var list: some View {
         List {
             Section {
-                rangePicker
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                GlassFilterBar { rangePicker }
+                    // Horizontal insets come from the bar itself, which carries
+                    // the page's own margin.
+                    .listRowInsets(EdgeInsets(top: Theme.Space.s, leading: 0, bottom: Theme.Space.s, trailing: 0))
                     .listRowBackground(Color.clear)
                 LLMSummaryHeader(response: store.response, range: range)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
             }
+            .listRowSeparator(.hidden)
 
-            Section(sectionTitle) {
+            Section {
                 ForEach(filtered) { trace in
                     Button {
                         selected = trace
@@ -132,13 +149,19 @@ struct LLMAnalyticsRoot: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Shows this trace's detail")
+                    .cardRow()
                 }
 
                 if filtered.isEmpty {
-                    Text("No traces matched “\(search)”.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    EmptyStateView(
+                        title: "No matching traces",
+                        systemImage: "magnifyingglass",
+                        message: "No traces matched “\(search)”."
+                    )
+                    .listRowBackground(Color.clear)
                 }
+            } header: {
+                SectionLabel(text: sectionTitle, systemImage: "brain")
             }
 
             if store.response?.hasMore == true {
@@ -151,6 +174,8 @@ struct LLMAnalyticsRoot: View {
             FreshnessLabel(date: store.loadedAt)
                 .listRowBackground(Color.clear)
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -203,13 +228,11 @@ struct LLMSummaryHeader: View {
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 12) {
-                Text(range.accessibleTitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                SectionLabel(text: range.accessibleTitle, systemImage: "calendar")
 
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 20) { figures }
-                    VStack(alignment: .leading, spacing: 12) { figures }
+                    HStack(alignment: .top, spacing: Theme.Space.xl) { figures }
+                    VStack(alignment: .leading, spacing: Theme.Space.m) { figures }
                 }
 
                 if let response, response.hasMore {
@@ -236,18 +259,8 @@ struct LLMSummaryHeader: View {
     }
 
     private func figure(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(.title3, design: .rounded, weight: .semibold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title): \(value)")
+        MetricTile(label: title, value: value, compact: true)
+            .accessibilityLabel("\(title): \(value)")
     }
 }
 
@@ -257,45 +270,33 @@ struct LLMTraceRowView: View {
     let trace: LLMTrace
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                // The trace id is an identifier developers copy verbatim, so it
-                // is set monospaced and truncated only at the tail.
-                Text(trace.shortID)
-                    .font(.subheadline.monospaced())
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Text(costText)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-            }
-
-            if let name = trace.traceName, !name.isEmpty {
-                Text(name)
-                    .font(.caption)
-                    .lineLimit(1)
-            }
-
-            Text(trace.distinctID ?? "Unknown person")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            HStack(spacing: 10) {
-                Text(seenText)
-                Text(latencyText)
-                Text(tokenText)
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .monospacedDigit()
-        }
+        DataRow(
+            glyph: trace.errorCount > 0 ? "exclamationmark.triangle.fill" : "brain",
+            tint: trace.errorCount > 0 ? Theme.Status.critical : Theme.accent,
+            // Falls back to the trace id when the SDK named nothing, which is
+            // the string a developer would paste into the web console anyway.
+            title: trace.displayName,
+            // A distinct id is an identifier people copy verbatim, so it keeps
+            // code type and truncates only at the tail.
+            subtitle: trace.distinctID ?? "Unknown person",
+            footnote: usageLine,
+            isSubtitleMonospaced: true,
+            accessory: trace.errorCount > 0
+                ? .pill("\(trace.errorCount) error\(trace.errorCount == 1 ? "" : "s")", Theme.Status.critical)
+                : .metric(costText)
+        )
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    private var usageLine: String {
+        var parts: [String] = []
+        // A failing trace spends its trailing slot on the error pill, so spend —
+        // what this list is ranked by — is stated inline instead.
+        if trace.errorCount > 0 { parts.append(costText) }
+        parts.append(contentsOf: [seenText, latencyText, tokenText])
+        return parts.joined(separator: " · ")
     }
 
     private var costText: String {
@@ -346,69 +347,92 @@ struct LLMTraceDetailSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Trace") {
-                    LabeledContent("ID") {
-                        Text(trace.id)
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
+                // The sheet opens on what the trace cost and how long it took;
+                // the breakdown below answers where that went.
+                Section {
+                    StatStrip {
+                        MetricTile(label: "Cost", value: totalCostText, compact: true)
+                        MetricTile(label: "Tokens", value: totalTokensText, compact: true)
+                        MetricTile(label: "Latency", value: latencyText, compact: true)
                     }
-                    if let name = trace.traceName, !name.isEmpty {
-                        LabeledContent("Name") { Text(name) }
-                    }
-                    LabeledContent("Person") {
-                        Text(trace.distinctID ?? "Unknown")
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
-                    }
-                    if let session = trace.sessionID, !session.isEmpty {
-                        LabeledContent("AI session") {
-                            Text(session).font(.caption.monospaced())
-                        }
-                    }
-                    if let createdAt = trace.createdAt {
-                        LabeledContent("Last seen") {
-                            Text(createdAt, format: .dateTime.year().month().day().hour().minute())
-                        }
-                    }
-                    LabeledContent("Latency") {
-                        Text(
-                            trace.totalLatency.map {
-                                "\($0.formatted(.number.precision(.fractionLength(0...2))))s"
-                            } ?? "Not recorded"
-                        )
-                    }
-                    if trace.errorCount > 0 {
-                        LabeledContent("Errors") { Text(trace.errorCount.formatted()) }
-                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
 
-                Section("Cost and tokens") {
-                    costRow("Input", cost: trace.inputCost, tokens: trace.inputTokens)
-                    costRow("Output", cost: trace.outputCost, tokens: trace.outputTokens)
-                    if let request = trace.requestCost, request > 0 {
-                        LabeledContent("Request") { Text(llmCurrency(request)) }
+                Section {
+                    Group {
+                        LabeledContent("ID") {
+                            Text(trace.id)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                        if let name = trace.traceName, !name.isEmpty {
+                            LabeledContent("Name") { Text(name) }
+                        }
+                        LabeledContent("Person") {
+                            Text(trace.distinctID ?? "Unknown")
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                        if let session = trace.sessionID, !session.isEmpty {
+                            LabeledContent("AI session") {
+                                Text(session).font(.caption.monospaced())
+                            }
+                        }
+                        if let createdAt = trace.createdAt {
+                            LabeledContent("Last seen") {
+                                Text(createdAt, format: .dateTime.year().month().day().hour().minute())
+                            }
+                        }
+                        if trace.errorCount > 0 {
+                            LabeledContent("Errors") {
+                                // A count that is also a word-and-colour pill,
+                                // so a failing trace states its own severity.
+                                StatusPill(
+                                    text: "\(trace.errorCount) error\(trace.errorCount == 1 ? "" : "s")",
+                                    tint: Theme.Status.critical
+                                )
+                            }
+                        }
                     }
-                    LabeledContent("Total") {
-                        Text(
-                            (trace.totalCost).map { $0 > 0 ? llmCurrency($0) : "Not recorded" }
-                                ?? "Not recorded"
-                        )
-                        .fontWeight(.semibold)
-                    }
+                    .cardRow()
+                } header: {
+                    SectionLabel(text: "Trace", systemImage: "brain")
                 }
 
-                Section("Events") {
+                Section {
+                    Group {
+                        costRow("Input", cost: trace.inputCost, tokens: trace.inputTokens)
+                        costRow("Output", cost: trace.outputCost, tokens: trace.outputTokens)
+                        if let request = trace.requestCost, request > 0 {
+                            LabeledContent("Request") { Text(llmCurrency(request)) }
+                        }
+                        LabeledContent("Total") {
+                            Text(totalCostText).fontWeight(.semibold)
+                        }
+                    }
+                    .cardRow()
+                } header: {
+                    SectionLabel(text: "Cost and tokens", systemImage: "dollarsign.circle")
+                }
+
+                Section {
                     if trace.events.isEmpty {
                         // Stated plainly. An empty timeline with no explanation
                         // reads as a loading bug rather than as real data.
                         Text("This trace has no child events. PostHog recorded the trace totals, but no individual generations or spans were attached to it.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
+                            .cardRow()
                     } else {
                         ForEach(trace.events) { event in
                             LLMTraceEventRow(event: event)
+                                .cardRow()
                         }
                     }
+                } header: {
+                    SectionLabel(text: "Events", systemImage: "list.bullet")
                 }
 
                 if let webURL {
@@ -416,11 +440,14 @@ struct LLMTraceDetailSheet: View {
                         Link(destination: webURL) {
                             Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                         }
+                        .cardRow()
                     } footer: {
                         Text("Prompts and completions are shown in the PostHog web console.")
                     }
                 }
             }
+            .listRowSpacing(Theme.Space.xs)
+            .pageSurface()
             .navigationTitle(trace.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -429,6 +456,22 @@ struct LLMTraceDetailSheet: View {
                 }
             }
         }
+    }
+
+    /// All three say "Not recorded" rather than zero: a project whose SDK never
+    /// reported usage has an unknown figure, not an absent one.
+    private var totalCostText: String {
+        trace.totalCost.map { $0 > 0 ? llmCurrency($0) : "Not recorded" } ?? "Not recorded"
+    }
+
+    private var totalTokensText: String {
+        trace.totalTokens.map { $0 > 0 ? $0.compactFormatted : "Not recorded" } ?? "Not recorded"
+    }
+
+    private var latencyText: String {
+        trace.totalLatency.map {
+            "\($0.formatted(.number.precision(.fractionLength(0...2))))s"
+        } ?? "Not recorded"
     }
 
     private func costRow(_ title: String, cost: Double?, tokens: Double?) -> some View {
@@ -450,25 +493,32 @@ struct LLMTraceEventRow: View {
     let event: LLMTraceEvent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(event.event)
-                .font(.subheadline.monospaced())
-                .lineLimit(1)
-
-            HStack(spacing: 10) {
-                if let model = event.model { Text(model) }
-                if let latency = event.latency {
-                    Text("\(latency.formatted(.number.precision(.fractionLength(0...2))))s")
-                }
-                if let timestamp = event.timestamp {
-                    Text(timestamp, format: .dateTime.hour().minute().second())
-                }
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-        }
+        DataRow(
+            glyph: glyph,
+            title: event.event,
+            // Model names are identifiers people match against a price list, so
+            // they keep code type.
+            subtitle: event.model,
+            footnote: timing,
+            isSubtitleMonospaced: true,
+            accessory: accessory
+        )
         .accessibilityElement(children: .combine)
+    }
+
+    private var accessory: RowAccessory {
+        guard let latency = event.latency else { return .none }
+        return .metric("\(latency.formatted(.number.precision(.fractionLength(0...2))))s")
+    }
+
+    /// Generations are the events anyone came here for; everything else on a
+    /// trace — spans, embeddings, feedback — reads as scaffolding around them.
+    private var glyph: String {
+        event.event.contains("generation") ? "sparkles" : "circle.dashed"
+    }
+
+    private var timing: String? {
+        event.timestamp.map { $0.formatted(date: .omitted, time: .standard) }
     }
 }
 

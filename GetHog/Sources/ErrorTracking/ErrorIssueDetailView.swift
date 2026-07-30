@@ -14,17 +14,22 @@ struct ErrorIssueDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            // Padded per block rather than around the stack: `StatStrip` carries
+            // its own insets so the figures can scroll edge to edge.
+            VStack(alignment: .leading, spacing: Theme.Space.l) {
                 header
+                    .padding(.horizontal, Theme.Space.l)
                 impact
                 if issue.function?.isEmpty == false || issue.library?.isEmpty == false {
                     origin
+                        .padding(.horizontal, Theme.Space.l)
                 }
                 stackTraceNote
+                    .padding(.horizontal, Theme.Space.l)
             }
-            .padding(16)
+            .padding(.vertical, Theme.Space.l)
         }
-        .background(Theme.pageBackground)
+        .pageSurface()
         .navigationTitle(issue.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -93,50 +98,24 @@ struct ErrorIssueDetailView: View {
 
     // MARK: - Impact
 
+    /// The three figures that decide whether this issue is worth anyone's
+    /// morning. `StatStrip` scrolls them sideways rather than stacking or
+    /// compressing, so a figure is never shaved down to fit.
     private var impact: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Impact")
-                    .font(.headline)
-
-                // Three columns when they fit, stacked rows when the text is too
-                // large — the figures must never be shaved down to fit.
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 8) {
-                        impactFigure("Users", issue.users)
-                        Divider().frame(height: 40)
-                        impactFigure("Sessions", issue.sessions)
-                        Divider().frame(height: 40)
-                        impactFigure("Occurrences", issue.occurrences)
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        impactFigure("Users", issue.users, alignment: .leading)
-                        impactFigure("Sessions", issue.sessions, alignment: .leading)
-                        impactFigure("Occurrences", issue.occurrences, alignment: .leading)
-                    }
-                }
-            }
+        StatStrip {
+            impactFigure("Users", issue.users)
+            impactFigure("Sessions", issue.sessions)
+            impactFigure("Occurrences", issue.occurrences)
         }
     }
 
-    private func impactFigure(
-        _ title: String,
-        _ value: Double,
-        alignment: HorizontalAlignment = .center
-    ) -> some View {
-        VStack(alignment: alignment, spacing: 2) {
-            Text(value.compactFormatted)
-                .font(.system(.title2, design: .rounded, weight: .semibold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(value.formatted(.number.precision(.fractionLength(0)))) \(title.lowercased())")
+    private func impactFigure(_ title: String, _ value: Double) -> some View {
+        MetricTile(label: title, value: value.compactFormatted, compact: true)
+            // Spoken at full precision: "12.4K" is a reading aid, not a figure,
+            // and speech has no trouble with the whole number.
+            .accessibilityLabel(
+                "\(value.formatted(.number.precision(.fractionLength(0)))) \(title.lowercased())"
+            )
     }
 
     // MARK: - Origin
@@ -144,8 +123,7 @@ struct ErrorIssueDetailView: View {
     private var origin: some View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Origin")
-                    .font(.headline)
+                SectionLabel(text: "Origin", systemImage: "arrow.triangle.branch")
                 if let function = issue.function, !function.isEmpty {
                     detailRow("Function", function, monospaced: true)
                 }
@@ -180,8 +158,7 @@ struct ErrorIssueDetailView: View {
     private var stackTraceNote: some View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
-                Label("Stack trace", systemImage: "text.alignleft")
-                    .font(.headline)
+                SectionLabel(text: "Stack trace", systemImage: "text.alignleft")
 
                 Text("GetHog doesn't render stack traces. Symbolicated frames and source-mapped code live in the PostHog web console.")
                     .font(.footnote)

@@ -6,36 +6,43 @@ struct EventDetailView: View {
 
     var body: some View {
         List {
-            Section("Event") {
-                LabeledContent("Name") {
-                    Text(event.event).font(.body.monospaced())
-                }
+            Section {
+                field("Name", glyph: "bolt.fill", value: event.event)
                 if let ts = event.timestamp {
-                    LabeledContent("Timestamp") {
-                        Text(ts, format: .dateTime.year().month().day().hour().minute().second())
-                            .monospacedDigit()
-                    }
+                    field(
+                        "Timestamp",
+                        glyph: "clock",
+                        value: ts.formatted(.dateTime.year().month().day().hour().minute().second())
+                    )
                 }
                 if let distinctID = event.distinctID {
-                    LabeledContent("Person") {
-                        Text(distinctID).font(.caption.monospaced()).textSelection(.enabled)
-                    }
+                    field("Person", glyph: "person.crop.circle", value: distinctID)
                 }
                 if let url = event.currentURL {
-                    LabeledContent("URL") {
-                        Text(url).font(.caption).textSelection(.enabled)
-                    }
+                    field("URL", glyph: "link", value: url)
                 }
+            } header: {
+                SectionLabel(text: "Event", systemImage: "bolt")
             }
 
             if let properties = event.properties, case .object(let dict) = properties {
-                Section("Properties (\(dict.count))") {
+                Section {
                     ForEach(dict.keys.sorted(), id: \.self) { key in
                         PropertyRow(key: key, value: dict[key] ?? .null)
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
                     }
+                } header: {
+                    SectionLabel(text: "Properties (\(dict.count))", systemImage: "tag")
                 }
             }
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
         .navigationTitle(event.event)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -47,6 +54,30 @@ struct EventDetailView: View {
                 }
             }
         }
+    }
+
+    /// One field of the event's header, as a row rather than a label/value pair.
+    private func field(_ label: String, glyph: String, value: String) -> some View {
+        DataRow(
+            glyph: glyph,
+            title: label,
+            subtitle: value,
+            // Every value in this section is an identifier or a fixed-width
+            // figure — event name, timestamp, distinct id, URL — so all four
+            // stay monospaced rather than only the two that used to be.
+            isSubtitleMonospaced: true,
+            accessory: .none
+        )
+        // Kept from the rows this replaced: the distinct id and the URL are the
+        // two things people pull out of an event by hand, and selection is the
+        // only way to get at them short of copying the whole JSON payload.
+        .textSelection(.enabled)
+        .listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
+        .listRowSeparator(.hidden)
     }
 
     private var jsonRepresentation: String {
