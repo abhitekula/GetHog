@@ -162,6 +162,22 @@ public struct PendingFlagWrite: Codable, Sendable, Equatable {
     }
 }
 
+/// Where a widget or control asked the app to go when it opened it.
+///
+/// Foregrounding the app is all an extension can do on its own; without this the
+/// user lands wherever they last were and has to navigate to the thing they just
+/// tapped. Purely advisory — an app that ignores it still behaves correctly.
+public struct PendingOpen: Codable, Sendable, Equatable {
+    /// The metric (insight) to show, or `nil` for the dashboards home.
+    public let metricID: String?
+    public let requestedAt: Date
+
+    public init(metricID: String?, requestedAt: Date = Date()) {
+        self.metricID = metricID
+        self.requestedAt = requestedAt
+    }
+}
+
 // MARK: - Store
 
 /// Reads and writes the snapshot as JSON in the App Group container.
@@ -174,6 +190,7 @@ public struct SharedSnapshotStore: Sendable {
 
     private static let snapshotFileName = "snapshot.json"
     private static let pendingFlagFileName = "pending-flag.json"
+    private static let pendingOpenFileName = "pending-open.json"
 
     public let directory: URL
 
@@ -188,16 +205,21 @@ public struct SharedSnapshotStore: Sendable {
     }
 
     /// The store both processes use in production.
-    ///
+    public static let shared = resolve()
+
     /// `containerURL(forSecurityApplicationGroupIdentifier:)` returns nil
-    /// without the entitlement — SwiftUI previews, unit tests, an unsigned
-    /// simulator build. Falling back to a per-process caches directory keeps
-    /// every call site total: nothing traps, nothing force-unwraps, and the
-    /// widget simply renders its no-data state.
-    public static let shared: SharedSnapshotStore = {
-        if let container = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-            return SharedSnapshotStore(directory: container, isSharedContainer: true)
+    /// without the entitlement — SwiftUI previews, an unsigned simulator build,
+    /// a unit-test host. Falling back to a private directory keeps every call
+    /// site total: nothing traps, nothing force-unwraps, and the widget simply
+    /// renders its no-data state rather than crashing on a locked screen.
+    static func resolve(
+        appGroupIdentifier: String = SharedSnapshotStore.appGroupIdentifier,
+        container: (String) -> URL? = {
+            FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0)
+        }
+    ) -> SharedSnapshotStore {
+        if let url = container(appGroupIdentifier) {
+            return SharedSnapshotStore(directory: url, isSharedContainer: true)
         }
         let fallback = (try? FileManager.default.url(
             for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true
@@ -206,11 +228,13 @@ public struct SharedSnapshotStore: Sendable {
             directory: fallback.appendingPathComponent("GetHogShared", isDirectory: true),
             isSharedContainer: false
         )
-    }()
+    }
 
     public var fileURL: URL { directory.appendingPathComponent(Self.snapshotFileName) }
 
     public var pendingFlagURL: URL { directory.appendingPathComponent(Self.pendingFlagFileName) }
+
+    public var pendingOpenURL: URL { directory.appendingPathComponent(Self.pendingOpenFileName) }
 
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -261,6 +285,20 @@ public struct SharedSnapshotStore: Sendable {
     /// the record behind would re-apply the toggle on the next launch.
     public func clearPendingFlagWrite() {
         try? FileManager.default.removeItem(at: pendingFlagURL)
+    }
+
+    // MARK: Pending open
+
+    public func enqueue(_ open: PendingOpen) throws {
+        try writeJSON(open, to: pendingOpenURL)
+    }
+
+    public func pendingOpen() -> PendingOpen? {
+        try? readJSON(PendingOpen.self, from: pendingOpenURL)
+    }
+
+    public func clearPendingOpen() {
+        try? FileManager.default.removeItem(at: pendingOpenURL)
     }
 
     // MARK: Plumbing

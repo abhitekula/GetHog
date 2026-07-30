@@ -199,6 +199,67 @@ public enum PostHogAPI {
         ])
     }
 
+    /// Core Web Vitals for one metric, bucketed into good / needs-improvement /
+    /// poor. Thresholds and percentile are required — the API rejects the query
+    /// without them.
+    public static func webVitals(
+        projectID: Int,
+        metric: String = "LCP",
+        dateFrom: String = "-7d",
+        percentile: String = "p90"
+    ) -> Endpoint {
+        let thresholds = WebVitalMetric(rawValue: metric)?.thresholds ?? [2500, 4000]
+        return queryEndpoint(projectID: projectID, query: [
+            "kind": "WebVitalsPathBreakdownQuery",
+            "dateRange": ["date_from": dateFrom],
+            "properties": [],
+            "percentile": percentile,
+            "metric": metric,
+            "doPathCleaning": true,
+            "thresholds": thresholds,
+        ])
+    }
+
+    public static func marketingAnalytics(
+        projectID: Int,
+        dateFrom: String = "-30d",
+        limit: Int = 50
+    ) -> Endpoint {
+        queryEndpoint(projectID: projectID, query: [
+            "kind": "MarketingAnalyticsTableQuery",
+            "dateRange": ["date_from": dateFrom],
+            "properties": [],
+            "limit": limit,
+        ])
+    }
+
+    /// Logs. Note this can fail with a resource access-control error surfaced as
+    /// HTTP 400 rather than 403 — see `PostHogError.accessDenied`.
+    public static func logs(
+        projectID: Int,
+        dateFrom: String = "-24h",
+        search: String = "",
+        limit: Int = 100
+    ) -> Endpoint {
+        queryEndpoint(projectID: projectID, query: [
+            "kind": "LogsQuery",
+            "dateRange": ["date_from": dateFrom],
+            "limit": limit,
+            "orderBy": "latest",
+            "searchTerm": search,
+            "severityLevels": [],
+            "serviceNames": [],
+            "filterGroup": ["type": "AND", "values": []],
+        ])
+    }
+
+    public static func sessionsTimeline(projectID: Int, after: String = "-24h") -> Endpoint {
+        queryEndpoint(projectID: projectID, query: [
+            "kind": "SessionsTimelineQuery",
+            "after": after,
+        ])
+    }
+
     // MARK: - Error tracking
 
     public static func errorTrackingIssues(
