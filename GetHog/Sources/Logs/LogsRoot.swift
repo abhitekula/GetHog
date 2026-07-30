@@ -232,6 +232,13 @@ struct LogsRoot: View {
                 }
                 .toggleStyle(.button)
                 .font(.footnote)
+                // Measured 84.3×14.3pt: wide enough, and a third of the height a
+                // fingertip needs — `.footnote` set the line height and the
+                // button chrome added almost nothing to it. The identical
+                // control on Tracing measured the same. A bordered style fills
+                // the size it is offered, so this grows the visible capsule to
+                // the standard control height without touching its font or tint.
+                .minimumHitTarget()
             }
             .padding(.vertical, Theme.Space.s)
         }

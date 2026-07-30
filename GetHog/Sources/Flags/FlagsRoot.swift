@@ -284,6 +284,16 @@ struct FlagRowView: View {
     }
 
     /// Only present when it adds something: `displayName` falls back to the key.
+    ///
+    /// The whole name, not a shortened copy, because this string is also the
+    /// spoken one. `DataRow` caps the title at two lines and that cap never
+    /// reaches VoiceOver: SwiftUI truncates while rendering, long after the
+    /// label has been handed over. The 80-character cap this used to inherit
+    /// from `FeatureFlag.displayName` was the mirror image — it happened in the
+    /// model, so it *did* reach the label, and the `deep-links` row was measured
+    /// speaking "…copy-link buttons on vendor/guest/gift/member/eve…, 0%
+    /// rollout", a sentence cut mid-word and read out loud. Shortening for
+    /// layout is only safe where layout happens.
     private var name: String? {
         let displayName = flag.displayName
         return displayName == flag.key ? nil : displayName

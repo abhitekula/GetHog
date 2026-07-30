@@ -116,7 +116,9 @@ struct FlagDetailView: View {
                     }
                 }
 
-                // The full description, not the row's truncated `displayName`.
+                // Uncapped, unlike the list rows: nothing here has to hold an
+                // even height, so a long description stays whole on screen as
+                // well as in speech.
                 if let name = flag.name, !name.isEmpty, name != flag.key {
                     Text(name)
                         .font(.subheadline)

@@ -328,6 +328,12 @@ struct WKWebViewRepresentable: UIViewRepresentable {
         webView.scrollView.bounces = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.allowsBackForwardNavigationGestures = false
+        // Second line of defence for the rule `stage` states: a web view that is
+        // itself an accessibility element has no children to walk into, so if a
+        // future SwiftUI release ever stops honouring the representation, the
+        // recorded page's links still do not become VoiceOver stops. The wording
+        // stays on the SwiftUI side so there is only one copy of it.
+        webView.isAccessibilityElement = true
         #if DEBUG
         webView.isInspectable = true
         #endif
@@ -448,8 +454,12 @@ struct ReplayPlayerView: View {
             }
             if let onOpenInPostHog {
                 Button(action: onOpenInPostHog) {
+                    // Caption type in a hand-built header row brings no control
+                    // size with it, so the tap target was the two glyphs:
+                    // measured at 49.0 × 13.3 against a 44 × 44 minimum.
                     Label("Open", systemImage: "arrow.up.forward.square")
                         .font(.caption)
+                        .minimumHitTarget()
                 }
                 .accessibilityLabel("Watch this replay in PostHog")
             }
@@ -467,8 +477,26 @@ struct ReplayPlayerView: View {
                     ProgressView().tint(.white)
                 }
             }
-            .accessibilityLabel("Session replay")
-            .accessibilityHint("Playback is controlled by the buttons below.")
+            // A recording is a picture of a page that has already happened. Its
+            // links lead nowhere, its buttons do nothing, and the site is not
+            // even this app's — so the stage is one element that says what it
+            // is, and nothing inside it is a VoiceOver stop.
+            //
+            // Labelling a container does not make it a leaf, and neither does
+            // `.accessibilityElement(children: .ignore)` here. Measured through
+            // XCUITest on this same shape: a bare label leaves 3 web views, 15
+            // activatable links and 61 elements; adding `.ignore` leaves 3, 15
+            // and 62. WebKit serves the page's elements from the content
+            // process, so SwiftUI's ignore never reaches them. Replacing the
+            // subtree does: 0 web views, 0 links, one element carrying this
+            // label. It has to be replacement rather than suppression because
+            // the leak is unbounded — a bigger recorded page contributes
+            // arbitrarily more of somebody else's navigation.
+            .accessibilityRepresentation {
+                Rectangle()
+                    .accessibilityLabel("Session replay")
+                    .accessibilityHint("Playback is controlled by the buttons below.")
+            }
     }
 
     private var preparing: some View {
@@ -563,7 +591,11 @@ struct ReplayPlayerView: View {
         } else if !loader.isComplete {
             Text("Buffered \(SessionClock.clock(loader.bufferedSeconds)) of \(SessionClock.clock(duration))")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                // `.tertiary` is an alpha composite that measures 1.73:1 on
+                // `cardBackground` — the app's own ramp exists because of it.
+                // This line is the only thing that says the replay is still
+                // filling, so it is a poor candidate for text nobody can read.
+                .foregroundStyle(Theme.Ink.tertiary)
                 .accessibilityLabel(
                     "Buffered \(SessionClock.spoken(loader.bufferedSeconds)) of \(SessionClock.spoken(duration))"
                 )
@@ -617,11 +649,22 @@ struct PlayerTransportBar: View {
         VStack(spacing: 10) {
             scrubber
 
-            HStack(spacing: 16) {
+            // Was 16. The skip buttons now carry 44pt boxes around 19pt glyphs,
+            // so ~12.5pt of each gap is theirs; 4 here puts the visible spacing
+            // back where it was rather than pushing the row apart.
+            HStack(spacing: 4) {
                 Button {
                     controller.seek(to: max(0, controller.currentTime - 10))
                 } label: {
-                    Image(systemName: "gobackward.10").font(.title3)
+                    // Under `.plain` the glyph is the whole button, so the tap
+                    // target *was* the glyph: measured at 19.0 × 21.0 against a
+                    // 44 × 44 minimum. Play was the only control in this row
+                    // that already had a frame, which is why its two
+                    // neighbours — the ones you reach for while something is
+                    // playing — were the short ones.
+                    Image(systemName: "gobackward.10")
+                        .font(.title3)
+                        .minimumHitTarget()
                 }
                 .accessibilityLabel("Back 10 seconds")
 
@@ -638,7 +681,9 @@ struct PlayerTransportBar: View {
                 Button {
                     controller.seek(to: min(upperBound, controller.currentTime + 10))
                 } label: {
-                    Image(systemName: "goforward.10").font(.title3)
+                    Image(systemName: "goforward.10")
+                        .font(.title3)
+                        .minimumHitTarget()
                 }
                 .accessibilityLabel("Forward 10 seconds")
 
@@ -697,17 +742,31 @@ struct PlayerTransportBar: View {
                 set: { controller.setSpeed($0) }
             )) {
                 ForEach(Self.speeds, id: \.self) { value in
-                    Text("\(Int(value))x").tag(value)
+                    Text("\(Int(value))x")
+                        .accessibilityLabel(Self.spokenSpeed(value))
+                        .tag(value)
                 }
             }
         } label: {
             Text("\(Int(controller.speed))x")
                 .font(.footnote.weight(.semibold).monospacedDigit())
+                // The row's tint is right for the glyphs beside this pill and
+                // wrong for a word: `Theme.accent` on a 15% wash of itself is
+                // 4.82:1 on a card and 4.24:1 on the page, against a 4.5:1 floor
+                // for text this size. `accentInk` is the same hue at 5.70:1 /
+                // 5.02:1 — the partner `Theme.Status` documents for exactly this.
+                .foregroundStyle(Theme.Status.accentInk)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(Theme.accent.opacity(0.15), in: .capsule)
         }
         .accessibilityLabel("Playback speed")
-        .accessibilityValue("\(Int(controller.speed)) times")
+        .accessibilityValue(Self.spokenSpeed(controller.speed))
+    }
+
+    /// The pill reads `1x`, which VoiceOver announced as "1 times". Nobody says
+    /// that about a speed control; these are the words a person uses.
+    private static func spokenSpeed(_ value: Double) -> String {
+        value == 1 ? "Normal speed" : "\(Int(value)) times normal speed"
     }
 }

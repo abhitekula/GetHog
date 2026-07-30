@@ -54,4 +54,23 @@ extension View {
         contentShape(.hoverEffect, RoundedRectangle(cornerRadius: cornerRadius))
             .hoverEffect(.highlight)
     }
+
+    /// Raises a control to the 44×44pt floor Apple's `hitRegion` audit checks.
+    ///
+    /// Only the box changes — no font, tint, padding or background is touched —
+    /// so a control keeps the visual weight it was designed with and gains the
+    /// area a fingertip needs.
+    ///
+    /// Where it goes matters, and the two cases differ. A bordered control
+    /// (`.toggleStyle(.button)`, `.buttonStyle(.bordered)`) draws its background
+    /// into whatever size it is offered, so applying this to the control itself
+    /// grows the real, visible target. A borderless `Menu` or `Button` draws no
+    /// background: its tap region and its accessibility frame are its label's
+    /// bounds and nothing else, so this has to go *inside* the label closure.
+    /// Applied the other way round it centres the control in a roomier box and
+    /// moves nothing an audit can see.
+    func minimumHitTarget() -> some View {
+        frame(minWidth: 44, minHeight: 44)
+            .contentShape(.rect)
+    }
 }

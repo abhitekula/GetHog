@@ -705,6 +705,6 @@ struct HeatmapPageCanvas: View {
         parts.append(
             "The Depth and Across charts on the clickmap present the same data in a form VoiceOver can step through"
         )
-        return parts.joined(separator: ". ")
+        return parts.joinedAsSentences()
     }
 }

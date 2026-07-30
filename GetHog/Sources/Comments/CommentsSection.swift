@@ -185,8 +185,13 @@ private struct CommentRow: View {
     }
 
     private var spoken: String {
-        var text = "\(comment.displayAuthor): \(comment.content)"
-        if let badge { text += ". \(badge.text)" }
+        // `content` is whatever the author typed, and people end comments with a
+        // full stop, so the badge cannot assume it is starting a fresh sentence.
+        var text = ["\(comment.displayAuthor): \(comment.content)", badge?.text]
+            .compactMap { $0 }
+            .joinedAsSentences()
+        // Stays a clause: "completed by" reads as part of the badge it follows,
+        // not as a statement of its own.
         if comment.isCompleted, let by = comment.completedBy { text += ", completed by \(by)" }
         return text
     }

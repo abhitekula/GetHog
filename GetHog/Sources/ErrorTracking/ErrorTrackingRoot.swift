@@ -102,13 +102,30 @@ struct ErrorTrackingRoot: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    @Environment(OpenDetails.self) private var openDetails
+
     @State private var store = ErrorTrackingStore()
     // Ranked by people hurt, not by noise: an error hitting 200 users matters
     // more than one firing 50,000 times in a single retry loop.
     @State private var order: ErrorIssueOrder = .users
     @State private var filter: ErrorIssueFilter = .all
     @State private var window: AnalyticsWindow = .week
-    @State private var selection: ErrorIssue?
+
+    /// The open issue, and deliberately **not** `@State`.
+    ///
+    /// This screen is one of the 27 reached through the search tab, which means
+    /// it is hosted by a sidebar `Tab` above the size-class boundary and by the
+    /// search stack below it — see `OpenDetails`. Crossing the boundary rebuilds
+    /// the screen in the other host, so `@State` here was thrown away: measured
+    /// at 834→375pt with "ReferenceError" open, `navigationBars` fell from
+    /// `["ReferenceError", "Errors"]` to `["Errors"]`, and widening again did
+    /// not bring the issue back.
+    private var selection: Binding<ErrorIssue?> {
+        Binding(
+            get: { openDetails[.errorTracking] as? ErrorIssue },
+            set: { openDetails[.errorTracking] = $0.map(AnyHashable.init) }
+        )
+    }
 
     // In compact width the index behind "More" owns the navigation stack (see
     // `RootView`). A `NavigationSplitView` here collapses into a stack of its
@@ -120,7 +137,15 @@ struct ErrorTrackingRoot: View {
     var body: some View {
         if sizeClass == .compact {
             issueList
-                .navigationDestination(for: ErrorIssue.self) { issue in
+                // Bound to `selection`, not registered `for: ErrorIssue.self`.
+                // A `for:` destination is driven by values the `NavigationLink`
+                // appends to the *container's* path, which this screen can
+                // neither read nor write — so the issue open at 834pt could not
+                // be put back on the stack at 375pt, and the issue open at
+                // 375pt was invisible to the detail column at 834pt. Bound to
+                // the selection, one piece of state serves both: it pushes here
+                // and fills the detail column there.
+                .navigationDestination(item: selection) { issue in
                     ErrorIssueDetailView(issue: issue)
                         .id(issue.id)
                 }
@@ -153,9 +178,9 @@ struct ErrorTrackingRoot: View {
     /// and a grid of zeroes would misreport either one.
     @ViewBuilder
     private var detailPane: some View {
-        if let selection {
-            ErrorIssueDetailView(issue: selection)
-                .id(selection.id)
+        if let issue = selection.wrappedValue {
+            ErrorIssueDetailView(issue: issue)
+                .id(issue.id)
         } else if !model.isAvailable(.events) {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
@@ -183,7 +208,7 @@ struct ErrorTrackingRoot: View {
                 issues: store.issues,
                 window: window,
                 loadedAt: store.loadedAt,
-                selection: $selection
+                selection: selection
             )
         }
     }
@@ -257,20 +282,20 @@ struct ErrorTrackingRoot: View {
         }
     }
 
-    /// `nil` in compact width, and that is load-bearing.
+    /// The issue list, selection-driven at *both* widths.
     ///
-    /// A selection binding makes the `List` claim the row tap: the
-    /// `NavigationLink` sets `selection` instead of pushing. A
-    /// `NavigationSplitView` is what turns that selection into a visible screen,
-    /// so the moment compact width stopped using one, tapping an issue
-    /// highlighted the row and did nothing at all — measured on device. Without
-    /// the binding the link keeps the tap and pushes onto the container's stack.
-    private var listSelection: Binding<ErrorIssue?>? {
-        sizeClass == .compact ? nil : $selection
-    }
-
+    /// The selection binding is the delicate part. Handing one to the `List`
+    /// makes it claim the row tap: the `NavigationLink` sets `selection` rather
+    /// than pushing, so something else has to turn that selection into a visible
+    /// screen or the tap merely highlights the row. An earlier refactor left
+    /// compact width in exactly that state — binding kept, the
+    /// `NavigationSplitView` that had been displaying it gone — and tapping an
+    /// issue did nothing at all. Compact width has a display again:
+    /// `navigationDestination(item:)` in `body`. Measured at 375pt, tapping
+    /// "ReferenceError" pushes a bar titled `ReferenceError` over a back button
+    /// reading `Errors`, and coming back leaves no row selected.
     private var list: some View {
-        List(selection: listSelection) {
+        List(selection: selection) {
             if visibleIssues.isEmpty {
                 EmptyStateView(
                     title: "No \(filter.title.lowercased()) issues",
@@ -422,6 +447,7 @@ struct ErrorIssueRow: View {
             parts.append("last seen \(lastSeen.formatted(.relative(presentation: .named)))")
         }
         parts.append(issue.statusTitle)
-        return parts.joined(separator: ". ")
+        // `issueDescription` is server prose and arrives with its own full stop.
+        return parts.joinedAsSentences()
     }
 }

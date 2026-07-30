@@ -188,7 +188,8 @@ struct ErrorsOverview: View {
         }
         parts.append(metric)
         parts.append(issue.statusTitle)
-        return parts.joined(separator: ". ")
+        // `issueDescription` is server prose and arrives with its own full stop.
+        return parts.joinedAsSentences()
     }
 
     private func lastSeenPart(_ issue: ErrorIssue) -> [String] {

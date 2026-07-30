@@ -285,10 +285,10 @@ struct DashboardDetailView: View {
                         TileCard(
                             tile: tile,
                             model: store.overrides[tile.id] ?? tile.renderModel,
-                            webURL: tileWebURL(tile)
+                            webURL: tileWebURL(tile),
+                            open: { selectedTile = tile }
                         )
                         .pointerHighlight()
-                        .onTapGesture { selectedTile = tile }
                         .tileSpan(
                             TileStyle.preferredColumns(
                                 for: store.overrides[tile.id] ?? tile.renderModel
@@ -372,8 +372,68 @@ struct TileCard: View {
     /// replaced it.
     let model: InsightRenderModel
     var webURL: URL?
+    /// What opening the tile does, on the one screen where a tile opens.
+    ///
+    /// `nil` on the project overview, whose pinned tiles are a preview of a
+    /// dashboard one tap away rather than five controls — see `ProjectOverview`,
+    /// which also switches hit testing off. A card that does nothing must not
+    /// claim the button trait; VoiceOver would offer an activation that has no
+    /// effect.
+    var open: (() -> Void)?
 
     var body: some View {
+        control
+            // Dragging a tile carries the chart as PNG, the series as CSV and
+            // the title as text, so the destination decides what it wanted:
+            // Numbers takes the CSV, Mail or Slack the image. It carries what is
+            // on screen, so an exported CSV matches the window the user is
+            // looking at.
+            .draggable(ExportableInsight(title: tile.title, model: model))
+            .contextMenu {
+                if let webURL {
+                    Link(destination: webURL) {
+                        Label("Open in PostHog", systemImage: "arrow.up.forward.square")
+                    }
+                }
+                InsightShareMenuItems(title: tile.title, model: model)
+            }
+    }
+
+    /// One button per tile, not a card with a tap gesture bolted on.
+    ///
+    /// `.onTapGesture` moves pixels and tells the accessibility tree nothing.
+    /// Measured on the demo dashboard before this: six tiles, no tile buttons in
+    /// the tree at all, and each tile leaving two loose `StaticText`s behind —
+    /// an 18pt title and a 13.3pt freshness stamp, which Apple's
+    /// `performAccessibilityAudit` flagged "hit area is too small" four times
+    /// over. A `Button` taking the card as its label collapses the same tile
+    /// into one 370×289pt element carrying the button trait, which is the shape
+    /// every `List` row elsewhere in this app already has, and the audit's four
+    /// hits go with it.
+    ///
+    /// The tap itself lands exactly where it used to. Verified against a build
+    /// with the old `.onTapGesture` restored: a tap on the title row or the
+    /// freshness stamp opens the insight in both, and a tap on the plot opens it
+    /// in neither, because `chartXSelection` has always owned that region for
+    /// scrubbing. What is new is that the *button* can be activated from
+    /// anywhere — which is the only way a VoiceOver or Full Keyboard Access user
+    /// ever reaches it.
+    @ViewBuilder
+    private var control: some View {
+        if let open {
+            Button(action: open) {
+                card
+            }
+            // The card is already the design; a button style would repaint it.
+            .buttonStyle(.plain)
+            .accessibilityLabel(spokenLabel)
+            .accessibilityHint("Opens the full insight")
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         Card(accent: TileStyle.accent(for: model)) {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 CardHeader(
@@ -381,7 +441,14 @@ struct TileCard: View {
                     systemImage: TileStyle.symbol(for: model)
                 )
 
-                InsightChartView(model: model, compact: true, webURL: webURL)
+                InsightChartView(
+                    model: model,
+                    compact: true,
+                    webURL: webURL,
+                    // The tile's heading is the insight's name, and it is the
+                    // only place the chart's descriptor can get one from.
+                    title: tile.title
+                )
 
                 FreshnessLabel(date: tile.lastRefresh, isCached: tile.isCached)
             }
@@ -389,19 +456,30 @@ struct TileCard: View {
             .padding(.leading, Theme.Space.s)
         }
         .contentShape(.rect)
-        // Dragging a tile carries the chart as PNG, the series as CSV and the
-        // title as text, so the destination decides what it wanted: Numbers
-        // takes the CSV, Mail or Slack the image. It carries what is on screen,
-        // so an exported CSV matches the window the user is looking at.
-        .draggable(ExportableInsight(title: tile.title, model: model))
-        .contextMenu {
-            if let webURL {
-                Link(destination: webURL) {
-                    Label("Open in PostHog", systemImage: "arrow.up.forward.square")
-                }
-            }
-            InsightShareMenuItems(title: tile.title, model: model)
-        }
+    }
+
+    /// Title, what the chart shows, and how stale it is — the three things the
+    /// card prints, in the order it prints them.
+    ///
+    /// Spelled out rather than left to SwiftUI's own combining because the chart
+    /// in the middle is a plot: combined automatically, the tile would announce
+    /// its heading and its date stamp with silence where the data should be.
+    /// `joinedAsSentences()` rather than `joined(separator: ". ")`: the first
+    /// fragment is `insight.name` straight off the API, and a dashboard whose
+    /// author ended a tile title in a full stop would otherwise be read with a
+    /// doubled one — the defect that helper was measured against on the Errors
+    /// list.
+    private var spokenLabel: String {
+        [tile.title, InsightSummary.spoken(model), freshness].joinedAsSentences()
+    }
+
+    /// `FreshnessLabel`'s own wording. It lives in `Common` and its label is not
+    /// reachable from here, and the two saying different things about the same
+    /// timestamp would be worse than saying it twice.
+    private var freshness: String {
+        tile.lastRefresh
+            .map { "Data updated \($0.formatted(.relative(presentation: .named)))" }
+            ?? "Data not yet loaded"
     }
 }
 
@@ -418,7 +496,12 @@ struct InsightDetailBody: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                InsightChartView(model: tile.renderModel, compact: false, webURL: webURL)
+                InsightChartView(
+                    model: tile.renderModel,
+                    compact: false,
+                    webURL: webURL,
+                    title: tile.title
+                )
 
                 if case .timeSeries(let series, _) = tile.renderModel {
                     SeriesLegend(series: series)

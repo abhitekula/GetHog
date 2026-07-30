@@ -289,6 +289,39 @@ struct TabRootView: View {
     }
 }
 
+/// Where a secondary screen keeps the detail it currently has open.
+///
+/// A secondary screen is hosted **twice**. Above the size-class boundary it is
+/// a `Tab` of its own, because `sidebarSections` is declared only there; below
+/// it, that `Tab` does not exist and the screen is a destination pushed on the
+/// search tab's stack. Crossing the boundary swaps hosts, so SwiftUI builds
+/// `TabRootView` — and every `@State` in the screen underneath it — from
+/// scratch.
+///
+/// Measured on Errors, iPad Pro 11 M5, by dragging the iPadOS 26 window
+/// grabber: with "ReferenceError" open, `navigationBars` went
+/// `["ReferenceError", "Errors"]` at 834pt → `["Errors"]` at 375pt → back to an
+/// unnamed detail at 834pt. The open issue was gone in both directions and the
+/// list row was no longer `Selected`. Dashboards — a *primary* tab, one host at
+/// both widths — kept `["My App Dashboard", "Dashboards"]` across the identical
+/// resize, which is what localises the fault to the double hosting rather than
+/// to anything about split views.
+///
+/// This object is owned by `RootView`, which straddles the boundary, so the two
+/// hosts can hand the open detail to each other. `AnyHashable` because the 27
+/// secondary screens have 27 different detail types and this file must not know
+/// any of them.
+@MainActor
+@Observable
+final class OpenDetails {
+    private var byTab: [AppTab: AnyHashable] = [:]
+
+    subscript(tab: AppTab) -> AnyHashable? {
+        get { byTab[tab] }
+        set { byTab[tab] = newValue }
+    }
+}
+
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -298,6 +331,9 @@ struct RootView: View {
     /// traces into the same stack, and an object result pushes a dashboard or a
     /// flag — so no typed path can hold it.
     @State private var searchPath = NavigationPath()
+    /// Held here rather than in the screens themselves: this view is the only
+    /// thing in the tree that survives a size-class change intact.
+    @State private var openDetails = OpenDetails()
     @State private var hasAppliedDebugTab = false
     /// Set only when a link could not do what it said. Success is silent; see
     /// `LinkNotice`.
@@ -316,6 +352,7 @@ struct RootView: View {
 
         case .ready:
             tabs
+                .environment(openDetails)
                 .tabViewStyle(.sidebarAdaptable)
                 // Gives the tab bar's height back to the data while reading down a
                 // long list, which is most of what this app is. It restores itself
@@ -557,19 +594,33 @@ struct RootView: View {
         // Pressing a control labelled with a *metric* and landing on Settings is
         // the control silently failing at the only job it has.
         //
-        // The destination is the dashboards home rather than the metric itself,
-        // and that is the honest one: a snapshot metric knows its insight id,
-        // but this app draws an insight only as a tile on the dashboard it
-        // belongs to and has no screen for one on its own — the same limit the
-        // link parser states when it refuses `/insights/{id}`. Inventing a
-        // deeper landing would mean guessing which dashboard, and guessing wrong
-        // is worse than landing one level up.
-        // The id it carries is deliberately unread: presence is the whole
-        // signal. Consumed either way, so a stale request cannot redirect a
-        // later launch the user began somewhere else.
-        if SharedSnapshotStore.shared.pendingOpen() != nil {
+        // This app draws an insight only as a tile on the dashboard it belongs
+        // to and has no screen for one on its own — the same limit the link
+        // parser states when it refuses `/insights/{id}`. So the deepest honest
+        // landing is that dashboard, and the snapshot records which one it was
+        // at write time (`SharedSnapshot.Metric.dashboardID`), where the answer
+        // was already in hand. Nothing is inferred here and nothing is fetched.
+        //
+        // Falls back to the dashboards home whenever the id is unknown — a
+        // snapshot written by an older build, or a metric that has since left
+        // the dashboard. Landing one level up is the correct degradation; a
+        // guess would not be.
+        //
+        // Consumed either way, so a stale request cannot redirect a later launch
+        // the user began somewhere else.
+        if let pending = SharedSnapshotStore.shared.pendingOpen() {
             SharedSnapshotStore.shared.clearPendingOpen()
-            open(.dashboards)
+            let snapshot = SharedSnapshotStore.shared.loadOrNil()
+            if let metricID = pending.metricID,
+               let dashboardID = snapshot?.metric(id: metricID)?.dashboardID,
+               let projectID = snapshot?.projectID {
+                // Carried with its project: the snapshot names the project the
+                // dashboard id was read in, and `open(_:)` refuses rather than
+                // showing another project's dashboard under the same number.
+                open(PostHogLinkTarget(projectID: projectID, link: .dashboard(id: dashboardID)))
+            } else {
+                open(.dashboards)
+            }
         }
 
         if let target = IntentNavigationTarget.consume() {
@@ -673,7 +724,14 @@ struct ProjectSwitcher: ToolbarContent {
                 // pushed screen.
                 Image(systemName: "building.2")
             }
-            .accessibilityLabel("Current project: \(model.selectedProject?.name ?? "none"). Double tap to switch.")
+            // The label names the thing; the hint says what happens to it.
+            //
+            // It used to end "Double tap to switch." — which VoiceOver already
+            // appends itself, so the instruction was spoken twice on every
+            // screen in the app, and it named a gesture that Switch Control,
+            // Voice Control and a keyboard do not have.
+            .accessibilityLabel("Current project: \(model.selectedProject?.name ?? "none")")
+            .accessibilityHint("Switches to a different project")
         }
     }
 }

@@ -199,6 +199,12 @@ struct IngestionWarningsRoot: View {
                 )
                 .font(.subheadline)
                 .lineLimit(1)
+                // Measured 41×17pt — a subheadline glyph and one short word,
+                // with nothing behind them. A borderless menu is exactly as
+                // tappable as its label is big, so the floor is set here rather
+                // than on the `Menu`, which would only recentre this label in a
+                // larger box.
+                .minimumHitTarget()
             }
             .accessibilityLabel("Category filter, \(store.category?.title ?? "all categories")")
         }
@@ -374,10 +380,52 @@ struct IngestionWarningsRoot: View {
         if let lastSeen = warning.lastSeen {
             text += ", last seen \(lastSeen.formatted(.relative(presentation: .named)))"
         }
-        text += warning.hasTrend
-            ? ", \(store.window.bucket.title) trend available"
-            : ", no activity in this window"
+        text += trend(warning)
         return text
+    }
+
+    /// The sparkline said, rather than promised.
+    ///
+    /// This line used to end ", daily trend available", which advertised a chart
+    /// nothing could reach. The `Sparkline` beside it is `.accessibilityHidden`;
+    /// the row is a single `.combine`d element, so a descriptor attached inside
+    /// it would be flattened away along with everything else; and the row is not
+    /// tappable, so there is no detail screen to open the chart in either.
+    ///
+    /// Giving it a descriptor instead was the other option and is the worse one,
+    /// because the axis would have to be invented: the payload carries bucket
+    /// *values* and no timestamps at all — see `IngestionWarning.sparkline` —
+    /// so a descriptor's x-axis could only count "bucket 0 to 11", which is
+    /// exactly the unlabelled-and-unknowable axis `IngestionWarningWindow`
+    /// already calls decoration. The two facts the shape genuinely carries fit
+    /// in the sentence the row is read as anyway.
+    private func trend(_ warning: IngestionWarning) -> String {
+        guard warning.hasTrend else { return ", no activity in this window" }
+
+        let buckets = warning.sparkline
+        let unit = store.window.bucket == .hourly ? "hour" : "day"
+        let peak = (buckets.max() ?? 0).formatted(.number.precision(.fractionLength(0)))
+        let worst = "worst \(unit) \(peak)"
+
+        // Halves, not first-versus-last: one quiet bucket at either end is
+        // ordinary and would otherwise flip the verb on its own. Under four
+        // buckets there are no halves worth comparing, so nothing is claimed.
+        guard buckets.count >= 4 else { return ", \(worst)" }
+
+        let split = buckets.count / 2
+        let earlier = buckets.prefix(split).reduce(0, +)
+        let later = buckets.suffix(from: split).reduce(0, +)
+        // A fifth either way, so ordinary bucket-to-bucket jitter does not get
+        // announced as a direction.
+        let direction = if later > earlier * 1.2 {
+            "rising"
+        } else if later * 1.2 < earlier {
+            "falling"
+        } else {
+            "steady"
+        }
+
+        return ", \(store.window.bucket.title) trend \(direction), \(worst)"
     }
 
     // MARK: Empty
