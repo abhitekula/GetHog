@@ -388,6 +388,70 @@ struct ReplayPlayerView: View {
     }
 
     var body: some View {
+        // Three cards, not one. The console and network panes are siblings of
+        // the player rather than children of it: they come from the same fetched
+        // blobs, but a 400-line console inside the player's card would put the
+        // transport controls off the top of the screen.
+        VStack(spacing: Theme.Space.l) {
+            playerCard
+            diagnosticsPanes
+        }
+        .onChange(of: loader.pendingCount, initial: true) { _, _ in feedPlayer() }
+        .onChange(of: controller.isDocumentReady, initial: true) { _, _ in feedPlayer() }
+        .onChange(of: controller.currentTime) { _, now in
+            loader.ensureCoverage(upTo: now + ReplayLoader.prefetchLead)
+        }
+        .onChange(of: loader.bufferedSeconds) { _, buffered in
+            // A scrub past the buffer is honoured once the data lands, rather
+            // than silently clamping and leaving the playhead somewhere else.
+            guard let target = pendingSeek, buffered >= target else { return }
+            pendingSeek = nil
+            controller.seek(to: target)
+        }
+    }
+
+    /// Console and network, drawn from rrweb plugin events that arrived in the
+    /// blobs the player already fetched — no extra request, and no part of the
+    /// shared rate-limit budget.
+    ///
+    /// Shown whenever snapshot data loaded, including when the web player itself
+    /// failed: an rrweb crash costs the pixels, not the console.
+    @ViewBuilder
+    private var diagnosticsPanes: some View {
+        if loader.availability == .ready {
+            ReplayConsoleCard(
+                diagnostics: loader.diagnostics,
+                origin: loader.replayStart,
+                playhead: coarsePlayhead,
+                canSeek: controller.isReady,
+                isStreaming: !loader.isComplete && loader.streamingError == nil,
+                onSeek: { seek(to: $0) }
+            )
+            ReplayNetworkCard(
+                diagnostics: loader.diagnostics,
+                origin: loader.replayStart,
+                duration: duration,
+                playhead: coarsePlayhead,
+                canSeek: controller.isReady,
+                isStreaming: !loader.isComplete && loader.streamingError == nil,
+                onSeek: { seek(to: $0) }
+            )
+        }
+    }
+
+    /// The playhead these two panes are laid out against, quantised.
+    ///
+    /// `controller.currentTime` already drops from rrweb's per-frame tick to
+    /// 20 Hz, which is right for the scrubber and much too fast here: a change
+    /// re-filters a few hundred entries and re-lays out every visible row,
+    /// twenty times a second, inside the page's scroll view. Half a second is
+    /// invisible for what it drives — a rule that crosses the waterfall once per
+    /// session, and the dimming of console lines that have not happened yet.
+    private var coarsePlayhead: TimeInterval {
+        (controller.currentTime / 0.5).rounded(.down) * 0.5
+    }
+
+    private var playerCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 12) {
                 header
@@ -429,18 +493,6 @@ struct ReplayPlayerView: View {
                     }
                 }
             }
-        }
-        .onChange(of: loader.pendingCount, initial: true) { _, _ in feedPlayer() }
-        .onChange(of: controller.isDocumentReady, initial: true) { _, _ in feedPlayer() }
-        .onChange(of: controller.currentTime) { _, now in
-            loader.ensureCoverage(upTo: now + ReplayLoader.prefetchLead)
-        }
-        .onChange(of: loader.bufferedSeconds) { _, buffered in
-            // A scrub past the buffer is honoured once the data lands, rather
-            // than silently clamping and leaving the playhead somewhere else.
-            guard let target = pendingSeek, buffered >= target else { return }
-            pendingSeek = nil
-            controller.seek(to: target)
         }
     }
 

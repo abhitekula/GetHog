@@ -64,6 +64,15 @@ final class ReplayLoader {
     /// Seconds of session covered by everything fetched so far.
     private(set) var bufferedSeconds: TimeInterval = 0
 
+    /// Console output and network timing, read out of the same events.
+    ///
+    /// This is free. rrweb carries both as `type: 6` plugin events inside the
+    /// blobs already being fetched to render frames, so the console and network
+    /// panes add no request and consume none of the organisation-wide rate
+    /// limit. They are accumulated here rather than in the view because
+    /// `pending` is drained into the web player and then discarded.
+    private(set) var diagnostics = ReplayDiagnostics()
+
     private(set) var loadedRangeCount = 0
     private(set) var rangeCount = 0
 
@@ -161,6 +170,7 @@ final class ReplayLoader {
         availability = .idle
         isFetching = false
         pending = []
+        diagnostics = ReplayDiagnostics()
         replayStart = nil
         bufferedSeconds = 0
         loadedRangeCount = 0
@@ -205,13 +215,17 @@ final class ReplayLoader {
                 )
             )
             // ~1.6 MB of JSONL per range; parsing it on the main actor would
-            // drop frames in whatever is already on screen.
-            let events = try await Task.detached(priority: .userInitiated) {
-                try SnapshotParser.parse(jsonl: data)
+            // drop frames in whatever is already on screen. The console and
+            // network extraction rides along in the same detached task so the
+            // megabyte is walked once, off the main actor, rather than twice.
+            let (events, chunk) = try await Task.detached(priority: .userInitiated) {
+                let events = try SnapshotParser.parse(jsonl: data)
+                return (events, ReplayDiagnostics.extract(from: events))
             }.value
 
             nextRangeIndex += 1
             loadedRangeCount = nextRangeIndex
+            diagnostics.merge(chunk)
             ingest(events)
             return true
         } catch {
