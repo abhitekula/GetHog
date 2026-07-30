@@ -23,6 +23,29 @@ struct StickinessChart: View {
         }
     }
 
+    /// Halved at accessibility sizes rather than thinned to `thinnedAxisCount`'s
+    /// floor of two.
+    ///
+    /// That floor is calibrated for the dates on a time series, which are three
+    /// times as wide at the top of the scale. This axis counts days active, so
+    /// its labels are one or two digits and cost almost nothing — and at the
+    /// floor Swift Charts chose a stride whose only mark inside a 1...8 domain
+    /// was "0". Measured at AX5: one label, which by the same helper's rule is
+    /// not an axis.
+    private var xAxisTickCount: Int {
+        let base = compact ? 4 : 8
+        return dynamicTypeSize.isAccessibilitySize ? max(3, base / 2) : base
+    }
+
+    /// Past the accessibility threshold the legend leaves the chart's frame —
+    /// see `InsightLegend`. This chart shares the lifecycle tile's capped height
+    /// and the same in-frame legend, so with a breakdown it collapses the same
+    /// way: two series at AX5 take ~100pt of a 225pt frame, and what is left
+    /// after the x-axis labels is not a plot.
+    private var legendBelowChart: Bool {
+        series.count > 1 && dynamicTypeSize.isAccessibilitySize
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Chart {
@@ -36,17 +59,25 @@ struct StickinessChart: View {
                 }
             }
             .chartForegroundStyleScale(range: series.indices.map { SeriesPalette.color(at: $0) })
-            .chartLegend(series.count > 1 ? .visible : .hidden)
+            .chartLegend(series.count > 1 && !legendBelowChart ? .visible : .hidden)
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: dynamicTypeSize.thinnedAxisCount(compact ? 4 : 8))) {
+                AxisMarks(values: .automatic(desiredCount: xAxisTickCount)) {
                     AxisGridLine()
                     AxisValueLabel().font(.caption2)
                 }
             }
             .chartYAxis {
-                // Deliberately not thinned, for the reason given on the time
-                // series' y-axis: vertical room scales with the text.
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) {
+                // Thinned, like the x-axis beside it. The note that used to
+                // stand here — that vertical room scales with the text — was
+                // borrowed from the time series' y-axis, and it was wrong there
+                // too: the height it refers to is capped at 1.5× while
+                // `.caption2` grows about 4.3× by AX5. Three labels in a 225pt
+                // frame minus its axis row is the same pile-up the lifecycle
+                // tile showed.
+                AxisMarks(
+                    position: .leading,
+                    values: .automatic(desiredCount: dynamicTypeSize.thinnedAxisCount(compact ? 3 : 4))
+                ) {
                     AxisGridLine()
                     AxisValueLabel().font(.caption2)
                 }
@@ -57,6 +88,15 @@ struct StickinessChart: View {
             Text("Days active in the period")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+
+            if legendBelowChart {
+                InsightLegend(
+                    entries: series.enumerated().map { index, s in
+                        InsightLegend.Entry(label: s.label, slot: index, total: s.total)
+                    },
+                    unit: "users"
+                )
+            }
         }
     }
 }

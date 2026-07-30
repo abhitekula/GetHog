@@ -36,6 +36,99 @@ struct InsightChartView: View {
     }
 }
 
+// MARK: - Legend
+
+/// A chart's legend, drawn below the plot instead of inside it.
+///
+/// `chartLegend(.visible)` lays the legend out *within* the height the chart's
+/// own `.frame` grants and gives the plot whatever is left. Measured on the
+/// "Growth accounting" tile at AX5: four statuses, each on its own line at
+/// accessibility size, took about 400pt of a 255pt frame and left a plot strip
+/// roughly 40pt tall — a tile that was 90% legend and 10% unreadable chart.
+/// Below the chart the legend costs the *tile* the height it needs, and the plot
+/// keeps the whole of the frame.
+///
+/// Dropping the legend instead is not on offer: a stacked bar segment is
+/// identified by its colour and nothing else, three light-mode palette hues fall
+/// below 3:1, and this legend is the relief the palette's contrast rule requires
+/// — its symbol carries the identity without hue. Printing each series' total
+/// makes the accessibility-size trade the same one retention's cohort list
+/// makes: less chart, more figures, never less data.
+struct InsightLegend: View {
+    struct Entry {
+        let label: String
+        /// Palette slot rather than row position, so the swatch cannot drift
+        /// from the mark it names.
+        let slot: Int
+        let total: Double
+        /// Churn reads as a loss, so its total is signed, not absolute.
+        var isNegative: Bool = false
+    }
+
+    let entries: [Entry]
+    /// What the totals count. VoiceOver reads a legend row on its own, without
+    /// the chart descriptor that would otherwise name the unit.
+    var unit: String = ""
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            // Indexed, not keyed by label: two series of a breakdown can carry
+            // the same label, and a duplicate `ForEach` id drops one of them.
+            ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                row(entry)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(accessibilityLabel(for: entry))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ entry: Entry) -> some View {
+        // The same reflow as `FunnelStepRow`, for the same measured reason: at
+        // AX5 "Resurrecting" set in `.caption` is wider than a phone tile, so a
+        // name and a figure sharing one row leave the figure a column a couple
+        // of characters wide.
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                name(entry)
+                total(entry)
+            }
+        } else {
+            HStack(spacing: Theme.Space.s) {
+                name(entry)
+                Spacer(minLength: Theme.Space.s)
+                total(entry)
+            }
+        }
+    }
+
+    private func name(_ entry: Entry) -> some View {
+        HStack(spacing: Theme.Space.s) {
+            // Scales with the label it identifies: pinned to a fixed size, the
+            // one part of this legend that does not depend on hue shrinks to a
+            // speck for precisely the readers it exists for.
+            Image(systemName: SeriesPalette.symbol(at: entry.slot))
+                .font(.caption2)
+                .foregroundStyle(SeriesPalette.color(at: entry.slot))
+            Text(entry.label)
+                .font(.caption)
+        }
+    }
+
+    private func total(_ entry: Entry) -> some View {
+        Text(entry.total.compactFormatted)
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(entry.isNegative ? Theme.Status.critical : .primary)
+    }
+
+    private func accessibilityLabel(for entry: Entry) -> String {
+        let total = entry.total.formatted()
+        return unit.isEmpty ? "\(entry.label), total \(total)" : "\(entry.label): \(total) \(unit)"
+    }
+}
+
 // MARK: - Lifecycle
 
 struct LifecycleChart: View {
@@ -48,16 +141,98 @@ struct LifecycleChart: View {
     /// the same fixed axis count.
     @ScaledMetric(relativeTo: .caption2) private var textScale: CGFloat = 1
 
+    /// One stacked segment, on the date its day label already encodes.
+    private struct DatedBar: Identifiable {
+        let id: String
+        let status: String
+        let date: Date
+        let value: Double
+    }
+
+    /// The bars on a real date axis, or `nil` when a day label will not parse.
+    ///
+    /// The days used to be plotted as the strings PostHog sends, which makes the
+    /// x-axis *categorical* — and a categorical axis draws one label per
+    /// category and holds each label to its band's width, whatever
+    /// `desiredCount` asks for. That is why routing the count through
+    /// `thinnedAxisCount` fixed nothing here: at AX5 the five bands of "Growth
+    /// accounting" were about 50pt each, so all five labels rendered as "2…",
+    /// the first character of "2026-06-28". A date scale thins to the count it
+    /// is handed and places what survives on a continuous axis, where a label is
+    /// not confined to a band — which is the width the thinning was supposed to
+    /// buy. `Point.date` has carried the parsed date all along.
+    private var datedBars: [DatedBar]? {
+        var bars: [DatedBar] = []
+        for s in series {
+            for point in s.points {
+                guard let date = point.date else { return nil }
+                bars.append(
+                    DatedBar(
+                        id: "\(s.status.rawValue)-\(point.day)",
+                        status: s.status.title,
+                        date: date,
+                        value: point.value
+                    )
+                )
+            }
+        }
+        return bars.isEmpty ? nil : bars
+    }
+
+    /// The reporting interval, read off the gap between the first two days.
+    ///
+    /// A `BarMark` on a date axis is exactly as wide as the unit it is given,
+    /// and lifecycle is not always daily — the demo's "Growth accounting" is
+    /// weekly — so a hardcoded `.day` would draw a one-day sliver in the middle
+    /// of every seven-day slot.
+    private func interval(of bars: [DatedBar]) -> Calendar.Component {
+        let days = Set(bars.map(\.date)).sorted()
+        guard days.count >= 2 else { return .day }
+        let gap = days[1].timeIntervalSince(days[0])
+        if gap <= 7_200 { return .hour }
+        if gap <= 129_600 { return .day }
+        if gap <= 864_000 { return .weekOfYear }
+        return .month
+    }
+
+    private var xAxisTickCount: Int {
+        dynamicTypeSize.thinnedAxisCount(compact ? 3 : 6)
+    }
+
+    private var yAxisTickCount: Int {
+        dynamicTypeSize.thinnedAxisCount(compact ? 4 : 5)
+    }
+
+    /// Past the accessibility threshold the legend has to leave the chart's
+    /// frame — see `InsightLegend`. The full-size chart draws it below too,
+    /// where it replaces the built-in one rather than doubling it.
+    private var legendBelowChart: Bool {
+        !compact || dynamicTypeSize.isAccessibilitySize
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Chart {
-                ForEach(series, id: \.status) { s in
-                    ForEach(s.points, id: \.day) { point in
+                if let datedBars {
+                    ForEach(datedBars) { bar in
                         BarMark(
-                            x: .value("Day", point.day),
-                            y: .value("Users", point.value)
+                            x: .value("Day", bar.date, unit: interval(of: datedBars)),
+                            y: .value("Users", bar.value)
                         )
-                        .foregroundStyle(by: .value("Status", s.status.title))
+                        .foregroundStyle(by: .value("Status", bar.status))
+                    }
+                } else {
+                    // Only for labels that are not dates at all. The axis below
+                    // stays categorical to match, with the truncation that
+                    // implies — better than dropping points that will not parse.
+                    ForEach(series, id: \.status) { s in
+                        ForEach(s.points, id: \.day) { point in
+                            BarMark(
+                                x: .value("Day", point.day),
+                                y: .value("Users", point.value)
+                            )
+                            .foregroundStyle(by: .value("Status", s.status.title))
+                        }
                     }
                 }
                 // Dormant is drawn below zero, so the axis line is the reference
@@ -71,32 +246,51 @@ struct LifecycleChart: View {
                 range: series.map { SeriesPalette.color(at: $0.status.paletteSlot) }
             )
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: dynamicTypeSize.thinnedAxisCount(compact ? 3 : 6)))
+                if datedBars != nil {
+                    AxisMarks(preset: .aligned, values: .automatic(desiredCount: xAxisTickCount)) { _ in
+                        AxisGridLine()
+                        // Short by construction: "Jun 28" is a quarter of
+                        // "2026-06-28", and the label the axis kept has to fit
+                        // in whatever the y-axis labels left of the tile.
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                            .font(.caption2)
+                    }
+                } else {
+                    AxisMarks(values: .automatic(desiredCount: xAxisTickCount)) { _ in
+                        AxisGridLine()
+                        AxisValueLabel().font(.caption2)
+                    }
+                }
             }
-            .chartYAxis { AxisMarks(position: .leading) }
-            .chartLegend(.visible)
+            .chartYAxis {
+                // Thinned like the x-axis, and for the same reason once the
+                // height stopped being free: `AxisMarks(position: .leading)`
+                // alone asked for the default four-or-so labels at the default
+                // axis font, and at AX5 they landed on top of each other in a
+                // smear at the left edge — "-40" and "20" occupying the same
+                // 40pt. See `TimeSeriesChart.height` for why the room they stack
+                // in does not grow with them.
+                AxisMarks(position: .leading, values: .automatic(desiredCount: yAxisTickCount)) {
+                    AxisGridLine()
+                    AxisValueLabel().font(.caption2)
+                }
+            }
+            .chartLegend(legendBelowChart ? .hidden : .visible)
             .frame(height: (compact ? 170 : 280) * min(textScale, 1.5))
             .accessibilityChartDescriptor(LifecycleDescriptor(series: series))
 
-            if !compact {
-                ForEach(series, id: \.status) { s in
-                    HStack(spacing: 8) {
-                        // Scales with the label it identifies: this legend is
-                        // the non-colour route to a series only if it stays
-                        // visible, and three light-mode hues need it.
-                        Circle()
-                            .fill(SeriesPalette.color(at: s.status.paletteSlot))
-                            .frame(width: 8 * textScale, height: 8 * textScale)
-                        Text(s.status.title).font(.caption)
-                        Spacer()
-                        Text(s.total.compactFormatted)
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            // Churn reads as a loss, so it is signed, not absolute.
-                            .foregroundStyle(s.status.isNegative ? Theme.Status.critical : .primary)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(s.status.title): \(s.total.formatted()) users")
-                }
+            if legendBelowChart {
+                InsightLegend(
+                    entries: series.map {
+                        InsightLegend.Entry(
+                            label: $0.status.title,
+                            slot: $0.status.paletteSlot,
+                            total: $0.total,
+                            isNegative: $0.status.isNegative
+                        )
+                    },
+                    unit: "users"
+                )
             }
         }
     }
@@ -293,10 +487,32 @@ struct TimeSeriesChart: View {
     /// in points is a height that runs out of room for them. Capped at half
     /// again: past that a single tile stops fitting on a phone screen and the
     /// dashboard becomes a scroll through one chart at a time.
+    ///
+    /// The cap is why the y-axis has to be thinned as well. `.caption2` is about
+    /// 4.3× its default size at AX5 while this height grows 1.5×, so the room
+    /// each label stacks in shrinks by roughly three as the labels themselves
+    /// grow — the opposite of what an earlier note here claimed. It is also why
+    /// nothing but plot and axes may live inside this frame: a legend sharing it
+    /// is what flattened the lifecycle tile's plot to a 40pt strip.
     private var height: CGFloat { (compact ? 170 : 280) * min(textScale, 1.5) }
 
     private var xAxisTickCount: Int {
         dynamicTypeSize.thinnedAxisCount(compact ? 3 : 5)
+    }
+
+    private var yAxisTickCount: Int {
+        dynamicTypeSize.thinnedAxisCount(compact ? 4 : 5)
+    }
+
+    /// Past the accessibility threshold a multi-series legend leaves the chart's
+    /// frame — see `InsightLegend`.
+    ///
+    /// Tiles only. The full-size chart is followed by `SeriesLegend` on the
+    /// detail screen already, so moving this one out as well would print two;
+    /// and the export card renders at the default text size, where the built-in
+    /// legend costs a single line.
+    private var legendBelowChart: Bool {
+        compact && series.count > 1 && dynamicTypeSize.isAccessibilitySize
     }
 
     // MARK: - Zoom and pan
@@ -414,7 +630,7 @@ struct TimeSeriesChart: View {
                 }
             }
             .chartForegroundStyleScale(range: paletteRange)
-            .chartLegend(series.count > 1 ? .visible : .hidden)
+            .chartLegend(series.count > 1 && !legendBelowChart ? .visible : .hidden)
             .chartXAxis {
                 // The axis owns the format and the thinning; a fixed categorical
                 // axis is what produced overlapping labels. What it cannot see
@@ -427,10 +643,13 @@ struct TimeSeriesChart: View {
                 }
             }
             .chartYAxis {
-                // Deliberately not thinned. These labels stack down a height
-                // that now scales with the text, so they gain room as they grow
-                // — it is only the x-axis that has a width it cannot get back.
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
+                // Thinned like the x-axis. The note that used to stand here —
+                // that these labels stack down a height that scales, so they
+                // gain room as they grow — was void the moment that height was
+                // capped at 1.5×: see `height`. Left at four, they piled into
+                // each other at the left edge of the lifecycle tile at AX5, and
+                // this chart's y-axis is drawn by the same rules.
+                AxisMarks(position: .leading, values: .automatic(desiredCount: yAxisTickCount)) {
                     AxisGridLine()
                     AxisValueLabel().font(.caption2)
                 }
@@ -467,6 +686,14 @@ struct TimeSeriesChart: View {
                 @unknown default:
                     break
                 }
+            }
+
+            if legendBelowChart {
+                InsightLegend(
+                    entries: series.enumerated().map { index, s in
+                        InsightLegend.Entry(label: s.label, slot: index, total: s.total)
+                    }
+                )
             }
         }
     }
@@ -800,6 +1027,13 @@ extension DynamicTypeSize {
     /// A label is roughly three times as wide at the top of the scale as at the
     /// default size, so the count has to come down with it. Two is the floor: an
     /// axis with one mark has stopped being an axis.
+    ///
+    /// It thins the *vertical* axis by the same arithmetic, which an earlier note
+    /// on this module's y-axes denied on the grounds that chart height scales
+    /// with the text. It does not scale far enough: height is capped at 1.5×
+    /// while `.caption2` grows about 4.3× by AX5, so a y-axis label has around a
+    /// third of the room it needs. On the lifecycle tile that showed up as "-40"
+    /// and "20" drawn on top of one another.
     ///
     /// Shared by every chart in this module, because they all inherited the same
     /// fixed count and the same collision.
