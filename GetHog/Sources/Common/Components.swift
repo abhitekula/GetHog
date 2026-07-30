@@ -249,6 +249,10 @@ struct SelectableRow<Content: View>: View {
 struct DeltaBadge: View {
     let current: Double
     let previous: Double
+    /// True for metrics where a rise is bad news — bounce rate, error rate, load
+    /// time. Without it the badge tints purely by direction and paints a rising
+    /// bounce rate green, which is the opposite of what happened.
+    var isIncreaseBad: Bool = false
 
     private var change: Double? {
         guard previous != 0 else { return nil }
@@ -258,15 +262,21 @@ struct DeltaBadge: View {
     var body: some View {
         if let change {
             let rising = change >= 0
+            let isGood = rising != isIncreaseBad
             Label {
                 Text(change, format: .percent.precision(.fractionLength(0...1)))
             } icon: {
+                // The arrow always follows the number, never the verdict: a fall
+                // in a bad-when-rising metric is good news but it is still a
+                // fall, and flipping the arrow would misstate the direction.
                 Image(systemName: rising ? "arrow.up.right" : "arrow.down.right")
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(rising ? Theme.Status.good : Theme.Status.critical)
+            .foregroundStyle(isGood ? Theme.Status.good : Theme.Status.critical)
             .accessibilityLabel(
-                "\(rising ? "Up" : "Down") \(abs(change).formatted(.percent.precision(.fractionLength(0...1))))"
+                "\(rising ? "Up" : "Down") "
+                    + abs(change).formatted(.percent.precision(.fractionLength(0...1)))
+                    + ", \(isGood ? "an improvement" : "worse")"
             )
         }
     }
@@ -280,12 +290,16 @@ struct DeltaBadge: View {
 struct DeltaOrAbsence: View {
     let current: Double
     let previous: Double?
+    /// True for metrics where going up is bad news — bounce rate, error rate,
+    /// load time. Without it this tints purely by direction and paints a rising
+    /// bounce rate green, contradicting the metric beside it.
+    var isIncreaseBad: Bool = false
     /// Explains *why* it is missing, when the caller knows.
     var absenceReason: String = "No prior period"
 
     var body: some View {
         if let previous, previous != 0 {
-            DeltaBadge(current: current, previous: previous)
+            DeltaBadge(current: current, previous: previous, isIncreaseBad: isIncreaseBad)
         } else {
             Label(absenceReason, systemImage: "minus.circle")
                 .font(.caption)

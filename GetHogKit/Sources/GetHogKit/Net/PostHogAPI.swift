@@ -202,11 +202,17 @@ public enum PostHogAPI {
     /// Core Web Vitals for one metric, bucketed into good / needs-improvement /
     /// poor. Thresholds and percentile are required — the API rejects the query
     /// without them.
+    /// - Note: The percentile defaults to **p75 because that is where Google
+    ///   defines the Core Web Vitals bands**, and `WebVitalMetric.thresholds`
+    ///   are Google's. This previously defaulted to p90, which silently read a
+    ///   p90 measurement against a p75 boundary and overstated how bad every
+    ///   page was — a page comfortably "good" at p75 could be reported as
+    ///   "needs improvement" purely from the mismatch.
     public static func webVitals(
         projectID: Int,
         metric: String = "LCP",
         dateFrom: String = "-7d",
-        percentile: String = "p90"
+        percentile: String = "p75"
     ) -> Endpoint {
         let thresholds = WebVitalMetric(rawValue: metric)?.thresholds ?? [2500, 4000]
         return queryEndpoint(projectID: projectID, query: [

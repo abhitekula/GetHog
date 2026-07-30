@@ -59,7 +59,9 @@ public enum WebVitalBand: String, Sendable, CaseIterable {
     }
 
     /// Worst first — poor pages are the ones worth acting on.
-    var rank: Int {
+    /// Worst-first ordering. Public because the app ranks pages by band and
+    /// would otherwise have to hardcode a parallel order that could drift.
+    public var rank: Int {
         switch self {
         case .poor: 0
         case .needsImprovement: 1
