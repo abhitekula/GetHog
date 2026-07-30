@@ -11,6 +11,10 @@ public enum PostHogError: Error, Equatable, Sendable {
     /// PostHog reports this as a **400**, not a 403.
     case accessDenied(resource: String?)
     case rateLimited(retryAfter: TimeInterval)
+    /// PostHog stopped a query for exceeding its execution budget. Carries
+    /// PostHog's verbatim advice, which is addressed to someone with a SQL
+    /// console rather than to the reader of a phone screen.
+    case queryTimeout(String?)
     case http(status: Int, detail: String?)
     case transport(String)
     /// Carries a `DecodingError` description — written for a compiler, never for
@@ -19,20 +23,46 @@ public enum PostHogError: Error, Equatable, Sendable {
 
     public var isRetryable: Bool {
         switch self {
-        case .rateLimited, .transport: true
+        // Measured against a live project: the same query that timed out
+        // succeeded on 1 run in 5. The condition belongs to the cluster's load,
+        // not to the request, so trying again is a real remedy.
+        case .rateLimited, .transport, .queryTimeout: true
         case .http(let status, _): status >= 500
         default: false
         }
     }
 
+    /// Whether this case's own `errorDescription` is fit to put in front of a
+    /// reader.
+    ///
+    /// Kept separate from `technicalDetail` on purpose. The two used to be the
+    /// same question — only `.decoding` had a detail, so "has a detail" stood in
+    /// for "cannot describe itself". `.queryTimeout` has both a detail *and* a
+    /// sentence, and a caller that still conflated them would have replaced the
+    /// timeout's message with the decoding one.
+    public var hasReadableDescription: Bool {
+        if case .decoding = self { false } else { true }
+    }
+
     /// The verbatim fault, for a screen that can disclose it behind a
     /// "Details" control rather than printing it as the message.
-    ///
-    /// Only `.decoding` has one: every other case's `errorDescription` is
-    /// already a sentence, and there is nothing further to reveal.
     public var technicalDetail: String? {
-        guard case .decoding(let message) = self else { return nil }
-        return message
+        switch self {
+        case .decoding(let message): message
+        case .queryTimeout(let detail): detail
+        default: nil
+        }
+    }
+
+    /// Recognises the execution-budget failure from PostHog's message.
+    ///
+    /// Observed as HTTP 504, but keyed on the body: PostHog documents no status
+    /// for this and the sentence is what actually identifies it. Deliberately
+    /// does not match the neighbouring 503 "Queries are a little too busy right
+    /// now", which is a different condition with a message already fit to show.
+    public static func isQueryTimeout(detail: String?) -> Bool {
+        guard let detail else { return false }
+        return detail.contains("max execution time")
     }
 }
 
@@ -57,6 +87,14 @@ extension PostHogError: LocalizedError {
             }
         case .rateLimited(let after):
             "PostHog is rate limiting requests. Try again in \(Int(after))s."
+        // Says the one thing that happened and stops. PostHog's own text —
+        // "See our docs for how to improve your query performance. You may need
+        // to materialize." — reached the Events tab as the entire user-facing
+        // message: docs it does not link, and an instruction nobody can carry
+        // out from a phone. It survives as `technicalDetail` for whoever can
+        // use it.
+        case .queryTimeout:
+            "PostHog took too long to run this query and stopped it. Trying again often works."
         case .http(let status, let detail):
             detail ?? "PostHog returned an error (\(status))."
         case .transport(let message):

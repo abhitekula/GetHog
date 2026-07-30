@@ -40,19 +40,24 @@ public enum PostHogAPI {
 
     // MARK: - Events
 
+    /// The events feed.
+    ///
+    /// `since` has no default and is not optional, which is the point: an
+    /// unbounded `ORDER BY timestamp DESC` over `events` does not reliably
+    /// complete — measured at a median 8.53s and 1 success in 5 against a live
+    /// project, failing with PostHog's max-execution-time 504. Making the floor
+    /// part of the signature means the slow query cannot be written by
+    /// forgetting an argument. See `EventFeed.swift` for the full measurements.
     public static func events(
         projectID: Int,
         limit: Int = 50,
-        before cursor: Date? = nil,
+        since floor: Date,
+        before cursor: EventCursor? = nil,
         search: String? = nil,
         eventName: String? = nil
     ) -> Endpoint {
         var clauses: [String] = []
 
-        if let cursor {
-            // Keyset paging: PostHog rejects OFFSET for personal API keys.
-            clauses.append("timestamp < toDateTime64('\(Self.sqlTimestamp(cursor))', 6)")
-        }
         if let eventName, !eventName.isEmpty {
             clauses.append("event = '\(Self.escape(eventName))'")
         }
@@ -61,16 +66,43 @@ public enum PostHogAPI {
             clauses.append("(event ILIKE '%\(term)%' OR distinct_id ILIKE '%\(term)%')")
         }
 
-        let whereClause = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        let sql = """
+        return hogql(
+            projectID: projectID,
+            sql: eventsSQL(limit: limit, since: floor, before: cursor, filters: clauses)
+        )
+    }
+
+    /// The one place the feed's SQL is written, so the time bound and the
+    /// tie-safe ordering cannot be present in one variant and missing from the
+    /// other.
+    static func eventsSQL(
+        limit: Int,
+        since floor: Date,
+        before cursor: EventCursor?,
+        filters: [String]
+    ) -> String {
+        var clauses = ["timestamp > toDateTime64('\(sqlTimestamp(floor))', 6)"]
+
+        if let cursor {
+            // Keyset paging: PostHog rejects OFFSET for personal API keys. On the
+            // pair rather than the timestamp alone, because timestamps are not
+            // unique — three live events share one microsecond, and a page
+            // boundary cutting such a group dropped its remainder silently.
+            clauses.append(
+                "(timestamp, uuid) < (toDateTime64('\(sqlTimestamp(cursor.timestamp))', 6), "
+                    + "'\(escape(cursor.uuid))')"
+            )
+        }
+
+        clauses.append(contentsOf: filters)
+
+        return """
             SELECT uuid, event, timestamp, distinct_id, properties.$current_url, properties
             FROM events
-            \(whereClause)
-            ORDER BY timestamp DESC
+            WHERE \(clauses.joined(separator: " AND "))
+            ORDER BY timestamp DESC, uuid DESC
             LIMIT \(limit)
             """
-
-        return hogql(projectID: projectID, sql: sql)
     }
 
     public static func sessionEvents(

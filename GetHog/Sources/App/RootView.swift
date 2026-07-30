@@ -115,7 +115,12 @@ enum AppTab: String, Hashable, CaseIterable {
         case .inbox: "tray.full"
         case .signals: "antenna.radiowaves.left.and.right"
         case .health: "stethoscope"
-        case .ingestion: "arrow.down.circle.badge.exclamationmark"
+        // `arrow.down.circle.badge.exclamationmark` does not exist — the badge
+        // family only runs to `.pause` and `.xmark` — so this tab rendered an
+        // empty tile. `bolt.trianglebadge.exclamationmark` is real, and it is
+        // the Events glyph with a warning on it, which is what an ingestion
+        // warning is. `MonitorRoots` names the same symbol for the same reason.
+        case .ingestion: "bolt.trianglebadge.exclamationmark"
         case .experiments: "flask"
         case .surveys: "list.clipboard"
         case .earlyAccess: "sparkles"

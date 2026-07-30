@@ -67,8 +67,20 @@ struct UnsupportedInsightCard: View {
 }
 
 /// Shown in place of a feature the current API key can't reach.
+///
+/// Telling somebody to go and edit a credential is the strongest instruction
+/// this app gives, and it was being given on no evidence. Reported from a real
+/// session: same key, same build, one launch apart — the Sessions tab listed
+/// sessions normally, then was replaced by "Your PostHog API key is missing a
+/// scope." The key was fine; a transient probe failure had been read as a
+/// refusal. `CapabilityReport.isAvailable` is what stops a failed probe
+/// reaching this view at all, and the `scope == nil` branch below is the
+/// backstop: with no scope to name, the app has no denial behind it either, and
+/// it says the weaker thing it can actually stand behind.
 struct LockedCapabilityView: View {
     let capability: Capability
+    /// The scope PostHog named, or the documented ones for this feature. `nil`
+    /// means no refusal was recorded — never "a refusal without a name".
     let scope: String?
     var onRecheck: (() -> Void)?
 
@@ -77,16 +89,20 @@ struct LockedCapabilityView: View {
             Label("\(capability.title) is locked", systemImage: "lock")
         } description: {
             VStack(spacing: 8) {
-                Text("Your PostHog API key is missing a scope.")
                 if let scope {
+                    Text("Your PostHog API key is missing a scope.")
                     Text(scope)
                         .font(.footnote.monospaced())
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(.quaternary, in: .rect(cornerRadius: 6))
+                    Text("Add it to your key in PostHog, then re-check.")
+                        .font(.footnote)
+                } else {
+                    Text("This API key couldn't open \(capability.title.lowercased()).")
+                    Text("Re-check to see whether that has changed.")
+                        .font(.footnote)
                 }
-                Text("Add it to your key in PostHog, then re-check.")
-                    .font(.footnote)
             }
         } actions: {
             if let onRecheck {
@@ -227,13 +243,17 @@ struct LoadFailure: Equatable {
     /// the error's own description is unfit to show.
     init(_ error: any Error, loading subject: String) {
         if let posthog = error as? PostHogError {
-            if let technical = posthog.technicalDetail {
-                summary = Self.unreadableResponse(subject)
-                detail = technical
-            } else {
-                summary = posthog.localizedDescription
-                detail = nil
-            }
+            // Two independent questions. This used to ask only one — "is there a
+            // technical detail?" — and use it for both, which worked only while
+            // `.decoding` was the single case carrying a detail. A query timeout
+            // carries both a detail and a perfectly good sentence, and under the
+            // old reading its message would have been replaced by the decoding
+            // one: "PostHog's events response wasn't in a shape this app could
+            // read", about a response that never arrived.
+            summary = posthog.hasReadableDescription
+                ? posthog.localizedDescription
+                : Self.unreadableResponse(subject)
+            detail = posthog.technicalDetail
             return
         }
         // Belt and braces: a `DecodingError` thrown outside the client would

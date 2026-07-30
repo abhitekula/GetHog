@@ -39,10 +39,33 @@ final class HeatmapsStore {
     /// capped but never how much was left off.
     var elementsTruncated = false
 
-    /// Saved page renders, once looked up. `nil` means "not asked yet", which is
-    /// different from "asked, and there are none" — the screen's closing note
-    /// says something different in each case and must not guess.
-    var savedRenders: [SavedHeatmap]?
+    /// How far the saved-render lookup got.
+    ///
+    /// Four states, not three, and the missing fourth is what this type exists
+    /// to carry. `loadSavedRenders` used `try?` and wrote `[]` on failure, so a
+    /// request PostHog never answered became an empty list, and the closing note
+    /// reads an empty list as an observation — printing "this project has none"
+    /// on the strength of an HTTP 404. That is a claim the response does not
+    /// support, and it is the fourth screen in this app to make one: Taxonomy
+    /// asserted the project had no events, Heatmaps' own section placeholders
+    /// reported observations PostHog never made, and now this.
+    ///
+    /// The 404 is real and current: the saved-heatmap collection moved out from
+    /// under `/heatmap_screenshots/` to `/api/projects/:id/saved/`, and
+    /// `PostHogAPI.savedHeatmaps` still asks for the old path. Nothing here
+    /// depends on that being fixed — a screen must survive an endpoint moving
+    /// without inventing facts about the project.
+    enum RenderLookup {
+        /// Not asked yet, or still in flight. "There is nothing on this screen"
+        /// is a claim rather than an observation until this resolves.
+        case pending
+        case loaded([SavedHeatmap])
+        /// Asked, and PostHog did not answer. Carries the reason so the note can
+        /// say it could not check, rather than that there was nothing to find.
+        case failed(String)
+    }
+
+    var renderLookup: RenderLookup = .pending
 
     var isLoadingHeatmap = false
     var isLoadingElements = false
@@ -57,9 +80,12 @@ final class HeatmapsStore {
     /// placeholders, and it says nothing about the rest of the screen.
     var isEmpty: Bool { profile.isEmpty && elementStats.isEmpty }
 
-    /// The saved renders this app can actually draw on.
+    /// The saved renders this app can actually draw on. Empty while the lookup
+    /// is pending or failed — which is a statement about what this screen can
+    /// offer, never about what the project contains.
     var renderablePages: [SavedHeatmap] {
-        (savedRenders ?? []).filter(\.isRenderable)
+        guard case .loaded(let renders) = renderLookup else { return [] }
+        return renders.filter(\.isRenderable)
     }
 
     /// Whether *no* section on this screen has anything, which is the only
@@ -75,9 +101,20 @@ final class HeatmapsStore {
 
     /// The render lookup has not answered yet. Until it does, "there is nothing
     /// on this screen" is a claim rather than an observation — the same
-    /// three-state discipline `savedRenders` is documented with, applied to the
-    /// branch that would otherwise assert it a request early.
-    var isResolvingRenders: Bool { savedRenders == nil }
+    /// discipline `renderLookup` is documented with, applied to the branch that
+    /// would otherwise assert it a request early.
+    ///
+    /// A *failed* lookup is not resolving: it has finished, badly. The screen
+    /// stops waiting and says what it could not check instead.
+    var isResolvingRenders: Bool {
+        if case .pending = renderLookup { true } else { false }
+    }
+
+    /// Why the render lookup failed, if it did. Read by the two states that
+    /// would otherwise present its absence as a finding.
+    var renderLookupFailure: String? {
+        if case .failed(let reason) = renderLookup { reason } else { nil }
+    }
 
     /// Two independent requests. A heatmap outage must not blank the element
     /// list — they answer different questions and either is useful alone.
@@ -136,14 +173,22 @@ final class HeatmapsStore {
     /// Looked up once per project, not once per date range: whether a page has a
     /// saved render has nothing to do with the window being charted, and
     /// re-asking on every range change would spend requests to learn the same
-    /// answer. A failure here is silent by design — it costs the reader the
-    /// overlay link, and saying so would be noise on a screen that is complete
-    /// without it.
+    /// answer.
+    ///
+    /// A failure used to be swallowed by `try?` on the reasoning that it only
+    /// costs the reader the overlay link. It costs more than that: the closing
+    /// note distinguishes "this project has no saved render" from "checking",
+    /// and an empty list on failure fed it the first sentence. The catch below
+    /// is the whole fix — the failure has to reach the note or the note lies.
     func loadSavedRenders(client: PostHogClient, projectID: Int) async {
-        let page: Page<SavedHeatmap>? = try? await client.send(
-            PostHogAPI.savedHeatmaps(projectID: projectID)
-        )
-        savedRenders = page?.results ?? []
+        do {
+            let page: Page<SavedHeatmap> = try await client.send(
+                PostHogAPI.savedHeatmaps(projectID: projectID)
+            )
+            renderLookup = .loaded(page.results)
+        } catch {
+            renderLookup = .failed(Self.message(for: error))
+        }
     }
 
     private static func message(for error: any Error) -> String {
@@ -215,7 +260,14 @@ struct HeatmapsRoot: View {
             EmptyStateView(
                 title: "No clicks recorded",
                 systemImage: "hand.tap",
+                // The clicks half is observed — both queries answered and both
+                // were empty. The renders half may not have been, and this state
+                // replaces the whole screen including the note that would
+                // otherwise have said so, so it has to carry the caveat itself.
                 message: "PostHog captured no clicks in the \(window.spokenTitle.lowercased()). Heatmap data needs autocapture enabled in your web SDK."
+                    + (store.renderLookupFailure.map {
+                        " This app also couldn't check whether the project has a saved page render: \(Self.sentence($0))"
+                    } ?? "")
             )
         } else {
             report
@@ -575,21 +627,42 @@ struct HeatmapsRoot: View {
             .foregroundStyle(.tertiary)
     }
 
+    /// Both places that quote a failure splice it into the middle of a
+    /// paragraph, and `PostHogError`'s descriptions are inconsistently
+    /// terminated — "Endpoint not found." ends in a stop, "Couldn't reach
+    /// PostHog: connection lost" does not — so without this the next sentence
+    /// runs straight into it.
+    private static func sentence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last, !".!?".contains(last) else { return trimmed }
+        return trimmed + "."
+    }
+
     private var screenshotNoteText: String {
-        // Three states, not two. Until the lookup answers, the app does not know
-        // whether this project has a render — and "this project has none" is a
-        // claim, not a placeholder. Saying it while the request is still in
-        // flight would be the same kind of stale assertion this note replaced.
-        guard let renders = store.savedRenders else {
-            return "PostHog's web heatmap paints these clicks over a rendered image of the page. It renders one only for pages saved as a heatmap in the web console; checking whether this project has any."
+        let lede = "PostHog's web heatmap paints these clicks over a rendered image of the page. It renders one only for pages saved as a heatmap in the web console"
+
+        // Four states, not two. "This project has none" is a finding, and only
+        // one of these branches has actually made it: the app has to have asked
+        // *and been answered*. Saying it while the request is in flight would be
+        // premature, and saying it after the request failed — which is what
+        // `try?` used to produce, from a live HTTP 404 — is a fact invented out
+        // of an error.
+        switch store.renderLookup {
+        case .pending:
+            return "\(lede); checking whether this project has any."
+
+        case .failed(let reason):
+            return "\(lede). This app couldn't check whether this project has any: \(Self.sentence(reason)) The charts above are unaffected — what's missing is the link to a page image, if one exists."
+
+        case .loaded(let renders):
+            let pages = renders.filter(\.isRenderable)
+            guard !pages.isEmpty else {
+                // Now it is an observation, so it can be stated as one.
+                return "\(lede), and this project has none, so the numbers here stand on their own."
+            }
+            let noun = pages.count == 1 ? "one saved page" : "\(pages.count) saved pages"
+            return "The charts above aggregate every URL in the project, so no single page image fits them. PostHog has rendered \(noun) in this project — open it above to see these clicks drawn on the page itself."
         }
-        let pages = renders.filter(\.isRenderable)
-        guard !pages.isEmpty else {
-            // Still nothing drawn — but say why, and say what would change it.
-            return "PostHog's web heatmap paints these clicks over a rendered image of the page. It renders one only for pages saved as a heatmap in the web console, and this project has none, so the numbers here stand on their own."
-        }
-        let noun = pages.count == 1 ? "one saved page" : "\(pages.count) saved pages"
-        return "The charts above aggregate every URL in the project, so no single page image fits them. PostHog has rendered \(noun) in this project — open it above to see these clicks drawn on the page itself."
     }
 
     /// Only shown when there is an image to open. An always-present row that

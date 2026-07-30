@@ -391,7 +391,12 @@ struct ReplayPlayerView: View {
                     mobileNotice
                 case .noData:
                     notice(
-                        icon: "film.slash",
+                        // `film.slash` is not a symbol — the film family stops
+                        // at `.fill`, `.stack` and `.circle` — so this notice
+                        // drew a blank where its glyph should be. `play.slash`
+                        // exists and says the same thing more directly: there is
+                        // nothing here to play.
+                        icon: "play.slash",
                         title: "No replay stored",
                         detail: "PostHog has no snapshot data for this session."
                     )

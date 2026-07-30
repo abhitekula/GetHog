@@ -213,7 +213,10 @@ struct SQLConsoleRoot: View {
     }
 
     // The page itself is a fixed VStack — nothing here scrolls sideways except
-    // the results table, which owns its own horizontal scroll view.
+    // the results table, which owns its own horizontal scroll view. What it
+    // does now do is scroll *down*: the editor is a fixed five lines plus a
+    // button row, which on an iPhone in landscape leaves the results region
+    // shorter than the states it has to hold. See `scrollingIfNeeded`.
     private var console: some View {
         VStack(spacing: 0) {
             editor
@@ -297,20 +300,45 @@ struct SQLConsoleRoot: View {
             )
         } else if let response = store.response {
             if response.rows.isEmpty {
-                EmptyStateView(
-                    title: "No rows",
-                    systemImage: "tablecells",
-                    message: "The query ran successfully and matched nothing."
+                scrollingIfNeeded(
+                    EmptyStateView(
+                        title: "No rows",
+                        systemImage: "tablecells",
+                        message: "The query ran successfully and matched nothing."
+                    )
                 )
             } else {
                 QueryResultsTable(response: response)
             }
         } else {
-            EmptyStateView(
-                title: "Run a query",
-                systemImage: "terminal",
-                message: "Results appear here. HogQL reads like ClickHouse SQL over your `events`, `persons` and `sessions` tables."
+            scrollingIfNeeded(
+                EmptyStateView(
+                    title: "Run a query",
+                    systemImage: "terminal",
+                    message: "Results appear here. HogQL reads like ClickHouse SQL over your `events`, `persons` and `sessions` tables."
+                )
             )
+        }
+    }
+
+    /// Centres its content when the region is tall enough and lets it scroll
+    /// when it isn't.
+    ///
+    /// `ContentUnavailableView` centres itself in whatever height it is handed
+    /// and overflows in *both* directions when that is too little. On an iPhone
+    /// in landscape the results region is about a third of a portrait one, and
+    /// the "Run a query" state lost its glyph off the top and its closing words
+    /// — "`sessions` tables." — under the floating tab bar at the same time,
+    /// with nothing to scroll because the page was a plain stack. A bare
+    /// `ScrollView` would reach the text and give up the centring that makes the
+    /// state look deliberate in portrait; the container-height floor keeps both,
+    /// and `.basedOnSize` stops a state that already fits from bouncing.
+    private func scrollingIfNeeded(_ content: some View) -> some View {
+        GeometryReader { proxy in
+            ScrollView {
+                content.frame(maxWidth: .infinity, minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 

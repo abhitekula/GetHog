@@ -178,12 +178,15 @@ struct DataRow: View {
     let title: String
     var subtitle: String?
     /// Third line, for provenance or freshness — kept to a caption so it recedes
-    /// behind the title by size. It used to recede by colour as well, on
-    /// `.tertiary`, which measured 1.84:1 against a light card and 2.27:1
-    /// against a dark one where AA body text wants 4.5:1. "Updated last month",
-    /// "First seen Jul 2…" and "4 users · 7 sessions" are the row's only dates
-    /// and counts, so they were the least readable text in the app and among the
-    /// most worth reading.
+    /// behind the title by size. It recedes by colour too, but on a measured
+    /// token rather than the system ramp, and it took two passes to get there:
+    /// `.tertiary` measured 1.84:1 against a light card, and the `.secondary`
+    /// that replaced it sampled #7F7F7F on #FFFFFF — 4.00:1 across ~1230 pixels
+    /// at the plateau colour, so not an antialiasing artefact — against a 4.5:1
+    /// AA floor. "Updated last month", "3 users · 5 sessions · 13 occurrences"
+    /// and "7h ago · expires in 3mo" are the row's only dates and counts, so
+    /// they were the least readable text in the app and among the most worth
+    /// reading. See `supportingText`.
     var footnote: String?
     /// Rendered monospaced. For keys, paths and identifiers, where character
     /// alignment is what makes a column comparable at a glance.
@@ -269,19 +272,32 @@ struct DataRow: View {
             .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
     }
 
+    /// On `Theme.Ink`, not on SwiftUI's `.secondary`.
+    ///
+    /// Both lines rendered #7F7F7F on #FFFFFF in light mode — 4.00:1, under the
+    /// 4.5:1 AA floor, sampled over ~1230 pixels at the plateau colour so it is
+    /// the composited result and not an edge artefact. Dark mode passed at
+    /// 5.15:1, which is why the failure survived a pass that moved ~20 other
+    /// surfaces onto these tokens: nothing looked wrong in the appearance the
+    /// screenshots were taken in. `DataRow` is every list screen in the app, so
+    /// this was the single most-rendered piece of failing text there is.
+    ///
+    /// The two-step ramp is kept — subtitle above footnote — because the
+    /// hierarchy is the reason these lines are quiet in the first place; what
+    /// changes is that the bottom step is now legible rather than merely faint.
     @ViewBuilder
     private var supportingText: some View {
         if let subtitle, !subtitle.isEmpty {
             Text(subtitle)
                 .font(isSubtitleMonospaced ? Theme.Typography.body.monospaced() : Theme.Typography.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .lineLimit(typeSize.isAccessibilitySize ? nil : subtitleLineLimit)
         }
 
         if let footnote, !footnote.isEmpty {
             Text(footnote)
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.tertiary)
                 .lineLimit(typeSize.isAccessibilitySize ? nil : footnoteLineLimit)
         }
     }
@@ -313,7 +329,11 @@ struct DataRow: View {
         case .metric(let value):
             Text(value)
                 .font(Theme.Typography.body.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.secondary)
+                // Same 4.00:1 measurement as `supportingText`, and the same fix.
+                // Semibold body is still below the 18.66pt the large-text
+                // exemption starts at, so the 4.5:1 floor applies here too — and
+                // this is the number the column exists to be scanned for.
+                .foregroundStyle(Theme.Ink.secondary)
         case .pill(let text, let tint):
             StatusPill(text: text, tint: tint)
         case .none:

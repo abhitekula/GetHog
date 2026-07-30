@@ -30,8 +30,15 @@ struct InsightSidePanel: View {
     /// A stack here hoisted its own toolbar items into the dashboard's
     /// navigation bar and pushed the dashboard's title out of it, leaving the
     /// panel with no header and the grid with no name.
+    ///
+    /// Centre-aligned rather than on the first text baseline, which is what it
+    /// was while the controls were bare glyphs the size of a word. Both are now
+    /// 44pt boxes, and hanging a 44pt box off a baseline sets the row's height
+    /// from the gap between the glyph's baseline and the title's rather than
+    /// from either of them — taller than the controls, and taller again when a
+    /// long insight name wraps to its second line.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(spacing: 8) {
             Text(tile.title)
                 .font(.headline)
                 .lineLimit(2)
@@ -40,16 +47,27 @@ struct InsightSidePanel: View {
 
             InsightShareMenu(title: tile.title, model: tile.renderModel)
 
+            // The glyph is the whole button, so without a frame the tap target
+            // *is* the glyph: measured from the running app on iPad, this
+            // accessibility frame was 19.0 × 19.0 against a 44 × 44 HIG minimum.
+            // It is also the panel's only dismissal — there is no swipe and no
+            // background tap, because the panel sits in a split beside the grid
+            // rather than over it — so a miss is not a retry, it is a reader
+            // stuck on one insight.
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.tertiary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close insight")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        // The controls bring their own 44pt height now, so the padding only has
+        // to keep the row off the title bar above and the divider below.
+        .padding(.vertical, 6)
     }
 
     private var webURL: URL? {

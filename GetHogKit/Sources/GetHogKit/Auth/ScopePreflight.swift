@@ -53,8 +53,29 @@ public enum Capability: String, Sendable, CaseIterable, Identifiable {
 
 public enum CapabilityStatus: Sendable, Equatable {
     case available
+    /// PostHog refused. This is the only case that is *evidence* about the key.
     case locked(scope: String?)
+    /// The probe never reached a verdict — a timeout, a 5xx, a dropped
+    /// connection. Says nothing at all about the key's scopes.
     case failed(String)
+
+    /// Whether PostHog actually refused.
+    ///
+    /// The distinction this property exists to protect: a probe that *failed*
+    /// and a probe that came back *denied* are different facts. Reported from a
+    /// real session — same key, same build, one launch apart — the Sessions tab
+    /// listed sessions normally and was then replaced by "Your PostHog API key
+    /// is missing a scope. Add it to your key in PostHog, then re-check." The
+    /// key was fine; a transient `.failed` had been read as a denial, and the
+    /// app told someone to go and edit a working credential.
+    public var isDenied: Bool {
+        if case .locked = self { true } else { false }
+    }
+
+    /// The probe's own error, when there was one. Never a scope claim.
+    public var failureMessage: String? {
+        if case .failed(let message) = self { message } else { nil }
+    }
 }
 
 public struct CapabilityReport: Sendable, Equatable {
@@ -68,12 +89,42 @@ public struct CapabilityReport: Sendable, Equatable {
         results[capability] ?? .failed("Not checked")
     }
 
+    /// Whether this capability's screen may open.
+    ///
+    /// Deliberately the negation of *denied*, not the identity of `.available`.
+    /// The gate has two states and the probe has three, so a boolean written the
+    /// other way round has to fold `.failed` onto one side or the other — and
+    /// folding it onto "unavailable" is what put a scope instruction in front of
+    /// a user whose key was fine. Nothing but a refusal closes a screen. A probe
+    /// that never got an answer lets the screen open and lets its own request
+    /// produce the real error, which is a better error than a guess.
     public func isAvailable(_ capability: Capability) -> Bool {
-        status(capability) == .available
+        !status(capability).isDenied
     }
 
+    /// Whether every probe came back confirming access.
+    ///
+    /// A different question from `isAvailable`, and strict where that one is
+    /// permissive: a probe that failed genuinely did not confirm anything. The
+    /// two must not share an implementation — collapsing them is the fault this
+    /// file exists to prevent.
     public var allAvailable: Bool {
-        Capability.allCases.allSatisfy { isAvailable($0) }
+        Capability.allCases.allSatisfy { status($0) == .available }
+    }
+
+    /// Why a probe could not reach a verdict, when it could not.
+    ///
+    /// Kept rather than discarded: the reported bug replaced the real error with
+    /// a scope claim the app had no evidence for, and lost the error doing it.
+    public func probeFailure(_ capability: Capability) -> String? {
+        status(capability).failureMessage
+    }
+
+    /// The scope to add, and `nil` whenever the app has no denial to base that
+    /// instruction on.
+    public func lockedScope(for capability: Capability) -> String? {
+        guard case .locked(let scope) = status(capability) else { return nil }
+        return scope ?? capability.requiredScopes.joined(separator: ", ")
     }
 
     /// Scope names to show the user, preferring the exact string PostHog

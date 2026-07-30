@@ -393,13 +393,30 @@ final class AppModel {
 
     var projectID: Int? { selectedProject?.id }
 
+    /// Whether a capability's screen may open.
+    ///
+    /// Permissive by design, at both levels: no report yet means the preflight
+    /// has not run, and a probe that failed means it ran without getting an
+    /// answer. Neither is evidence against the key, and only evidence may close
+    /// a screen. `CapabilityReport.isAvailable` carries the same rule for the
+    /// three-state probe result.
     func isAvailable(_ capability: Capability) -> Bool {
         capabilities?.isAvailable(capability) ?? true
     }
 
+    /// The scope to add, and `nil` whenever there is no denial behind it.
+    ///
+    /// This used to pattern-match `.locked` here while `isAvailable` compared
+    /// against `.available`, so the two disagreed about `.failed`: the screen
+    /// locked, this returned `nil`, and the lock then made an unqualified claim
+    /// about the user's key with nothing behind it. One implementation now.
     func lockedScope(for capability: Capability) -> String? {
-        guard case .locked(let scope) = capabilities?.status(capability) else { return nil }
-        return scope ?? capability.requiredScopes.joined(separator: ", ")
+        capabilities?.lockedScope(for: capability)
+    }
+
+    /// Why the permission check could not reach a verdict, when it could not.
+    func probeFailure(for capability: Capability) -> String? {
+        capabilities?.probeFailure(capability)
     }
 
     /// Deep link into the equivalent page of the web console.

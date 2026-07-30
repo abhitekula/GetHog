@@ -232,16 +232,26 @@ struct SearchEventsIntent: AppIntent {
         let response: QueryResponse
         do {
             response = try await deps.client.send(
-                PostHogAPI.events(projectID: deps.projectID, limit: limit, search: needle)
+                PostHogAPI.events(
+                    projectID: deps.projectID,
+                    limit: limit,
+                    // Bounded like the feed's own first page. Unbounded, this
+                    // query ran a median 8.53s and failed 4 runs in 5 — and a
+                    // Siri intent has less patience for that than a screen does.
+                    since: EventFeedPager().floor(now: Date()),
+                    search: needle
+                )
             )
         } catch {
             throw IntentError.from(error, action: "search events for “\(needle)”")
         }
 
         let rows = response.rows.compactMap(EventRow.init(row:))
+        // Says "in the last week" because that is what was searched. A bare
+        // "no recent events" would imply a search this never made.
         let dialog: IntentDialog = rows.isEmpty
-            ? IntentDialog("No recent events match “\(needle)”.")
-            : IntentDialog("Found \(rows.count) recent event\(rows.count == 1 ? "" : "s") matching “\(needle)”.")
+            ? IntentDialog("No events in the last week match “\(needle)”.")
+            : IntentDialog("Found \(rows.count) event\(rows.count == 1 ? "" : "s") in the last week matching “\(needle)”.")
 
         return .result(
             dialog: dialog,

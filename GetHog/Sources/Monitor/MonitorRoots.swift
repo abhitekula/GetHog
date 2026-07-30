@@ -311,10 +311,10 @@ struct HealthRoot: View {
 
     private func card(_ issue: HealthIssue) -> some View {
         DataRow(
-            glyph: glyph(issue.kind),
+            glyph: Self.glyph(issue.kind),
             tint: issue.status == .active ? tint(issue.severity) : .secondary,
             title: title(issue.kind),
-            subtitle: issue.detail.summary,
+            subtitle: subtitle(issue),
             footnote: issue.resolvedAt.map {
                 "Resolved \($0.formatted(.relative(presentation: .named)))"
             },
@@ -331,14 +331,43 @@ struct HealthRoot: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(title(issue.kind)), \(severityWord(issue.severity)), "
-                + "\(issue.status == .active ? "active" : "resolved"). \(issue.detail.summary)"
+                + "\(issue.status == .active ? "active" : "resolved")."
+                + (subtitle(issue).map { " \($0)" } ?? "")
         )
     }
 
-    private func glyph(_ kind: HealthIssueKind) -> String {
+    /// The issue's own words, or nothing if it has none of its own.
+    ///
+    /// `HealthIssueDetail.summary` falls back to the capitalised raw kind when
+    /// PostHog sends a payload with no text in it — which is what this project
+    /// returns — so the row rendered "Ingestion warning" above "Ingestion
+    /// Warning": the same label twice, in two capitalisations, reading as a
+    /// rendering bug rather than as the absence it is. Dropping the echo claims
+    /// no more than the response supports and costs nothing, because the title
+    /// already names the issue, the pill carries the severity and the footnote
+    /// carries when it resolved.
+    private func subtitle(_ issue: HealthIssue) -> String? {
+        let summary = issue.detail.summary
+        let restatesTitle = summary.caseInsensitiveCompare(title(issue.kind)) == .orderedSame
+        let restatesKind = summary.caseInsensitiveCompare(
+            issue.kind.rawValue.replacingOccurrences(of: "_", with: " ")
+        ) == .orderedSame
+        guard !restatesTitle, !restatesKind else { return nil }
+        return summary
+    }
+
+    /// Static and non-private so `SymbolNameTests` can resolve every arm of it.
+    /// One of the two dead symbol names in this app was in a switch exactly like
+    /// this one, and a `String` naming a glyph has no compile-time check behind
+    /// it — the only thing that catches a typo is asking the system for it.
+    static func glyph(_ kind: HealthIssueKind) -> String {
         switch kind {
         case .sdkOutdated: "shippingbox"
-        case .ingestionWarning: "arrow.down.circle.badge.exclamationmark"
+        // `arrow.down.circle.badge.exclamationmark` does not exist, so this row
+        // rendered an empty grey tile beside four rows that all had a glyph.
+        // Matches the Ingestion tab in `RootView`, which named the same dead
+        // symbol.
+        case .ingestionWarning: "bolt.trianglebadge.exclamationmark"
         case .webVitals: "gauge.with.dots.needle.33percent"
         case .authorizedURLs: "link.badge.plus"
         case .unknown: "questionmark.circle"

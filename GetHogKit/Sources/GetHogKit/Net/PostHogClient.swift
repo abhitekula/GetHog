@@ -147,6 +147,12 @@ public actor PostHogClient {
 
         default:
             let envelope = try? decoder.decode(PostHogErrorEnvelope.self, from: data)
+            // Observed as a 504 whose body is advice for someone at a SQL
+            // console. Recognised here so it stops being an anonymous 5xx and
+            // reaches the screen as a retryable timeout with its own sentence.
+            if PostHogError.isQueryTimeout(detail: envelope?.detail) {
+                throw PostHogError.queryTimeout(envelope?.detail)
+            }
             throw PostHogError.http(status: response.statusCode, detail: envelope?.detail)
         }
     }

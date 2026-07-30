@@ -290,7 +290,15 @@ struct InsightShareMenu: View {
             Menu {
                 InsightShareMenuItems(title: title, model: model)
             } label: {
+                // The frame is the hit target. This menu's one call site is the
+                // insight side panel's hand-drawn header, where nothing supplies
+                // a control size the way a toolbar would: measured from the
+                // running app on iPad, the accessibility frame was 18.0 × 21.0
+                // against a 44 × 44 HIG minimum. Inside the `if` so a model with
+                // nothing to export still reserves no space at all.
                 Image(systemName: "square.and.arrow.up")
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
             }
             .accessibilityLabel("Share \(title)")
         }

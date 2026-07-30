@@ -23,16 +23,12 @@ extension PostHogAPI {
     public static func events(
         projectID: Int,
         limit: Int = 50,
-        before cursor: Date? = nil,
+        since floor: Date,
+        before cursor: EventCursor? = nil,
         tokens: [EventFilterToken],
         search: String? = nil
     ) -> Endpoint {
         var clauses: [String] = []
-
-        if let cursor {
-            // Keyset paging: PostHog rejects OFFSET for personal API keys.
-            clauses.append("timestamp < toDateTime64('\(Self.sqlTimestamp(cursor))', 6)")
-        }
 
         let eventNames = tokens.filter { $0.kind == .event }.map(\.value)
         if eventNames.count == 1 {
@@ -63,15 +59,9 @@ extension PostHogAPI {
             clauses.append("(event ILIKE '%\(term)%' OR distinct_id ILIKE '%\(term)%')")
         }
 
-        let whereClause = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        let sql = """
-            SELECT uuid, event, timestamp, distinct_id, properties.$current_url, properties
-            FROM events
-            \(whereClause)
-            ORDER BY timestamp DESC
-            LIMIT \(limit)
-            """
-
-        return hogql(projectID: projectID, sql: sql)
+        return hogql(
+            projectID: projectID,
+            sql: eventsSQL(limit: limit, since: floor, before: cursor, filters: clauses)
+        )
     }
 }

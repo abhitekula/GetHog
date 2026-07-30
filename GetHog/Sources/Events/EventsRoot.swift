@@ -7,64 +7,95 @@ final class EventsStore {
     var events: [EventRow] = []
     var isLoading = false
     var isPaging = false
-    var error: String?
+    var failure: LoadFailure?
     var loadedAt: Date?
     var reachedEnd = false
 
-    private var cursor: Date?
+    /// Owns the time bound and the keyset cursor. Every request the feed makes
+    /// is bounded, because an unbounded one does not reliably finish — see
+    /// `EventFeed.swift` for the measurements.
+    private var pager = EventFeedPager()
     private let pageSize = 50
+
+    /// How far back the feed has actually looked, so an empty screen can say so
+    /// rather than implying it searched everything.
+    var searchedDescription: String {
+        let days = Int(pager.window / 86_400)
+        if days >= 365 {
+            let years = days / 365
+            return years == 1 ? "year" : "\(years) years"
+        }
+        return days == 1 ? "day" : "\(days) days"
+    }
 
     func reload(
         client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
     ) async {
-        cursor = nil
-        reachedEnd = false
+        pager.restart()
         events = []
-        await fetch(
-            client: client, projectID: projectID, tokens: tokens, search: search, replacing: true
-        )
+        reachedEnd = false
+        isLoading = true
+        defer { isLoading = false }
+
+        // A window that came back empty is not evidence that the project has no
+        // events, only that this window is thin — so widen and look again before
+        // the screen is allowed to say there is nothing here.
+        //
+        // **Cost.** One request whenever the project has traffic in the last
+        // week, which is the case this is tuned for; at worst one per rung of
+        // `EventFeedPager.windows`, and only while the feed is still empty. Live
+        // Tail restarts the pager on each tick, so a project with nothing in the
+        // last week costs that worst case every 30s — the budget is
+        // organisation-wide, and that is the price of not telling someone with
+        // two years of events that they have none.
+        repeat {
+            guard await fetchPage(
+                client: client, projectID: projectID, tokens: tokens, search: search
+            ) else { return }
+        } while events.isEmpty && !pager.isExhausted
     }
 
     func loadMore(
         client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
     ) async {
-        guard !isPaging, !reachedEnd, cursor != nil else { return }
-        await fetch(
-            client: client, projectID: projectID, tokens: tokens, search: search, replacing: false
+        guard !isPaging, !isLoading, !reachedEnd else { return }
+        isPaging = true
+        defer { isPaging = false }
+        _ = await fetchPage(
+            client: client, projectID: projectID, tokens: tokens, search: search
         )
     }
 
-    private func fetch(
+    /// One page. Returns whether it succeeded, so `reload` stops widening after
+    /// a failure instead of spending the shared budget on the same error.
+    private func fetchPage(
         client: PostHogClient,
         projectID: Int,
         tokens: [EventFilterToken],
-        search: String?,
-        replacing: Bool
-    ) async {
-        if replacing { isLoading = true } else { isPaging = true }
-        defer { isLoading = false; isPaging = false }
-
+        search: String?
+    ) async -> Bool {
         do {
             let response: QueryResponse = try await client.send(
                 PostHogAPI.events(
                     projectID: projectID,
                     limit: pageSize,
-                    before: cursor,
+                    since: pager.floor(now: Date()),
+                    before: pager.cursor,
                     tokens: tokens,
                     search: search
                 )
             )
             let page = response.rows.compactMap(EventRow.init(row:))
+            events.append(contentsOf: page)
 
-            if replacing { events = page } else { events.append(contentsOf: page) }
-
-            // Keyset paging: PostHog rejects OFFSET for personal API keys.
-            cursor = response.keysetCursor(column: "timestamp")
-            reachedEnd = page.count < pageSize
+            pager.advance(rowCount: page.count, limit: pageSize, cursor: response.eventCursor())
+            reachedEnd = pager.isExhausted
             loadedAt = Date()
-            error = nil
+            failure = nil
+            return true
         } catch {
-            self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
+            failure = LoadFailure(error, loading: "events")
+            return false
         }
     }
 
@@ -176,13 +207,11 @@ struct EventsRoot: View {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let error = store.error, store.events.isEmpty {
-            EmptyStateView(
+        } else if let failure = store.failure, store.events.isEmpty {
+            LoadFailureState(
                 title: "Couldn't load events",
-                systemImage: "exclamationmark.triangle",
-                message: error,
-                actionTitle: "Try again",
-                action: { Task { await reload() } }
+                failure: failure,
+                retry: { Task { await reload() } }
             )
         } else if store.events.isEmpty {
             if store.isLoading {
@@ -191,7 +220,7 @@ struct EventsRoot: View {
                 EmptyStateView(
                     title: "No events",
                     systemImage: "bolt.slash",
-                    message: "No events matched. Try a different filter."
+                    message: emptyMessage
                 )
             }
         } else {
@@ -225,23 +254,34 @@ struct EventsRoot: View {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let error = store.error, store.events.isEmpty {
-            EmptyStateView(
+        } else if let failure = store.failure, store.events.isEmpty {
+            LoadFailureState(
                 title: "Couldn't load events",
-                systemImage: "exclamationmark.triangle",
-                message: error,
-                actionTitle: "Try again",
-                action: { Task { await reload() } }
+                failure: failure,
+                retry: { Task { await reload() } }
             )
         } else if store.events.isEmpty && !store.isLoading {
             EmptyStateView(
                 title: "No events",
                 systemImage: "bolt.slash",
-                message: "No events matched. Try a different filter."
+                message: emptyMessage
             )
         } else {
             list
         }
+    }
+
+    /// Names the window that was actually searched.
+    ///
+    /// The feed now looks back a bounded distance per request, so a bare "No
+    /// events" would assert something it never checked — the same overclaim as
+    /// the scope message this release also removes. What the app knows is that
+    /// it looked back this far and found nothing.
+    private var emptyMessage: String {
+        let searched = "Nothing in the last \(store.searchedDescription)."
+        return tokens.isEmpty && search.isEmpty
+            ? searched
+            : searched + " Try a different filter."
     }
 
     private var list: some View {

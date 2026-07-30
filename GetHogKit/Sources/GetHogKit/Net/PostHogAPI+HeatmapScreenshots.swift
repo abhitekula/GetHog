@@ -15,6 +15,18 @@ extension PostHogAPI {
     ///
     /// A normal `Page`, unlike `/heatmaps/` next door: it does carry `count`.
     ///
+    /// **`/saved/` at the project root, not under `heatmap_screenshots/`.**
+    /// PostHog detached this collection and left the old spelling returning
+    /// `404 {"code":"not_found","detail":"Endpoint not found."}` — measured
+    /// live, against a key that had reached it earlier in this project. The
+    /// image content route below did *not* move, so the two now live in
+    /// different places and the asymmetry is deliberate rather than a typo.
+    ///
+    /// The screen this feeds used to swallow the 404 with `try?` and print
+    /// "this project has none", turning a failed request into a claim about
+    /// the project. That is fixed on its side too, but the reason the claim
+    /// was ever reachable was this path.
+    ///
     /// Filtered server-side to completed screenshot saves, because they are the
     /// only kind this app can draw — `iframe` and `recording` saves ask a
     /// browser to render the page live. Filtering here rather than in the client
@@ -32,7 +44,7 @@ extension PostHogAPI {
             query.append(URLQueryItem(name: "status", value: status))
         }
         return Endpoint(
-            path: "/api/projects/\(projectID)/heatmap_screenshots/saved/",
+            path: "/api/projects/\(projectID)/saved/",
             query: query,
             category: .crud
         )
@@ -44,7 +56,7 @@ extension PostHogAPI {
     /// does not resolve it.
     public static func savedHeatmap(projectID: Int, shortID: String) -> Endpoint {
         Endpoint(
-            path: "/api/projects/\(projectID)/heatmap_screenshots/saved/\(shortID)/",
+            path: "/api/projects/\(projectID)/saved/\(shortID)/",
             category: .crud
         )
     }

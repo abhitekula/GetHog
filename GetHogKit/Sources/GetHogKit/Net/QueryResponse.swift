@@ -38,10 +38,15 @@ public struct QueryResponse: Decodable, Sendable {
         try JSONDecoder().decode(QueryResponse.self, from: data)
     }
 
-    /// The oldest value in `column`, used as the next keyset cursor.
+    /// The oldest value in `column`.
     ///
     /// PostHog rejects OFFSET pagination for personal API keys (HTTP 400), so
-    /// paging is done with `WHERE timestamp < cursor`.
+    /// paging has to be keyset. Not sufficient on its own for a feed keyed on
+    /// `timestamp`, though: timestamps are not unique — three live events share
+    /// one microsecond — and `WHERE timestamp < cursor` silently drops the
+    /// remainder of any tie group a page boundary cuts through. Use
+    /// `eventCursor()`, which carries the uuid tiebreak, for anything paging the
+    /// `events` table.
     public func keysetCursor(column: String) -> Date? {
         rows.compactMap { $0.date(column) }.min()
     }

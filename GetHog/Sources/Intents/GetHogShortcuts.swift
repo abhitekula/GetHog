@@ -51,7 +51,12 @@ struct GetHogShortcuts: AppShortcutsProvider {
                 "Find recent events in \(.applicationName)",
             ],
             shortTitle: "Search Events",
-            systemImageName: "bolt.magnifyingglass"
+            // Not `bolt.magnifyingglass`: no such symbol, and a Shortcuts tile
+            // that names one draws a blank square in an app the user never
+            // opened to find out why. The magnifying-glass family has no `bolt`
+            // compound at all, so the search half is what survives — and it is
+            // the half the tile is about.
+            systemImageName: "magnifyingglass"
         )
     }
 }
