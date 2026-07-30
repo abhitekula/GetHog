@@ -78,6 +78,34 @@ public struct LogRow: Sendable, Identifiable, Hashable {
         self.traceID = traceID
     }
 
+    /// The line as text, for the pasteboard.
+    ///
+    /// A log line's destination is a bug report or someone else's search box, so
+    /// this is written to survive the trip: labelled metadata first, then a blank
+    /// line, then the body verbatim. Metadata trailing the body would be scrolled
+    /// past and lost under a stack trace, which is the case that matters.
+    ///
+    /// The trace id is written whole. The list row shows a 12-character prefix to
+    /// fit its column, and a prefix pasted into PostHog's search matches nothing
+    /// — worse than omitting the field, because it looks like it should work.
+    ///
+    /// Fields the query did not select are left out rather than printed empty: a
+    /// `Service:` with nothing after it reads as a service that has no name.
+    public var plainText: String {
+        var header: [String] = []
+        // `.unknown` is the absence of a severity column, not a severity, so it
+        // is omitted on the same grounds as the optional fields below.
+        if severity != .unknown { header.append("Severity: \(severity.title)") }
+        // ISO-8601 rather than a localised date: whoever receives the paste is
+        // not necessarily on the locale, or the continent, that produced it.
+        if let timestamp { header.append("Time: \(timestamp.ISO8601Format())") }
+        if let serviceName, !serviceName.isEmpty { header.append("Service: \(serviceName)") }
+        if let traceID, !traceID.isEmpty { header.append("Trace: \(traceID)") }
+
+        guard !header.isEmpty else { return body }
+        return header.joined(separator: "\n") + "\n\n" + body
+    }
+
     public static func rows(from response: QueryResponse) -> [LogRow] {
         response.rows.enumerated().compactMap { index, row in
             // A log line with no message is nothing a reader can use; rendering

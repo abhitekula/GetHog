@@ -170,6 +170,14 @@ struct DataRow: View {
     /// Rendered monospaced. For keys, paths and identifiers, where character
     /// alignment is what makes a column comparable at a glance.
     var isSubtitleMonospaced: Bool = false
+    /// How many lines the subtitle may take.
+    ///
+    /// One by default, because in almost every list here the subtitle is a
+    /// supporting identifier and rows of uneven height stop being scannable.
+    /// Logs are the exception that made this a knob: there the subtitle *is* the
+    /// payload, and clipping a message to one line left long lines — the stack
+    /// traces someone opened the screen for — unreadable anywhere in the app.
+    var subtitleLineLimit: Int = 1
     var accessory: RowAccessory = .chevron
 
     var body: some View {
@@ -186,7 +194,7 @@ struct DataRow: View {
                     Text(subtitle)
                         .font(isSubtitleMonospaced ? Theme.Typography.body.monospaced() : Theme.Typography.body)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(subtitleLineLimit)
                 }
 
                 if let footnote, !footnote.isEmpty {

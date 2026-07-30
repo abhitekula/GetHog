@@ -138,6 +138,7 @@ struct LogsRoot: View {
         NavigationStack {
             content
                 .navigationTitle("Logs")
+                .navigationDestination(for: LogRow.self) { LogDetailView(row: $0) }
                 .toolbar { ProjectSwitcher() }
                 .projectSubtitle()
                 .searchable(text: $store.search, prompt: "Search log messages")
@@ -245,7 +246,7 @@ struct LogsRoot: View {
                     .listRowBackground(Color.clear)
                 } else {
                     ForEach(store.visibleRows) { row in
-                        LogRowView(row: row)
+                        NavigationLink(value: row) { LogRowView(row: row) }
                             .listRowBackground(
                                 Theme.cardBackground
                                     .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
@@ -326,8 +327,13 @@ struct LogRowView: View {
             subtitle: row.body,
             footnote: provenance,
             // Alignment carries meaning in structured output, so the line keeps
-            // code type even at one line.
+            // code type here as well as on the detail screen.
             isSubtitleMonospaced: true,
+            // Three, against the shared default of one. A log message *is* the
+            // row's content rather than a caption under it, and one line turned
+            // every error into an unreadable fragment. Three is where a list
+            // still scans; the rest is behind the row.
+            subtitleLineLimit: 3,
             accessory: .pill(row.severity.title, row.severity.tint)
         )
         .accessibilityElement(children: .combine)
