@@ -49,6 +49,12 @@ struct GetHogApp: App {
                 // the link against, so `RootView` takes it once it is ready.
                 .onOpenURL { LinkInbox.deliver($0) }
                 .task {
+                    #if DEBUG
+                    // Staged into the same inbox a real link uses, so a
+                    // screenshot run exercises the production routing rather
+                    // than a parallel path that could pass while it is broken.
+                    if let url = DebugLaunch.openURL { LinkInbox.deliver(url) }
+                    #endif
                     AppTips.configure()
                     await model.bootstrap()
                     if let projectID = model.projectID {

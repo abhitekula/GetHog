@@ -48,5 +48,20 @@ enum DebugLaunch {
         guard let raw = environment["GETHOG_SOLO_DASHBOARD"], let id = Int(raw) else { return nil }
         return .dashboard(id: id)
     }
+
+    /// A `gethog://` URL to route at launch, as though it had been opened.
+    ///
+    /// `xcrun simctl openurl` can deliver the same URL, but iOS puts its own
+    /// "Open in GetHog?" confirmation in front of it, and dismissing that
+    /// needs a tap — which is exactly the granted-device dependency this type
+    /// exists to avoid. Without this, no *pushed detail* screen can be
+    /// screenshotted on a device that cannot be touched, and pushed details are
+    /// where a whole class of iPad chrome bugs lives: a full-width pushed screen
+    /// asks for the centre of the top bar, which on iPadOS 26 already belongs to
+    /// the floating tab bar.
+    static var openURL: URL? {
+        guard let raw = environment["GETHOG_OPEN_URL"], !raw.isEmpty else { return nil }
+        return URL(string: raw)
+    }
 }
 #endif
