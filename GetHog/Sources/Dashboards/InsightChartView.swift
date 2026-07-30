@@ -180,9 +180,63 @@ struct TimeSeriesChart: View {
     var compact: Bool
 
     @State private var selectedDate: Date?
+    /// Width of the visible window, in seconds. `nil` means the whole series,
+    /// which is the state every chart starts in — zoom is opt-in, so a tile
+    /// always first shows all the data it has.
+    @State private var zoomSpan: TimeInterval?
+    /// Live pinch factor. Kept separate from `zoomSpan` so the gesture can be
+    /// abandoned without having mutated the committed window.
+    @GestureState private var pinch: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var height: CGFloat { compact ? 170 : 280 }
+
+    // MARK: - Zoom and pan
+
+    /// Zoom is confined to the full-size chart.
+    ///
+    /// A dashboard grid is itself a scroll view full of tiles; making each tile
+    /// horizontally scrollable turns an ordinary flick down the page into a
+    /// fight over which view owns the drag. The detail chart has the screen to
+    /// itself and no such competition.
+    private var allowsZoom: Bool { !compact && usesDateAxis && fullSpan != nil }
+
+    private var allDates: [Date] {
+        series.compactMap(\.datedPoints).flatMap { $0 }.map(\.date)
+    }
+
+    /// Total time covered, or `nil` when there is nothing to span — a single
+    /// point, or every point sharing a timestamp.
+    private var fullSpan: TimeInterval? {
+        guard let first = allDates.min(), let last = allDates.max(), last > first else {
+            return nil
+        }
+        return last.timeIntervalSince(first)
+    }
+
+    /// Floor on zoom: roughly three sampling intervals.
+    ///
+    /// Without it a pinch can reach a window narrower than the gap between two
+    /// points, which draws a single mark stranded in empty space and looks like
+    /// a rendering fault rather than a zoom.
+    private var minimumSpan: TimeInterval {
+        guard let fullSpan else { return 1 }
+        let pointCount = max(series.map { ($0.datedPoints ?? []).count }.max() ?? 2, 2)
+        let interval = fullSpan / Double(pointCount - 1)
+        return min(interval * 3, fullSpan)
+    }
+
+    /// The window actually drawn, folding in any in-flight pinch.
+    private var visibleSpan: TimeInterval {
+        guard let fullSpan else { return 1 }
+        let base = zoomSpan ?? fullSpan
+        return (base / Double(pinch)).clamped(to: minimumSpan...fullSpan)
+    }
+
+    private var isZoomed: Bool {
+        guard let fullSpan, let zoomSpan else { return false }
+        return zoomSpan < fullSpan - 1
+    }
 
     /// True when every series has parseable dates, which lets Swift Charts own
     /// the axis and thin its labels. Plotting day strings categorically forces a
@@ -211,10 +265,32 @@ struct TimeSeriesChart: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Reserve the row unconditionally so the chart never shifts when a
-            // scrub begins.
-            scrubReadout
-                .opacity(selectedPoints.isEmpty ? 0 : 1)
+            HStack(alignment: .firstTextBaseline) {
+                // Reserve the row unconditionally so the chart never shifts when
+                // a scrub begins.
+                scrubReadout
+                    .opacity(selectedPoints.isEmpty ? 0 : 1)
+
+                Spacer(minLength: Theme.Space.s)
+
+                // A pinch can be reversed by pinching back, but only if you
+                // work out that you are zoomed at all — and a chart showing a
+                // slice of its range looks exactly like a chart with less data.
+                // This says which it is, and undoes it in one tap.
+                if isZoomed {
+                    Button {
+                        zoomSpan = nil
+                        selectedDate = nil
+                    } label: {
+                        Label("Show all", systemImage: "arrow.up.left.and.arrow.down.right")
+                            .font(Theme.Typography.caption)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Show the full time range")
+                    .transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isZoomed)
 
             Chart {
                 ForEach(Array(series.enumerated()), id: \.offset) { _, s in
@@ -247,15 +323,61 @@ struct TimeSeriesChart: View {
                 }
             }
             .chartXSelection(value: $selectedDate)
+            // Pan. Swift Charts arbitrates the drag between scrolling and
+            // scrubbing itself once an axis is scrollable — selection is
+            // promoted to press-then-drag — which is why this does not need a
+            // hand-rolled gesture mask.
+            .chartScrollableAxes(allowsZoom ? .horizontal : [])
+            .chartXVisibleDomain(length: visibleSpan)
             // Scrubbing is the one chart interaction nothing on screen hints at,
             // so it gets the tip. Only on the full-size chart: firing this over
             // every tile in a dashboard grid at once would be an infestation.
             .popoverTip(compact ? nil : ChartScrubTip())
             .frame(height: height)
+            .simultaneousGesture(allowsZoom ? magnify : nil)
             .sensoryFeedback(.selection, trigger: selectedDate)
+            // Fires at the ends of the range, so a pinch that has stopped doing
+            // anything says so rather than feeling broken.
+            .sensoryFeedback(.levelChange, trigger: isAtZoomLimit)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedDate)
             .accessibilityChartDescriptor(TimeSeriesDescriptor(series: series))
+            // VoiceOver has no pinch. This exposes the same two states to the
+            // rotor, which is the whole of the feature for anyone not using
+            // two fingers.
+            .accessibilityZoomAction { action in
+                guard let fullSpan else { return }
+                switch action.direction {
+                case .zoomIn:
+                    zoomSpan = (visibleSpan / 2).clamped(to: minimumSpan...fullSpan)
+                case .zoomOut:
+                    zoomSpan = (visibleSpan * 2).clamped(to: minimumSpan...fullSpan)
+                @unknown default:
+                    break
+                }
+            }
         }
+    }
+
+    /// Pinch to change the visible window.
+    ///
+    /// Two-fingered, so it does not compete with the one-finger drag that pans
+    /// and scrubs. The magnification is only committed on release: updating
+    /// `zoomSpan` continuously would re-lay-out the chart on every frame of the
+    /// gesture, and Swift Charts re-runs its axis label thinning each time.
+    private var magnify: some Gesture {
+        MagnifyGesture()
+            .updating($pinch) { value, state, _ in state = value.magnification }
+            .onEnded { value in
+                guard let fullSpan else { return }
+                let committed = ((zoomSpan ?? fullSpan) / Double(value.magnification))
+                    .clamped(to: minimumSpan...fullSpan)
+                zoomSpan = committed
+            }
+    }
+
+    private var isAtZoomLimit: Bool {
+        guard let fullSpan else { return false }
+        return visibleSpan <= minimumSpan || visibleSpan >= fullSpan
     }
 
     /// The marks for one point.
@@ -488,5 +610,16 @@ struct FunnelStepRow: View {
             "Step \(index + 1), \(step.name): \(step.count.formatted()), "
             + "\(fraction.formatted(.percent.precision(.fractionLength(0)))) of the first step"
         )
+    }
+}
+
+extension Comparable {
+    /// Keeps a value inside a range.
+    ///
+    /// Used by the chart's zoom, where both ends are load-bearing: past the
+    /// lower bound the window is narrower than the gap between two points, and
+    /// past the upper it shows more time than the series covers.
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }

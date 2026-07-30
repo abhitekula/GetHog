@@ -170,20 +170,20 @@ struct ErrorTrackingRoot: View {
                 Task { await model.refreshCapabilities() }
             }
         } else if let error = store.error, store.issues.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load errors", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
+            EmptyStateView(
+                title: "Couldn't load errors",
+                systemImage: "exclamationmark.triangle",
+                message: error,
+                actionTitle: "Try again",
+                action: { Task { await load() } }
+            )
         } else if store.issues.isEmpty && !store.isLoading {
             // A quiet period is the outcome everyone wants, so it gets a tick
             // rather than the warning triangle used for genuine failures.
-            ContentUnavailableView(
-                "No errors in this period",
+            EmptyStateView(
+                title: "No errors in this period",
                 systemImage: "checkmark.circle",
-                description: Text("Nothing was reported in the \(window.spokenTitle.lowercased()).")
+                message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
             )
         } else {
             list
