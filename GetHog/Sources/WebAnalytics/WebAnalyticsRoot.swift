@@ -495,6 +495,17 @@ struct WebAnalyticsRoot: View {
 
     /// Hand-rolled container rather than `Card`: the proportional bars need to
     /// reach the container's edges, which a card's inner padding would inset.
+    ///
+    /// Reaching the edge is also why the container has to *clip* rather than
+    /// merely draw a rounded background. Each row's bar is a
+    /// `RoundedRectangle(cornerRadius: 6)` painted from x = 0, and
+    /// `.background(_:in:)` puts the card's shape behind it without constraining
+    /// it — so the top row's bar, which is always full width because the scale
+    /// is pinned to it, went on painting square into the container's 16pt
+    /// corner. Rendered at 8× against the same table with the clip applied:
+    /// 4.13pt of tint outside the corner over a 16.75pt run, at the top-leading
+    /// and bottom-leading corners both. Same defect as `Card`'s spine, and the
+    /// same fix — the decoration is clipped by the shape it lives in.
     private var breakdownTable: some View {
         VStack(spacing: 0) {
             ForEach(Array(filteredRows.enumerated()), id: \.element.id) { index, row in
@@ -509,10 +520,8 @@ struct WebAnalyticsRoot: View {
                 )
             }
         }
-        .background(
-            Theme.cardBackground,
-            in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous)
-        )
+        .background(Theme.cardBackground)
+        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
         .skeleton(store.isLoadingRows && store.rows.isEmpty)
     }
 

@@ -282,6 +282,13 @@ struct SentimentRow: View {
             Text(score.formatted(.number.precision(.fractionLength(1))))
                 .font(.caption.monospacedDigit().weight(.medium))
                 .foregroundStyle(FrustrationBand.tint(score))
+            // The fill is clipped by the track, not left to its own capsule.
+            // A `Capsule` takes its radius from half the *smaller* side, so a
+            // low score makes the fill narrower than it is tall and it rounds
+            // tighter than the track it sits in — then paints past the track's
+            // leading cap. Rendered at 8× against the clipped version at score
+            // 0.05: 1.00pt outside at the default text size and 2.88pt at AX5,
+            // where the meter is 145 × 13 rather than 44 × 4.
             Capsule()
                 .fill(Color.secondary.opacity(0.2))
                 .frame(width: meterWidth, height: meterHeight)
@@ -290,6 +297,7 @@ struct SentimentRow: View {
                         .fill(FrustrationBand.tint(score))
                         .frame(width: meterWidth * score)
                 }
+                .clipShape(.capsule)
                 .accessibilityHidden(true)
         }
     }

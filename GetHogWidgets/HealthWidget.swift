@@ -467,6 +467,12 @@ struct QuotaBar: View {
             }
         }
         .frame(height: 5)
+        // Clipped to the track. A `Capsule` rounds by half its smaller side, so
+        // any fraction narrow enough to make the fill under 5pt wide — a few per
+        // cent of an allowance, which is the ordinary state of a fresh quota —
+        // gives the fill a tighter cap than the track and it paints past the
+        // track's leading end. Measured at 8× on the same geometry: 1.5pt out.
+        .clipShape(.capsule)
         .accessibilityHidden(true)
     }
 

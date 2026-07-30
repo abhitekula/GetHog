@@ -437,7 +437,8 @@ struct HeatmapsRoot: View {
                 "\(fold.belowFoldCount) click positions below the fold, \(fold.belowFoldShare.formatted(.percent.precision(.fractionLength(0...1)))) of them"
             )
         }
-        return parts.joined(separator: ". ")
+        // `coverageNote` is a whole sentence and ends like one.
+        return parts.joinedAsSentences()
     }
 
     @ViewBuilder
@@ -556,6 +557,13 @@ struct HeatmapsRoot: View {
 
     /// Hand-rolled container rather than `Card`: the proportional bars need to
     /// reach the container's edges, which a card's inner padding would inset.
+    ///
+    /// Reaching the edge is also why the container has to *clip* rather than
+    /// merely draw a rounded background — see `WebAnalyticsRoot.breakdownTable`,
+    /// which is the same construction and was measured at 8×: a row bar with a
+    /// 6pt radius painting from x = 0 escapes the container's 16pt corner by
+    /// 4.13pt. The top row's bar is always full width here too, because the
+    /// scale is pinned to it.
     private var elementList: some View {
         VStack(spacing: 0) {
             ForEach(Array(rankedElements.enumerated()), id: \.offset) { index, stat in
@@ -569,10 +577,8 @@ struct HeatmapsRoot: View {
                 )
             }
         }
-        .background(
-            Theme.cardBackground,
-            in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous)
-        )
+        .background(Theme.cardBackground)
+        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
     }
 
     /// The bar scale is pinned to the top row of the *current* filter, so

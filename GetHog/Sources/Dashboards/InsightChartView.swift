@@ -4,30 +4,54 @@ import SwiftUI
 
 /// Renders an `InsightRenderModel`.
 ///
-/// Every form ships a VoiceOver chart descriptor, and multi-series charts always
-/// carry a legend plus symbol marks so identity never rests on colour alone —
-/// which is also the relief the light-mode palette's contrast warning requires.
+/// Four of the nine forms ship an `AXChartDescriptor`: time series, bar value,
+/// lifecycle and stickiness. Those are the ones drawn as a plot, where every
+/// figure exists only as geometry and the chart rotor is the sole way to reach
+/// the numbers at all.
+///
+/// Funnel, retention, paths and big number deliberately do not, and should not.
+/// They are already laid out as rows of text, and each row carries a combined
+/// label of its own — "Step 2, Second page view: 45, 33% of the first step",
+/// "Week 0, interval 0: 100%, interval 1: 1%…". A descriptor over the top of
+/// that would give the same numbers a second, parallel representation: the
+/// reader would meet every figure twice, once by swiping and once in the rotor,
+/// with nothing saying the two were the same data. The row label is also the
+/// only form that survives the accessibility-size reflows these four views make
+/// — retention stops being a grid past the threshold, funnel and paths break
+/// their rows in two — and a descriptor's fixed axes cannot describe a layout
+/// that changes shape underneath them.
+///
+/// Multi-series charts always carry a legend plus symbol marks so identity never
+/// rests on colour alone — which is also the relief the light-mode palette's
+/// contrast warning requires.
 struct InsightChartView: View {
     let model: InsightRenderModel
     var compact: Bool = true
     var webURL: URL?
+    /// The insight's own name, for the chart descriptor to announce.
+    ///
+    /// Defaulted, and left empty at exactly one call site: `ChartImageRenderer`
+    /// rasterises the chart to a PNG, which has no accessibility tree for a
+    /// descriptor to land in, and prints the title above the plot as pixels
+    /// instead. Every call site a person can actually navigate passes one.
+    var title: String = ""
 
     var body: some View {
         switch model {
         case .timeSeries(let series, let style):
-            TimeSeriesChart(series: series, style: style, compact: compact)
+            TimeSeriesChart(series: series, style: style, compact: compact, title: title)
         case .barValue(let bars):
-            BarValueChart(bars: bars, compact: compact)
+            BarValueChart(bars: bars, compact: compact, title: title)
         case .bigNumber(let number):
             BigNumberView(number: number)
         case .funnel(let groups):
             FunnelChart(groups: groups, compact: compact)
         case .lifecycle(let series):
-            LifecycleChart(series: series, compact: compact)
+            LifecycleChart(series: series, compact: compact, title: title)
         case .retention(let grid):
             RetentionGridView(grid: grid, compact: compact)
         case .stickiness(let series):
-            StickinessChart(series: series, compact: compact)
+            StickinessChart(series: series, compact: compact, title: title)
         case .paths(let graph):
             PathsFlowView(graph: graph, compact: compact)
         case .unsupported(let kind):
@@ -134,6 +158,7 @@ struct InsightLegend: View {
 struct LifecycleChart: View {
     let series: [LifecycleSeries]
     var compact: Bool
+    var title: String = ""
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -277,7 +302,7 @@ struct LifecycleChart: View {
             }
             .chartLegend(legendBelowChart ? .hidden : .visible)
             .frame(height: (compact ? 170 : 280) * min(textScale, 1.5))
-            .accessibilityChartDescriptor(LifecycleDescriptor(series: series))
+            .accessibilityChartDescriptor(LifecycleDescriptor(series: series, title: title))
 
             if legendBelowChart {
                 InsightLegend(
@@ -465,6 +490,7 @@ struct TimeSeriesChart: View {
     let series: [Series]
     var style: TimeSeriesStyle = .line
     var compact: Bool
+    var title: String = ""
 
     @State private var selectedDate: Date?
     /// Width of the visible window, in seconds. `nil` means the whole series,
@@ -672,7 +698,21 @@ struct TimeSeriesChart: View {
             // anything says so rather than feeling broken.
             .sensoryFeedback(.levelChange, trigger: isAtZoomLimit)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedDate)
-            .accessibilityChartDescriptor(TimeSeriesDescriptor(series: series))
+            // The descriptor carries the insight's name because the marks
+            // underneath it cannot. Swift Charts groups marks into five bands
+            // and writes each band's label and value itself: measured here,
+            // 'Jun 28, 2026 at 12 AM to Jul 5, 2026 at 12 AM' / 'starts at 10,
+            // varies between 10 and 51, ends at 28, $pageview, 7 values'.
+            //
+            // Per-mark `.accessibilityLabel`/`.accessibilityValue` do not change
+            // that — tried, and discarded by the framework at every width: a
+            // chart pinched out to 819pt still produced the same five bands with
+            // the same synthesised strings. The band's *series name* is the one
+            // part a caller can move, and it moves by changing which marks exist
+            // — see the hidden `AreaMark` below. Everything else a reader needs
+            // (which insight, what the axes measure, the per-point figures) has
+            // to come from this descriptor and from the tile's own button label.
+            .accessibilityChartDescriptor(TimeSeriesDescriptor(series: series, title: title))
             // VoiceOver has no pinch. This exposes the same two states to the
             // rotor, which is the whole of the feature for anyone not using
             // two fingers.
@@ -753,6 +793,14 @@ struct TimeSeriesChart: View {
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(Self.areaFill(SeriesPalette.color(at: 0)))
+                // The fill is the line plotted a second time, and Swift Charts
+                // counted it. Measured on the DAU tile, which has exactly one
+                // series: swiping a band announced "varies between 10 and 51,
+                // 2 Series" — the second "series" being this gradient. Hidden,
+                // the same band names the series it is left with, and reads
+                // "…, $pageview, 7 values". One modifier is the whole of the
+                // series identity a linear swipe gets.
+                .accessibilityHidden(true)
             }
 
         case .bar, .stackedBar:
@@ -815,6 +863,7 @@ struct TimeSeriesChart: View {
 struct BarValueChart: View {
     let bars: [BarValue]
     var compact: Bool
+    var title: String = ""
 
     /// Row pitch. Scales because the per-bar labels beside it do; at a fixed
     /// 26pt the labels of neighbouring rows ran into each other.
@@ -881,7 +930,7 @@ struct BarValueChart: View {
                 }
             }
         }
-        .accessibilityChartDescriptor(BarValueDescriptor(bars: visible))
+        .accessibilityChartDescriptor(BarValueDescriptor(bars: visible, title: title))
     }
 }
 
@@ -994,6 +1043,16 @@ struct FunnelStepRow: View {
                 }
             }
             .frame(height: barHeight)
+            // The fill is clipped by the track's shape, in the track's
+            // coordinate space. It cannot clip itself: a `Capsule` rounds at
+            // `min(width, height) / 2`, so at the `max(2, …)` floor below the
+            // fill is 2pt wide and rounds at 1pt while the track rounds at
+            // `barHeight / 2` — leaving the fill's corners outside the track's
+            // curved cap. Measured 1.50pt out at default type, 2.12pt at AX
+            // sizes. The floor is what makes it reachable: it guarantees a
+            // 2pt-wide fill whenever the fraction is near zero, which is
+            // exactly when a funnel step has almost no conversions.
+            .clipShape(.capsule)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(

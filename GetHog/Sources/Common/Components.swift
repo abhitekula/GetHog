@@ -338,20 +338,30 @@ struct Card<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.cardBackground, in: shape)
-            .overlay(alignment: .leading) {
-                if let accent {
-                    accent
-                        .frame(width: 4)
-                        .clipShape(
-                            .rect(
-                                topLeadingRadius: Theme.Radius.medium,
-                                bottomLeadingRadius: Theme.Radius.medium,
-                                style: .continuous
-                            )
-                        )
-                        .accessibilityHidden(true)
-                }
+            .background {
+                // The spine is painted into the card's background and clipped by
+                // the card's own shape, so it can only ever exist where the card
+                // does.
+                //
+                // It used to be an overlay clipping *itself* to a rounded rect of
+                // `Theme.Radius.medium`. That looks right and is not: the clip
+                // resolves in the spine's own 4pt-wide box, where SwiftUI clamps
+                // a 16pt radius to half the smaller dimension — 2pt. So the spine
+                // was a 4pt pill with 2pt corners held against a card curving
+                // away at 16pt, and near the top and bottom edges it went on
+                // painting at x ∈ [0, 4] after the card had already curved
+                // inward. The result was a square nub of colour poking out past
+                // each leading corner, on every accented card in the app.
+                shape
+                    .fill(Theme.cardBackground)
+                    .overlay(alignment: .leading) {
+                        if let accent {
+                            accent
+                                .frame(width: 4)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .clipShape(shape)
             }
             .overlay {
                 shape.strokeBorder(Theme.hairline, lineWidth: 1)
@@ -588,5 +598,38 @@ extension View {
 extension Double {
     var compactFormatted: String {
         formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
+    }
+}
+
+extension Array where Element == String {
+    /// Joins fragments into one spoken label without doubling the full stop.
+    ///
+    /// Combined accessibility labels are assembled from fragments and separated
+    /// by a full stop because that is what makes VoiceOver pause between them; a
+    /// comma runs a row's name, its counts and its status together into one
+    /// breath. The catch is that not every fragment is ours to punctuate. An
+    /// error issue's description arrives from the API already ending a sentence,
+    /// as does `HeatmapProfile.coverageNote`, and a plain
+    /// `joined(separator: ". ")` then produced "An unexpected response was
+    /// received from the server.. 3 users" — measured on the Errors list, and
+    /// spoken as two pauses where the writer intended one.
+    ///
+    /// A fragment that already ends a sentence gets the space and keeps its own
+    /// punctuation; only the ones that don't get a stop added. Empty fragments
+    /// drop out rather than contributing a stop with nothing behind it.
+    func joinedAsSentences() -> String {
+        let terminators: Set<Character> = [".", "!", "?", "…"]
+        return lazy
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .reduce(into: "") { label, fragment in
+                if label.isEmpty {
+                    label = fragment
+                } else if let last = label.last, terminators.contains(last) {
+                    label += " " + fragment
+                } else {
+                    label += ". " + fragment
+                }
+            }
     }
 }

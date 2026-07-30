@@ -10,6 +10,7 @@ import SwiftUI
 struct StickinessChart: View {
     let series: [StickinessSeries]
     var compact: Bool
+    var title: String = ""
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -83,7 +84,7 @@ struct StickinessChart: View {
                 }
             }
             .frame(height: (compact ? 150 : 240) * min(textScale, 1.5))
-            .accessibilityChartDescriptor(StickinessDescriptor(series: series))
+            .accessibilityChartDescriptor(StickinessDescriptor(series: series, title: title))
 
             Text("Days active in the period")
                 .font(.caption2)
@@ -135,6 +136,12 @@ struct PathsFlowView: View {
                         }
                     }
                     .frame(height: barHeight)
+                    // Clipped by the track, for the reason spelled out on the
+                    // identical bar in `FunnelStepRow`: a 2pt-wide `Capsule`
+                    // rounds at 1pt and escapes a track rounding at
+                    // `barHeight / 2`. A rare path edge is precisely the case
+                    // that hits the floor.
+                    .clipShape(.capsule)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(
@@ -223,6 +230,8 @@ struct PathsFlowView: View {
 
 struct StickinessDescriptor: AXChartDescriptorRepresentable {
     let series: [StickinessSeries]
+    /// The insight's own name — see `ChartNaming`.
+    var title: String = ""
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let all = series.flatMap { $0.buckets }
@@ -239,9 +248,8 @@ struct StickinessDescriptor: AXChartDescriptorRepresentable {
         ) { $0.formatted(.number.precision(.fractionLength(0))) }
 
         return AXChartDescriptor(
-            title: "Stickiness",
-            summary: series.map { "\($0.label): \($0.total.formatted()) users" }
-                .joined(separator: ", "),
+            title: ChartNaming.title(insight: title, shape: "stickiness distribution"),
+            summary: InsightSummary.stickiness(series),
             xAxis: xAxis,
             yAxis: yAxis,
             additionalAxes: [],
