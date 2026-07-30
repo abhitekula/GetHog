@@ -30,5 +30,61 @@
 	<array>
 		<string>app.gethog.browsing</string>
 	</array>
+
+	<!-- The inbound half of `AppModel.webURL(path:)`.
+
+	     A custom scheme rather than a universal link, and not by preference: a
+	     universal link needs an `apple-app-site-association` file at the root of
+	     every host it claims — us.posthog.com, eu.posthog.com, and whatever host
+	     a self-hosted deployment runs on. We control none of them, and PostHog
+	     would have to publish this app's team id in their own file. Until that
+	     happens a posthog.com link tapped in Mail opens Safari, and claiming
+	     otherwise in `com.apple.developer.associated-domains` would only produce
+	     an entitlement that silently never matches. See `PostHogLink.swift`. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>app.gethog.GetHog</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gethog</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- The fixed half of the home screen icon's menu; `QuickActions` supplies
+	     the other two from data the app already holds, and iOS shows these
+	     first. Each type is the `gethog://` URL it stands for, so a
+	     long-press cannot reach anywhere a pasted link could not.
+
+	     Search and Errors, because they are the two answers that are always
+	     right: one field that reaches every screen and every object, and the
+	     only question in this app with a deadline on it. See `QuickActions`. -->
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>gethog://search</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Search</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Screens and objects</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>magnifyingglass</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>gethog://error_tracking</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Errors</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Ranked by users affected</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>exclamationmark.triangle</string>
+		</dict>
+	</array>
 </dict>
 </plist>

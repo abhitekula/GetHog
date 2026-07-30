@@ -67,6 +67,13 @@ struct FlagDetailView: View {
         }
         .sensoryFeedback(.success, trigger: controller.successCount)
         .sensoryFeedback(.error, trigger: controller.failureCount)
+        // Offered back from the home screen icon. A flag you were just looking
+        // at is the thing most likely to be worth another ten seconds.
+        .onAppear {
+            guard let projectID = model.projectID else { return }
+            QuickActions.recordVisit(.featureFlag(id: flag.id), title: flag.key, projectID: projectID)
+            QuickActions.refresh(projectID: projectID)
+        }
     }
 
     // MARK: - Sections

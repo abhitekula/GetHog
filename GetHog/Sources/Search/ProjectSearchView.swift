@@ -53,6 +53,11 @@ struct ProjectSearchView: View {
         .toolbar { ProjectSwitcher() }
         .projectSubtitle()
         .searchable(text: $query, prompt: prompt)
+        // A term Siri was given, typed in for the user. `ShowGetHogSearchResultsIntent`
+        // can only ask the app to search; this is where the asking lands.
+        .onAppear {
+            if let term = LinkInbox.consumeQuery(for: .search) { query = term }
+        }
         .refreshable { await load(force: true) }
         .task(id: model.projectID) { await load(force: false) }
         .sheet(item: $surveyRequest) { request in
@@ -348,13 +353,18 @@ struct ProjectSearchView: View {
 struct FlagSearchDestination: View {
     let flagID: Int
     /// The key as the index spelled it, so the screen has a title before the
-    /// flag itself has arrived.
-    let key: String
+    /// flag itself has arrived. Nil when a link supplied nothing but an id,
+    /// which is all a console URL carries.
+    let key: String?
 
     @Environment(AppModel.self) private var model
     @State private var store = FlagsStore()
 
     private var flag: FeatureFlag? { store.flags.first { $0.id == flagID } }
+
+    /// The flag's own key once it has loaded, so a link that started with only
+    /// an id ends up titled the same as one that came from the index.
+    private var title: String { flag?.key ?? key ?? "Feature flag" }
 
     var body: some View {
         Group {
@@ -377,11 +387,13 @@ struct FlagSearchDestination: View {
                 EmptyStateView(
                     title: "Flag not found",
                     systemImage: "flag.slash",
-                    message: "“\(key)” is in this project's index but is no longer among its feature flags. It was probably deleted."
+                    message: key.map {
+                        "“\($0)” is in this project's index but is no longer among its feature flags. It was probably deleted."
+                    } ?? "Flag \(flagID) is not among this project's feature flags. It was probably deleted, or it belongs to another project."
                 )
             }
         }
-        .navigationTitle(key)
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: model.projectID) { await load() }
     }

@@ -5,6 +5,12 @@ import SwiftUI
 struct GetHogApp: App {
     @State private var model: AppModel
 
+    /// Exists for one reason: home screen quick actions have no other way in.
+    /// `GetHogAppDelegate` names a scene delegate, which is the only object
+    /// iOS will hand a `UIApplicationShortcutItem` to once a scene manifest is
+    /// present. See `LinkInbox.swift`.
+    @UIApplicationDelegateAdaptor(GetHogAppDelegate.self) private var appDelegate
+
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -37,12 +43,18 @@ struct GetHogApp: App {
                 // by something that outlives it.
                 .insightCSVExporter()
                 .tint(Theme.accent)
+                // Both the `gethog://` scheme and a posthog.com URL shared
+                // into the app. Posted rather than routed here: on a cold launch
+                // this fires before `bootstrap()` has found a project to resolve
+                // the link against, so `RootView` takes it once it is ready.
+                .onOpenURL { LinkInbox.deliver($0) }
                 .task {
                     AppTips.configure()
                     await model.bootstrap()
                     if let projectID = model.projectID {
                         await SpotlightIndexer.reindex(projectID: projectID)
                     }
+                    QuickActions.refresh(projectID: model.projectID)
                 }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {

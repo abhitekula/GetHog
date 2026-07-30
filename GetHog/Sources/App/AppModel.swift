@@ -136,6 +136,21 @@ final class AppModel {
             PostHogAPI.dashboards(projectID: projectID, limit: 50)
         ) {
             reachedTheAPI = true
+            // The pinned dashboard is already being resolved for the widgets, so
+            // handing it to the home screen menu as well costs no request. Only
+            // a genuinely pinned one is recorded — the fallback below is "the
+            // first dashboard", which is not the same claim.
+            if let pinned = summaries.results.first(where: \.pinned) {
+                QuickActions.recordPinnedDashboard(
+                    id: pinned.id,
+                    title: pinned.title,
+                    projectID: projectID
+                )
+                // The project this publish is for, not the selected one: a
+                // background wake runs with no session, and rebuilding the menu
+                // for a nil project would empty the home screen instead.
+                QuickActions.refresh(projectID: projectID)
+            }
             if let pinned = summaries.results.first(where: \.pinned) ?? summaries.results.first,
                let dashboard: Dashboard = try? await client.send(
                    PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id)
@@ -302,6 +317,10 @@ final class AppModel {
         // A pending wake would otherwise launch the app in the background with
         // nothing to authenticate as, teaching iOS that its requests are futile.
         BackgroundRefresh.cancel()
+        // Dashboard and flag names are project data — they name a customer's
+        // business — and must not survive on the home screen past the credential
+        // that could read them.
+        QuickActions.clear()
         Task { await cache.clear() }
         client = nil
         me = nil
@@ -330,6 +349,32 @@ final class AppModel {
         return client.host
             .appendingPathComponent("project/\(project.id)")
             .appendingPathComponent(path)
+    }
+
+    /// What happened when a link asked for a particular project.
+    enum ProjectSwitch: Equatable, Sendable {
+        /// Already looking at it; nothing moved.
+        case current
+        /// Switched, and the new project's name, so the caller can say which.
+        case switched(name: String)
+        /// This credential has no such project. Never resolved to anything else.
+        case inaccessible
+    }
+
+    /// Moves to the project a link named, or refuses.
+    ///
+    /// The refusal is the point. A link carries a project id, and the id it
+    /// carries is routinely not the one on screen — a colleague's link, a link
+    /// from a week ago, a link from the other environment. Falling back to the
+    /// selected project would render that link's dashboard id against a
+    /// *different* project's data: the same numbers-under-the-wrong-name bug the
+    /// project switcher sits on every screen to prevent. So an id this key
+    /// cannot see stops here and is reported.
+    func selectProject(id: Int) -> ProjectSwitch {
+        if id == selectedProject?.id { return .current }
+        guard let project = projects.first(where: { $0.id == id }) else { return .inaccessible }
+        selectedProject = project
+        return .switched(name: project.name)
     }
 
     /// Picks up a project chosen outside the app — by a Focus filter or an

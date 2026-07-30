@@ -188,6 +188,16 @@ struct DashboardDetailView: View {
                 // scrub tip's availability rule false and it never fires.
                 AppTips.refresh(from: model)
                 await load(refresh: false)
+                // After the load, so the home screen menu gets the dashboard's
+                // real title rather than the placeholder a link arrives with.
+                if let projectID = model.projectID {
+                    QuickActions.recordVisit(
+                        .dashboard(id: dashboardID),
+                        title: title,
+                        projectID: projectID
+                    )
+                    QuickActions.refresh(projectID: projectID)
+                }
                 #if DEBUG
                 if let index = DebugLaunch.tileIndex, orderedTiles.indices.contains(index) {
                     selectedTile = orderedTiles[index]

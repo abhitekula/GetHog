@@ -127,6 +127,9 @@ enum IntentNavigationTarget: Equatable, Sendable {
     case insight(id: Int)
     case featureFlag(id: Int)
     case events(search: String)
+    /// The app's own search over every screen and every object in the project —
+    /// where `ShowGetHogSearchResultsIntent` lands.
+    case search(term: String)
 
     static let defaultsKey = "pendingIntentNavigation"
 
@@ -155,6 +158,7 @@ enum IntentNavigationTarget: Equatable, Sendable {
         case .insight(let id): "insight:\(id)"
         case .featureFlag(let id): "flag:\(id)"
         case .events(let search): "events:\(search)"
+        case .search(let term): "search:\(term)"
         }
     }
 
@@ -167,6 +171,7 @@ enum IntentNavigationTarget: Equatable, Sendable {
         case "insight": guard let id = Int(value) else { return nil }; self = .insight(id: id)
         case "flag": guard let id = Int(value) else { return nil }; self = .featureFlag(id: id)
         case "events": self = .events(search: value)
+        case "search": self = .search(term: value)
         default: return nil
         }
     }

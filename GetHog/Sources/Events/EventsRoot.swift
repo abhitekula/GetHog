@@ -128,6 +128,11 @@ struct EventsRoot: View {
                 .onChange(of: search) { _, text in
                     suggestedTokens = EventFilterToken.suggestions(for: text)
                 }
+                // A term an intent asked this screen to filter by, typed in
+                // rather than dropped on the floor.
+                .onAppear {
+                    if let term = LinkInbox.consumeQuery(for: .events) { search = term }
+                }
                 .onSubmit(of: .search) { Task { await reload() } }
                 .refreshable { await reload() }
                 .task(id: filterSignature) {

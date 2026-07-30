@@ -234,6 +234,11 @@ struct RootView: View {
     /// flag — so no typed path can hold it.
     @State private var searchPath = NavigationPath()
     @State private var hasAppliedDebugTab = false
+    /// Set only when a link could not do what it said. Success is silent; see
+    /// `LinkNotice`.
+    @State private var linkNotice: LinkNotice?
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         switch model.phase {
@@ -273,6 +278,49 @@ struct RootView: View {
                     }
                     #endif
                     restorePushedTab()
+                    // Cold launch: a quick action or a URL that started the app
+                    // arrived before this body existed, so it is waiting rather
+                    // than lost.
+                    routePendingLinks()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: LinkInbox.didChangeNotification)) { _ in
+                    routePendingLinks()
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: IntentNavigationTarget.didChangeNotification
+                    )
+                ) { _ in
+                    routePendingLinks()
+                }
+                // The notification above only ever arrives from inside this
+                // process. An intent runs in one the system picked, so its
+                // hand-off is a write to shared defaults and nothing more — the
+                // only moment the app can notice is coming forward.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { routePendingLinks() }
+                }
+                .onChange(of: model.projectID) { _, id in
+                    // The dynamic quick actions name objects in one project, so
+                    // they have to be rebuilt whenever that project changes —
+                    // otherwise a long-press offers the previous project's
+                    // dashboard and opens it against this one's data.
+                    QuickActions.refresh(projectID: id)
+                }
+                .alert(
+                    linkNotice?.title ?? "",
+                    isPresented: Binding(
+                        get: { linkNotice != nil },
+                        set: { if !$0 { linkNotice = nil } }
+                    ),
+                    presenting: linkNotice
+                ) { notice in
+                    if let url = notice.webURL {
+                        Button("Open in PostHog") { openURL(url) }
+                    }
+                    Button("OK", role: .cancel) {}
+                } message: { notice in
+                    Text(notice.message)
                 }
                 // A Max-size iPhone in landscape and an iPad in narrow
                 // multitasking both cross the size-class boundary while running,
@@ -328,6 +376,11 @@ struct RootView: View {
                             // scene restoration. The stack cannot be read back.
                             .onAppear { selectedTab = tab }
                     }
+                    // Where a link lands. Registered on this stack rather than a
+                    // stack of its own because a link and a search result open
+                    // the same objects, and two stacks would mean two back
+                    // buttons that behave differently for the same dashboard.
+                    .navigationDestination(for: PostHogLink.self) { LinkDestinationView(link: $0) }
             }
         }
     }
@@ -409,6 +462,67 @@ struct RootView: View {
             // leaving a pushed screen there would show that screen instead, under
             // a second navigation bar.
             searchPath = NavigationPath()
+        }
+    }
+
+    // MARK: - Links
+
+    /// Drains everything waiting to be navigated to.
+    ///
+    /// Both mailboxes, because an intent that opens the app and a tapped link
+    /// are the same request as far as this view is concerned: go somewhere.
+    private func routePendingLinks() {
+        if let target = IntentNavigationTarget.consume() {
+            if let staged = target.stagedQuery {
+                LinkInbox.stage(query: staged.term, for: staged.tab)
+            }
+            open(target.linkTarget)
+        }
+        if let url = LinkInbox.consume() {
+            guard let target = PostHogLinkParser.parse(url) else {
+                linkNotice = .unrecognised(url)
+                return
+            }
+            open(target)
+        }
+    }
+
+    /// Goes where a link points, or explains why it can't.
+    ///
+    /// The project is settled before the object, and a project this key cannot
+    /// see stops the whole thing. Resolving the object id against whichever
+    /// project happened to be selected would draw one project's dashboard 128
+    /// from another project's data — which is the reason the project switcher is
+    /// on every screen in the first place.
+    ///
+    /// A *successful* switch says nothing. The project's name is the navigation
+    /// subtitle of every screen in this app, so an alert announcing it would
+    /// interrupt the user to repeat what the screen behind the alert already
+    /// says.
+    private func open(_ target: PostHogLinkTarget) {
+        if let projectID = target.projectID, case .inaccessible = model.selectProject(id: projectID) {
+            linkNotice = .inaccessibleProject(id: projectID)
+            return
+        }
+
+        switch target.link {
+        case .screen(let tab):
+            open(tab)
+        default:
+            guard target.link.opensInApp else {
+                linkNotice = .noScreen(
+                    link: target.link,
+                    webURL: target.link.webPath.flatMap(model.webURL(path:))
+                )
+                return
+            }
+            selectedTab = .search
+            // Replaces rather than stacks, for the same reason `⌘,` does: a link
+            // has to arrive at its destination from wherever the app was, not
+            // behind whatever was already pushed.
+            var path = NavigationPath()
+            path.append(target.link)
+            searchPath = path
         }
     }
 
