@@ -53,13 +53,28 @@ enum ErrorIssueFilter: String, CaseIterable, Identifiable, Hashable {
 extension ErrorIssue {
     var isActive: Bool { !isResolved && !isSuppressed }
 
+    /// The status as a word.
+    ///
+    /// Goes through `readStatus` rather than capitalising the raw value, because
+    /// PostHog reports five statuses and two of them are snake_case:
+    /// `"pending_release".capitalized` is `"Pending_release"`, which is a
+    /// database column shown to a user. An unrecognised status still falls back
+    /// to the capitalised form rather than to nothing.
     var statusTitle: String {
-        status.isEmpty ? "Unknown" : status.capitalized
+        if let title = readStatus?.title { return title }
+        return status.isEmpty ? "Unknown" : status.capitalized
     }
 
     var statusTint: Color {
         if isResolved { return Theme.Status.good }
         if isSuppressed { return .secondary }
+        // Archived and pending-release are neither active nor done. Grey rather
+        // than red: they are not asking for attention, and colouring them
+        // critical would put two issues nobody can act on at the top of a
+        // glance-scan.
+        if let readStatus, readStatus == .archived || readStatus == .pendingRelease {
+            return .secondary
+        }
         return Theme.Status.critical
     }
 }
@@ -105,6 +120,13 @@ struct ErrorTrackingRoot: View {
     @Environment(OpenDetails.self) private var openDetails
 
     @State private var store = ErrorTrackingStore()
+    /// Owned here, at the level both the list and the detail pane can see.
+    ///
+    /// It has to outlive the detail screen: on iPad the detail pane is rebuilt
+    /// whenever the selection changes, and an override held inside it would be
+    /// thrown away mid-write. Holding it here also means the list row reflects a
+    /// change the moment it lands, rather than at the next refresh.
+    @State private var triage = ErrorTriageController()
     // Ranked by people hurt, not by noise: an error hitting 200 users matters
     // more than one firing 50,000 times in a single retry loop.
     @State private var order: ErrorIssueOrder = .users
@@ -146,7 +168,7 @@ struct ErrorTrackingRoot: View {
                 // the selection, one piece of state serves both: it pushes here
                 // and fills the detail column there.
                 .navigationDestination(item: selection) { issue in
-                    ErrorIssueDetailView(issue: issue)
+                    ErrorIssueDetailView(issue: issue, triage: triage)
                         .id(issue.id)
                 }
         } else {
@@ -179,7 +201,7 @@ struct ErrorTrackingRoot: View {
     @ViewBuilder
     private var detailPane: some View {
         if let issue = selection.wrappedValue {
-            ErrorIssueDetailView(issue: issue)
+            ErrorIssueDetailView(issue: issue, triage: triage)
                 .id(issue.id)
         } else if !model.isAvailable(.events) {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
@@ -309,7 +331,15 @@ struct ErrorTrackingRoot: View {
                 Section {
                     ForEach(visibleIssues, id: \.self) { issue in
                         NavigationLink(value: issue) {
-                            ErrorIssueRow(issue: issue)
+                            // The row is drawn from the issue *plus* anything we
+                            // have written since, so resolving something on the
+                            // detail screen is visible on the way back rather
+                            // than at the next refresh. Deliberately no swipe
+                            // action: suppression is the one triage action that
+                            // changes what PostHog stores, and a data-loss
+                            // gesture two pixels from a scroll is not a
+                            // shortcut worth having.
+                            ErrorIssueRow(issue: triage.effective(issue))
                         }
                         .listRowBackground(
                             Theme.cardBackground
@@ -381,13 +411,18 @@ struct ErrorTrackingRoot: View {
 
     // MARK: - Data
 
+    /// Filtered on the *effective* status, so an issue just resolved leaves the
+    /// "Active" filter immediately instead of sitting in it mislabelled.
     private var visibleIssues: [ErrorIssue] {
-        store.issues.filter(filter.matches)
+        store.issues.filter { filter.matches(triage.effective($0)) }
     }
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID, window: window, order: order)
+        // The fresh page is the server's word. Whoever changed an issue in the
+        // web console wins over a local override that has already been written.
+        triage.reconcile(with: store.issues)
     }
 }
 
