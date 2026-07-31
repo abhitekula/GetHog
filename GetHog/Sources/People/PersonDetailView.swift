@@ -13,6 +13,18 @@ final class PersonEventsStore {
     var error: String?
     var loadedAt: Date?
 
+    /// Whether this person has more activity than the 50 rows below.
+    ///
+    /// `QueryResponse.hasMore`, which is the envelope flag PostHog uses to say a
+    /// result was cut. The query here has always carried its own `LIMIT 50`, so
+    /// it was never exposed to the *silent* form of this — a HogQL query with no
+    /// limit of its own is capped at 100 rows with HTTP 200 and no error, and
+    /// this response would have been a hundred events reading as all of them.
+    /// The flag is still worth reading with an explicit limit: it is the
+    /// difference between "this person has done 50 things" and "here are the
+    /// last 50 of more", and the section footer said neither before it existed.
+    var isTruncated = false
+
     func load(client: PostHogClient, projectID: Int, distinctID: String) async {
         isLoading = true
         defer { isLoading = false }
@@ -21,6 +33,7 @@ final class PersonEventsStore {
                 PostHogAPI.hogql(projectID: projectID, sql: Self.query(distinctID: distinctID))
             )
             events = response.rows.compactMap(PersonEvent.init(row:))
+            isTruncated = response.isTruncated
             loadedAt = Date()
             error = nil
         } catch {
@@ -125,6 +138,17 @@ struct PersonDetailView: View {
                 Text(person.displayName)
                     .font(.headline)
                     .lineLimit(2)
+                    // The same defect `PersonRowView` was fixed for, on the
+                    // screen that states the identity rather than lists it, and
+                    // it survived there because nothing had photographed this
+                    // header at an accessibility size. Measured on
+                    // `build/Screenshots/iPhone 17 Pro/ax5/person-detail.png`:
+                    // `nina.drill.0729@example.com` wrapped as `nina.-` /
+                    // `drill.0…`, so the headline of a person's profile carried
+                    // a hyphen that is not in their address. `zxx` is "no
+                    // linguistic content", so no hyphenation dictionary applies
+                    // and the string breaks only where it already allows.
+                    .typesettingLanguage(Locale.Language(identifier: "zxx"))
 
                 StatusPill(
                     text: person.isIdentified ? "Identified" : "Anonymous",
@@ -204,14 +228,30 @@ struct PersonDetailView: View {
             SectionLabel(text: "Recent events", systemImage: "clock")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
+                // "Up to 50" was true of the *request* and said nothing about
+                // the answer: 50 rows from a person with 50 events and 50 rows
+                // from a person with 50,000 were the same sentence. `hasMore` is
+                // the envelope flag that distinguishes them.
+                Text(scopeNote)
                 if let distinctID = queriedDistinctID, person.distinctIDs.count > 1 {
-                    Text("Up to 50 most recent events for \(distinctID) only — this person has \(person.distinctIDs.count) distinct IDs.")
-                } else {
-                    Text("Up to 50 most recent events.")
+                    Text("From \(distinctID) only — this person has \(person.distinctIDs.count) distinct IDs.")
                 }
                 FreshnessLabel(date: eventsStore.loadedAt)
             }
         }
+    }
+
+    /// What the events section is, and is not, a complete answer to.
+    private var scopeNote: String {
+        if eventsStore.isTruncated {
+            return "The 50 most recent events. There are more — PostHog cut the result here."
+        }
+        if eventsStore.events.isEmpty { return "Up to 50 most recent events." }
+        let count = eventsStore.events.count
+        // Not "all this person's events": the events table has its own
+        // retention, and what was measured is only that PostHog reported no
+        // more beyond these.
+        return "\(count) recent \(count == 1 ? "event" : "events"), and PostHog reported no more."
     }
 
     // MARK: - Properties

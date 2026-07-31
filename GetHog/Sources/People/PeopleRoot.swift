@@ -122,8 +122,41 @@ struct PeopleRoot: View {
     private var selection: Binding<PersonSummary?> {
         Binding(
             get: { openDetails[.people] as? PersonSummary },
-            set: { openDetails[.people] = $0.map(AnyHashable.init) }
+            // Setting one clears the other. Both selections drive a
+            // `navigationDestination(item:)` on the same view, so two non-nil
+            // values would ask the stack for two pushes at once; and in the
+            // detail column they would ask for two different screens in one
+            // slot. The segments are mutually exclusive on screen, so making
+            // the selections mutually exclusive costs the user nothing.
+            set: {
+                openDetails[.people] = $0.map(AnyHashable.init)
+                if $0 != nil { openDetails[.people, level: 1] = nil }
+            }
         )
+    }
+
+    /// The open cohort. Level 1 of the same box, which is what `OpenDetails`
+    /// provides for a screen with a second kind of detail — `GroupListView` uses
+    /// it the same way. `@State` would be discarded on an iPad width change for
+    /// exactly the reason recorded above.
+    private var cohortSelection: Binding<Cohort?> {
+        Binding(
+            get: { openDetails[.people, level: 1] as? Cohort },
+            set: {
+                openDetails[.people, level: 1] = $0.map(AnyHashable.init)
+                if $0 != nil { openDetails[.people] = nil }
+            }
+        )
+    }
+
+    /// Names for the nested-cohort references a definition can contain.
+    ///
+    /// Built from the list already fetched, so a reference costs no request. A
+    /// reference to a cohort that is not in the list — deleted, or past the page
+    /// size — simply stays unresolved and renders as its id, which is the honest
+    /// outcome rather than a blank.
+    private var cohortNames: [Int: String] {
+        Dictionary(store.cohorts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
     // In compact width the index behind "More" owns the navigation stack (see
@@ -144,6 +177,12 @@ struct PeopleRoot: View {
                 .navigationDestination(item: selection) { person in
                     PersonDetailView(person: person)
                         .id(person.id)
+                }
+                // A second destination, not a second `for:` registration, for
+                // the same reason the first is bound to its selection.
+                .navigationDestination(item: cohortSelection) { cohort in
+                    CohortDetailView(cohort: cohort, cohortNames: cohortNames)
+                        .id(cohort.id)
                 }
         } else {
             NavigationSplitView {
@@ -172,7 +211,10 @@ struct PeopleRoot: View {
     /// outcomes, and a grid of zeroes would misreport either one.
     @ViewBuilder
     private var detailPane: some View {
-        if let person = selection.wrappedValue {
+        if let cohort = cohortSelection.wrappedValue {
+            CohortDetailView(cohort: cohort, cohortNames: cohortNames)
+                .id(cohort.id)
+        } else if let person = selection.wrappedValue {
             PersonDetailView(person: person)
                 .id(person.id)
         } else if !model.isAvailable(.dashboards) {
@@ -371,10 +413,13 @@ struct PeopleRoot: View {
                     : "No cohort matched “\(search)”."
             )
         } else {
-            List {
+            // Selection-driven at both widths, exactly as the persons list is.
+            // Only one of the two lists is ever on screen, so the two selections
+            // never compete for the same `List`.
+            List(selection: cohortSelection) {
                 Section {
                     ForEach(filteredCohorts) { cohort in
-                        CohortRowView(cohort: cohort)
+                        NavigationLink(value: cohort) { CohortRowView(cohort: cohort) }
                             .listRowBackground(
                                 Theme.cardBackground
                                     .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
@@ -508,9 +553,18 @@ struct CohortRowView: View {
         )
     }
 
+    /// The count, and whether it is current.
+    ///
+    /// A cohort mid-calculation shows the *previous* evaluation's number, and a
+    /// row that presents it as today's is the one thing a reader must not
+    /// conclude from it. Said in words rather than by greying the number: state
+    /// carried by colour alone is not state this app is allowed to carry.
     private var countText: String {
-        guard let count = cohort.count else { return "Count not calculated" }
-        return "\(Double(count).compactFormatted) people"
+        guard let count = cohort.count else {
+            return cohort.isRecalculating ? "Calculating…" : "Count not calculated"
+        }
+        let people = "\(Double(count).compactFormatted) people"
+        return cohort.isRecalculating ? "\(people) · recalculating" : people
     }
 }
 

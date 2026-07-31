@@ -119,7 +119,34 @@ private struct ScreenChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(Theme.pageBackground)
-            .navigationSubtitle(model.selectedProject?.name ?? "")
+            .navigationSubtitle(subtitle)
+    }
+
+    /// The project, and the organization too once there is more than one.
+    ///
+    /// This subtitle is the only permanently visible statement of *whose numbers
+    /// these are* — the toolbar switcher is a glyph precisely because repeating
+    /// the name there cost a whole row of chrome on every pushed screen. Two
+    /// organizations can hold projects with the same name (a "Default project"
+    /// each, which is what PostHog creates), so for a multi-organization user the
+    /// project name on its own does not identify anything, and this app treats
+    /// showing the wrong project's numbers as a correctness bug rather than a
+    /// cosmetic one.
+    ///
+    /// Still just the project name for the single-organization user, which is
+    /// most of them: there the organization is a constant, and a constant
+    /// occupies the line without narrowing anything.
+    ///
+    /// The separator is a middle dot with hair spaces, the same one the
+    /// annotations list uses to join origin and scope, so the two names read as
+    /// one address rather than as a sentence.
+    private var subtitle: String {
+        let project = model.selectedProject?.name ?? ""
+        guard model.isMultiOrganization,
+              let organization = model.selectedOrganization?.name,
+              !project.isEmpty
+        else { return project }
+        return "\(organization) · \(project)"
     }
 }
 

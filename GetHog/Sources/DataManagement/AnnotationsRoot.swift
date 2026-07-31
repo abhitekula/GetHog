@@ -4,14 +4,24 @@ import SwiftUI
 @MainActor
 @Observable
 final class AnnotationsStore {
-    var days: [AnnotationDay] = []
+    /// The flat list is the state; the day grouping is a view of it.
+    ///
+    /// This used to store `days` directly, which was right while the screen could
+    /// only read. It cannot be now: inserting one annotation into a pre-grouped
+    /// list means finding or creating its day bucket and re-sorting within it,
+    /// and withdrawing one means unwinding that and deleting the bucket if it
+    /// emptied. Both are `groupedByDay` written a second time, by hand, in the
+    /// one place where getting it wrong shows a note under the wrong date.
+    private(set) var annotations: [Annotation] = []
     var isLoading = false
     var error: String?
     var loadedAt: Date?
 
-    var isEmpty: Bool { days.isEmpty }
+    var days: [AnnotationDay] { Annotation.groupedByDay(annotations) }
 
-    var totalCount: Int { days.reduce(0) { $0 + $1.annotations.count } }
+    var isEmpty: Bool { annotations.isEmpty }
+
+    var totalCount: Int { annotations.count }
 
     func load(client: PostHogClient, projectID: Int) async {
         isLoading = true
@@ -20,13 +30,44 @@ final class AnnotationsStore {
             let page: Page<Annotation> = try await client.send(
                 PostHogAPI.annotations(projectID: projectID, limit: 100)
             )
-            days = Annotation.groupedByDay(page.results.filter { !$0.isDeleted })
+            annotations = page.results.filter { !$0.isDeleted }
             error = nil
             loadedAt = Date()
         } catch {
             self.error = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }
+    }
+
+    // MARK: - Optimistic edits
+    //
+    // Called only by `AnnotationComposer`, which owns the write and the rollback.
+    // A refresh replaces the whole list, so nothing here has to be reconciled the
+    // way `FlagToggleController.reconcile(with:)` does: an override that outlives
+    // its write is a problem for a *field* on a row the server also sends, and a
+    // created annotation is either in the next fetch or it never existed.
+
+    func insert(_ annotation: Annotation) {
+        annotations.append(annotation)
+    }
+
+    func remove(id: Int) {
+        annotations.removeAll { $0.id == id }
+    }
+
+    /// Swaps a placeholder for the row PostHog actually created.
+    ///
+    /// Appends rather than dropping the response if the placeholder has gone —
+    /// a refresh landing mid-write would have replaced the list, and the created
+    /// annotation is real either way.
+    func replace(id: Int, with annotation: Annotation) {
+        guard let index = annotations.firstIndex(where: { $0.id == id }) else {
+            if !annotations.contains(where: { $0.id == annotation.id }) {
+                annotations.append(annotation)
+            }
+            return
+        }
+        annotations[index] = annotation
     }
 }
 
@@ -36,18 +77,79 @@ final class AnnotationsStore {
 /// only means anything next to the other things that happened that day.
 struct AnnotationsRoot: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
     @State private var store = AnnotationsStore()
+    @State private var composer = AnnotationComposer()
+    @State private var isComposing = false
     @State private var search = ""
 
     var body: some View {
         content
             .navigationTitle("Annotations")
-            .toolbar { ProjectSwitcher() }
+            .toolbar {
+                ProjectSwitcher()
+                composeButton
+            }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search annotations")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
+            .sheet(isPresented: $isComposing) { composerSheet }
+            // A written annotation and a refused one must feel different without
+            // looking away from the list, which is where the row appears.
+            .sensoryFeedback(.success, trigger: composer.successCount)
+            .sensoryFeedback(.error, trigger: composer.failureCount)
+            .alert(
+                "Couldn't save",
+                isPresented: Binding(
+                    get: { composer.message != nil },
+                    set: { if !$0 { composer.dismissMessage() } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(composer.message?.text ?? "")
+            }
+    }
+
+    /// Only where the screen is usable at all.
+    ///
+    /// Gated on the same capability as the list, because a "+" over a locked
+    /// screen offers to write into a project the key cannot even read. The
+    /// *write* scope is a different question and deliberately not probed: a read
+    /// preflight cannot detect `annotation:write`, so guessing it would either
+    /// hide the button from someone who has it or claim it for someone who does
+    /// not. The button is offered, and `AnnotationComposer` names the scope if
+    /// PostHog refuses.
+    @ToolbarContentBuilder
+    private var composeButton: some ToolbarContent {
+        if model.isAvailable(.dashboards), model.client != nil, model.projectID != nil {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isComposing = true
+                } label: {
+                    Label("New annotation", systemImage: "plus")
+                }
+                .accessibilityHint("Writes a dated note onto this project's charts")
+            }
+        }
+    }
+
+    private var composerSheet: some View {
+        AnnotationComposerView(
+            projectName: model.selectedProject?.name ?? "this project",
+            save: { content, dateMarker, target in
+                guard let client = model.client, let projectID = model.projectID else { return false }
+                return await composer.create(
+                    content: content,
+                    dateMarker: dateMarker,
+                    target: target,
+                    store: store,
+                    client: client,
+                    projectID: projectID
+                )
+            },
+            isSaving: composer.isSaving
+        )
     }
 
     @ViewBuilder
@@ -76,10 +178,11 @@ struct AnnotationsRoot: View {
                 title: "No annotations",
                 systemImage: "text.bubble",
                 message: "An annotation pins a note to a date — a release, an incident, the day a campaign started — so a spike on a chart has an explanation beside it. Nobody has written one for this project, and a project can run a long time without needing to.",
-                // Annotations are read here and written in the console; the app
-                // has no way to create one.
-                actionTitle: consoleURL == nil ? nil : "Add one in PostHog",
-                action: openConsole
+                // This used to send people to the web console, because the app
+                // could only read. The empty state of the one screen whose
+                // feature is being fast is a poor place to recommend a laptop.
+                actionTitle: "Write one",
+                action: { isComposing = true }
             )
         } else {
             list
@@ -137,12 +240,11 @@ struct AnnotationsRoot: View {
         }
     }
 
-    private var consoleURL: URL? { model.webURL(path: "data-management/annotations") }
-
-    private var openConsole: (() -> Void)? {
-        guard let consoleURL else { return nil }
-        return { openURL(consoleURL) }
-    }
+    // The console link that used to live here is gone with the empty state's old
+    // action. It was only ever reachable *while the list was empty* — that is,
+    // while there was nothing on this screen to go and edit — and the one thing
+    // the console is still needed for, deleting an annotation, is named in the
+    // composer's confirmation instead, at the moment it becomes relevant.
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }

@@ -35,32 +35,121 @@ enum AnalyticsWindow: String, CaseIterable, Identifiable, Hashable {
 }
 
 /// Dimensions PostHog's `WebStatsTableQuery` can break down by.
+///
+/// Twenty of the thirty-three the API accepts. `PostHogAPI.webStats` lists all
+/// thirty-three and how they were established; the thirteen left out are named
+/// in `omitted` below, with the measurement that ruled each one out, because
+/// "we never got round to it" and "this one lies" are different facts and the
+/// next person to widen this list needs to know which is which.
 enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
+
+    // Where they went.
     case page = "Page"
+    case entryPage = "InitialPage"
+    case exitPage = "ExitPage"
+
+    // Where they came from.
+    case channel = "InitialChannelType"
     case referrer = "InitialReferringDomain"
+    case referringURL = "InitialReferringURL"
+
+    // What brought them.
+    case utmSource = "InitialUTMSource"
+    case utmMedium = "InitialUTMMedium"
+    case utmCampaign = "InitialUTMCampaign"
+    case utmContent = "InitialUTMContent"
+    case utmTerm = "InitialUTMTerm"
+
+    // What they were using.
     case device = "DeviceType"
     case browser = "Browser"
+    case os = "OS"
+    case viewport = "Viewport"
+
+    // Where they were.
     case country = "Country"
+    case region = "Region"
+    case city = "City"
+    case timezone = "Timezone"
+    case language = "Language"
 
     var id: String { rawValue }
+
+    /// The groups the picker draws, in this order. Every case appears in
+    /// exactly one — a `switch` over `self` rather than a hand-kept list, so a
+    /// new dimension cannot be added and then silently fail to appear in the
+    /// menu.
+    enum Group: String, CaseIterable, Identifiable, Hashable {
+        case content = "Content"
+        case acquisition = "Acquisition"
+        case campaign = "Campaign"
+        case technology = "Technology"
+        case geography = "Geography"
+
+        var id: String { rawValue }
+
+        var members: [WebStatsDimension] {
+            WebStatsDimension.allCases.filter { $0.group == self }
+        }
+    }
+
+    var group: Group {
+        switch self {
+        case .page, .entryPage, .exitPage: .content
+        case .channel, .referrer, .referringURL: .acquisition
+        case .utmSource, .utmMedium, .utmCampaign, .utmContent, .utmTerm: .campaign
+        case .device, .browser, .os, .viewport: .technology
+        case .country, .region, .city, .timezone, .language: .geography
+        }
+    }
 
     var title: String {
         switch self {
         case .page: "Page"
+        case .entryPage: "Entry page"
+        case .exitPage: "Exit page"
+        case .channel: "Channel"
         case .referrer: "Referrer"
+        case .referringURL: "Referring URL"
+        case .utmSource: "UTM source"
+        case .utmMedium: "UTM medium"
+        case .utmCampaign: "UTM campaign"
+        case .utmContent: "UTM content"
+        case .utmTerm: "UTM term"
         case .device: "Device"
         case .browser: "Browser"
+        case .os: "Operating system"
+        case .viewport: "Viewport"
         case .country: "Country"
+        case .region: "Region"
+        case .city: "City"
+        case .timezone: "Time zone"
+        case .language: "Language"
         }
     }
 
     var pluralTitle: String {
         switch self {
         case .page: "pages"
+        case .entryPage: "entry pages"
+        case .exitPage: "exit pages"
+        case .channel: "channels"
         case .referrer: "referrers"
+        case .referringURL: "referring URLs"
+        case .utmSource: "UTM sources"
+        case .utmMedium: "UTM mediums"
+        case .utmCampaign: "UTM campaigns"
+        case .utmContent: "UTM content values"
+        case .utmTerm: "UTM terms"
         case .device: "devices"
         case .browser: "browsers"
+        case .os: "operating systems"
+        case .viewport: "viewport sizes"
         case .country: "countries"
+        case .region: "regions"
+        case .city: "cities"
+        case .timezone: "time zones"
+        case .language: "languages"
         }
     }
 
@@ -69,12 +158,159 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     var glyph: String {
         switch self {
         case .page: "doc.text"
+        case .entryPage: "arrow.right.to.line"
+        case .exitPage: "arrow.right.doc.on.clipboard"
+        case .channel: "arrow.triangle.branch"
         case .referrer: "arrow.turn.down.right"
+        case .referringURL: "link"
+        case .utmSource, .utmMedium, .utmCampaign, .utmContent, .utmTerm: "megaphone"
         case .device: "iphone"
         case .browser: "safari"
+        case .os: "desktopcomputer"
+        case .viewport: "rectangle.expand.vertical"
         case .country: "globe"
+        case .region: "map"
+        case .city: "building.2"
+        case .timezone: "clock"
+        case .language: "character.bubble"
         }
     }
+
+    // MARK: - Labelling
+
+    /// What to call the bucket PostHog returns as JSON `null`.
+    ///
+    /// Every UTM dimension has one and it is routinely the **largest row** —
+    /// 1,194 of ~1,400 visitors for `InitialUTMSource` in the project this was
+    /// measured against. It is not missing data: it is everyone who arrived
+    /// without a campaign on the link, which is the number a marketer is
+    /// comparing the campaigns *against*. Calling it "(not set)" would be true
+    /// and useless; naming it is what makes the table readable.
+    private var unsetLabel: String {
+        switch group {
+        case .campaign: "No campaign"
+        default: "Not recorded"
+        }
+    }
+
+    /// Turns one raw breakdown value into the text a row shows.
+    ///
+    /// Only the caller knows that `["US", "Newark"]` is a city and `-4.0` is an
+    /// hour offset, which is why this lives here and not in the kit. Every
+    /// non-string shape below was measured against project [REMOVED PRIVATE DATA] — see
+    /// `WebStatsRow.rows(from:label:)` for the table.
+    func label(for value: JSONValue) -> String {
+        switch value {
+        case .null:
+            return unsetLabel
+
+        case .string(let text):
+            return text.isEmpty ? unsetLabel : text
+
+        case .number(let number):
+            // `Timezone` is the only dimension that breaks down by a number, and
+            // the number is an offset in hours — including half-hour and
+            // three-quarter-hour zones, so `5.5` is India and must not be
+            // rounded to 5 or printed as "5.5". Rendered the way a clock app
+            // writes it, with a real minus sign rather than a hyphen so it does
+            // not read as a list separator.
+            guard self == .timezone else { return number.formatted() }
+            let sign = number < 0 ? "\u{2212}" : "+"
+            let magnitude = abs(number)
+            let hours = Int(magnitude)
+            let minutes = Int((magnitude - Double(hours)) * 60 + 0.5)
+            return minutes == 0
+                ? "UTC\(sign)\(hours)"
+                : String(format: "UTC%@%d:%02d", sign, hours, minutes)
+
+        case .array(let parts):
+            return arrayLabel(parts)
+
+        default:
+            return value.stringValue ?? unsetLabel
+        }
+    }
+
+    /// The three dimensions that break down by a tuple.
+    ///
+    /// Measured shapes, in the API's own order:
+    ///
+    ///     Viewport   [1919.0, 992.0]              width, height
+    ///     Region     ["US", "NJ", "New Jersey"]   country, code, name
+    ///     City       ["US", "Newark"]             country, city
+    ///
+    /// Region and City are read most-specific-first because that is how a person
+    /// says an address, and the country is kept on the end rather than dropped:
+    /// "Newark" alone is three cities, and the row is a ranking where two of
+    /// them could sit next to each other. `Region` deliberately skips its middle
+    /// element — "New Jersey, NJ, US" says New Jersey twice.
+    ///
+    /// The country-only rows (`["US", null, null]`, `["US", null]`) are real and
+    /// large — 877 of ~1,560 visitors for Region — and are geo-lookups that got
+    /// as far as a country and no further. They keep the country and say what is
+    /// missing, so they stay distinguishable from the resolved rows below them
+    /// rather than collapsing onto the same label and colliding as list ids.
+    private func arrayLabel(_ parts: [JSONValue]) -> String {
+        if self == .viewport {
+            let numbers = parts.compactMap { value -> Int? in
+                guard case .number(let d) = value else { return nil }
+                return Int(d)
+            }
+            guard numbers.count == 2 else { return WebStatsRow.plainLabel(.array(parts)) }
+            // The multiplication sign, not the letter x: this is a size.
+            return "\(numbers[0]) \u{00D7} \(numbers[1])"
+        }
+
+        let country = parts.first?.stringValue
+        // Region sends the code and the name; the name is the last element in
+        // both shapes, so taking the tail covers Region and City alike.
+        let specific = parts.dropFirst().compactMap(\.stringValue).last
+
+        switch (specific, country) {
+        case (let specific?, let country?): return "\(specific), \(country)"
+        case (let specific?, nil): return specific
+        case (nil, let country?): return "\(country) — \(pluralTitle.dropLast()) unknown"
+        case (nil, nil): return unsetLabel
+        }
+    }
+
+    /// The thirteen accepted values this app deliberately does not offer, and
+    /// the reason for each. All thirteen answer HTTP 200 — none of this is about
+    /// what the API allows.
+    ///
+    /// - `FrustrationMetrics` returns different **columns** —
+    ///   `[breakdown_value, rage_clicks, dead_clicks, errors, cross_sell]`
+    ///   against every other dimension's `[…, visitors, views, …]`. A stats
+    ///   table would print its rage clicks under "visitors". It deserves a
+    ///   section of its own with its own columns, not a slot in this picker.
+    /// - The eight `FirstPageview*` dimensions duplicate the `Initial*` ones.
+    ///   Measured side by side over 90 days: `FirstPageviewChannelType` 741
+    ///   visitors against `InitialChannelType` 740; `FirstPageviewReferringDomain`
+    ///   769 against `InitialReferringDomain` 769. Offering both would nearly
+    ///   double the menu to express a distinction the data does not show.
+    /// - `InitialUTMSourceMediumCampaign` and its `FirstPageview` twin are the
+    ///   three UTM fields glued together, and the glue shows: the top value
+    ///   comes back as `"referrer:$direct / (none) / (none)"`. The three
+    ///   dimensions this list already offers say the same thing legibly.
+    /// - `ExitClick` is already on this screen. "Outbound clicks" is
+    ///   `WebExternalClicksTableQuery`, a different query kind over the same
+    ///   fact, so adding it here would offer the same numbers twice under two
+    ///   names — and the two are computed differently enough that they need not
+    ///   agree.
+    /// - `PreviousPage` mixes kinds within one column: its top value is
+    ///   `$direct`, a session start rather than a page, so the ranking is not a
+    ///   ranking of pages.
+    /// - `ScreenName` is the mobile-SDK `$screen` equivalent of `Page` and
+    ///   returned zero rows here. It is not wrong, it is simply not web, and
+    ///   this screen is called Web. The first mobile-heavy project to want it is
+    ///   a better reason to add it than symmetry is.
+    static let omitted = [
+        "FrustrationMetrics", "ExitClick", "PreviousPage", "ScreenName",
+        "InitialUTMSourceMediumCampaign", "FirstPageviewUTMSourceMediumCampaign",
+        "FirstPageviewChannelType", "FirstPageviewReferringDomain",
+        "FirstPageviewUTMSource", "FirstPageviewUTMCampaign",
+        "FirstPageviewUTMMedium", "FirstPageviewUTMTerm", "FirstPageviewUTMContent",
+    ]
 }
 
 @MainActor
@@ -82,6 +318,12 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
 final class WebAnalyticsStore {
     var metrics: [WebOverviewMetric] = []
     var rows: [WebStatsRow] = []
+    /// Whether PostHog had more rows than it returned. See `loadBreakdown`.
+    var rowsAreTruncated = false
+    /// The limit PostHog actually applied, which is not necessarily the one that
+    /// was asked for — a query with no limit of its own is capped at 100 in
+    /// silence, so the number to state is the server's, never the request's.
+    var rowLimit: Int?
     var notableChanges: [WebNotableChange] = []
     var externalClicks: [WebExternalClickRow] = []
     var vitals: WebVitalsBreakdown?
@@ -149,7 +391,18 @@ final class WebAnalyticsStore {
                     dateFrom: window.rawValue
                 )
             )
-            rows = WebStatsRow.rows(from: response)
+            // The dimension labels its own rows: a viewport is "1919 × 992", a
+            // city is "Newark, US", an absent UTM is "No campaign". Nothing else
+            // knows that, and the kit deliberately does not.
+            rows = WebStatsRow.rows(from: response, label: dimension.label(for:))
+            // Recorded, because the table has always been a *top N* and never
+            // said so. The captured `web_stats.json` is 50 rows with
+            // `hasMore: true` and `limit: 50` beside them, so this has been true
+            // since the screen shipped — it simply mattered less when the only
+            // dimensions offered were five with few values. `City`, `Language`
+            // and both page dimensions routinely have hundreds.
+            rowsAreTruncated = response.isTruncated
+            rowLimit = response.appliedLimit
             loadedAt = Date()
             rowsError = nil
         } catch {
@@ -258,7 +511,12 @@ struct WebAnalyticsRoot: View {
     var body: some View {
         content
             .navigationTitle("Web")
-            .toolbar { ProjectSwitcher() }
+            .toolbar {
+                ProjectSwitcher()
+                ToolbarItem(placement: .topBarTrailing) {
+                    WebAnalyticsExportMenu(store: store, dimension: dimension)
+                }
+            }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Filter \(dimension.pluralTitle)")
             .refreshable { await reloadAll() }
@@ -387,14 +645,73 @@ struct WebAnalyticsRoot: View {
         )
     }
 
+    /// Twenty dimensions in five named groups.
+    ///
+    /// **Not the segmented control this used to be.** Five titles already had to
+    /// be abbreviated to fit an iPhone; twenty cannot be shown at all, and a
+    /// segmented control does not scroll — it shrinks its labels until they are
+    /// slivers, which is the same failure the accessibility-size branch of
+    /// `adaptivelyStyled` exists to avoid. So the menu is now unconditional and
+    /// `adaptivelyStyled` is no longer used here.
+    ///
+    /// **Buttons in `Section`s, not a `Picker`**, and that is not a preference —
+    /// it is what makes the group headings appear. The project switcher in
+    /// `RootView` was built and photographed both ways: with a `Picker` inside
+    /// it, the `Section`'s title is dropped and the heading vanishes entirely.
+    /// Twenty flat entries with no headings is exactly the wall this grouping
+    /// exists to break up, so the same arrangement that worked there — a `Menu`
+    /// of `Button`s with a checkmark on the current one, which is what a `Picker`
+    /// compiles to anyway — is what is written out here.
+    ///
+    /// The label carries the *current* dimension rather than the word
+    /// "Breakdown": with twenty possibilities, which one you are looking at is
+    /// no longer inferable from the rows.
     private var dimensionPicker: some View {
-        adaptivelyStyled(
-            Picker("Breakdown", selection: $dimension) {
-                ForEach(WebStatsDimension.allCases) { option in
-                    Text(option.title).tag(option)
+        Menu {
+            ForEach(WebStatsDimension.Group.allCases) { group in
+                Section(group.rawValue) {
+                    ForEach(group.members) { option in
+                        let isCurrent = option == dimension
+                        Button {
+                            dimension = option
+                        } label: {
+                            if isCurrent {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Label(option.title, systemImage: option.glyph)
+                            }
+                        }
+                        // A glyph inside a menu item is not announced, so the
+                        // checkmark that is the only visual mark of the current
+                        // row has to be said in words.
+                        .accessibilityLabel(
+                            isCurrent ? "\(option.title), currently shown" : option.title
+                        )
+                    }
                 }
             }
-        )
+        } label: {
+            Label(dimension.title, systemImage: dimension.glyph)
+                .font(.subheadline.weight(.medium))
+                // Inside the label closure, not on the `Menu`. A borderless
+                // menu's tap region is its *label's* bounds, so a frame applied
+                // outside would silently just recentre the text and leave the
+                // target the size it was. Kept even though the style below is
+                // bordered — it is what makes the 44pt true by construction
+                // rather than by whatever height the style happens to pick.
+                .frame(minHeight: 44)
+        }
+        // Bordered, so it reads as something to press. The segmented control it
+        // replaces was unmistakably a control; a bare label under a section
+        // heading is not, and this is the only way to change what the table
+        // below is showing.
+        .buttonStyle(.bordered)
+        // The groups are an order — content, then acquisition, then campaign,
+        // then technology, then geography — and `.automatic` would let the menu
+        // flip them when it opens upward.
+        .menuOrder(.fixed)
+        .accessibilityLabel("Breakdown dimension: \(dimension.title)")
+        .accessibilityHint("Changes what the table below is broken down by")
     }
 
     /// Segmented controls shrink their labels to slivers at accessibility text
@@ -482,6 +799,7 @@ struct WebAnalyticsRoot: View {
                 )
             } else {
                 breakdownTable
+                truncationNote
             }
 
             if let error = store.rowsError, !store.rows.isEmpty {
@@ -523,6 +841,34 @@ struct WebAnalyticsRoot: View {
         .background(Theme.cardBackground)
         .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
         .skeleton(store.isLoadingRows && store.rows.isEmpty)
+    }
+
+    /// Says the table is a top N whenever PostHog said there were more.
+    ///
+    /// Not decoration. Ranked rows with nothing under them read as *the whole
+    /// list*, and on this table that reading is wrong on almost every dimension
+    /// — the recording that ships in the demo is 50 rows with `hasMore: true`
+    /// beside them. Someone comparing "how many countries" against PostHog's own
+    /// UI would have found the app quietly answering 50.
+    ///
+    /// Only ever states the limit **the server applied**, which is the one the
+    /// envelope carries, not the one the request asked for. A query that sends no
+    /// limit is capped at 100 in silence, so the two can differ.
+    ///
+    /// Suppressed while a search is active: the visible count is then the
+    /// filter's doing, and "showing the top 50" next to three matched rows would
+    /// describe something the reader is not looking at.
+    @ViewBuilder
+    private var truncationNote: some View {
+        if store.rowsAreTruncated, search.isEmpty {
+            Label(
+                store.rowLimit.map { "Top \($0) \(dimension.pluralTitle) by visitors. PostHog has more." }
+                    ?? "Ranked by visitors. PostHog has more \(dimension.pluralTitle) than are shown.",
+                systemImage: "list.number"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
     }
 
     private var notableChangesSection: some View {

@@ -30,6 +30,57 @@ final class AppModel {
         }
     }
 
+    // MARK: - Organizations
+    //
+    // `/api/users/@me/` hydrates the projects of exactly one organization. For
+    // everyone in a single organization — which is most people — that is the
+    // whole story and nothing below ever costs a request. For everyone else it
+    // was a wall: `MeResponse.organizations` was decoded and read by nothing, so
+    // a user in two organizations could reach the projects of one and had no way
+    // to learn that the others existed.
+
+    /// Every organization the credential can see. One entry is the common case.
+    private(set) var organizations: [OrganizationSummary] = []
+
+    /// Which one `projects` currently describes.
+    private(set) var selectedOrganizationID: String?
+
+    /// Projects per organization, for the session.
+    ///
+    /// Kept rather than refetched because the set of projects in an organization
+    /// does not change while somebody is looking at a chart, and switching back
+    /// and forth to compare two projects is exactly what this control is for —
+    /// paying a request each way would make comparing them cost more than
+    /// looking at them. The rate-limit budget is organisation-wide and shared
+    /// with whatever else the user has integrated.
+    private var projectsByOrganization: [String: [Project]] = [:]
+
+    /// True while an organization's projects are being fetched.
+    private(set) var isSwitchingOrganization = false
+
+    /// Why the last organization switch did not happen. Nil once acknowledged.
+    var organizationError: String?
+
+    /// Whether the organization is worth naming on screen at all.
+    ///
+    /// One organization is the overwhelmingly common case, and for that user the
+    /// organization's name is a constant — printing it in every navigation
+    /// subtitle would spend a line of chrome on a word that never changes. The
+    /// moment there are two it stops being a constant and starts being the thing
+    /// that decides whose numbers these are.
+    var isMultiOrganization: Bool { organizations.count > 1 }
+
+    var selectedOrganization: OrganizationSummary? {
+        organizations.first { $0.id == selectedOrganizationID }
+    }
+
+    /// The scope a personal API key needs before any of this can work.
+    ///
+    /// Not a `Capability`: there is no screen to gate, and adding a case would
+    /// change what onboarding asks every user to tick for a control most of them
+    /// will never see.
+    static let organizationReadScope = "organization:read"
+
     let store: any CredentialStoring
     let cache = ResponseCache()
     private let governor = RateLimitGovernor()
@@ -82,6 +133,14 @@ final class AppModel {
         self.projects = me.projects.isEmpty
             ? [me.currentProject].compactMap { $0 }
             : me.projects
+        self.organizations = me.allOrganizations
+        self.selectedOrganizationID = me.currentOrganizationID
+        if let currentOrgID = me.currentOrganizationID {
+            // The one organization whose projects arrived free with the identity
+            // request. Seeding the cache with it means returning to it later
+            // costs nothing.
+            projectsByOrganization[currentOrgID] = projects
+        }
 
         let storedID = credential.projectID ?? loadPersistedProjectID()
         self.selectedProject = projects.first { $0.id == storedID }
@@ -91,8 +150,119 @@ final class AppModel {
         self.connectionError = nil
         self.phase = .ready
 
+        // Restoring the organization comes *after* `.ready`, deliberately. It is
+        // the one bootstrap step that can cost a request, and blocking the first
+        // screen on it would make launch slower for the single-organization user
+        // who can never need it. The projects already on screen belong to the
+        // identity response's own organization, so nothing shown before this
+        // lands is wrong — it is just not yet the organization the user left off
+        // in.
+        //
+        // Only ever reached when the user has genuinely switched at some point:
+        // a stored id equal to the current organization, or absent, does nothing.
+        if let storedOrgID = loadPersistedOrganizationID(),
+           storedOrgID != me.currentOrganizationID,
+           organizations.contains(where: { $0.id == storedOrgID }) {
+            await selectOrganization(id: storedOrgID, restoringProjectID: storedID)
+        }
+
         await refreshCapabilities()
         await publishWidgetSnapshot()
+    }
+
+    // MARK: - Switching organization
+
+    /// Moves to another organization, bringing its projects with it.
+    ///
+    /// Nothing on screen changes until the projects are in hand. That is the
+    /// whole shape of this method: an organization with an empty project list is
+    /// indistinguishable from an organization whose fetch has not finished, and
+    /// this app treats a screen showing the wrong project's numbers as a
+    /// correctness bug — so it never shows an in-between state where the
+    /// organization has moved and the project has not.
+    ///
+    /// On failure nothing moves at all and `organizationError` says why. There is
+    /// no partial success to roll back, which is the one way this differs from
+    /// `FlagToggleController`: a read that failed simply did not happen.
+    ///
+    /// - Parameter restoringProjectID: which project to land on, when the caller
+    ///   knows. Used at launch to restore the exact project the user left; a
+    ///   switch made by hand has no such expectation and lands on the first.
+    func selectOrganization(id: String, restoringProjectID: Int? = nil) async {
+        guard id != selectedOrganizationID || projects.isEmpty else { return }
+        guard let organization = organizations.first(where: { $0.id == id }) else { return }
+        organizationError = nil
+
+        if let cached = projectsByOrganization[id], !cached.isEmpty {
+            adopt(projects: cached, organizationID: id, preferring: restoringProjectID)
+            return
+        }
+
+        guard let client else { return }
+        isSwitchingOrganization = true
+        defer { isSwitchingOrganization = false }
+
+        do {
+            let page: Page<Project> = try await client.send(
+                PostHogAPI.organizationProjects(organizationID: id)
+            )
+            guard !page.results.isEmpty else {
+                organizationError = """
+                    \(organization.name) came back with no projects, so nothing was switched. \
+                    An organization can genuinely have none; if this one has some, your \
+                    personal API key may not be able to see them.
+                    """
+                return
+            }
+            projectsByOrganization[id] = page.results
+            adopt(projects: page.results, organizationID: id, preferring: restoringProjectID)
+        } catch {
+            organizationError = switchFailureMessage(for: error, organization: organization)
+        }
+    }
+
+    /// Swaps in another organization's projects as one step.
+    private func adopt(projects newProjects: [Project], organizationID: String, preferring id: Int?) {
+        projects = newProjects
+        selectedOrganizationID = organizationID
+        persistSelectedOrganization(organizationID)
+        // `didSet` on `selectedProject` does the rest — persisting it, refreshing
+        // capabilities, republishing the widget snapshot and reindexing Spotlight
+        // — because moving organization changes every one of those exactly the
+        // way moving project does.
+        selectedProject = newProjects.first { $0.id == id } ?? newProjects.first
+    }
+
+    /// Names the failure in terms of what the user can do about it.
+    private func switchFailureMessage(
+        for error: any Error,
+        organization: OrganizationSummary
+    ) -> String {
+        guard let posthogError = error as? PostHogError else {
+            return "Couldn't switch to \(organization.name). \(error.localizedDescription)"
+        }
+        switch posthogError {
+        case .forbidden:
+            // Measured against `us.posthog.com`: a personal API key that is
+            // *scoped to specific projects* answers 403 on every
+            // `/api/organizations/` path with "API keys with scoped projects are
+            // only supported on project-based endpoints", while
+            // `/api/users/@me/` answers 200 for the same key — which is why the
+            // organization can be listed at all and its projects still cannot be
+            // fetched. Both causes are named because nothing in the response
+            // distinguishes them, and guessing one would send the user to the
+            // wrong setting.
+            return """
+                Couldn't switch to \(organization.name): PostHog refused the request. \
+                A personal API key scoped to specific projects can't read organizations at all, \
+                and a key without the \(Self.organizationReadScope) scope can't either. \
+                Check both on the key in PostHog, then try again.
+                """
+        case .unauthorized:
+            return "Couldn't switch to \(organization.name): your API key was rejected. Reconnect in Settings."
+        default:
+            return "Couldn't switch to \(organization.name). \(posthogError.localizedDescription)"
+        }
     }
 
     func refreshCapabilities() async {
@@ -391,6 +561,14 @@ final class AppModel {
         capabilities = nil
         projects = []
         selectedProject = nil
+        // Organization names name a customer's business exactly as project names
+        // do, and the cached project lists are that customer's data. Neither may
+        // outlive the credential that could read them.
+        organizations = []
+        selectedOrganizationID = nil
+        projectsByOrganization = [:]
+        organizationError = nil
+        UserDefaults.standard.removeObject(forKey: "selectedOrganizationID")
         phase = .onboarding
     }
 
@@ -482,5 +660,19 @@ final class AppModel {
     private func loadPersistedProjectID() -> Int? {
         let id = UserDefaults.standard.integer(forKey: "selectedProjectID")
         return id == 0 ? nil : id
+    }
+
+    /// Written to `.standard` alone, unlike the project id.
+    ///
+    /// The project id also goes to the App Group because widgets and intents run
+    /// in other processes and need it. The organization id has no such reader:
+    /// nothing outside the app knows what an organization is, and a widget's
+    /// project id already identifies its project unambiguously.
+    private func persistSelectedOrganization(_ id: String) {
+        UserDefaults.standard.set(id, forKey: "selectedOrganizationID")
+    }
+
+    private func loadPersistedOrganizationID() -> String? {
+        UserDefaults.standard.string(forKey: "selectedOrganizationID")
     }
 }

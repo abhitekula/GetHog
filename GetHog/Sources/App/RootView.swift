@@ -589,6 +589,25 @@ struct RootView: View {
                 } message: { notice in
                     Text(notice.message)
                 }
+                // Attached beside the link notice for the same reason it is: a
+                // failed organization switch has no screen of its own to report
+                // on, and the switcher that started it is a menu that has already
+                // dismissed itself by the time the request comes back. Nothing
+                // moved when this fires — the projects, the project and the
+                // subtitle are all still the organization the user was in — so
+                // the alert is the whole of the feedback and has to carry the
+                // reason.
+                .alert(
+                    "Couldn't switch organization",
+                    isPresented: Binding(
+                        get: { model.organizationError != nil },
+                        set: { if !$0 { model.organizationError = nil } }
+                    )
+                ) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(model.organizationError ?? "")
+                }
                 // A Max-size iPhone in landscape and an iPad in narrow
                 // multitasking both cross the size-class boundary while running,
                 // which moves a destination between the sidebar and the index.
@@ -955,9 +974,26 @@ struct ProjectSwitcher: ToolbarContent {
             // appends itself, so the instruction was spoken twice on every
             // screen in the app, and it named a gesture that Switch Control,
             // Voice Control and a keyboard do not have.
-            .accessibilityLabel("Current project: \(model.selectedProject?.name ?? "none")")
-            .accessibilityHint("Switches to a different project")
+            //
+            // The organization is spoken only when there is more than one. For
+            // the single-organization user it is a constant, and a constant read
+            // aloud on every screen is noise; for everyone else it is the half of
+            // the answer that decides whose numbers these are.
+            .accessibilityLabel(spokenLabel)
+            .accessibilityHint(
+                model.isMultiOrganization
+                    ? "Switches to a different project or organization"
+                    : "Switches to a different project"
+            )
         }
+    }
+
+    private var spokenLabel: String {
+        let project = model.selectedProject?.name ?? "none"
+        guard model.isMultiOrganization, let organization = model.selectedOrganization else {
+            return "Current project: \(project)"
+        }
+        return "Current project: \(project), in organization \(organization.name)"
     }
 
     /// Every project the key can reach, under the organisation that owns them.
@@ -986,8 +1022,15 @@ struct ProjectSwitcher: ToolbarContent {
     /// does the same. Either would have traded a misreading for a blank. A menu
     /// of buttons with a checkmark on the current one is what a `Picker` compiles
     /// to anyway; writing it out is what keeps the title.
+    @ViewBuilder
     private var projectList: some View {
-        Section(model.me?.organization?.name ?? "") {
+        // The heading is the *selected* organization, not `me.organization`.
+        // Those are the same thing until somebody switches, and after that
+        // `me.organization` is the organization the identity request happened to
+        // be centred on — which would leave the menu heading one organization's
+        // name over another organization's projects. Precisely the misreading
+        // the heading was introduced to prevent.
+        Section(model.selectedOrganization?.name ?? model.me?.organization?.name ?? "") {
             ForEach(model.projects) { project in
                 let isCurrent = project.id == model.selectedProject?.id
                 Button {
@@ -1003,6 +1046,49 @@ struct ProjectSwitcher: ToolbarContent {
                 // project, and a glyph inside a menu item is not announced — so
                 // written out, the way `Picker` announced "selected" before.
                 .accessibilityLabel(isCurrent ? "\(project.name), current project" : project.name)
+            }
+        }
+
+        // Absent entirely for the single-organization user, which is most of
+        // them: a second section headed "Organization" listing exactly the
+        // organization already named above it says nothing and invites the
+        // reading that there is somewhere else to go.
+        if model.isMultiOrganization {
+            organizationList
+        }
+    }
+
+    /// The other organizations this credential can see.
+    ///
+    /// Buttons in a titled `Section`, for the same reason the projects above are:
+    /// a `Picker` inside a `Section` drops the title, and an untitled run of
+    /// organization names directly under a run of project names is two lists that
+    /// look like one. Both arrangements were built and photographed when the
+    /// project half of this menu was written.
+    ///
+    /// Switching costs a request the first time, so each button is disabled while
+    /// one is in flight — a menu is dismissed on tap and gives the second tap
+    /// nowhere to report to, so two switches racing would be resolved by whichever
+    /// response arrived last rather than by whichever the user meant.
+    private var organizationList: some View {
+        Section("Organization") {
+            ForEach(model.organizations) { organization in
+                let isCurrent = organization.id == model.selectedOrganizationID
+                Button {
+                    Task { await model.selectOrganization(id: organization.id) }
+                } label: {
+                    if isCurrent {
+                        Label(organization.name, systemImage: "checkmark")
+                    } else {
+                        Label(organization.name, systemImage: "building.2")
+                    }
+                }
+                .disabled(model.isSwitchingOrganization)
+                .accessibilityLabel(
+                    isCurrent
+                        ? "\(organization.name), current organization"
+                        : "\(organization.name), organization"
+                )
             }
         }
     }
