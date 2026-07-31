@@ -197,15 +197,16 @@ struct FlagsRoot: View {
             // here. TipKit keeps its own display state, so a user who has never
             // seen it still gets it at a text size where it fits.
             if !dynamicTypeSize.isAccessibilitySize {
-                TipView(FlagWidgetTip())
-                    // TipKit's own surface is `secondarySystemGroupedBackground`
-                    // — sampled `#F2F2F7` here, the stock cool grey-blue, on a
-                    // cream `#F2EFE9` ground and directly above flag rows that
-                    // are `Theme.cardBackground`. It was the one card on the
-                    // screen not wearing the app's palette. The tint is left
-                    // alone: `.tint(Theme.accent)` in `GetHogApp` already
-                    // reaches the glyph and the dismiss control.
-                    .tipBackground(Theme.cardBackground)
+                // `AppTipView`, not `TipView`. The surface used to be corrected
+                // here with `.tipBackground(Theme.cardBackground)` — TipKit's own
+                // is `secondarySystemGroupedBackground`, sampled `#F2F2F7`, the
+                // stock cool grey-blue on a cream ground. That fixed the fill and
+                // could not reach the ink: TipKit's message measured **4.00:1**
+                // in light on this very card, and its close glyph **2.66:1**.
+                // Both live inside the framework's own body, so the fix is a
+                // `TipViewStyle` — see `AppTipView`, which also draws the card,
+                // so nothing is set here.
+                AppTipView(FlagWidgetTip())
                     .listRowBackground(Color.clear)
             }
             ForEach(FlagStatusGroup.allCases) { group in

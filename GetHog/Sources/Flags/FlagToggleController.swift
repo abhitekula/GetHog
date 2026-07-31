@@ -78,14 +78,6 @@ enum BiometricGate {
     }
 }
 
-struct FlagToggleMessage: Identifiable, Equatable {
-    enum Kind { case failure, notice }
-
-    let id = UUID()
-    let kind: Kind
-    let text: String
-}
-
 /// Owns every write to a feature flag, plus the optimistic state that write
 /// implies.
 ///
@@ -99,17 +91,39 @@ final class FlagToggleController {
 
     /// Flag id → the state we believe it is in after our own write.
     private(set) var overrides: [Int: Bool] = [:]
+    /// Flag id → condition-group index → the percentage we believe that group is
+    /// at after our own write.
+    ///
+    /// Keyed by group as well as by flag because there is no "the" rollout
+    /// percentage to override: `FeatureFlag.rolloutPercentage` is a `max()` across
+    /// release-condition groups, and a flag with two groups has two numbers. An
+    /// override keyed on the flag alone would have to pick one of them to be, and
+    /// whichever it picked would be wrong for the other group's row.
+    private(set) var rolloutOverrides: [Int: [Int: Double]] = [:]
     private(set) var inFlight: Set<Int> = []
     private(set) var message: FlagToggleMessage?
 
     /// Monotonic counters drive `.sensoryFeedback`; two flags flipped the same
-    /// way in a row must still each produce a tap.
+    /// way in a row must still each produce a tap. `filedCount` is separate from
+    /// the other two because a change request waiting for approval is neither a
+    /// success nor a failure, and the error haptic is the one channel a user
+    /// cannot argue with.
     private(set) var successCount = 0
     private(set) var failureCount = 0
+    private(set) var filedCount = 0
 
     var requiredWriteScope: String { Capability.flags.writeScope ?? "feature_flag:write" }
 
     func effectiveActive(_ flag: FeatureFlag) -> Bool { overrides[flag.id] ?? flag.active }
+
+    /// One release-condition group's rollout percentage, with our own write laid
+    /// over it. `nil` means the group has no cap set, which means everyone the
+    /// conditions match — not nobody.
+    func effectiveRollout(_ flag: FeatureFlag, group index: Int) -> Double? {
+        if let written = rolloutOverrides[flag.id]?[index] { return written }
+        guard flag.conditionGroups.indices.contains(index) else { return nil }
+        return flag.conditionGroups[index].rolloutPercentage
+    }
 
     func isBusy(_ flag: FeatureFlag) -> Bool { inFlight.contains(flag.id) }
 
@@ -165,8 +179,83 @@ final class FlagToggleController {
             IntentDonations.flagSet(flag, enabled: desired)
         } catch {
             apply(previous, to: flag)
+            record(error, flag: flag, action: desired ? "enable" : "disable")
+        }
+    }
+
+    /// Applies a confirmed rollout change to **one** release-condition group.
+    ///
+    /// The group index is a parameter and not a convenience because there is no
+    /// single rollout percentage on a flag to set — see `rolloutOverrides` and
+    /// `FeatureFlag.rolloutPercentage`.
+    ///
+    /// Returns without a request when `PostHogAPI.setFlagRollout` declines to
+    /// build one. That happens when the flag arrived without its verbatim
+    /// `filters`, when its `filters` carry no `groups` array, or when the index or
+    /// the percentage is out of range — and in the second case in particular,
+    /// sending the PATCH anyway would answer **200 with the flag unchanged**,
+    /// which is the worst of the three outcomes because it looks like success.
+    ///
+    /// Gated on the device-owner check for the same reason the toggle is: this
+    /// changes what production serves to users right now.
+    func setRollout(
+        _ percentage: Double,
+        group index: Int,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int
+    ) async {
+        guard !inFlight.contains(flag.id) else { return }
+        message = nil
+
+        guard let endpoint = PostHogAPI.setFlagRollout(
+            projectID: projectID,
+            flag: flag,
+            groupIndex: index,
+            percentage: percentage
+        ) else {
             failureCount += 1
-            message = failureMessage(for: error, flag: flag, desired: desired)
+            message = FlagToggleMessage(
+                kind: .failure,
+                text: """
+                    Couldn't change the rollout for \(flag.key). GetHog didn't keep enough of this \
+                    flag's release conditions to change one safely without dropping the rest. \
+                    Edit it in the PostHog web console.
+                    """
+            )
+            return
+        }
+
+        if BiometricGate.isEnabled {
+            switch await BiometricGate.evaluate() {
+            case .passed:
+                break
+            case .unavailable(let detail):
+                message = FlagToggleMessage(
+                    kind: .notice,
+                    text: "Device authentication wasn't available (\(detail)). This change was confirmed by dialog only."
+                )
+            case .denied(let detail):
+                failureCount += 1
+                message = FlagToggleMessage(
+                    kind: .failure,
+                    text: "Not authenticated, so \(flag.key) was left unchanged. \(detail)"
+                )
+                return
+            }
+        }
+
+        let previous = rolloutOverrides[flag.id]?[index]
+        rolloutOverrides[flag.id, default: [:]][index] = percentage
+        inFlight.insert(flag.id)
+        defer { inFlight.remove(flag.id) }
+
+        do {
+            _ = try await client.data(for: endpoint)
+            successCount += 1
+        } catch {
+            rolloutOverrides[flag.id]?[index] = previous
+            record(error, flag: flag, action: "change the rollout for")
         }
     }
 
@@ -177,6 +266,7 @@ final class FlagToggleController {
     func reconcile(with flags: [FeatureFlag]) {
         let settled = Set(flags.map(\.id)).subtracting(inFlight)
         overrides = overrides.filter { !settled.contains($0.key) }
+        rolloutOverrides = rolloutOverrides.filter { !settled.contains($0.key) }
     }
 
     private func apply(_ value: Bool, to flag: FeatureFlag) {
@@ -184,30 +274,34 @@ final class FlagToggleController {
         overrides[flag.id] = value == flag.active ? nil : value
     }
 
-    private func failureMessage(
-        for error: any Error,
-        flag: FeatureFlag,
-        desired: Bool
-    ) -> FlagToggleMessage {
-        let verb = desired ? "enable" : "disable"
-        var text = "Couldn't \(verb) \(flag.key). \(error.localizedDescription)"
-
-        if let posthogError = error as? PostHogError {
-            switch posthogError {
-            case .forbidden:
-                // A read-scoped key passes preflight and only fails here, so
-                // this is the first moment the user can learn what to tick.
-                text = """
-                    Couldn't \(verb) \(flag.key): your personal API key is missing the \
-                    \(requiredWriteScope) scope. Add it to the key in PostHog, then try again.
-                    """
-            case .unauthorized:
-                text = "Couldn't \(verb) \(flag.key): your API key was rejected. Reconnect in Settings."
-            default:
-                text = "Couldn't \(verb) \(flag.key). \(posthogError.localizedDescription)"
-            }
-        }
-
-        return FlagToggleMessage(kind: .failure, text: text)
+    /// Turns a thrown error into what the reader is told, and bumps whichever
+    /// counter is honest about it.
+    ///
+    /// **The reason this is one function rather than a `catch` per call site.**
+    /// One of the things that reaches this `catch` is not a failure at all: under
+    /// an organisation approval policy, `PATCH /feature_flags/:id/` answers HTTP
+    /// 409 `approval_required`, the flag is unchanged, a change request exists,
+    /// and its approvers have been notified. Before `PostHogError.approvalRequired`
+    /// and this function existed, that arrived as a generic 409 and this
+    /// controller reported it as *"Couldn't enable …"*, which is the one
+    /// description that is definitely wrong — nothing failed, and there is a real,
+    /// pending, human-visible request the reader now needs to chase.
+    ///
+    /// The optimistic state is still rolled back by the caller, and must be: the
+    /// flag really did not change. Rollback and "this failed" are two separate
+    /// claims, and only the first one was ever true here.
+    ///
+    /// **Source-derived, never observed.** No 409 has been received from a live
+    /// deployment; provoking one needs an approval policy *and* a write, and the
+    /// key here is read-only.
+    private func record(_ error: any Error, flag: FeatureFlag, action: String) {
+        let outcome = WriteFailure.message(
+            for: error,
+            object: flag.key,
+            action: action,
+            writeScope: requiredWriteScope
+        )
+        if outcome.kind == .filed { filedCount += 1 } else { failureCount += 1 }
+        message = outcome
     }
 }

@@ -20,6 +20,19 @@ struct FlagDetailView: View {
     @State private var isConfirming = false
     @State private var allowsQuickToggle: Bool
 
+    /// Which release-condition group the rollout editor is aimed at, and the
+    /// value it is aimed with. Two pieces of state rather than one because there
+    /// is no single rollout percentage on a flag — see
+    /// `FeatureFlag.rolloutPercentage`, which is a `max()` across groups and is
+    /// therefore a headline figure and not a value anything may write back.
+    @State private var editedGroup = 0
+    @State private var draftRollout: Double = 0
+    @State private var isConfirmingRollout = false
+    /// Set once per group the editor is pointed at, so re-opening the screen or
+    /// switching groups seeds the slider from the server's value while typing
+    /// into it does not keep snapping back.
+    @State private var seededGroup: Int?
+
     init(flag: FeatureFlag, controller: FlagToggleController) {
         self.flag = flag
         self.controller = controller
@@ -40,6 +53,7 @@ struct FlagDetailView: View {
             toggleSection
             quickToggleSection
             releaseConditionsSection
+            rolloutSection
             if flag.isMultivariate { variantsSection }
         }
         .pageSurface()
@@ -92,8 +106,26 @@ struct FlagDetailView: View {
         } message: {
             Text(confirmationDetail)
         }
+        .confirmationDialog(
+            rolloutConfirmationTitle,
+            isPresented: $isConfirmingRollout,
+            titleVisibility: .visible
+        ) {
+            Button("Set to \(FlagFormat.percent(draftRollout))", role: .destructive) {
+                commitRollout()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(rolloutConfirmationDetail)
+        }
         .sensoryFeedback(.success, trigger: controller.successCount)
         .sensoryFeedback(.error, trigger: controller.failureCount)
+        // A third feedback, and not a nicety. A write that came back
+        // `approval_required` neither succeeded nor failed: the flag is unchanged
+        // and a change request is waiting for a colleague. Playing the error tap
+        // would say "that didn't work" in the one channel a reader cannot argue
+        // with, and the success tap would say the opposite.
+        .sensoryFeedback(.warning, trigger: controller.filedCount)
         // Offered back from the home screen icon. A flag you were just looking
         // at is the thing most likely to be worth another ten seconds.
         .onAppear {
@@ -183,7 +215,7 @@ struct FlagDetailView: View {
             .disabled(isBusy)
 
             if let message = controller.message {
-                ToggleMessageView(message: message) { controller.dismissMessage() }
+                WriteOutcomeMessageView(message: message) { controller.dismissMessage() }
             }
         } header: {
             SectionLabel(text: "Live state", systemImage: "switch.2")
@@ -216,11 +248,153 @@ struct FlagDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-                    ReleaseConditionRow(index: index, group: group)
+                    ReleaseConditionRow(
+                        index: index,
+                        group: group,
+                        rollout: controller.effectiveRollout(flag, group: index)
+                    )
                 }
             }
         } header: {
             SectionLabel(text: "Release conditions", systemImage: "line.3.horizontal.decrease.circle")
+        }
+    }
+
+    /// The rollout editor.
+    ///
+    /// **It edits one condition group, never "the" rollout.** There is no scalar
+    /// rollout percentage on a feature flag: the number lives once per
+    /// release-condition group, `FeatureFlag.rolloutPercentage` is a `max()`
+    /// across them, and a control labelled "Rollout %" that wrote that maximum
+    /// back into group 0 would be wrong for every multi-group flag in the
+    /// project — silently, and in production. So the group is chosen explicitly
+    /// whenever there is more than one, and the confirmation dialog names it.
+    ///
+    /// A `Slider` **and** a `Stepper`, which is not redundancy. The slider is how
+    /// you get to roughly 25% with a thumb; the stepper is how you get to exactly
+    /// 25%, and it is also the control that works at AX5 and under Switch
+    /// Control, where a 44pt-tall slider track spanning a narrow column is close
+    /// to unusable. The figure is drawn as text beside them, so the value is never
+    /// carried by a thumb position alone.
+    ///
+    /// Hidden entirely when the flag cannot be edited safely — see
+    /// `FeatureFlag.canEditRollout`. Drawing a disabled slider would be offering a
+    /// control the app knows cannot work.
+    @ViewBuilder
+    private var rolloutSection: some View {
+        if flag.canEditRollout {
+            Section {
+                if flag.conditionGroups.count > 1 {
+                    Picker("Condition set", selection: $editedGroup) {
+                        ForEach(Array(flag.conditionGroups.indices), id: \.self) { index in
+                            Text("Set \(index + 1)").tag(index)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Chooses which release condition set the rollout below applies to")
+                }
+
+                LabeledContent {
+                    Text(FlagFormat.percent(draftRollout))
+                        .font(.body.monospacedDigit().weight(.semibold))
+                } label: {
+                    Text("Rolled out to")
+                }
+                .accessibilityHidden(true)
+
+                Slider(value: $draftRollout, in: 0...100, step: 1) {
+                    Text("Rollout percentage for set \(editedGroup + 1)")
+                } minimumValueLabel: {
+                    Text("0%").font(.caption2).foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("100%").font(.caption2).foregroundStyle(.secondary)
+                }
+                .disabled(isBusy)
+
+                Stepper(value: $draftRollout, in: 0...100, step: 1) {
+                    Text("\(FlagFormat.percent(draftRollout)) of users matching set \(editedGroup + 1)")
+                        .font(.subheadline)
+                }
+                .disabled(isBusy)
+
+                Button {
+                    isConfirmingRollout = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Apply to set \(editedGroup + 1)")
+                            .font(.subheadline.weight(.medium))
+                        if isBusy {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Saving change")
+                        }
+                    }
+                }
+                .disabled(isBusy || draftRollout == (controller.effectiveRollout(flag, group: editedGroup) ?? 100))
+            } header: {
+                SectionLabel(text: "Rollout", systemImage: "dial.medium")
+            } footer: {
+                Text(rolloutFooter)
+            }
+            // Seeded from the server's value for whichever group is selected, and
+            // only once per group: re-seeding on every layout pass would fight the
+            // slider, and never re-seeding would leave the editor pointing at one
+            // group's number while naming another's.
+            .onChange(of: editedGroup, initial: true) { _, index in
+                guard seededGroup != index else { return }
+                seededGroup = index
+                draftRollout = controller.effectiveRollout(flag, group: index) ?? 100
+            }
+        }
+    }
+
+    /// What the reader has to know before moving the slider, stated where the
+    /// control is rather than only in the dialog.
+    ///
+    /// The concurrency sentence is conditional because the risk is: a flag decoded
+    /// with a `version` sends it, and PostHog answers 409 if somebody else edited
+    /// the flag in between. A flag decoded without one cannot — `version` is read
+    /// off the raw request body server-side, so omitting it skips the check
+    /// entirely and last write wins — and that is worth saying out loud rather
+    /// than leaving as a silent difference between two flags that look identical.
+    private var rolloutFooter: String {
+        let base = """
+            This writes to PostHog straight away and affects users in production. Only the \
+            condition set named above changes; every other setting on this flag is sent back \
+            exactly as PostHog gave it.
+            """
+        guard flag.version == nil else {
+            return base + " If somebody else edits this flag first, your change is refused rather than overwriting theirs."
+        }
+        return base + " PostHog didn't tell GetHog this flag's version, so a change someone else makes at the same time could be overwritten without warning."
+    }
+
+    private var rolloutConfirmationTitle: String {
+        "Set condition set \(editedGroup + 1) to \(FlagFormat.percent(draftRollout))?"
+    }
+
+    private var rolloutConfirmationDetail: String {
+        let target = model.selectedProject.map { " in \($0.name)" } ?? ""
+        let current = controller.effectiveRollout(flag, group: editedGroup) ?? 100
+        let direction = draftRollout > current
+            ? "More people will start getting \(flag.key)."
+            : (draftRollout < current
+                ? "Some people who have \(flag.key) now will stop getting it."
+                : "The percentage is unchanged.")
+        return """
+            \(flag.key), condition set \(editedGroup + 1): \(FlagFormat.percent(current)) → \
+            \(FlagFormat.percent(draftRollout)). This affects live users\(target) immediately. \(direction)
+            """
+    }
+
+    private func commitRollout() {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        let percentage = draftRollout
+        let index = editedGroup
+        Task {
+            await controller.setRollout(
+                percentage, group: index, flag: flag, client: client, projectID: projectID
+            )
         }
     }
 
@@ -275,13 +449,17 @@ struct FlagDetailView: View {
 private struct ReleaseConditionRow: View {
     let index: Int
     let group: FlagGroup
+    /// The percentage including any write this screen has just made, so the
+    /// condition list and the editor above it cannot disagree about the same
+    /// number. `nil` means no cap is set.
+    let rollout: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             SectionLabel(text: "Set \(index + 1)")
 
             // A missing rollout percentage means "no cap", not "nobody".
-            Text("Rolled out to \(FlagFormat.percent(group.rolloutPercentage ?? 100)) of matching users")
+            Text("Rolled out to \(FlagFormat.percent(rollout ?? 100)) of matching users")
                 .font(.subheadline)
 
             let properties = group.properties ?? []
@@ -365,33 +543,5 @@ private struct VariantRow: View {
         .accessibilityLabel(
             "\(variant.key), \(FlagFormat.percent(variant.rolloutPercentage ?? 0)) of traffic"
         )
-    }
-}
-
-/// Inline outcome of the last write attempt.
-private struct ToggleMessageView: View {
-    let message: FlagToggleMessage
-    var onDismiss: () -> Void
-
-    private var isFailure: Bool { message.kind == .failure }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: isFailure ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                .foregroundStyle(isFailure ? Theme.Status.critical : Color.secondary)
-                .accessibilityHidden(true)
-
-            Text(message.text)
-                .font(.footnote)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
-            .accessibilityLabel("Dismiss message")
-        }
-        .padding(.vertical, 2)
     }
 }

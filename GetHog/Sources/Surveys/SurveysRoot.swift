@@ -13,7 +13,11 @@ final class SurveysStore {
     /// archived matters least.
     private static let statusOrder = ["Running", "Draft", "Stopped", "Archived"]
 
-    func load(client: PostHogClient, projectID: Int) async {
+    func load(
+        client: PostHogClient,
+        projectID: Int,
+        lifecycle: SurveyLifecycleController? = nil
+    ) async {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -21,6 +25,11 @@ final class SurveysStore {
                 PostHogAPI.surveys(projectID: projectID)
             )
             surveys = page.results
+            // A fresh fetch wins over anything this app wrote. Done here rather
+            // than in the view so a refresh cannot land without it — a local
+            // override that outlives its write quietly misreports which surveys
+            // are running.
+            lifecycle?.reconcile(with: page.results)
             loadedAt = Date()
             error = nil
         } catch {
@@ -29,8 +38,16 @@ final class SurveysStore {
         }
     }
 
-    var groups: [(status: String, surveys: [Survey])] {
-        let grouped = Dictionary(grouping: surveys, by: \.statusText)
+    /// Grouped by the status the *screen* shows, which includes this app's own
+    /// in-flight writes — otherwise a survey stopped from its sheet stays filed
+    /// under "Running" until the next fetch, one row away from a sheet saying
+    /// "Stopped".
+    func groups(
+        lifecycle: SurveyLifecycleController? = nil
+    ) -> [(status: String, surveys: [Survey])] {
+        let grouped = Dictionary(grouping: surveys) {
+            lifecycle?.effectiveStatusText($0) ?? $0.statusText
+        }
         var result: [(status: String, surveys: [Survey])] = Self.statusOrder.compactMap { status in
             guard let items = grouped[status], !items.isEmpty else { return nil }
             let sorted = items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -48,6 +65,7 @@ final class SurveysStore {
 struct SurveysRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
+    @Environment(SurveyLifecycleController.self) private var lifecycle
     @State private var store = SurveysStore()
 
     /// The open survey, and deliberately neither `@State` nor a `.sheet` of this
@@ -111,13 +129,13 @@ struct SurveysRoot: View {
 
     private var list: some View {
         List {
-            ForEach(store.groups, id: \.status) { group in
+            ForEach(store.groups(lifecycle: lifecycle), id: \.status) { group in
                 Section {
                     ForEach(group.surveys) { survey in
                         Button {
                             selected = survey
                         } label: {
-                            SurveyRowView(survey: survey)
+                            SurveyRowView(survey: lifecycle.effective(survey))
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Shows the survey's questions")
@@ -143,7 +161,7 @@ struct SurveysRoot: View {
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        await store.load(client: client, projectID: projectID, lifecycle: lifecycle)
     }
 }
 
@@ -182,7 +200,21 @@ struct SurveyDetailSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var model
+    /// Owned by `RootView` and injected, not `@State` here, for the reason
+    /// `OpenDetails` is: this sheet is presented from above the size-class
+    /// boundary, and the list underneath needs to show the same status word this
+    /// screen just wrote.
+    @Environment(SurveyLifecycleController.self) private var lifecycle
     @State private var results = SurveyResultsStore()
+
+    @State private var isConfirmingStop = false
+    @State private var isConfirmingLaunch = false
+    @State private var isConfirmingResume = false
+
+    /// The survey with our own in-flight writes laid over it. Every derived
+    /// reading on this screen comes from here, so the pill, the section it groups
+    /// under and the two date rows cannot disagree.
+    private var live: Survey { lifecycle.effective(survey) }
 
     var body: some View {
         NavigationStack {
@@ -200,22 +232,32 @@ struct SurveyDetailSheet: View {
                 Section {
                     LabeledContent("Status") {
                         StatusPill(
-                            text: survey.statusText,
-                            tint: surveyStatusTint(survey.statusText)
+                            text: live.statusText,
+                            tint: surveyStatusTint(live.statusText)
                         )
                     }
                     LabeledContent("Type") { Text(surveyTypeLabel(survey.type)) }
-                    if let start = survey.startDate {
+                    if let start = live.startDate {
                         LabeledContent("Launched") {
                             Text(start, format: .dateTime.year().month().day())
                         }
                     }
-                    if let end = survey.endDate {
+                    if let end = live.endDate {
                         LabeledContent("Stopped") {
                             Text(end, format: .dateTime.year().month().day())
                         }
                     }
+                } footer: {
+                    // The status word is the client's, and saying so is not
+                    // pedantry: a survey carries no `status` field at all — 37
+                    // keys and none of them is one — so "Running" here is derived
+                    // from the two dates above it and the archived flag. Somebody
+                    // comparing this screen with PostHog's own is comparing two
+                    // derivations, not a value and a copy of it.
+                    Text("PostHog doesn't store a status for a survey. This one is worked out from the dates above.")
                 }
+
+                lifecycleSection
 
                 if let description = survey.description, !description.isEmpty {
                     Section {
@@ -271,6 +313,140 @@ struct SurveyDetailSheet: View {
             }
             .task(id: survey.id) { await loadResults() }
             .refreshable { await loadResults() }
+            .confirmationDialog(
+                "Stop \(survey.name)?",
+                isPresented: $isConfirmingStop,
+                titleVisibility: .visible
+            ) {
+                Button("Stop collecting responses", role: .destructive) { commit(.stop) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    """
+                    People stop seeing this survey\(projectSuffix) straight away. Every response \
+                    already collected is kept, and you can resume it later.
+                    """
+                )
+            }
+            .confirmationDialog(
+                "Launch \(survey.name)?",
+                isPresented: $isConfirmingLaunch,
+                titleVisibility: .visible
+            ) {
+                Button("Launch to live users", role: .destructive) { commit(.launch) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    """
+                    This starts showing the survey to real people\(projectSuffix) straight away, to \
+                    everyone its targeting matches. You can stop it again at any time.
+                    """
+                )
+            }
+            .confirmationDialog(
+                "Resume \(survey.name)?",
+                isPresented: $isConfirmingResume,
+                titleVisibility: .visible
+            ) {
+                Button("Resume for live users", role: .destructive) { commit(.resume) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    """
+                    This clears the survey's end date, so people start seeing it again\
+                    \(projectSuffix). Responses from the earlier run are kept and counted with the \
+                    new ones.
+                    """
+                )
+            }
+            .sensoryFeedback(.success, trigger: lifecycle.successCount)
+            .sensoryFeedback(.error, trigger: lifecycle.failureCount)
+            .sensoryFeedback(.warning, trigger: lifecycle.filedCount)
+        }
+    }
+
+    // MARK: - Lifecycle
+
+    private enum LifecycleAction { case stop, launch, resume }
+
+    private var projectSuffix: String {
+        model.selectedProject.map { " in \($0.name)" } ?? ""
+    }
+
+    /// Stop / launch / resume.
+    ///
+    /// Buttons on the detail sheet and never a swipe on the list, for the reason
+    /// every other write in this app follows: reaching something that changes what
+    /// real people are shown should cost a deliberate tap into the thing being
+    /// changed.
+    ///
+    /// The three are mutually exclusive by construction — a survey is either a
+    /// draft, running, or stopped — so at most one appears, and `Archived` shows
+    /// none. That is not a simplification: `stop/` and `launch/` both 400 on an
+    /// archived survey.
+    @ViewBuilder
+    private var lifecycleSection: some View {
+        if lifecycle.canStop(survey) || lifecycle.canLaunch(survey) || lifecycle.canResume(survey) {
+            Section {
+                if lifecycle.canStop(survey) {
+                    lifecycleButton("Stop survey", systemImage: "stop.circle", tint: Theme.accentWarm) {
+                        isConfirmingStop = true
+                    }
+                }
+                if lifecycle.canLaunch(survey) {
+                    lifecycleButton("Launch survey", systemImage: "play.circle", tint: Theme.accent) {
+                        isConfirmingLaunch = true
+                    }
+                }
+                if lifecycle.canResume(survey) {
+                    lifecycleButton("Resume survey", systemImage: "play.circle", tint: Theme.accent) {
+                        isConfirmingResume = true
+                    }
+                }
+
+                if let message = lifecycle.message {
+                    WriteOutcomeMessageView(message: message) { lifecycle.dismissMessage() }
+                }
+            } header: {
+                HStack(alignment: .firstTextBaseline) {
+                    SectionLabel(text: "Lifecycle", systemImage: "slider.horizontal.3")
+                    Spacer(minLength: 8)
+                    if lifecycle.isBusy(survey) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Saving change")
+                    }
+                }
+            } footer: {
+                Text("Changes here are written to PostHog straight away and are visible to your whole team. You'll be asked to confirm first.")
+            }
+        }
+    }
+
+    private func lifecycleButton(
+        _ title: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(tint)
+        .disabled(lifecycle.isBusy(survey))
+    }
+
+    private func commit(_ action: LifecycleAction) {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        Task {
+            switch action {
+            case .stop: await lifecycle.stop(survey, client: client, projectID: projectID)
+            case .launch: await lifecycle.launch(survey, client: client, projectID: projectID)
+            case .resume: await lifecycle.resume(survey, client: client, projectID: projectID)
+            }
         }
     }
 

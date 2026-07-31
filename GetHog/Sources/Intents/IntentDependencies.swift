@@ -238,6 +238,14 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible, Equatable {
     case entityUnavailable(kind: String, name: String)
     case unsupportedInsight(name: String, kind: String)
     case authenticationDenied(flagKey: String, detail: String)
+    /// The write reached PostHog, the object did **not** change, and a change
+    /// request now exists that humans have been asked to approve.
+    ///
+    /// A case of its own rather than a `.failed` with different words, because an
+    /// intent's failure is spoken aloud and shown in Shortcuts as an error — and
+    /// "couldn't disable the flag" is the one description of an approval-gated
+    /// write that is definitely wrong. Source-derived; no 409 has been observed.
+    case awaitingApproval(action: String, detail: String)
     case failed(action: String, detail: String)
 
     var localizedStringResource: LocalizedStringResource {
@@ -258,6 +266,8 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible, Equatable {
             "“\(name)” is a \(kind) insight, which GetHog can't summarise as a single number. Open it in GetHog to see the full chart."
         case .authenticationDenied(let flagKey, let detail):
             "Not authenticated, so \(flagKey) was left unchanged. \(detail)"
+        case .awaitingApproval(let action, let detail):
+            "Didn't \(action) — \(detail)"
         case .failed(let action, let detail):
             "Couldn't \(action). \(detail)"
         }
@@ -286,6 +296,12 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible, Equatable {
             return .missingScope(scope: missingScope ?? writeScope ?? "the required", action: action)
         case .rateLimited(let retryAfter):
             return .rateLimited(retryAfter: Int(retryAfter.rounded()))
+        // Not a failure, and the only branch here that says so. Under an
+        // organisation approval policy the flag is unchanged and a change request
+        // was filed; reporting that as an error to Siri would tell someone to
+        // retry a thing that already happened.
+        case .approvalRequired(let outcome):
+            return .awaitingApproval(action: action, detail: outcome.summary)
         default:
             return .failed(action: action, detail: posthog.localizedDescription)
         }

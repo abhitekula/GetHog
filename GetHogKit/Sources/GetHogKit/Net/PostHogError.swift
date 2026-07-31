@@ -15,6 +15,33 @@ public enum PostHogError: Error, Equatable, Sendable {
     /// PostHog's verbatim advice, which is addressed to someone with a SQL
     /// console rather than to the reader of a phone screen.
     case queryTimeout(String?)
+    /// HTTP 409 with `code: approval_required` or `code:
+    /// change_request_pending` — **not a failure**.
+    ///
+    /// The one response in this enum whose defining property is that the request
+    /// did what it was supposed to and the object still did not change. Under an
+    /// organisation approval policy a write that would touch a feature flag is
+    /// turned into a *change request*: the flag is untouched, a row exists, and
+    /// the named approvers have been notified. An optimistic client must roll the
+    /// UI back — the flag really did not change — while telling the reader their
+    /// change was filed and by whom it needs approving. Reporting it as a failure
+    /// is the one description that is definitely wrong.
+    ///
+    /// **Source-derived, never observed.** Read out of PostHog's `@approval_gate`
+    /// decorator on the feature-flag serializer's `create`/`update`; the key this
+    /// was built against is read-only, so no 409 of any kind has been received
+    /// from a live deployment. See `ApprovalOutcome` for what is and is not known
+    /// about the body's shape.
+    case approvalRequired(ApprovalOutcome)
+    /// Any other HTTP 409.
+    ///
+    /// In practice the feature-flag serializer's optimistic-concurrency check,
+    /// which only ever fires when the caller sent a `version` — `version =
+    /// request_data.get("version", -1)` is read off the *raw* body, so a request
+    /// that omits it skips the check entirely and last write wins. Sending the
+    /// version you decoded is what turns a silent clobber into this. Also
+    /// source-derived and never observed.
+    case editConflict(detail: String?)
     case http(status: Int, detail: String?)
     case transport(String)
     /// Carries a `DecodingError` description — written for a compiler, never for
@@ -30,6 +57,17 @@ public enum PostHogError: Error, Equatable, Sendable {
         case .http(let status, _): status >= 500
         default: false
         }
+    }
+
+    /// Whether the write reached PostHog and was *recorded* rather than
+    /// rejected.
+    ///
+    /// Exists so a caller can tell the one non-failure in this enum apart from
+    /// everything else without matching the case by hand at every call site. A
+    /// caller that treats this as an error will report a real, pending,
+    /// human-visible change request as something that did not happen.
+    public var isApprovalPending: Bool {
+        if case .approvalRequired = self { true } else { false }
     }
 
     /// Whether this case's own `errorDescription` is fit to put in front of a
@@ -95,6 +133,14 @@ extension PostHogError: LocalizedError {
         // use it.
         case .queryTimeout:
             "PostHog took too long to run this query and stopped it. Trying again often works."
+        // Says "not yet" rather than "no", because that is what happened. The
+        // sentence deliberately opens with what is *true of the object* — it did
+        // not change — before naming the request, so a reader who stops after one
+        // clause is not left believing the write landed.
+        case .approvalRequired(let outcome):
+            outcome.summary
+        case .editConflict(let detail):
+            detail ?? "Somebody else changed this while you were looking at it. Reload and try again."
         case .http(let status, let detail):
             detail ?? "PostHog returned an error (\(status))."
         case .transport(let message):
@@ -108,6 +154,137 @@ extension PostHogError: LocalizedError {
         case .decoding:
             "PostHog's response wasn't in a shape this app could read."
         }
+    }
+}
+
+/// What a 409 approval response says, reduced to the three facts a phone screen
+/// can act on: which of the two codes it was, whether there is a change-request
+/// id to quote, and who has to approve it.
+///
+/// **Every claim about this payload is source-derived and unverified.** It comes
+/// from PostHog's `@approval_gate` decorator and the `ship_variant` docstring
+/// that describes the same response; the key this project develops against is
+/// read-only, so no approval policy could be provoked and no 409 body has ever
+/// been read from the wire. Two consequences are baked into the decoding below
+/// rather than assumed away:
+///
+/// * `change_request_id` is decoded as a `JSONValue` and rendered as text,
+///   because nothing establishes whether it is an integer primary key or a uuid
+///   string. Both render; only one would decode if this were typed.
+/// * `required_approvers` is a bare list in the shape the decorator builds, and
+///   its *element* shape is not documented anywhere read. It is decoded as
+///   `[JSONValue]` and each element is described by `Self.describe`, which
+///   handles a plain email string, a numeric user id, and an object keyed by
+///   any of `email`/`name`/`first_name`+`last_name`/`id`. An element matching
+///   none of those is dropped rather than printed as JSON — a phone screen
+///   saying "needs approval from `{\"foo\": 1}`" is worse than one saying only
+///   how many people it needs.
+public struct ApprovalOutcome: Sendable, Equatable, Hashable {
+
+    /// The two codes the gate can answer with. They mean different things to the
+    /// person holding the phone: the first says *you* filed something, the
+    /// second says somebody already did and yours added nothing.
+    public enum Kind: String, Sendable, Hashable {
+        case filed = "approval_required"
+        case alreadyPending = "change_request_pending"
+    }
+
+    public let kind: Kind
+    /// The change request's id as text, when the body carried one.
+    public let changeRequestID: String?
+    /// Approver descriptions, best effort. Empty is a real answer — the body may
+    /// carry an empty list, or a list this build could not describe.
+    public let approvers: [String]
+    /// PostHog's own `message`/`detail`, kept verbatim for disclosure.
+    public let detail: String?
+
+    public init(
+        kind: Kind,
+        changeRequestID: String? = nil,
+        approvers: [String] = [],
+        detail: String? = nil
+    ) {
+        self.kind = kind
+        self.changeRequestID = changeRequestID
+        self.approvers = approvers
+        self.detail = detail
+    }
+
+    /// One sentence stating what is true of the object, then what exists because
+    /// of the request, then who has to act.
+    ///
+    /// Deliberately does not lead with PostHog's own `message`. That field is
+    /// written for an API consumer and this is the one response whose *default*
+    /// reading — "the call errored" — is wrong, so the correction has to come
+    /// first and in this app's words. The server's sentence survives as `detail`.
+    public var summary: String {
+        var text = kind == .alreadyPending
+            ? "Nothing changed: a change request for this is already waiting for approval."
+            : "Nothing changed yet. Your change was filed as a change request and is waiting for approval."
+        switch approvers.count {
+        case 0: break
+        case 1: text += " \(approvers[0]) has to approve it."
+        default: text += " It needs approval from \(approvers.joined(separator: ", "))."
+        }
+        return text
+    }
+
+    /// Describes one entry of `required_approvers`, or `nil` when this build
+    /// cannot say anything truthful about it.
+    static func describe(_ value: JSONValue) -> String? {
+        switch value {
+        case .string(let name):
+            return name.isEmpty ? nil : name
+        case .number:
+            return value.stringValue.map { "User \($0)" }
+        case .object:
+            if let email = value["email"]?.stringValue, !email.isEmpty { return email }
+            if let name = value["name"]?.stringValue, !name.isEmpty { return name }
+            let parts = [value["first_name"]?.stringValue, value["last_name"]?.stringValue]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+            if !parts.isEmpty { return parts.joined(separator: " ") }
+            if let id = value["id"]?.stringValue { return "User \(id)" }
+            return nil
+        default:
+            return nil
+        }
+    }
+}
+
+/// The 409 body, read only far enough to build an `ApprovalOutcome`.
+///
+/// A separate type from `PostHogErrorEnvelope` because it is a different
+/// envelope: PostHog's standard error shape is `{type, code, detail, attr}`,
+/// while this one carries `message`, `change_request_id`, `change_request` and
+/// `required_approvers` beside the code. Decoding one with the other would
+/// silently drop everything worth telling the reader.
+struct ApprovalEnvelope: Decodable {
+    let code: String?
+    let message: String?
+    let detail: String?
+    let changeRequestID: JSONValue?
+    let requiredApprovers: [JSONValue]?
+
+    enum CodingKeys: String, CodingKey {
+        case code, message, detail
+        case changeRequestID = "change_request_id"
+        case requiredApprovers = "required_approvers"
+    }
+
+    /// `nil` unless the body actually names one of the two approval codes.
+    ///
+    /// Keyed on `code` and nothing else. A 409 this build does not recognise must
+    /// not be dressed up as an approval — telling someone their change is waiting
+    /// for a colleague when it is not is worse than the generic conflict message.
+    var outcome: ApprovalOutcome? {
+        guard let code, let kind = ApprovalOutcome.Kind(rawValue: code) else { return nil }
+        return ApprovalOutcome(
+            kind: kind,
+            changeRequestID: changeRequestID?.stringValue,
+            approvers: (requiredApprovers ?? []).compactMap(ApprovalOutcome.describe),
+            detail: message ?? detail
+        )
     }
 }
 

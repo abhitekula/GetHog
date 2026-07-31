@@ -487,6 +487,19 @@ struct RootView: View {
     /// Held here rather than in the screens themselves: this view is the only
     /// thing in the tree that survives a size-class change intact.
     @State private var openDetails = OpenDetails()
+    /// The optimistic state behind the survey and experiment writes, owned here
+    /// for two reasons that are the same reason `openDetails` is.
+    ///
+    /// The detail *sheets* for both are presented from this view — see
+    /// `presentedDetail` — while the lists that opened them live in a secondary
+    /// screen hosted twice across the size-class boundary. A controller declared
+    /// as `@State` in either place would be a different object from the other's,
+    /// so a survey stopped in the sheet would leave the row behind it reading
+    /// "Running", and a rotation would discard whichever copy the resize rebuilt.
+    /// One object above both, injected into both, is the only arrangement where
+    /// the list and the sheet cannot disagree.
+    @State private var surveyLifecycle = SurveyLifecycleController()
+    @State private var experimentLifecycle = ExperimentLifecycleController()
     @State private var hasAppliedDebugTab = false
     /// Set only when a link could not do what it said. Success is silent; see
     /// `LinkNotice`.
@@ -524,6 +537,20 @@ struct RootView: View {
                 // Attached **here**, to the one view in the tree that a resize
                 // never rebuilds, rather than inside the four screens that own
                 // these details. See `presentedDetail`.
+                //
+                // The two lifecycle controllers are injected **outside** this, at
+                // the end of the chain, and the ordering is the whole of it —
+                // measured, from a crash. `.environment(_:)` supplies its own
+                // subtree, and a `.sheet` attached *outside* an `.environment` is
+                // not in that subtree: the presented content inherits the
+                // environment as it stood where the sheet modifier sits. With the
+                // injections placed here, before `.sheet`, `ExperimentDetailSheet`
+                // read an absent `ExperimentLifecycleController` and SwiftUI's
+                // `EnvironmentValues` subscript trapped — the app died on
+                // presentation, with no GetHog frame on the stack because the
+                // lookup happens in `DynamicBody.updateValue` before any body
+                // runs. `AppModel` never showed this because it is injected above
+                // `RootView` entirely.
                 .sheet(item: presentedDetail) { DetailSheetView(presented: $0) }
                 .onAppear {
                     restorePushedTab()
@@ -618,6 +645,15 @@ struct RootView: View {
                     // next rotation into regular width. At the root it is `.search`.
                     if isEmpty { selectedTab = .search }
                 }
+                // **Outermost, and that is load-bearing.** Both the tab tree and
+                // the `.sheet` above have to see these, and only a modifier that
+                // encloses the sheet supplies it — see the note on `.sheet`, which
+                // records the crash that established this. Placing them here means
+                // the survey list and the survey sheet read one object, so a
+                // survey stopped in the sheet cannot leave the row behind it
+                // reading "Running".
+                .environment(surveyLifecycle)
+                .environment(experimentLifecycle)
         }
     }
 

@@ -97,4 +97,16 @@ public extension JSONValue {
         if case .object(let o) = self { return o[key] }
         return nil
     }
+
+    /// Element access that answers `nil` instead of trapping.
+    ///
+    /// The companion to the keyed subscript above, and the reason it exists is
+    /// that the payloads this type is for are ones whose *shape* is in question —
+    /// `filters.groups[0]` is reached by a client that does not know how many
+    /// groups there are or whether `groups` is an array at all. A bounds trap on
+    /// a value read from the network is a crash caused by somebody else's data.
+    subscript(index: Int) -> JSONValue? {
+        guard case .array(let a) = self, a.indices.contains(index) else { return nil }
+        return a[index]
+    }
 }

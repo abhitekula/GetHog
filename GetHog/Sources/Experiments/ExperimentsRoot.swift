@@ -19,7 +19,11 @@ final class ExperimentsStore {
         "Running", "Paused", "Exposure frozen", "Draft", "Complete", "Archived",
     ]
 
-    func load(client: PostHogClient, projectID: Int) async {
+    func load(
+        client: PostHogClient,
+        projectID: Int,
+        lifecycle: ExperimentLifecycleController? = nil
+    ) async {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -27,6 +31,9 @@ final class ExperimentsStore {
                 PostHogAPI.experiments(projectID: projectID)
             )
             experiments = page.results
+            // A fresh fetch wins over anything this app wrote. Done here so a
+            // refresh cannot land without it.
+            lifecycle?.reconcile(with: page.results)
             loadedAt = Date()
             error = nil
         } catch {
@@ -35,8 +42,14 @@ final class ExperimentsStore {
         }
     }
 
-    var groups: [(status: String, experiments: [Experiment])] {
-        let grouped = Dictionary(grouping: experiments, by: \.statusText)
+    /// Grouped by the status the *screen* shows, so an experiment paused from its
+    /// sheet does not stay filed under "Running" until the next fetch.
+    func groups(
+        lifecycle: ExperimentLifecycleController? = nil
+    ) -> [(status: String, experiments: [Experiment])] {
+        let grouped = Dictionary(grouping: experiments) {
+            lifecycle?.effectiveStatusText($0) ?? $0.statusText
+        }
         var result: [(status: String, experiments: [Experiment])] = Self.statusOrder.compactMap { status in
             guard let items = grouped[status], !items.isEmpty else { return nil }
             let sorted = items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -53,6 +66,7 @@ final class ExperimentsStore {
 struct ExperimentsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
+    @Environment(ExperimentLifecycleController.self) private var lifecycle
     @State private var store = ExperimentsStore()
 
     /// The open experiment. No second column: the detail is a sheet because the
@@ -108,13 +122,16 @@ struct ExperimentsRoot: View {
 
     private var list: some View {
         List {
-            ForEach(store.groups, id: \.status) { group in
+            ForEach(store.groups(lifecycle: lifecycle), id: \.status) { group in
                 Section {
                     ForEach(group.experiments) { experiment in
                         Button {
                             selected = experiment
                         } label: {
-                            ExperimentRowView(experiment: experiment)
+                            ExperimentRowView(
+                                experiment: experiment,
+                                statusText: lifecycle.effectiveStatusText(experiment)
+                            )
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Shows this experiment's setup")
@@ -140,17 +157,28 @@ struct ExperimentsRoot: View {
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        await store.load(client: client, projectID: projectID, lifecycle: lifecycle)
     }
 }
 
 struct ExperimentRowView: View {
     let experiment: Experiment
+    /// The status the *screen* shows, which is the server's word with anything
+    /// this app has just written laid over it. Passed in rather than derived,
+    /// because pausing an experiment writes nothing on the experiment row —
+    /// PostHog derives `paused` from the linked flag — so there is no field on
+    /// `experiment` for the row to read it from.
+    ///
+    /// Defaulted so a caller with no controller to hand still renders the
+    /// server's own word.
+    var statusText: String?
+
+    private var status: String { statusText ?? experiment.statusText }
 
     var body: some View {
         DataRow(
             glyph: "flask.fill",
-            tint: experimentStatusTint(experiment.statusText),
+            tint: experimentStatusTint(status),
             title: experiment.name,
             subtitle: flagKey ?? "No feature flag linked",
             footnote: experimentRangeText(start: experiment.startDate, end: experiment.endDate),
@@ -158,7 +186,7 @@ struct ExperimentRowView: View {
             // set in a monospaced face to keep it unambiguous. The stand-in
             // sentence is prose and stays in the body face.
             isSubtitleMonospaced: flagKey != nil,
-            accessory: .pill(experiment.statusText, experimentStatusTint(experiment.statusText))
+            accessory: .pill(status, experimentStatusTint(status))
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
@@ -174,7 +202,7 @@ struct ExperimentRowView: View {
     private var accessibilityDescription: String {
         [
             experiment.name,
-            experiment.statusText,
+            status,
             flagKey.map { "Feature flag \($0)" } ?? "No feature flag linked",
             experimentRangeText(start: experiment.startDate, end: experiment.endDate),
         ].joined(separator: ", ")

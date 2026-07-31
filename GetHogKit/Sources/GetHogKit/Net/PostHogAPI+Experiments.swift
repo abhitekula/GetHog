@@ -113,4 +113,151 @@ public extension PostHogAPI {
             category: .query
         )
     }
+
+    // MARK: - Lifecycle (write)
+    //
+    // **Nothing in this section has ever been executed, and this project cannot
+    // execute it.** The paths, bodies and side effects below were read out of
+    // PostHog's server source (`products/experiments/backend/`, master, fetched
+    // 2026-07-31) and its published docs. The key available here is read-only,
+    // *and* project [REMOVED PRIVATE DATA] contains zero experiments — `GET /experiments/`
+    // answers `{"count":0}` — so there is not even an object to write to. Every
+    // sentence below is documentation-derived. None is measured.
+    //
+    // ## The design problem is the word, not the endpoint
+    //
+    // There are five actions on this viewset and the English word "stop" maps to
+    // at least two of them with completely different blast radii:
+    //
+    //     end/     freezes the results window. Does NOT touch the feature flag.
+    //              Users keep their assigned variants; exposures keep firing.
+    //     pause/   calls set_flag_active(flag, False). Nobody sees the variant
+    //              any more. The experiment row itself is not written at all.
+    //
+    // So "stop the experiment" is ambiguous in the direction that matters: one
+    // reading changes a production feature flag and the other changes a date. A
+    // dialog that does not distinguish them is worse than having no button, which
+    // is why `endExperiment` and `pauseExperiment` are separate calls with
+    // separate confirmations rather than one `stop(…)` with a parameter.
+    //
+    // ## Two actions this file will not build
+    //
+    // `ship_variant/` rewrites the linked flag's variant distribution to 100% for
+    // one arm and can prepend a catch-all release condition. `open_cleanup_pr` —
+    // an optional field on `end/` — starts a task that opens a draft pull request
+    // deleting the flag's code from the experiment's linked GitHub repository,
+    // and escalates the token's required scopes to include `task:write` at
+    // request time. An API field whose blast radius is a git repository does not
+    // belong behind a thumb. Neither is expressible here: there is no builder for
+    // the first, and `open_cleanup_pr` is not a parameter of the second, so it
+    // cannot be sent by mistake or by a future caller passing `true` through.
+    //
+    // ## A scope surface worth knowing about
+    //
+    // `pause/` and `resume/` declare `required_scopes=["experiment:write"]` and
+    // then flip a feature flag. Their neighbours escalate — `archive/` to
+    // `feature_flag:write` when `disable_feature_flag` is set, `end/` to
+    // `task:write` when `open_cleanup_pr` is — so an `experiment:write`-only key
+    // can turn a production flag off. Read from the decorators; not probed.
+
+    /// Ends an experiment and records the team's conclusion.
+    ///
+    /// `POST /api/projects/:id/experiments/:id/end/`. Sets `end_date = now`,
+    /// `conclusion` and `conclusion_comment`, and **does not touch the linked
+    /// feature flag** — users keep the variant they were assigned and
+    /// `$feature_flag_called` keeps firing. Ending an experiment is a statement
+    /// about the analysis window, not about what production serves.
+    ///
+    /// **`conclusion` is required here although the API makes it optional**, and
+    /// that is the whole reason this signature is shaped the way it is.
+    /// `end_experiment` assigns `experiment.conclusion = conclusion`
+    /// *unconditionally*, with the serializer defaulting an absent field to
+    /// `None` — so ending an experiment without naming a conclusion writes `null`
+    /// over whatever was already recorded. An app that offered "End" as a bare
+    /// button would be offering, on some experiments, a button that silently
+    /// erases a colleague's written verdict. Making the parameter non-optional
+    /// means that request cannot be constructed.
+    ///
+    /// `conclusion_comment` is sent only when it has content: PostHog accepts a
+    /// blank string, and writing `""` where the user typed nothing is the same
+    /// unconditional-overwrite problem one field over.
+    ///
+    /// `open_cleanup_pr` is deliberately absent — see the note above this
+    /// section. `EndExperimentSerializer` accepts it; nothing here can produce it.
+    ///
+    /// Needs `experiment:write`.
+    static func endExperiment(
+        projectID: Int,
+        experimentID: Int,
+        conclusion: ExperimentConclusion,
+        comment: String? = nil
+    ) -> Endpoint {
+        var payload: [String: Any] = ["conclusion": conclusion.rawValue]
+        if let comment, !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["conclusion_comment"] = comment
+        }
+        let body = try? JSONSerialization.data(withJSONObject: payload)
+        return Endpoint(
+            path: "/api/projects/\(projectID)/experiments/\(experimentID)/end/",
+            method: "POST",
+            body: body,
+            category: .crud
+        )
+    }
+
+    /// Stops serving the experiment's variants by **deactivating its feature
+    /// flag**.
+    ///
+    /// `POST /api/projects/:id/experiments/:id/pause/`. Writes nothing on the
+    /// experiment row: the handler calls `set_flag_active(feature_flag, False,
+    /// …)` and the experiment's `status` then *derives* as `paused` because
+    /// `status_label` reads the flag. That is why `ExperimentStatus.paused`
+    /// cannot be PATCHed onto an experiment — it is not a stored value.
+    ///
+    /// The caller's dialog must say a production feature flag changes. This is
+    /// the only experiment action that alters what users are served, and it is
+    /// reached by the same English word as `end/`, which alters nothing they can
+    /// see.
+    ///
+    /// Because it goes through `set_flag_active`, it also inherits the flag
+    /// serializer's approval gate — so it can answer 409 `approval_required`
+    /// rather than doing the thing. See `PostHogError.approvalRequired`.
+    static func pauseExperiment(projectID: Int, experimentID: Int) -> Endpoint {
+        experimentAction(projectID: projectID, experimentID: experimentID, action: "pause")
+    }
+
+    /// Re-activates the experiment's feature flag so variants are served again.
+    ///
+    /// `POST /api/projects/:id/experiments/:id/resume/`. The exact inverse of
+    /// `pause/`, with the same blast radius in the other direction and the same
+    /// approval gate.
+    static func resumeExperiment(projectID: Int, experimentID: Int) -> Endpoint {
+        experimentAction(projectID: projectID, experimentID: experimentID, action: "resume")
+    }
+
+    /// The two bodyless actions, built in one place so their method, category and
+    /// body cannot drift apart.
+    ///
+    /// **Sends `{}` rather than no body at all.** Both actions are declared
+    /// `request=None` server-side, so an empty body is what they expect; an empty
+    /// *dictionary* is also what DRF parses an absent body into, so the two are
+    /// equivalent as far as the serializer is concerned. `{}` is sent because
+    /// `PostHogClient` only sets `Content-Type: application/json` when there is a
+    /// body, and a POST with neither a body nor a content type is the shape most
+    /// likely to meet a proxy or a parser that objects. **Which of the two this
+    /// deployment prefers has not been measured** — no request in this family has
+    /// been sent — so this is a choice made on the safer-looking of two
+    /// unverified options, not a finding.
+    private static func experimentAction(
+        projectID: Int,
+        experimentID: Int,
+        action: String
+    ) -> Endpoint {
+        Endpoint(
+            path: "/api/projects/\(projectID)/experiments/\(experimentID)/\(action)/",
+            method: "POST",
+            body: Data("{}".utf8),
+            category: .crud
+        )
+    }
 }

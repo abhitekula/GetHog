@@ -137,6 +137,34 @@ public actor PostHogClient {
                 detail: envelope?.detail
             )
 
+        // The one status in this switch that can mean the request *worked*.
+        //
+        // Under an organisation approval policy a flag write — and the two
+        // experiment actions that call `set_flag_active` on the linked flag —
+        // answer 409 with `{"code": "approval_required", "change_request_id": …,
+        // "required_approvers": […]}` and leave the object unchanged. Before this
+        // case existed the whole family fell through to `default` and reached the
+        // screen as `PostHogError.http(status: 409, …)`, which every optimistic
+        // caller reports as "couldn't do that" — a description that is wrong
+        // about the one thing that matters, because a change request exists and
+        // approvers were emailed.
+        //
+        // Keyed on the body's `code`, not on the status: 409 is also what the
+        // flag serializer's version check raises, and that one really is a
+        // conflict. An unrecognised 409 becomes `.editConflict` rather than being
+        // dressed up as an approval.
+        //
+        // **Source-derived, never observed.** No 409 has been received from a live
+        // deployment from this machine; the available key is read-only, so no
+        // write could be made and no approval policy provoked. `ApprovalOutcome`
+        // records which parts of the body's shape are guesses.
+        case 409:
+            if let outcome = (try? decoder.decode(ApprovalEnvelope.self, from: data))?.outcome {
+                throw PostHogError.approvalRequired(outcome)
+            }
+            let envelope = try? decoder.decode(PostHogErrorEnvelope.self, from: data)
+            throw PostHogError.editConflict(detail: envelope?.detail)
+
         case 429:
             let retryAfter = response.value(forHTTPHeaderField: "Retry-After")
                 .flatMap(TimeInterval.init) ?? 60

@@ -18,16 +18,43 @@ struct ExperimentDetailSheet: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    /// Owned by `RootView` and injected, not `@State` here, for the reason
+    /// `OpenDetails` is: this sheet is presented from above the size-class
+    /// boundary, and the list underneath it needs to show the same status word
+    /// this screen just wrote. A controller scoped to the sheet would leave the
+    /// row reading "Running" behind a sheet that says "Paused".
+    @Environment(ExperimentLifecycleController.self) private var lifecycle
     @State private var store = ExperimentResultsStore()
+
+    /// The end-experiment form, revealed rather than always present: it is five
+    /// radio rows and a text field, and an experiment nobody is ending should not
+    /// pay that much of the screen for it.
+    @State private var isChoosingConclusion = false
+    @State private var conclusion: ExperimentConclusion = .won
+    @State private var conclusionComment = ""
+    @State private var isConfirmingEnd = false
+    /// Direction of the pause/resume being confirmed. Never cleared on dismissal,
+    /// so the dialog's wording doesn't flicker while it animates away — the same
+    /// reason `FlagDetailView` keeps `requestedActivation`.
+    @State private var requestedPause = true
+    @State private var isConfirmingPause = false
 
     /// The detail payload once it has arrived, falling back to the list row the
     /// sheet was opened from so the setup section renders immediately.
     private var current: Experiment { store.detail ?? experiment }
 
+    /// The linked flag's key, named in every dialog that changes it. A pause with
+    /// no flag key in its wording is a pause that does not say what it turns off.
+    private var flagKey: String? {
+        guard let key = current.featureFlagKey, !key.isEmpty else { return nil }
+        return key
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 resultsSections
+                lifecycleSection
                 setupSection
                 if let description = current.description, !description.isEmpty {
                     Section {
@@ -49,6 +76,250 @@ struct ExperimentDetailSheet: View {
             }
             .refreshable { await load() }
             .task { await load() }
+            .confirmationDialog(
+                requestedPause ? "Pause \(current.name)?" : "Resume \(current.name)?",
+                isPresented: $isConfirmingPause,
+                titleVisibility: .visible
+            ) {
+                Button(
+                    requestedPause ? "Pause and turn the flag off" : "Resume and turn the flag on",
+                    role: .destructive
+                ) {
+                    commitPause(requestedPause)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(pauseConfirmationDetail)
+            }
+            .confirmationDialog(
+                "End \(current.name) as \(conclusion.displayName)?",
+                isPresented: $isConfirmingEnd,
+                titleVisibility: .visible
+            ) {
+                Button("End the experiment") { commitEnd() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(endConfirmationDetail)
+            }
+            .sensoryFeedback(.success, trigger: lifecycle.successCount)
+            .sensoryFeedback(.error, trigger: lifecycle.failureCount)
+            // Neither of the two above. A write that came back
+            // `approval_required` did not fail — the experiment is unchanged and a
+            // change request is waiting for a colleague — and it did not succeed
+            // either.
+            .sensoryFeedback(.warning, trigger: lifecycle.filedCount)
+        }
+    }
+
+    // MARK: - Lifecycle
+    //
+    // The write surface, and the reason it is three separate controls with three
+    // separate dialogs rather than one "Stop" button:
+    //
+    //   End    writes end_date and the conclusion. Does NOT touch the feature
+    //          flag. People already in a variant keep seeing it.
+    //   Pause  calls set_flag_active on the linked flag. Nobody sees a variant.
+    //          Writes nothing on the experiment row at all.
+    //
+    // "Stop the experiment" is a reasonable thing to say and it means either of
+    // those. A dialog that does not distinguish them is worse than no button, so
+    // both dialogs name the feature flag explicitly and say what happens to it.
+
+    @ViewBuilder
+    private var lifecycleSection: some View {
+        if lifecycle.canEnd(current) || lifecycle.canPause(current) || lifecycle.canResume(current) {
+            Section {
+                // Buttons on the detail sheet, never a swipe action on the list.
+                // Reaching something that changes what production serves should
+                // cost a deliberate tap into the thing being changed — the same
+                // rule the flags and error-triage screens follow.
+                if lifecycle.canPause(current) {
+                    lifecycleButton(
+                        "Pause",
+                        systemImage: "pause.circle",
+                        tint: Theme.accentWarm,
+                        hint: "Turns off the linked feature flag, so nobody is served a variant."
+                    ) {
+                        requestedPause = true
+                        isConfirmingPause = true
+                    }
+                }
+
+                if lifecycle.canResume(current) {
+                    lifecycleButton(
+                        "Resume",
+                        systemImage: "play.circle",
+                        tint: Theme.accent,
+                        hint: "Turns the linked feature flag back on, so variants are served again."
+                    ) {
+                        requestedPause = false
+                        isConfirmingPause = true
+                    }
+                }
+
+                if lifecycle.canEnd(current) {
+                    if isChoosingConclusion {
+                        conclusionForm
+                    } else {
+                        lifecycleButton(
+                            "End experiment",
+                            systemImage: "flag.checkered",
+                            tint: Color.secondary,
+                            hint: "Records a conclusion and closes the results window. Does not change the feature flag."
+                        ) {
+                            conclusion = current.conclusion ?? .won
+                            conclusionComment = lifecycle.effectiveConclusionComment(current) ?? ""
+                            isChoosingConclusion = true
+                        }
+                    }
+                }
+
+                if let message = lifecycle.message {
+                    WriteOutcomeMessageView(message: message) { lifecycle.dismissMessage() }
+                }
+            } header: {
+                HStack(alignment: .firstTextBaseline) {
+                    SectionLabel(text: "Lifecycle", systemImage: "slider.horizontal.3")
+                    Spacer(minLength: 8)
+                    if lifecycle.isBusy(current) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Saving change")
+                    }
+                }
+            } footer: {
+                Text(lifecycleFooter)
+            }
+        }
+    }
+
+    private func lifecycleButton(
+        _ title: String,
+        systemImage: String,
+        tint: Color,
+        hint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(tint)
+        .disabled(lifecycle.isBusy(current))
+        .accessibilityHint(hint)
+    }
+
+    /// The conclusion is a required choice, not a defaulted one.
+    ///
+    /// `end_experiment` assigns `conclusion` unconditionally, and the serializer
+    /// defaults an absent field to `None` — so ending an experiment without
+    /// naming one writes `null` over whatever a colleague had already recorded.
+    /// `PostHogAPI.endExperiment` therefore cannot express "no conclusion", and
+    /// this form is what makes that a deliberate answer rather than an obstacle.
+    ///
+    /// An inline picker, not a menu: five options with a sentence each do not fit
+    /// in a menu label, the sentences are the whole reason a stranger to the word
+    /// "inconclusive" can pick correctly, and a borderless `Menu`'s tap target is
+    /// its label's bounds rather than the row's.
+    @ViewBuilder
+    private var conclusionForm: some View {
+        Picker("Conclusion", selection: $conclusion) {
+            ForEach(ExperimentConclusion.allCases, id: \.self) { value in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(value.displayName)
+                    Text(value.meaning)
+                        .font(.caption)
+                        .foregroundStyle(Theme.Ink.secondary)
+                }
+                .tag(value)
+            }
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+
+        TextField("Why (optional)", text: $conclusionComment, axis: .vertical)
+            .lineLimit(1...4)
+            .font(.subheadline)
+            .accessibilityLabel("Conclusion comment, optional")
+
+        Button {
+            isConfirmingEnd = true
+        } label: {
+            Label("End as \(conclusion.displayName)", systemImage: "flag.checkered")
+                .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.accentWarm)
+        .disabled(lifecycle.isBusy(current))
+
+        Button("Cancel") { isChoosingConclusion = false }
+            .font(.subheadline)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+    }
+
+    /// States the distinction once, where the controls are, so it is not only in
+    /// the dialogs somebody may tap through.
+    private var lifecycleFooter: String {
+        let flag = flagKey.map { "“\($0)”" } ?? "the linked feature flag"
+        return """
+            Pausing turns \(flag) off, so nobody is served a variant. Ending records your \
+            conclusion and closes the results window but leaves \(flag) exactly as it is — people \
+            already in a variant keep seeing it. You'll be asked to confirm either way.
+            """
+    }
+
+    private var pauseConfirmationDetail: String {
+        let target = model.selectedProject.map { " in \($0.name)" } ?? ""
+        let flag = flagKey.map { "the feature flag “\($0)”" } ?? "this experiment's feature flag"
+        if requestedPause {
+            return """
+                This turns \(flag) off\(target), immediately. Everyone currently being served a \
+                variant stops being served one. Results already collected are kept, and resuming \
+                turns the flag back on.
+                """
+        }
+        return """
+            This turns \(flag) back on\(target), immediately. People will start being assigned \
+            variants again and exposures will resume counting.
+            """
+    }
+
+    private var endConfirmationDetail: String {
+        let target = model.selectedProject.map { " in \($0.name)" } ?? ""
+        let flag = flagKey.map { "“\($0)”" } ?? "the linked feature flag"
+        return """
+            Records “\(conclusion.displayName)” against this experiment\(target) and closes its \
+            results window. \(flag) is not changed — anyone already in a variant keeps seeing it. \
+            Pause the experiment as well if you want that to stop.
+            """
+    }
+
+    private func commitPause(_ paused: Bool) {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        Task {
+            await lifecycle.setPaused(
+                paused, experiment: current, client: client, projectID: projectID
+            )
+        }
+    }
+
+    private func commitEnd() {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        let chosen = conclusion
+        let comment = conclusionComment
+        Task {
+            await lifecycle.end(
+                current,
+                conclusion: chosen,
+                comment: comment,
+                client: client,
+                projectID: projectID
+            )
+            isChoosingConclusion = false
         }
     }
 
@@ -103,14 +374,14 @@ struct ExperimentDetailSheet: View {
             .listRowBackground(Color.clear)
             .skeleton(store.isLoading && headlineReadout == nil)
 
-            if let conclusion = current.conclusion {
+            if let conclusion = lifecycle.effectiveConclusion(current) {
                 // A recorded conclusion is a human judgement, not a statistic.
                 // Kept visually apart from the verdict so the two are not read
                 // as the same claim.
                 LabeledContent("Team's conclusion") {
                     StatusPill(text: conclusion.displayName, tint: conclusionTint(conclusion))
                 }
-                if let comment = current.conclusionComment, !comment.isEmpty {
+                if let comment = lifecycle.effectiveConclusionComment(current), !comment.isEmpty {
                     Text(comment)
                         .font(.caption)
                         .foregroundStyle(Theme.Ink.secondary)
@@ -200,9 +471,11 @@ struct ExperimentDetailSheet: View {
     private var setupSection: some View {
         Section {
             LabeledContent("Status") {
+                // The effective word, so the pill cannot say "Running" a beat
+                // after the Pause button was answered.
                 StatusPill(
-                    text: current.statusText,
-                    tint: experimentStatusTint(current.statusText)
+                    text: lifecycle.effectiveStatusText(current),
+                    tint: experimentStatusTint(lifecycle.effectiveStatusText(current))
                 )
             }
             if let key = current.featureFlagKey, !key.isEmpty {
@@ -217,7 +490,7 @@ struct ExperimentDetailSheet: View {
                     Text(start, format: .dateTime.year().month().day())
                 }
             }
-            if let end = current.endDate {
+            if let end = lifecycle.effectiveEndDate(current) {
                 LabeledContent("Ended") {
                     Text(end, format: .dateTime.year().month().day())
                 }
