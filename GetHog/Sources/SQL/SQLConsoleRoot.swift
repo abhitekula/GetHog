@@ -77,6 +77,26 @@ final class SQLConsoleStore {
             + Double(elapsed.components.attoseconds) / 1e18
     }
 
+    /// The result as a CSV somebody can take away.
+    ///
+    /// This screen holds the only raw `columns` + `rows` pair left in the app —
+    /// every other surface decodes into structs and drops the wire shape — which
+    /// is why it is also the export that needs no translation at all.
+    ///
+    /// **Nothing is computed here.** This is read from a `View` body, which runs
+    /// on every toolbar re-render, so even the `rows.map(\.values)` projection is
+    /// deferred into the closure alongside the encoding. That map is cheap per
+    /// element — the inner `[JSONValue]` arrays are copy-on-write, so it gathers
+    /// one reference per row rather than copying the data — but "cheap per
+    /// element" times 50,000 rows times every render is not cheap, and a result
+    /// that large is exactly the case this screen has to survive.
+    var export: CSVExport? {
+        guard let response, !response.rows.isEmpty else { return nil }
+        return CSVExport(title: "Query result", rowCount: response.rows.count) {
+            InsightCSV.data(columns: response.columns, rows: response.rows.map(\.values))
+        }
+    }
+
     // MARK: - History
 
     private func remember(_ sql: String) {
@@ -136,8 +156,10 @@ struct SQLConsoleRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = SQLConsoleStore()
+    @State private var schema = SchemaStore()
     @State private var sql = SQLConsoleRoot.seedQuery
     @State private var showHistory = false
+    @State private var showSchema = false
     @FocusState private var editorFocused: Bool
 
     /// The editor is measured in **lines**, not points.
@@ -189,6 +211,17 @@ struct SQLConsoleRoot: View {
         .projectSubtitle()
         .toolbar {
             ProjectSwitcher()
+            // The schema comes before history in the bar because it is the one
+            // you need *before* you have written anything, and history is the
+            // one you need after.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showSchema = true
+                } label: {
+                    Label("Schema", systemImage: "tablecells.badge.ellipsis")
+                }
+                .accessibilityLabel("Browse tables and columns")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showHistory = true
@@ -198,16 +231,38 @@ struct SQLConsoleRoot: View {
                 .accessibilityLabel("Query history")
                 .disabled(store.history.isEmpty)
             }
+            if let export = store.export {
+                ToolbarItem(placement: .topBarTrailing) {
+                    CSVShareMenu(export: export)
+                }
+            }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { editorFocused = false }
             }
         }
-        .onChange(of: model.projectID) { _, _ in store.clearResults() }
+        .onChange(of: model.projectID) { _, _ in
+            store.clearResults()
+            // The schema describes the project it was read from. Same reasoning
+            // as `clearResults` — a table list from the previous project under
+            // this project's name is a wrong answer, not a stale one.
+            schema.clear()
+        }
         .sheet(isPresented: $showHistory) {
             SQLHistorySheet(store: store) { recalled in
                 sql = recalled
                 showHistory = false
+            }
+        }
+        .sheet(isPresented: $showSchema) {
+            SchemaBrowserSheet(store: schema) { statement in
+                sql = statement
+                showSchema = false
+                // Not run automatically. The statement it composed is a
+                // `SELECT * … LIMIT 100` against a table whose size is unknown,
+                // and spending an organisation-wide query budget on something
+                // the reader has not read yet is exactly the reflex this app
+                // avoids everywhere else.
             }
         }
     }

@@ -42,8 +42,35 @@ public struct MeResponse: Sendable, Decodable {
         try JSONDecoder().decode(MeResponse.self, from: data)
     }
 
-    /// Every project reachable with this credential.
+    /// Every project in the organization this response is *centred on*.
+    ///
+    /// Not "every project reachable with this credential", which is what the
+    /// name used to promise and what the app then acted on. `/api/users/@me/`
+    /// hydrates `teams` for the current organization alone; a second
+    /// organization appears in `organizations` as a summary with no projects in
+    /// it, so a user in two organizations could reach the projects of one.
+    /// The other organization's projects cost a request —
+    /// `PostHogAPI.organizationProjects` — and `AppModel` owns that.
     public var projects: [Project] { organization?.teams ?? [] }
+
+    /// Which organization `projects` belongs to.
+    public var currentOrganizationID: String? { organization?.id }
+
+    /// Every organization this credential can see, with the current one
+    /// guaranteed present and first.
+    ///
+    /// Measured live, `organizations` *does* include the current organization,
+    /// so the merge below is normally a no-op. It is here because the switcher
+    /// is the one control in the app that must never be wrong about where you
+    /// are: if a future response ever omitted it, the alternative is a menu
+    /// listing organizations that does not list the one whose numbers are on
+    /// screen. Identity comes from `organization`, which is the object that
+    /// actually carries the projects being displayed.
+    public var allOrganizations: [OrganizationSummary] {
+        guard let organization else { return organizations }
+        let current = OrganizationSummary(id: organization.id, name: organization.name)
+        return [current] + organizations.filter { $0.id != organization.id }
+    }
 
     public var displayName: String {
         let name = [firstName, lastName].compactMap { $0 }.joined(separator: " ")
@@ -86,9 +113,20 @@ public struct Organization: Sendable, Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey { case id, name, teams }
 }
 
+/// One entry of `/api/users/@me/`'s `organizations` array.
+///
+/// Deliberately just the two fields. Measured live, the array carries nine —
+/// `slug`, `logo_media_id`, `membership_level`, `is_active` and the rest — and
+/// none of them says anything a switcher needs. What it conspicuously does *not*
+/// carry is `teams`; see `MeResponse.projects`.
 public struct OrganizationSummary: Sendable, Decodable, Identifiable, Hashable {
     public let id: String
     public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

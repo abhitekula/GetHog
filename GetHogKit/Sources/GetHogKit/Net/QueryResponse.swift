@@ -20,9 +20,35 @@ public struct QueryResponse: Decodable, Sendable {
     public let columns: [String]
     public let types: [[String]]?
     public let rows: [QueryRow]
+    /// Whether PostHog is holding rows back.
+    ///
+    /// **A HogQL query with no `LIMIT` of its own is silently capped at 100.**
+    /// Measured: a `system.information_schema.tables` scan of a 141-table
+    /// project returned 100 rows, HTTP 200, no error and no warning — the only
+    /// evidence anywhere in the payload is this flag and `appliedLimit` below.
+    /// Until they were decoded, nothing in this client could tell a complete
+    /// answer from the first hundredth of one, and every caller that omitted a
+    /// `LIMIT` was free to present a prefix as the whole set.
+    ///
+    /// `false` when absent, which is the safe reading: an endpoint that does not
+    /// report truncation is not thereby claiming there was none, but a `nil`
+    /// here would have to be handled at every call site to mean anything, and a
+    /// caller that ignores it is worse off than one told plainly there is more.
+    public let hasMore: Bool
+    /// The cap PostHog actually applied, whether or not this query asked for one.
+    public let appliedLimit: Int?
+
+    /// True when the answer is a prefix of the real one.
+    ///
+    /// Read this before reporting a count, a total, or "no results". Deriving a
+    /// figure from a truncated set produces a number that is wrong rather than
+    /// merely partial — the failure this project has already hit twice, once
+    /// where `/heatmaps/` returned 500 rows against its own `total_count` of
+    /// 899, and once where a survey mean read 5.00 against a true 2.75.
+    public var isTruncated: Bool { hasMore }
 
     enum CodingKeys: String, CodingKey {
-        case columns, types, results
+        case columns, types, results, hasMore, limit
     }
 
     public init(from decoder: any Decoder) throws {
@@ -32,6 +58,8 @@ public struct QueryResponse: Decodable, Sendable {
         self.types = try? c.decodeIfPresent([[String]].self, forKey: .types)
         let raw = try c.decodeIfPresent([[JSONValue]].self, forKey: .results) ?? []
         self.rows = raw.map { QueryRow(columns: columns, values: $0) }
+        self.hasMore = (try? c.decodeIfPresent(Bool.self, forKey: .hasMore)) as? Bool ?? false
+        self.appliedLimit = (try? c.decodeIfPresent(Int.self, forKey: .limit)) ?? nil
     }
 
     public static func decode(from data: Data) throws -> QueryResponse {

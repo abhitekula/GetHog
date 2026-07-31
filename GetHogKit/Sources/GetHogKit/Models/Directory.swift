@@ -55,10 +55,54 @@ public struct Cohort: Sendable, Decodable, Identifiable, Hashable {
     public let cohortType: String?
     public let deleted: Bool
 
+    /// The filter tree, when there is one this build can read.
+    ///
+    /// **It arrives on the list response.** `GET /cohorts/` returns every
+    /// cohort's whole `filters` object, not a summary — verified against the live
+    /// project on 30 Jul 2026 — so showing a cohort's definition costs no request
+    /// beyond the list the screen already fetches. That is not a small detail
+    /// here: the rate-limit budget is organisation-wide, and the obvious design,
+    /// one `GET /cohorts/:id/` per cohort opened, would have spent one request
+    /// per tap for data already in hand.
+    public let definition: CohortDefinition?
+
+    /// PostHog is re-evaluating membership right now, so `count` is the previous
+    /// evaluation's.
+    public let isCalculating: Bool
+    /// Saved edits not yet evaluated: `pending_version` ahead of `version` means
+    /// the definition on screen is newer than the count beside it.
+    public let version: Int?
+    public let pendingVersion: Int?
+    public let lastCalculation: Date?
+    public let errorsCalculating: Int
+    public let lastErrorMessage: String?
+
+    /// Set when the cohort is defined in HogQL rather than in filter groups.
+    ///
+    /// Kept as a presence flag rather than a parsed query: PostHog calls these
+    /// "analytical" cohorts, this build has no SQL renderer to point at one, and
+    /// pretending the empty filter tree that accompanies it is the definition
+    /// would describe the cohort as matching everybody.
+    public let isQueryDefined: Bool
+
+    /// The legacy pre-`filters` representation.
+    ///
+    /// PostHog migrated cohorts from `groups` to `filters` and still echoes
+    /// `groups` back — as `[]` on every cohort in the project this was built
+    /// against. A cohort old enough to have never been migrated would arrive with
+    /// this populated and `filters` absent, and that is a definition this build
+    /// cannot render rather than a cohort without one.
+    public let hasLegacyGroups: Bool
+
     enum CodingKeys: String, CodingKey {
-        case id, name, description, count, deleted
+        case id, name, description, count, deleted, filters, query, groups, version
         case isStatic = "is_static"
         case cohortType = "cohort_type"
+        case isCalculating = "is_calculating"
+        case pendingVersion = "pending_version"
+        case lastCalculation = "last_calculation"
+        case errorsCalculating = "errors_calculating"
+        case lastErrorMessage = "last_error_message"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -70,6 +114,75 @@ public struct Cohort: Sendable, Decodable, Identifiable, Hashable {
         isStatic = try c.decodeIfPresent(Bool.self, forKey: .isStatic) ?? false
         cohortType = try c.decodeIfPresent(String.self, forKey: .cohortType)
         deleted = try c.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
+
+        definition = CohortDefinition.make(
+            from: try? c.decodeIfPresent(JSONValue.self, forKey: .filters)
+        )
+        isCalculating = try c.decodeIfPresent(Bool.self, forKey: .isCalculating) ?? false
+        version = try c.decodeIfPresent(Int.self, forKey: .version)
+        pendingVersion = try c.decodeIfPresent(Int.self, forKey: .pendingVersion)
+        lastCalculation = try c.decodeIfPresent(String.self, forKey: .lastCalculation)
+            .flatMap(PostHogDate.parse)
+        errorsCalculating = try c.decodeIfPresent(Int.self, forKey: .errorsCalculating) ?? 0
+        lastErrorMessage = try c.decodeIfPresent(String.self, forKey: .lastErrorMessage)
+
+        let query = try? c.decodeIfPresent(JSONValue.self, forKey: .query)
+        isQueryDefined = !(query == nil || query == .null)
+        let groups = try? c.decodeIfPresent(JSONValue.self, forKey: .groups)
+        if case .array(let rows)? = groups {
+            hasLegacyGroups = !rows.isEmpty
+        } else {
+            hasLegacyGroups = false
+        }
+    }
+
+    /// Whether the count on screen belongs to the definition on screen.
+    ///
+    /// Two ways it does not, and they are not the same: PostHog is evaluating
+    /// right now (`is_calculating`), or somebody saved an edit that has not been
+    /// evaluated yet (`pending_version` > `version`). Both mean "the number is
+    /// the old definition's", which is the one thing a reader must not conclude
+    /// from a number sitting under a set of conditions.
+    public var isRecalculating: Bool {
+        if isCalculating { return true }
+        guard let version, let pendingVersion else { return false }
+        return pendingVersion > version
+    }
+
+    /// Which of the four things this cohort's definition is.
+    public enum DefinitionState: Sendable, Hashable {
+        /// Membership is a fixed list; there are no conditions and that is not a
+        /// gap.
+        case staticMembership
+        /// A filter tree this build can draw.
+        case filters(CohortDefinition)
+        /// A definition exists and this build cannot draw it. The string says
+        /// which kind, in words a reader can act on.
+        case unrenderable(reason: String)
+        /// A dynamic cohort carrying an empty filter tree — which matches
+        /// everybody, and is a real thing PostHog lets you save.
+        case matchesEveryone
+    }
+
+    public var definitionState: DefinitionState {
+        // Checked before `isStatic`, because a static cohort built by a feature
+        // flag or a scanner *also* carries the query that produced it, and the
+        // honest reading there is still "a fixed list".
+        if isStatic { return .staticMembership }
+        if isQueryDefined {
+            return .unrenderable(
+                reason: "This cohort is defined by a SQL query rather than by filters."
+            )
+        }
+        guard let definition else {
+            return hasLegacyGroups
+                ? .unrenderable(
+                    reason: "This cohort still uses PostHog's pre-2023 filter format."
+                )
+                : .matchesEveryone
+        }
+        if definition.isEmpty { return .matchesEveryone }
+        return .filters(definition)
     }
 }
 

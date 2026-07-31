@@ -87,13 +87,42 @@ public enum InsightCSV {
     }
 
     /// HogQL results, whose rows are positional arrays of mixed JSON types.
+    ///
+    /// This is the shape every `/query/` response has — the console's, the
+    /// events feed's, web analytics' — so it is the one entry point those
+    /// screens need. Prefer `data(columns:rows:)` when the result may be large;
+    /// this convenience adds a second full copy of the file.
     public static func encode(columns: [String], rows: [[JSONValue]]) -> String {
-        let body = rows.map { row in
-            (0..<columns.count).map { index in
-                index < row.count ? scalar(row[index]) : ""
+        String(decoding: data(columns: columns, rows: rows), as: UTF8.self)
+    }
+
+    /// The same file as bytes, without ever materialising it as a `String`.
+    ///
+    /// A HogQL result is unbounded and a `String` round-trip doubles it — see
+    /// the note above `appendRow` for the measurements that made this the
+    /// primary entry point rather than a variant of one.
+    public static func data(columns: [String], rows: [[JSONValue]]) -> Data {
+        var out = Data(bom)
+        // A reserve, not a bound. `Data` already grows geometrically, so this
+        // only changes how many times a large buffer is reallocated and copied
+        // — never what is written, and never whether it fits. 24 bytes a cell
+        // is a guess, stated as one: it is roughly a short id or a formatted
+        // number, and a result full of serialised `properties` objects will
+        // exceed it and simply grow.
+        out.reserveCapacity(min((rows.count + 1) * columns.count * 24 + 1024, 256 << 20))
+        appendRow(columns, to: &out, isFirst: true)
+
+        // Exactly one row's worth of `String`s exists at a time, reused. That is
+        // the whole point: the alternative builds a `[[String]]` of the entire
+        // result and holds it alongside the bytes it was rendered into.
+        var fields = [String](repeating: "", count: columns.count)
+        for row in rows {
+            for index in 0..<columns.count {
+                fields[index] = index < row.count ? scalar(row[index]) : ""
             }
+            appendRow(fields, to: &out, isFirst: false)
         }
-        return encode(rows: [columns] + body)
+        return out
     }
 
     // MARK: - Layout
@@ -130,12 +159,51 @@ public enum InsightCSV {
 
     // MARK: - Encoding
 
-    private static func encode(rows: [[String]]) -> String {
-        // Excel guesses the encoding of a .csv and gets UTF-8 wrong without a
-        // BOM, which mojibakes every non-ASCII breakdown value. Costs three
-        // bytes; saves every export that isn't pure ASCII.
-        "\u{FEFF}" + rows.map { $0.map(field).joined(separator: ",") }
-            .joined(separator: "\r\n")
+    /// A table whose cells are already text — a screen that decoded its rows
+    /// into structs and has no `JSONValue` left to offer.
+    public static func encode(rows: [[String]]) -> String {
+        String(decoding: data(rows: rows), as: UTF8.self)
+    }
+
+    public static func data(rows: [[String]]) -> Data {
+        var out = Data(bom)
+        for (index, row) in rows.enumerated() {
+            appendRow(row, to: &out, isFirst: index == 0)
+        }
+        return out
+    }
+
+    /// UTF-8 BOM.
+    ///
+    /// Excel guesses the encoding of a .csv and gets UTF-8 wrong without one,
+    /// which mojibakes every non-ASCII breakdown value. Costs three bytes; saves
+    /// every export that isn't pure ASCII.
+    private static let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
+
+    private static let crlf: [UInt8] = [0x0D, 0x0A]
+    private static let comma: UInt8 = 0x2C
+
+    /// The one place a record is written.
+    ///
+    /// **Why the bytes are assembled here rather than `joined` into a `String`.**
+    /// An insight's CSV is a few hundred cells and either approach is fine. A
+    /// HogQL result is not bounded at all: measured 2026-07-30 against project
+    /// [REMOVED PRIVATE DATA], `POST /query/` applies **no row cap of its own** — `SELECT number
+    /// FROM numbers(50000)` returns all 50,000 rows — and a realistic
+    /// `SELECT uuid, event, timestamp, distinct_id, properties FROM events`
+    /// measured **6,764 bytes per row**, 13.5 MB at 2,000 rows. Building that as
+    /// a `String` and then copying it with `Data(csv.utf8)` holds two full
+    /// copies at once, on top of the decoded rows the screen is still showing.
+    ///
+    /// The separator is written *before* each record but the first, so the file
+    /// ends without a trailing CRLF. That is the shape the existing tests pin,
+    /// and RFC 4180 permits either.
+    private static func appendRow(_ fields: [String], to out: inout Data, isFirst: Bool) {
+        if !isFirst { out.append(contentsOf: crlf) }
+        for (index, value) in fields.enumerated() {
+            if index > 0 { out.append(comma) }
+            out.append(contentsOf: field(value).utf8)
+        }
     }
 
     /// Scalars that force a field to be quoted, per RFC 4180.
@@ -156,7 +224,13 @@ public enum InsightCSV {
     /// Deliberately not `formatted()`: a grouping separator would put a comma
     /// inside a numeric field, and a decimal comma in most of Europe would do
     /// the same. CSV numbers have to be machine-readable, not presentable.
-    static func number(_ value: Double) -> String {
+    ///
+    /// Public because a screen that decoded its rows into structs has to flatten
+    /// them itself, and every such screen writing its own number formatting is
+    /// how two exports from one app come to disagree about what `41.2` means.
+    /// Web analytics is the case in point: it formats for reading — `41.2%`,
+    /// `2m 13s`, compact notation — and none of those belong in a CSV cell.
+    public static func number(_ value: Double) -> String {
         guard value.isFinite else { return "" }
         if value == value.rounded(), abs(value) < 9e15 {
             return String(Int(value))

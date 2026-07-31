@@ -289,6 +289,25 @@ public struct SurveyTextAnswer: Sendable, Hashable, Identifiable {
     public let text: String
     public let date: Date?
     public let isPartial: Bool
+
+    /// Public for the same reason `ErrorIssue`'s is: the app target is a
+    /// different module, so without it nothing outside this package can build
+    /// one — not even a test. The type and every property were already public,
+    /// which made the synthesised memberwise initialiser's internal default a
+    /// silent hole rather than a decision.
+    ///
+    /// `isPartial` has no default. A partial answer comes from a `survey
+    /// dismissed` event carrying `$survey_partially_completed`, and this
+    /// project has already measured what conflating the two costs: one rating
+    /// question's mean reads 5.00 counting completions alone against 2.75
+    /// counting every answer-bearing submission. A caller that has not decided
+    /// which it holds should not be handed a default that decides for it.
+    public init(id: String, text: String, date: Date?, isPartial: Bool) {
+        self.id = id
+        self.text = text
+        self.date = date
+        self.isPartial = isPartial
+    }
 }
 
 /// What one question's answers add up to.

@@ -354,7 +354,12 @@ struct SurveyTextAnswersView: View {
 
     /// Enough to read the shape of the feedback without turning a survey sheet
     /// into a scroll to nowhere.
-    private static let inlineLimit = 3
+    ///
+    /// Not `private`: this is also the number that decides whether the "All N
+    /// answers" screen exists, and `AnswerSummaryBrief.minimumAnswers` is pinned
+    /// against it so the on-device summary and the screen that hosts it can
+    /// never appear one without the other.
+    static let inlineLimit = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
@@ -415,6 +420,44 @@ struct SurveyTextAnswersList: View {
 
     var body: some View {
         List {
+            // The one screen in this feature that exists *because* there are too
+            // many answers to read is the one that gets the précis. Offered only
+            // past `AnswerSummaryBrief.minimumAnswers`, which is the same
+            // threshold that makes this screen reachable at all — so the summary
+            // and the screen appear together rather than one arriving alone.
+            //
+            // Above the answers rather than below them, because it is a way in
+            // to a long list. It is a `Card` on a clear row, so it reads as a
+            // block laid over the list rather than as its first entry: the rows
+            // below are what people wrote, and this is not one of them. The
+            // insets are zeroed so the card spans the same rect the answer rows'
+            // own `listRowBackground` fills, rather than sitting indented inside
+            // it.
+            //
+            // **Not seen on screen.** `OnDeviceSummaryCard` was rendered on its
+            // own and reviewed at default size, dark, and AX5; *this* row was
+            // not, in either available way. `ImageRenderer` refuses to draw a
+            // `List` at all — it produced the yellow "unsupported" placeholder —
+            // and demo mode cannot reach this screen, because `DemoTransport`
+            // routes the two survey-results queries to the generic `HogQLQuery`
+            // recording, which carries no `impressions` column and lands the
+            // sheet on `.noActivity` before any answers exist to open. A demo
+            // route for `surveyResultsSummary` / `surveyResponses` would make
+            // this reviewable and screenshot-able; that file is outside this
+            // change.
+            if AnswerSummaryBrief.isWorthwhile(answers) {
+                Section {
+                    OnDeviceSummaryCard(
+                        heading: "What people wrote",
+                        actionTitle: "Summarise these answers",
+                        brief: AnswerSummaryBrief.make(question: title, answers: answers)
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                }
+            }
+
             Section {
                 ForEach(answers) { answer in
                     SurveyTextAnswerRow(answer: answer)

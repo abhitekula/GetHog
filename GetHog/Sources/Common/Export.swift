@@ -110,20 +110,80 @@ struct InsightChartImage: Transferable {
     }
 }
 
-/// CSV-only projection, for the same reason in reverse.
-struct InsightCSVFile: Transferable {
-    let insight: ExportableInsight
-
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: .commaSeparatedText) { try $0.insight.csvData() }
-            .suggestedFileName { $0.insight.fileName(extension: "csv") }
-    }
-}
+// The CSV-only projection that used to sit here is now `CSVFile`, which carries
+// a `CSVExport` and therefore serves the console and the feeds as well as an
+// insight. There was never anything insight-shaped about a CSV.
 
 enum ExportError: Error {
     case imageRenderFailed
     /// The insight has no drawable model, so there is no honest CSV for it.
     case notExportable
+}
+
+// MARK: - Any table, as CSV
+
+/// A table of cells somebody may want out of the app, whatever drew it.
+///
+/// **Why this exists as a value rather than as another `Transferable`.** Before
+/// it, everything exportable had to be an `InsightRenderModel`, so the three
+/// screens holding the most obviously exportable data — the SQL console, the
+/// events feed, the web-analytics tables — could export nothing at all, while
+/// `InsightCSV.encode(columns:rows:)` sat in the kit, tested, with no callers.
+/// The row shape those screens hold is the `/query/` row shape, which is the
+/// same everywhere; only the wrapper was missing.
+///
+/// **`encode` is a closure, and that is the load-bearing part.** The insight
+/// path builds its CSV eagerly, inside a `View` body — `if let csv =
+/// insight.csv` — which is affordable for a retention grid and is not
+/// affordable for a console result. Measured 2026-07-30 against project [REMOVED PRIVATE DATA],
+/// `/query/` applies no row cap of its own and a realistic
+/// `SELECT …, properties FROM events` returns **6,764 bytes per row**: encoding
+/// on every menu render would rebuild a 13 MB file each time the user opened a
+/// menu, on the main actor. Deferring means a menu costs a row count, and the
+/// bytes are built once, when something actually asks for them.
+struct CSVExport: Sendable {
+    let title: String
+    let rowCount: Int
+    private let encode: @Sendable () -> Data
+
+    init(title: String, rowCount: Int, encode: @escaping @Sendable () -> Data) {
+        self.title = title
+        self.rowCount = rowCount
+        self.encode = encode
+    }
+
+    /// A `/query/` result — the console's, the events feed's, anything built
+    /// from `QueryResponse`.
+    static func query(title: String, columns: [String], rows: [[JSONValue]]) -> CSVExport {
+        CSVExport(title: title, rowCount: rows.count) {
+            InsightCSV.data(columns: columns, rows: rows)
+        }
+    }
+
+    /// A table a screen decoded into structs and re-flattened, where the header
+    /// is the screen's own wording rather than the wire's. `rows` includes the
+    /// header row, matching `InsightCSV.encode(rows:)`.
+    static func table(title: String, rows: [[String]]) -> CSVExport {
+        CSVExport(title: title, rowCount: max(rows.count - 1, 0)) {
+            InsightCSV.data(rows: rows)
+        }
+    }
+
+    func data() -> Data { encode() }
+
+    var fileName: String { "\(ExportableInsight.sanitized(title)).csv" }
+
+    var isEmpty: Bool { rowCount == 0 }
+}
+
+/// A `CSVExport` as something the share sheet and Files can take.
+struct CSVFile: Transferable {
+    let export: CSVExport
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .commaSeparatedText) { $0.export.data() }
+            .suggestedFileName { $0.export.fileName }
+    }
 }
 
 // MARK: - Save to Files
@@ -135,29 +195,30 @@ enum ExportError: Error {
 /// sheet is for sending a number to a person, while this is for filing it next
 /// to the rest of the week's work, in iCloud Drive or on a synced volume. The
 /// bytes are `InsightCSV`'s either way — there is exactly one encoder, and an
-/// export that disagreed with the chart would be worse than no export at all.
-struct InsightCSVDocument: FileDocument {
+/// export that disagreed with what is on screen would be worse than no export at
+/// all.
+struct CSVDocument: FileDocument {
 
     /// Export-only. GetHog has nothing to do with a CSV somebody hands it,
     /// and claiming otherwise would put the app in the Files "Open with" list.
     static let readableContentTypes: [UTType] = []
     static let writableContentTypes: [UTType] = [.commaSeparatedText]
 
-    let insight: ExportableInsight
+    let export: CSVExport
 
-    init(insight: ExportableInsight) {
-        self.insight = insight
+    init(export: CSVExport) {
+        self.export = export
     }
 
     /// Unreachable while `readableContentTypes` is empty, and required by the
     /// protocol regardless. Throwing beats a stub that would silently invent an
-    /// empty insight if the type ever became readable.
+    /// empty table if the type ever became readable.
     init(configuration: ReadConfiguration) throws {
         throw CocoaError(.fileReadUnsupportedScheme)
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: try insight.csvData())
+        FileWrapper(regularFileWithContents: export.data())
     }
 }
 
@@ -171,28 +232,62 @@ struct InsightCSVDocument: FileDocument {
 /// outlives every menu in the window.
 @MainActor
 @Observable
-final class InsightExportCoordinator {
+final class CSVExportCoordinator {
 
-    fileprivate var document: InsightCSVDocument?
+    fileprivate var document: CSVDocument?
     fileprivate var isPresented = false
+    /// Set when a copy was refused for size. Presented as an alert by the same
+    /// modifier that hosts the exporter, because that is the one view guaranteed
+    /// to outlive the menu the button was in — the identical reason the file
+    /// export is routed through here rather than presented from the menu.
+    fileprivate var copyRefusal: String?
 
-    func export(_ insight: ExportableInsight) {
-        // `.unsupported` insights decode to nothing drawable, so there is no
-        // honest CSV to write. The menu already hides the entry; this is the
-        // second lock on the same door.
-        guard insight.csv != nil else { return }
-        document = InsightCSVDocument(insight: insight)
+    /// What this app is willing to hand the system pasteboard.
+    ///
+    /// **A chosen budget, not a measured limit** — the point at which
+    /// `UIPasteboard` actually drops or stalls on an oversized item has not been
+    /// measured here, and this number should not be read as one. The reasoning
+    /// is that the pasteboard is a system-wide service that copies the item out
+    /// of this process, so a console result that is fine to hold and fine to
+    /// write to a file is not automatically fine to put there. 8 MB is roughly
+    /// 1,200 rows of the widest realistic events query, and far more of anything
+    /// narrow.
+    ///
+    /// Only "Copy" is capped. Share and Save write the whole table: cutting an
+    /// export off at an arbitrary row and not saying so is the failure mode this
+    /// codebase treats as worse than no export.
+    private static let pasteboardBudget = 8 << 20
+
+    func export(_ table: CSVExport) {
+        document = CSVDocument(export: table)
         isPresented = true
     }
 
+    /// Copies, unless the file is larger than this app is prepared to put on the
+    /// pasteboard — in which case it says so and copies nothing, rather than
+    /// copying something truncated.
+    func copy(_ table: CSVExport) {
+        let data = table.data()
+        guard data.count <= Self.pasteboardBudget else {
+            let megabytes = Double(data.count) / 1_048_576
+            copyRefusal = """
+                “\(table.title)” is \(megabytes.formatted(.number.precision(.fractionLength(1)))) MB \
+                as CSV, over the \(Self.pasteboardBudget >> 20) MB this app will put on the clipboard. \
+                Use Share or Save to Files instead — those write the whole table.
+                """
+            return
+        }
+        UIPasteboard.general.string = String(decoding: data, as: UTF8.self)
+    }
+
     fileprivate var defaultFilename: String {
-        document.map { ExportableInsight.sanitized($0.insight.title) } ?? "Insight"
+        document.map { ExportableInsight.sanitized($0.export.title) } ?? "Export"
     }
 }
 
-private struct InsightCSVExportModifier: ViewModifier {
+private struct CSVExportModifier: ViewModifier {
 
-    @State private var coordinator = InsightExportCoordinator()
+    @State private var coordinator = CSVExportCoordinator()
 
     func body(content: Content) -> some View {
         content
@@ -208,14 +303,117 @@ private struct InsightCSVExportModifier: ViewModifier {
                 // document is dropped so a later export cannot inherit it.
                 coordinator.document = nil
             }
+            .alert(
+                "Too large to copy",
+                isPresented: Binding(
+                    get: { coordinator.copyRefusal != nil },
+                    set: { if !$0 { coordinator.copyRefusal = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { coordinator.copyRefusal = nil }
+            } message: {
+                Text(coordinator.copyRefusal ?? "")
+            }
     }
 }
 
 extension View {
     /// Hosts the "save to Files" sheet, and offers everything below it the
     /// coordinator that opens one. Attach once per window scene.
-    func insightCSVExporter() -> some View {
-        modifier(InsightCSVExportModifier())
+    func csvExporter() -> some View {
+        modifier(CSVExportModifier())
+    }
+
+    /// The name this was attached under before it served anything but insights.
+    ///
+    /// Kept because its call sites — both window scenes and the iPhone insight
+    /// sheet — are outside this file, and renaming across them buys nothing: the
+    /// modifier they attach now hosts every CSV export in the app, which is
+    /// exactly what those three attachment points were already positioned for.
+    func insightCSVExporter() -> some View { csvExporter() }
+}
+
+/// The three CSV destinations, for any table.
+///
+/// Send it, keep it, or paste it — a deliberate set rather than one button,
+/// because on a phone they are three different intentions and the share sheet
+/// only serves the first well. "Save to Files" through the share sheet is three
+/// taps in and picks the destination last.
+///
+/// Nothing here encodes during `body`. The menu is built from `rowCount`; the
+/// bytes are produced inside a `ShareLink` representation or a button action.
+struct CSVShareMenuItems: View {
+    let export: CSVExport
+
+    /// Optional so the menu still builds in a preview, or in any window that has
+    /// not attached `csvExporter()`; the entries simply aren't offered there
+    /// rather than being offered and doing nothing.
+    @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
+
+    var body: some View {
+        ShareLink(
+            item: CSVFile(export: export),
+            preview: SharePreview(export.title)
+        ) {
+            Label("Export CSV", systemImage: "tablecells")
+        }
+        .accessibilityLabel("Export data as CSV")
+
+        if let exporter {
+            Button {
+                exporter.export(export)
+            } label: {
+                Label("Save CSV to Files…", systemImage: "folder")
+            }
+            .accessibilityLabel("Save data as a CSV file")
+
+            // Routed through the coordinator rather than writing
+            // `UIPasteboard.general.string` here, so an oversized table is
+            // refused with an explanation from a view that outlives this menu.
+            Button {
+                exporter.copy(export)
+            } label: {
+                Label("Copy CSV", systemImage: "doc.on.doc")
+            }
+            .accessibilityLabel("Copy data as CSV")
+        }
+    }
+}
+
+/// The CSV destinations as a self-contained toolbar menu, for a screen whose
+/// toolbar has nothing else to fold them into.
+struct CSVShareMenu: View {
+    let export: CSVExport
+    var systemImage: String = "square.and.arrow.up"
+
+    var body: some View {
+        Menu {
+            // Naming the size in the menu rather than after the fact: a console
+            // result can be anything from three rows to tens of thousands, and
+            // the difference decides which of the three destinations the reader
+            // wants.
+            Section("\(export.rowCount.formatted()) \(export.rowCount == 1 ? "row" : "rows")") {
+                CSVShareMenuItems(export: export)
+            }
+        } label: {
+            Image(systemName: systemImage)
+        }
+        .accessibilityLabel("Export \(export.title)")
+        .disabled(export.isEmpty)
+    }
+}
+
+extension ExportableInsight {
+
+    /// The insight as a plain table, so it travels the same road as every other
+    /// export in the app.
+    ///
+    /// `nil` for an `.unsupported` model, which decodes to nothing drawable and
+    /// therefore has no honest CSV — the same condition `csv` reports, expressed
+    /// once.
+    var csvExport: CSVExport? {
+        guard let rows = InsightCSV.rows(model) else { return nil }
+        return .table(title: title, rows: rows)
     }
 }
 
@@ -227,11 +425,6 @@ struct InsightShareMenuItems: View {
     let title: String
     let model: InsightRenderModel
 
-    /// Optional so the menu still builds in a preview, or in any window that
-    /// has not attached `insightCSVExporter()`; the entry simply isn't offered
-    /// there rather than being offered and doing nothing.
-    @Environment(InsightExportCoordinator.self) private var exporter: InsightExportCoordinator?
-
     private var insight: ExportableInsight {
         ExportableInsight(title: title, model: model)
     }
@@ -241,7 +434,10 @@ struct InsightShareMenuItems: View {
         // the PNG would be a photograph of the "not drawn on mobile yet" card.
         // Everything goes rather than offering something useless; those tiles
         // already carry their own "Open in PostHog" link.
-        if let csv = insight.csv {
+        if let export = insight.csvExport {
+            // The image entry is the one thing an insight has that a table does
+            // not, so it stays here; the three CSV destinations are the shared
+            // ones and are not written twice.
             ShareLink(
                 item: InsightChartImage(insight: insight),
                 preview: SharePreview(title)
@@ -250,32 +446,7 @@ struct InsightShareMenuItems: View {
             }
             .accessibilityLabel("Share chart image")
 
-            ShareLink(
-                item: InsightCSVFile(insight: insight),
-                preview: SharePreview(title)
-            ) {
-                Label("Export CSV", systemImage: "tablecells")
-            }
-            .accessibilityLabel("Export data as CSV")
-
-            // The share sheet's own "Save to Files" is three taps in and picks
-            // the destination last; this is the direct route for a CSV somebody
-            // means to keep rather than send.
-            if let exporter {
-                Button {
-                    exporter.export(insight)
-                } label: {
-                    Label("Save CSV to Files…", systemImage: "folder")
-                }
-                .accessibilityLabel("Save data as a CSV file")
-            }
-
-            Button {
-                UIPasteboard.general.string = csv
-            } label: {
-                Label("Copy CSV", systemImage: "doc.on.doc")
-            }
-            .accessibilityLabel("Copy data as CSV")
+            CSVShareMenuItems(export: export)
         }
     }
 }
@@ -286,7 +457,10 @@ struct InsightShareMenu: View {
     let model: InsightRenderModel
 
     var body: some View {
-        if InsightCSV.encode(model) != nil {
+        // `rows` rather than `encode`: this decides whether to draw a button, and
+        // the two answer the same question — but `encode` answered it by building
+        // the entire file, during `body`, on every layout pass.
+        if InsightCSV.rows(model) != nil {
             Menu {
                 InsightShareMenuItems(title: title, model: model)
             } label: {

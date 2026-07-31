@@ -93,14 +93,62 @@ public struct WebStatsRow: Sendable, Identifiable, Hashable {
     }
 
     /// Builds rows from the generic column-oriented query response.
-    public static func rows(from response: QueryResponse) -> [WebStatsRow] {
-        response.rows.compactMap { row in
-            guard let breakdown = row.values.first?.stringValue else { return nil }
-            return WebStatsRow(
-                breakdownValue: breakdown,
+    ///
+    /// **A breakdown value is not always a string, and used to be dropped when
+    /// it wasn't.** This read `row.values.first?.stringValue` and returned `nil`
+    /// otherwise, which was correct for the five dimensions the app offered and
+    /// silently wrong for most of the twenty-eight it did not. Measured against
+    /// project [REMOVED PRIVATE DATA] over 90 days, `WebStatsTableQuery` returns the breakdown
+    /// value as:
+    ///
+    ///     Page, Browser, Country, OS, Language, …   "en-US"            string
+    ///     InitialUTMSource and every UTM sibling    null               null
+    ///     Timezone                                  -4.0, 5.5          number
+    ///     Viewport                                  [1919.0, 992.0]    array
+    ///     Region                                    ["US","NJ","New Jersey"]
+    ///     City                                      ["US","Newark"]
+    ///
+    /// `JSONValue.stringValue` is `nil` for `.null` and `.array`, so Viewport,
+    /// Region and City produced **zero** rows — a table that says "PostHog
+    /// returned no regions" about a project with five. The `null` case is worse
+    /// than empty: for `InitialUTMSource` that row is 1,194 of ~1,400 visitors,
+    /// the "arrived without a campaign" bucket, so dropping it hid 85% of the
+    /// traffic *and* left the remaining rows' proportion bars scaled against a
+    /// peak that was no longer in the table.
+    ///
+    /// So nothing is dropped now, and the label is the caller's decision.
+    /// `label` defaults to `plainLabel`, which is faithful but generic; the app
+    /// passes `WebStatsDimension.label(for:)`, because only the caller knows
+    /// that `["US", "Newark"]` is a city and `-4.0` is an hour offset. Keeping
+    /// that knowledge out of here is the same rule `InsightRenderModel` follows:
+    /// the kit decodes shapes, the app names them.
+    public static func rows(
+        from response: QueryResponse,
+        label: (JSONValue) -> String = Self.plainLabel
+    ) -> [WebStatsRow] {
+        response.rows.map { row in
+            WebStatsRow(
+                breakdownValue: label(row.values.first ?? .null),
                 visitors: leading(row.values, at: 1),
                 views: leading(row.values, at: 2)
             )
+        }
+    }
+
+    /// A faithful, dimension-blind rendering of a breakdown value.
+    ///
+    /// Used when the caller has no dimension in hand. Arrays are joined with a
+    /// comma in the order the API sent them and `null` becomes the empty string,
+    /// which `WebStatsRowView` already draws as "(not set)" — so an unnamed
+    /// bucket is visible and countable rather than absent.
+    public static func plainLabel(_ value: JSONValue) -> String {
+        switch value {
+        case .null:
+            return ""
+        case .array(let parts):
+            return parts.compactMap(\.stringValue).joined(separator: ", ")
+        default:
+            return value.stringValue ?? ""
         }
     }
 

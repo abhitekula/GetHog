@@ -11,11 +11,40 @@ final class EventsStore {
     var loadedAt: Date?
     var reachedEnd = false
 
+    /// The rows exactly as `/query/` returned them, kept alongside the decoded
+    /// `EventRow`s so the feed can be exported as what it actually is.
+    ///
+    /// **This costs very little, which is why it is worth doing rather than
+    /// re-deriving.** `EventRow` already holds the row's `properties` value, and
+    /// `JSONValue`'s payloads are copy-on-write, so keeping the positional array
+    /// as well shares that storage instead of duplicating it — the addition is
+    /// one array header per row. Re-deriving would have meant re-formatting
+    /// timestamps back into text and inventing column names, so the export would
+    /// have disagreed in small ways with the query that produced it. An export
+    /// that disagrees with its source is the failure mode `InsightCSV` was
+    /// written to avoid.
+    private(set) var responseColumns: [String] = []
+    private(set) var responseRows: [[JSONValue]] = []
+
     /// Owns the time bound and the keyset cursor. Every request the feed makes
     /// is bounded, because an unbounded one does not reliably finish — see
     /// `EventFeed.swift` for the measurements.
     private var pager = EventFeedPager()
     private let pageSize = 50
+
+    /// The loaded page of the feed as CSV.
+    ///
+    /// Deliberately **what has been loaded**, not what matches the filter on the
+    /// server. The feed is keyset-paged 50 rows at a time and the button sits
+    /// above a list the reader can see the end of; an export that quietly went
+    /// back and fetched everything would spend an unbounded, organisation-wide
+    /// query budget on a tap that looks like it costs nothing. The row count in
+    /// the menu says how much there is, and "Load older events" is how you get
+    /// more into it.
+    var export: CSVExport? {
+        guard !responseRows.isEmpty else { return nil }
+        return .query(title: "Events", columns: responseColumns, rows: responseRows)
+    }
 
     /// How far back the feed has actually looked, so an empty screen can say so
     /// rather than implying it searched everything.
@@ -33,6 +62,8 @@ final class EventsStore {
     ) async {
         pager.restart()
         events = []
+        responseColumns = []
+        responseRows = []
         reachedEnd = false
         isLoading = true
         defer { isLoading = false }
@@ -103,6 +134,14 @@ final class EventsStore {
             )
             let page = response.rows.compactMap(EventRow.init(row:))
             events.append(contentsOf: page)
+
+            // Every page of this feed is the same SELECT, so the columns are
+            // the same each time; taking the first non-empty set rather than
+            // overwriting means a later page that came back with none — an
+            // empty widening step — cannot blank the header of rows already
+            // held.
+            if responseColumns.isEmpty { responseColumns = response.columns }
+            responseRows.append(contentsOf: response.rows.map(\.values))
 
             pager.advance(rowCount: page.count, limit: pageSize, cursor: response.eventCursor())
             reachedEnd = pager.isExhausted
@@ -255,6 +294,11 @@ struct EventsRoot: View {
                     ProjectSwitcher()
                     ToolbarItem(placement: .topBarTrailing) {
                         SavedFiltersMenu(projectID: model.projectID, tokens: $tokens)
+                    }
+                    if let export = store.export {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            CSVShareMenu(export: export)
+                        }
                     }
                     ToolbarItem(placement: .topBarTrailing) { liveTailButton }
                 }

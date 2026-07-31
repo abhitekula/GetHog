@@ -228,8 +228,18 @@ public enum AnnotationScope: String, Sendable, Hashable {
     case dashboard
     case project
     case organization
-    /// Deprecated by PostHog and rejected on write, but old rows still carry it.
+    /// Legacy. This used to carry a comment saying PostHog rejects it on write;
+    /// the schema says otherwise, so the comment is gone rather than left
+    /// asserting something nothing here has established. `AnnotationScopeEnum`
+    /// in PostHog's OpenAPI document (fetched 2026-07-30) is exactly
+    /// `["dashboard_item", "dashboard", "project", "organization",
+    /// "recording"]`, and that same schema is the `POST` request body — so as
+    /// far as the document is concerned it is writable. It is simply not
+    /// something a person writes from a phone, so `AnnotationTarget` does not
+    /// offer it. Old rows still decode through here.
     case recording
+    /// Anything PostHog adds later. Decoding an unknown scope as `.other` is
+    /// what stops one new value from throwing away the whole page.
     case other
 
     public init(raw: String?) {
@@ -316,6 +326,51 @@ public struct Annotation: Sendable, Decodable, Identifiable, Hashable {
         isDeleted = try c.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
         // Null means "shown"; only an explicit true hides it.
         isHidden = try c.decodeIfPresent(Bool.self, forKey: .hiddenInUserInterface) ?? false
+    }
+
+    /// Builds a row the API has not returned yet.
+    ///
+    /// Exists for exactly one caller: `AnnotationComposer` needs a row to put on
+    /// screen the instant the user confirms, before the `POST` has been answered.
+    /// The alternative — a second "pending annotation" type the list also knows
+    /// how to draw — would mean two code paths rendering the same thing, and the
+    /// pending one would be the path nobody ever looks at.
+    ///
+    /// `id` is the caller's problem and is deliberately not defaulted: PostHog
+    /// assigns the real one, and the placeholder has to be something that cannot
+    /// collide with it. `AnnotationComposer` uses a negative id for that reason —
+    /// PostHog's are positive, so a rollback can find its own row and no real
+    /// annotation can ever be mistaken for a pending one.
+    public init(
+        id: Int,
+        content: String?,
+        dateMarker: Date?,
+        creationType: AnnotationCreationType = .user,
+        scope: AnnotationScope,
+        emoji: String? = nil,
+        createdAt: Date? = nil,
+        updatedAt: Date? = nil,
+        createdByName: String? = nil,
+        insightShortID: String? = nil,
+        insightName: String? = nil,
+        dashboardName: String? = nil,
+        isDeleted: Bool = false,
+        isHidden: Bool = false
+    ) {
+        self.id = id
+        self.content = content
+        self.dateMarker = dateMarker
+        self.creationType = creationType
+        self.scope = scope
+        self.emoji = emoji
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.createdByName = createdByName
+        self.insightShortID = insightShortID
+        self.insightName = insightName
+        self.dashboardName = dashboardName
+        self.isDeleted = isDeleted
+        self.isHidden = isHidden
     }
 
     /// The date the annotation claims to mark, falling back to when it was

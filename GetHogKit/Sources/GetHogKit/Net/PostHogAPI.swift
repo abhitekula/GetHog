@@ -275,8 +275,46 @@ public enum PostHogAPI {
         ])
     }
 
-    /// `breakdownBy` accepts PostHog's web-stats dimensions, e.g. `Page`,
-    /// `InitialReferringDomain`, `DeviceType`, `Country`.
+    /// One web-stats table, broken down by one dimension.
+    ///
+    /// `breakdownBy` is a **closed enum server-side**, and sending a value
+    /// outside it is how you find out what it is: PostHog answers HTTP 400 and
+    /// enumerates every accepted value in the pydantic error. Sent
+    /// `"NotARealDimension"` live, it named these thirty-three, in this order:
+    ///
+    ///     Page  InitialPage  ExitPage  ExitClick  PreviousPage  ScreenName
+    ///     InitialChannelType  InitialReferringDomain  InitialReferringURL
+    ///     InitialUTMSource  InitialUTMCampaign  InitialUTMMedium
+    ///     InitialUTMTerm  InitialUTMContent  InitialUTMSourceMediumCampaign
+    ///     FirstPageviewChannelType  FirstPageviewReferringDomain
+    ///     FirstPageviewUTMSource  FirstPageviewUTMCampaign
+    ///     FirstPageviewUTMMedium  FirstPageviewUTMTerm
+    ///     FirstPageviewUTMContent  FirstPageviewUTMSourceMediumCampaign
+    ///     Browser  OS  Viewport  DeviceType  Country  Region  City
+    ///     Timezone  Language  FrustrationMetrics
+    ///
+    /// All thirty-three were then sent for real against project [REMOVED PRIVATE DATA] over 90
+    /// days and all thirty-three answered 200, so acceptance is not the axis
+    /// that separates them — what they *return* is. Two things a caller has to
+    /// know before offering one:
+    ///
+    /// - The breakdown value is not always a string. `Timezone` is a bare
+    ///   number, `Viewport` is `[width, height]`, `Region` and `City` are
+    ///   arrays, and every UTM dimension's largest bucket is JSON `null`. See
+    ///   `WebStatsRow.rows(from:label:)`, which used to drop all of those.
+    /// - `FrustrationMetrics` does not return the same **columns**. Every other
+    ///   dimension answers `[breakdown_value, visitors, views,
+    ///   ui_fill_fraction, cross_sell]`; that one answers `[breakdown_value,
+    ///   rage_clicks, dead_clicks, errors, cross_sell]`. Read positionally as
+    ///   if it were a stats table, its rage-click count is labelled "visitors"
+    ///   and its dead clicks "views" — numbers that are not merely wrong but
+    ///   confidently mislabelled. `WebStatsDimension` does not offer it.
+    ///
+    /// One more measured oddity, harmless here but worth not rediscovering:
+    /// `Language` rows carry **four** values while `columns` still advertises
+    /// five — `ui_fill_fraction` is simply absent, so `cross_sell` sits at the
+    /// index it would occupy. Nothing in the app reads index 3, and the two
+    /// figures it does read are at 1 and 2 for every dimension.
     public static func webStats(
         projectID: Int,
         breakdownBy: String = "Page",
@@ -380,10 +418,36 @@ public enum PostHogAPI {
 
     // MARK: - Directory resources
 
-    public static func persons(projectID: Int, limit: Int = 50, search: String? = nil) -> Endpoint {
+    /// - Parameter cohort: restrict to members of one cohort.
+    ///
+    /// **`?cohort=` on `/persons/`, not `GET /cohorts/:id/persons/`.** Both exist
+    /// and both were exercised against the live project on 30 Jul 2026; both
+    /// answer 200 with the identical row shape (`CohortPersonResult` in the
+    /// served OpenAPI document — `id`, `uuid`, `distinct_ids`, `properties`,
+    /// `is_identified`, `created_at`, plus `matched_recordings` and
+    /// `value_at_data_point`, which are `ActorsQuery` residue and unused here).
+    /// This spelling is preferred because it is the *same path* an unfiltered
+    /// person list uses, so one decoder, one cache key shape, one demo route and
+    /// one rate-limit category serve both.
+    ///
+    /// **Neither spelling returns `count`.** Measured: the body is
+    /// `{results, next, previous}` with no total, unlike the unfiltered
+    /// `/persons/` response — and the OpenAPI document agrees, declaring exactly
+    /// those three keys as required on `CohortPersonsResponse`. So the number of
+    /// members cannot come from here; it comes from the cohort's own `count`
+    /// field, which is what the members section says it is showing "of".
+    public static func persons(
+        projectID: Int,
+        limit: Int = 50,
+        search: String? = nil,
+        cohort: Int? = nil
+    ) -> Endpoint {
         var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let search, !search.isEmpty {
             query.append(URLQueryItem(name: "search", value: search))
+        }
+        if let cohort {
+            query.append(URLQueryItem(name: "cohort", value: String(cohort)))
         }
         return Endpoint(path: "/api/projects/\(projectID)/persons/", query: query, category: .analytics)
     }

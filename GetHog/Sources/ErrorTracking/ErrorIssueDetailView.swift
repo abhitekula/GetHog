@@ -49,6 +49,8 @@ struct ErrorIssueDetailView: View {
                     origin
                         .padding(.horizontal, Theme.Space.l)
                 }
+                summary
+                    .padding(.horizontal, Theme.Space.l)
                 stackSection
                     .padding(.horizontal, Theme.Space.l)
             }
@@ -372,6 +374,35 @@ struct ErrorIssueDetailView: View {
         Task {
             await triage.setAssignee(assignee, issue: issue, client: client, projectID: projectID)
         }
+    }
+
+    // MARK: - Summary
+
+    /// An on-device précis of the exception, placed here on purpose.
+    ///
+    /// **Not next to the figures.** `impact` is three numbers PostHog computed,
+    /// and generated prose sitting beside them would be read as a fourth thing
+    /// PostHog said. Two blocks of chrome separate them, and the card carries its
+    /// own "Generated" pill and provenance lines — see `OnDeviceSummaryCard`.
+    ///
+    /// **Above the trace, not below it.** What this summarises is mostly the
+    /// stack, so the natural place is after it — except that the stack is the
+    /// tallest thing on the screen (2,476pt against the 23-frame capture before
+    /// `StackTraceView` was collapsed, and still the longest block after), and a
+    /// summary you have to scroll past a full trace to reach is a summary for
+    /// people who no longer need one. It sits where the reader arrives before
+    /// deciding whether to read the frames at all.
+    ///
+    /// The brief is rebuilt on every layout pass and captured only when the
+    /// button is tapped, so a summary asked for before `ExceptionStackStore`
+    /// answers is built from the issue row alone — and says so in its own scope
+    /// line rather than quietly summarising less than the reader can see.
+    private var summary: some View {
+        OnDeviceSummaryCard(
+            heading: "What this issue is",
+            actionTitle: "Summarise this issue",
+            brief: IssueSummaryBrief.make(issue: issue, occurrence: stack.occurrence)
+        )
     }
 
     // MARK: - Origin
