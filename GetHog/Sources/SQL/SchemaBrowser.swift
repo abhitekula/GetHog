@@ -32,9 +32,30 @@ final class SchemaStore {
     /// Keyed by table so a failure on one table does not label another as broken.
     private(set) var columnsFailure: [String: LoadFailure] = [:]
 
-    /// Set when the table list came back exactly at the request's ceiling, which
-    /// is the only evidence available that it was cut short — `QueryResponse`
-    /// decodes neither `hasMore` nor `limit`.
+    /// Set when the table list may be a prefix of the project's real one.
+    ///
+    /// Two independent pieces of evidence, and both are needed because they
+    /// cover disjoint cases.
+    ///
+    /// `QueryResponse.isTruncated` covers a cap **PostHog** applied. This
+    /// previously read that the flag was the one thing unavailable —
+    /// "`QueryResponse` decodes neither `hasMore` nor `limit`" — which was false
+    /// when it was written: the commit that added this file also added the
+    /// decoding. `PostHogAPI+Schema.swift` records the measurement behind it,
+    /// 100 of 141 tables at HTTP 200 with `hasMore: true` in the envelope.
+    ///
+    /// The row count still matters, and is not redundant with it. Measured and
+    /// recorded in `PostHogAPI+Groups.swift`: `hasMore` and `limit` appear only
+    /// when PostHog capped the query itself. The same query written `LIMIT 200`
+    /// came back with **neither field** while holding 200 rows of 423 — so for
+    /// any query that writes its own `LIMIT`, and `schemaTables` writes
+    /// `LIMIT 1000`, the flag is silent exactly when the ceiling is reached.
+    ///
+    /// Counting `response.rows` rather than the decoded `tables` is deliberate
+    /// for the same reason `SessionTimelineStore` was corrected to: one row that
+    /// fails `SchemaTable.init(row:)` would put the decoded count under the
+    /// ceiling and retire this notice, and a schema with an undecodable row is
+    /// the case where the reader most needs telling that the list is partial.
     private(set) var mayBeTruncated = false
 
     private let tableLimit = 1000
@@ -49,7 +70,7 @@ final class SchemaStore {
                 PostHogAPI.schemaTables(projectID: projectID, limit: tableLimit)
             )
             tables = response.rows.compactMap(SchemaTable.init(row:))
-            mayBeTruncated = response.rows.count >= tableLimit
+            mayBeTruncated = response.isTruncated || response.rows.count >= tableLimit
             tablesFailure = nil
         } catch {
             tablesFailure = LoadFailure(error, loading: "the schema")

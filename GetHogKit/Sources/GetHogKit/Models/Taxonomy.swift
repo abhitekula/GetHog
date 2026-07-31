@@ -75,6 +75,147 @@ public struct TaxonomyPropertySample: Sendable, Decodable, Hashable, Identifiabl
     public var sampleSummary: String {
         "\(sampleCount) distinct value\(sampleCount == 1 ? "" : "s") in sample"
     }
+
+    /// Joins the rows of a **named-properties** taxonomy response back to the
+    /// keys that were asked for.
+    ///
+    /// `EventTaxonomyQuery` and `ActorsPropertyTaxonomyQuery` both drop the
+    /// `property` key when the request named its properties: the rows are
+    /// positional and parallel to the request array. A property with nothing
+    /// recorded still holds its place — measured `{"sample_count": 0,
+    /// "sample_values": []}` for a group property that exists in the definitions
+    /// and has never been set — so index *i* is always key *i*.
+    ///
+    /// A short response is therefore a shape this code does not understand, not
+    /// a shorter list: the surplus keys are dropped rather than being paired
+    /// with whatever row happens to sit at their index.
+    public static func zip(
+        _ properties: [String],
+        with rows: [TaxonomyPropertySample]
+    ) -> [TaxonomyPropertySample] {
+        properties.enumerated().compactMap { index, key in
+            guard index < rows.count else { return nil }
+            let row = rows[index]
+            return TaxonomyPropertySample(
+                property: key,
+                sampleCount: row.sampleCount,
+                sampleValues: row.sampleValues
+            )
+        }
+    }
+}
+
+// MARK: - Property scope
+
+/// Which table a property definition belongs to.
+///
+/// `/property_definitions/` lists one table at a time and defaults to events.
+/// The distinction is not cosmetic: an event property can be counted over the
+/// `events` table and given a real distribution, and a person or group property
+/// cannot — it lives on the actor row, where "how often" has no meaning, only
+/// "how many actors". A screen that showed both the same way would be claiming
+/// a frequency the second has never had.
+public enum PropertyScope: Sendable, Hashable {
+    case event
+    case person
+    /// Group properties are per type, so the index travels with the scope.
+    case group(index: Int)
+    case session
+
+    /// The `type` query parameter. `group_type_index` rides alongside it and is
+    /// added by the endpoint builder, because it is a second parameter rather
+    /// than part of this one.
+    public var parameterValue: String {
+        switch self {
+        case .event: "event"
+        case .person: "person"
+        case .group: "group"
+        case .session: "session"
+        }
+    }
+
+    /// Whether the events table can answer "what values does this take, and how
+    /// often", which is the only place a distribution is defined.
+    public var hasEventDistribution: Bool {
+        if case .event = self { return true }
+        return false
+    }
+}
+
+// MARK: - Property distribution
+
+/// One value of a property and how much of the property's traffic it is.
+///
+/// `share` divides by a total taken from the same response — a window function
+/// evaluated across every group before the `LIMIT`, not the sum of the rows on
+/// screen. Dividing by the visible rows would make the top ten of four hundred
+/// values add up to 100%, which is the specific wrong number this type exists
+/// to avoid.
+public struct PropertyValueShare: Sendable, Identifiable, Hashable {
+    /// `nil` where the property was present but held JSON null. Kept distinct
+    /// from the string `"null"`, which is a value somebody actually sent.
+    public let value: String?
+    public let occurrences: Int
+    /// Every matching event in the window, across all values.
+    public let totalOccurrences: Int
+    /// Every distinct value in the window, not only the ones returned.
+    public let distinctValues: Int
+
+    public var id: String { value ?? "\u{0}null" }
+
+    public init?(row: QueryRow) {
+        guard let occurrences = row.int("occurrences") else { return nil }
+        self.value = row.string("value")
+        self.occurrences = occurrences
+        self.totalOccurrences = row.int("total_occurrences") ?? occurrences
+        self.distinctValues = row.int("distinct_values") ?? 0
+    }
+
+    /// `nil` rather than zero when there is no total to divide by, so a caller
+    /// draws nothing instead of drawing a 0% bar for an unknown share.
+    public var share: Double? {
+        guard totalOccurrences > 0 else { return nil }
+        return Double(occurrences) / Double(totalOccurrences)
+    }
+
+    /// How many values the response did not carry. Zero when it carried them all.
+    public static func hiddenValueCount(_ rows: [PropertyValueShare]) -> Int {
+        guard let first = rows.first else { return 0 }
+        return max(0, first.distinctValues - rows.count)
+    }
+}
+
+/// One event that carries a property, with how varied the property is on it.
+public struct PropertyCarrierEvent: Sendable, Identifiable, Hashable {
+    public let event: String
+    public let occurrences: Int
+    /// Distinct values of the property **on this event**, which is routinely
+    /// smaller than the project-wide figure and is the interesting number.
+    public let distinctValues: Int
+    public let totalOccurrences: Int
+    public let distinctEvents: Int
+
+    public var id: String { event }
+
+    public init?(row: QueryRow) {
+        guard let event = row.string("event"), let occurrences = row.int("occurrences")
+        else { return nil }
+        self.event = event
+        self.occurrences = occurrences
+        self.distinctValues = row.int("distinct_values") ?? 0
+        self.totalOccurrences = row.int("total_occurrences") ?? occurrences
+        self.distinctEvents = row.int("distinct_events") ?? 0
+    }
+
+    public var share: Double? {
+        guard totalOccurrences > 0 else { return nil }
+        return Double(occurrences) / Double(totalOccurrences)
+    }
+
+    public static func hiddenEventCount(_ rows: [PropertyCarrierEvent]) -> Int {
+        guard let first = rows.first else { return 0 }
+        return max(0, first.distinctEvents - rows.count)
+    }
 }
 
 // MARK: - Definitions

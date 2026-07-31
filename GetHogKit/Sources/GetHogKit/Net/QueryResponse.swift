@@ -30,21 +30,71 @@ public struct QueryResponse: Decodable, Sendable {
     /// answer from the first hundredth of one, and every caller that omitted a
     /// `LIMIT` was free to present a prefix as the whole set.
     ///
-    /// `false` when absent, which is the safe reading: an endpoint that does not
-    /// report truncation is not thereby claiming there was none, but a `nil`
-    /// here would have to be handled at every call site to mean anything, and a
+    /// `false` when absent, which is the safe reading **provided the caller
+    /// remembers what absence means**: PostHog omits both fields entirely for a
+    /// query that wrote its own `LIMIT`, reached it or not — so `false` here is
+    /// routinely "no cap of mine applied" rather than "there was no more". See
+    /// `isTruncated`, which carries the measurement and what to do about it. A
+    /// `nil` would have to be handled at every call site to mean anything, and a
     /// caller that ignores it is worse off than one told plainly there is more.
     public let hasMore: Bool
     /// The cap PostHog actually applied, whether or not this query asked for one.
     public let appliedLimit: Int?
 
-    /// True when the answer is a prefix of the real one.
+    /// True when **PostHog's own default cap** held rows back.
     ///
-    /// Read this before reporting a count, a total, or "no results". Deriving a
-    /// figure from a truncated set produces a number that is wrong rather than
-    /// merely partial — the failure this project has already hit twice, once
-    /// where `/heatmaps/` returned 500 rows against its own `total_count` of
-    /// 899, and once where a survey mean read 5.00 against a true 2.75.
+    /// **This is not a general truncation check, and reading it as one is a bug
+    /// this comment previously invited.** It used to say "true when the answer is
+    /// a prefix of the real one" and to instruct callers to read it before
+    /// reporting any count or total. That overstates it in the direction that
+    /// matters: `false` here does not mean the result is complete.
+    ///
+    /// Measured on this deployment, and recorded at greater length on
+    /// `PostHogAPI.groupEventBreakdown`. The same query, three ways:
+    ///
+    ///     no LIMIT,  63 rows of 63    hasMore: false, limit: 100
+    ///     no LIMIT, 100 rows of 423   hasMore: true,  limit: 100
+    ///     LIMIT 200, 200 rows of 423  neither field present
+    ///
+    /// The third line is the whole point. PostHog reports only the cap *it*
+    /// applied; a `LIMIT` the caller wrote is the caller's business and the
+    /// envelope says nothing about it, **even when that limit was reached and
+    /// rows were genuinely withheld**. Most builders in this package write an
+    /// explicit `LIMIT` precisely to escape the 100-row default, so for most of
+    /// this app's queries this property is structurally silent.
+    ///
+    /// What that means at a call site:
+    ///
+    /// - **A query with no `LIMIT` of its own** — the SQL console, where the
+    ///   reader writes the statement — this is the only evidence there is, and
+    ///   it is reliable. Use it.
+    /// - **A query that writes its own `LIMIT`** — read `rows.count` against
+    ///   that limit, and `||` it with this so a *lower* server cap is still
+    ///   caught. Count the rows PostHog returned, never the values that survived
+    ///   decoding: a failable row initialiser puts a full page one under its
+    ///   ceiling and retires the notice exactly when the data is least
+    ///   trustworthy. `SessionTimelineStore` and `SchemaStore` are the worked
+    ///   examples.
+    /// - **A total, a mean or a share** — neither signal is sufficient. Have the
+    ///   query carry its own denominators: `sum(count()) OVER ()` is evaluated
+    ///   before `LIMIT`, so the screen knows the real total instead of inferring
+    ///   one. `PostHogAPI.groupEventBreakdown` measured this against a property
+    ///   with 423 distinct values, where `LIMIT 5` still reported the true 3320.
+    ///   Deriving a figure from a truncated set produces a number that is wrong
+    ///   rather than merely partial — the failure this project has already hit
+    ///   twice, once where `/heatmaps/` returned 500 rows against its own
+    ///   `total_count` of 899, and once where a survey mean read 5.00 against a
+    ///   true 2.75.
+    ///
+    /// One observation is **not reconciled** and is recorded rather than
+    /// smoothed over: `InsightCSV` documents `SELECT number FROM numbers(50000)`
+    /// with no `LIMIT` returning all 50,000 rows on the same deployment and the
+    /// same day the 100-row cap was measured. Whether the default applies to
+    /// generator functions, or the two measurements differ in some other way, has
+    /// not been established here. Nothing in this package depends on the answer —
+    /// every rule above is about what the *envelope* says, not about when the cap
+    /// fires — but a caller reasoning about "the 100-row default" as universal
+    /// should know it has a counter-example.
     public var isTruncated: Bool { hasMore }
 
     enum CodingKeys: String, CodingKey {

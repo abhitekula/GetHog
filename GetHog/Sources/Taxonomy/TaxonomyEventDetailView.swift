@@ -57,8 +57,28 @@ struct TaxonomyEventDetailView: View {
     let event: TaxonomyEvent
 
     @Environment(AppModel.self) private var model
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = EventTaxonomyStore()
     @State private var search = ""
+
+    /// The open property — level 2 of the Taxonomy screen, under the event at
+    /// level 0. Level 1 belongs to a property opened from the root's own
+    /// Properties list, which is a sibling of this screen rather than its parent.
+    ///
+    /// Held in `OpenDetails` for the reason every level here is: this whole
+    /// subtree is rebuilt when the size class swaps hosts, and `@State` under it
+    /// does not survive that.
+    ///
+    /// Carries the sampled key rather than a definition, because the two are not
+    /// the same set: `EventTaxonomyQuery` reports properties straight off the
+    /// events, including ones with no registered definition, and a destination
+    /// keyed on a definition could not open those at all.
+    private var openProperty: Binding<TaxonomyPropertyTarget?> {
+        Binding(
+            get: { openDetails[.taxonomy, level: 2] as? TaxonomyPropertyTarget },
+            set: { openDetails[.taxonomy, level: 2] = $0.map(AnyHashable.init) }
+        )
+    }
 
     var body: some View {
         List {
@@ -117,6 +137,13 @@ struct TaxonomyEventDetailView: View {
         .searchable(text: $search, prompt: "Search properties")
         .refreshable { await load() }
         .task(id: event.name) { await load() }
+        .navigationDestination(item: openProperty) { target in
+            TaxonomyPropertyDetailView(
+                key: target.key,
+                definition: target.definition,
+                event: target.event
+            )
+        }
     }
 
     /// Curation state as words. Verified and hidden are mutually exclusive in
@@ -164,10 +191,20 @@ struct TaxonomyEventDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(filtered) { property in
-                    TaxonomyPropertyRowView(
-                        sample: property,
-                        definition: store.definitions[property.property]
-                    )
+                    Button {
+                        openProperty.wrappedValue = TaxonomyPropertyTarget(
+                            key: property.property,
+                            definition: store.definitions[property.property],
+                            event: event.name
+                        )
+                    } label: {
+                        TaxonomyPropertyRowView(
+                            sample: property,
+                            definition: store.definitions[property.property],
+                            isNavigable: true
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         } header: {
@@ -193,11 +230,31 @@ struct TaxonomyEventDetailView: View {
     }
 }
 
+// MARK: - Navigation payload
+
+/// What a property row pushes.
+///
+/// A pair rather than a definition, because the two lists this screen joins do
+/// not cover the same keys: `EventTaxonomyQuery` samples properties off the
+/// events themselves and reports keys with no registered definition, so a
+/// destination keyed on `PropertyDefinitionSummary` could not open them. The
+/// event travels too, so the detail can narrow its distribution to the event the
+/// reader was already looking at rather than silently widening to the project.
+struct TaxonomyPropertyTarget: Hashable {
+    let key: String
+    let definition: PropertyDefinitionSummary?
+    let event: String?
+}
+
 // MARK: - Rows
 
 struct TaxonomyPropertyRowView: View {
     let sample: TaxonomyPropertySample
     let definition: PropertyDefinitionSummary?
+    /// Draws the chevron. Off by default so the row can still be used in a
+    /// context that does not push — a chevron on a row that does nothing is the
+    /// one piece of furniture a reader is entitled to trust.
+    var isNavigable = false
 
     var body: some View {
         DataRow(
@@ -219,10 +276,15 @@ struct TaxonomyPropertyRowView: View {
 
     /// Verified and hidden are mutually exclusive in PostHog, so this reads as
     /// one state rather than two flags.
+    ///
+    /// The pill wins over the chevron when there is one: a curation state is
+    /// information and a chevron is furniture, and `RowAccessory` holds one
+    /// trailing slot. Losing the chevron on a curated row is the cheaper loss —
+    /// the row is still a `Button` and still opens.
     private var curationAccessory: RowAccessory {
         if definition?.isHidden == true { return .pill("Hidden", .secondary) }
         if definition?.isVerified == true { return .pill("Verified", Theme.Status.good) }
-        return .none
+        return isNavigable ? .chevron : .none
     }
 
     private var detailLine: String {

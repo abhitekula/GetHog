@@ -58,7 +58,16 @@ public struct Notebook: Sendable, Decodable, Identifiable, Hashable {
     public let title: String
     public let textContent: String?
     /// Whether the payload carried a ProseMirror `content` tree.
+    ///
+    /// Answers "was there a body key", which is not the same question as "did it
+    /// parse" — `document` answers that one. An empty `doc` still counts, because
+    /// `isRichContentOnly` uses this to tell a notebook of charts from a notebook
+    /// with nothing in it.
     public let hasRichContent: Bool
+    /// The parsed body, or `nil` when the payload carried none.
+    ///
+    /// Parsing never throws: see `NotebookDocument`.
+    public let document: NotebookDocument?
     public let createdAt: Date?
     public let lastModifiedAt: Date?
     public let authorName: String?
@@ -75,16 +84,55 @@ public struct Notebook: Sendable, Decodable, Identifiable, Hashable {
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        shortID = try c.decodeIfPresent(String.self, forKey: .shortID) ?? id
-        title = (try c.decodeIfPresent(String.self, forKey: .title))
+
+        // `id` and `short_id` each stand in for the other.
+        //
+        // Not tolerance for its own sake. `id` used to be a required decode, and
+        // the one payload that reaches this type without one is a *response that
+        // is not a notebook* — demo mode's unrouted `/notebooks/:shortID/` falls
+        // through to an empty page, whose `{"count": 0, "results": []}` has no
+        // `id`. That threw `DecodingError.keyNotFound`, which `PostHogClient`
+        // wraps as `PostHogError.decoding(String(describing:))`, and the detail
+        // screen printed the Swift dump at the reader. Every *list* endpoint
+        // escapes this because `Page<T>` never has to decode an element.
+        //
+        // Requiring only that one of the two identifiers is present keeps the
+        // genuine "this is not a notebook" case an error — it has neither — while
+        // no longer failing a real notebook that happens to omit one. The reader
+        // is protected from the dump at the call site as well: the detail screen
+        // consults `PostHogError.hasReadableDescription` and writes its own
+        // sentence rather than showing `technicalDetail`.
+        let rawID = try? c.decodeIfPresent(String.self, forKey: .id)
+        let rawShortID = try? c.decodeIfPresent(String.self, forKey: .shortID)
+        guard let resolved = rawID ?? rawShortID else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.id,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "A notebook needs an id or a short_id; this payload has neither."
+                )
+            )
+        }
+        id = rawID ?? resolved
+        shortID = rawShortID ?? resolved
+
+        title = (try? c.decodeIfPresent(String.self, forKey: .title))
+            .flatMap { $0 }
             .flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled notebook"
         // Whitespace-only text is what a notebook of query and image blocks
         // serialises to; treating it as absent keeps `isRichContentOnly` honest.
-        textContent = (try c.decodeIfPresent(String.self, forKey: .textContent))
+        textContent = (try? c.decodeIfPresent(String.self, forKey: .textContent))
+            .flatMap { $0 }
             .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-        hasRichContent = ((try? c.decodeIfPresent(JSONValue.self, forKey: .content)) ?? nil)
-            .map { !$0.isNull } ?? false
+
+        // The body is decoded dynamically and parsed without throwing. A tree in
+        // a shape this build did not expect costs the reader the *body*, never
+        // the title, the author and the dates — which are worth a screen on their
+        // own, and which a required decode here would take down with it.
+        let rawContent = ((try? c.decodeIfPresent(JSONValue.self, forKey: .content)) ?? nil)
+            .flatMap { $0.isNull ? nil : $0 }
+        hasRichContent = rawContent != nil
+        document = NotebookDocument(rawContent)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt).flatMap(PostHogDate.parse)
         lastModifiedAt = try c.decodeIfPresent(String.self, forKey: .lastModifiedAt)
             .flatMap(PostHogDate.parse)

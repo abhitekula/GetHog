@@ -1,6 +1,33 @@
 import GetHogKit
 import SwiftUI
 
+/// Which half of the taxonomy is on screen.
+///
+/// The two are separate lists rather than one merged one because they are
+/// separate objects with separate curation state and separate detail: an event
+/// definition has a 30-day volume and a property list, a property definition has
+/// a type, a value distribution, and the set of events that carry it.
+enum TaxonomyScope: String, CaseIterable, Identifiable {
+    case events
+    case properties
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .events: "Events"
+        case .properties: "Properties"
+        }
+    }
+
+    var searchPrompt: String {
+        switch self {
+        case .events: "Search events"
+        case .properties: "Search properties"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class TaxonomyStore {
@@ -11,6 +38,22 @@ final class TaxonomyStore {
     var isLoading = false
     var error: String?
     var loadedAt: Date?
+
+    /// Event *property* definitions, loaded only when that half of the screen is
+    /// asked for.
+    ///
+    /// Not folded into `load`: this project has 386 property definitions against
+    /// 75 events, and paying for them on every visit to a screen most people open
+    /// to look at events spends an organisation-wide budget on a list nobody
+    /// asked to see. The rate limit here is shared with the user's production
+    /// pipeline, so "fetch it in case" is not free.
+    var properties: [PropertyDefinitionSummary] = []
+    /// The project's true property total, which is not `properties.count` —
+    /// the request is limited and this is the figure the page envelope reported.
+    var propertyTotal: Int?
+    var propertiesLoading = false
+    var propertiesError: LoadFailure?
+    var propertiesLoadedAt: Date?
 
     var isEmpty: Bool { events.isEmpty }
 
@@ -51,6 +94,43 @@ final class TaxonomyStore {
 
     var activeCount: Int { events.filter { $0.status == .active }.count }
 
+    /// Event property definitions, in the order PostHog returns them.
+    ///
+    /// `type` is left at its default. Measured, and confirmed against the
+    /// instance's own OpenAPI document, that default is `event` — the parameter
+    /// has `"default": "event"` there and the count with it and without it is the
+    /// same 386. Person, group and session properties are a different table and
+    /// a different question; `PropertyScope` exists for when this screen grows
+    /// them, and pretending one list covers all four would mislabel every row.
+    ///
+    /// `exclude_hidden` is likewise left off, and that is the load-bearing
+    /// choice: it is declared `"default": false`, so hidden definitions **are**
+    /// in this list and each row states its own state. Passing `true` would make
+    /// them vanish silently, which reads as "this project has no such property".
+    func loadProperties(client: PostHogClient, projectID: Int, limit: Int = 500) async {
+        propertiesLoading = true
+        defer { propertiesLoading = false }
+        do {
+            let page: Page<PropertyDefinitionSummary> = try await client.send(
+                PostHogAPI.propertyDefinitions(projectID: projectID, limit: limit)
+            )
+            properties = page.results
+            propertyTotal = page.count
+            propertiesError = nil
+            propertiesLoadedAt = Date()
+        } catch {
+            propertiesError = LoadFailure(error, loading: "property definitions")
+        }
+    }
+
+    /// How many the project has that this request did not carry. Zero when the
+    /// page said nothing about a total, because "unknown" must not read as "none
+    /// missing" — the header omits the phrase entirely in that case.
+    var undisplayedPropertyCount: Int? {
+        guard let propertyTotal else { return nil }
+        return max(0, propertyTotal - properties.count)
+    }
+
     private static func message(for error: any Error) -> String {
         (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
     }
@@ -66,8 +146,19 @@ final class TaxonomyStore {
 struct TaxonomyRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = TaxonomyStore()
     @State private var search = ""
+
+    /// `@SceneStorage`, not `@State`.
+    ///
+    /// This screen is one of `AppTab.secondary`, so crossing the size-class
+    /// boundary swaps its host and discards every `@State` under it — the same
+    /// mechanism `OpenDetails` exists for. A reader who had switched to
+    /// Properties and rotated an iPad would have been put back on Events with no
+    /// action of their own. Scene storage belongs to the window rather than to
+    /// the view, so it survives the rebuild without needing a slot in the box.
+    @SceneStorage("taxonomy.scope") private var scope: TaxonomyScope = .events
 
     /// The open event, held in `OpenDetails` rather than pushed as a value onto
     /// the container's path.
@@ -81,21 +172,83 @@ struct TaxonomyRoot: View {
     private var selection: Binding<TaxonomyEvent?> {
         Binding(
             get: { openDetails[.taxonomy] as? TaxonomyEvent },
-            set: { openDetails[.taxonomy] = $0.map(AnyHashable.init) }
+            set: {
+                openDetails[.taxonomy] = $0.map(AnyHashable.init)
+                // The two lists share one stack, so opening on one side has to
+                // close the other: leaving both slots full would register two
+                // `navigationDestination(item:)`s with values at once, and which
+                // of them wins is not something to leave to SwiftUI.
+                if $0 != nil { openDetails[.taxonomy, level: 1] = nil }
+            }
+        )
+    }
+
+    /// The open property — level 1, beside the event at level 0 rather than
+    /// beneath it. Both are pushed from the same root list, one per scope.
+    private var propertySelection: Binding<PropertyDefinitionSummary?> {
+        Binding(
+            get: { openDetails[.taxonomy, level: 1] as? PropertyDefinitionSummary },
+            set: {
+                openDetails[.taxonomy, level: 1] = $0.map(AnyHashable.init)
+                if $0 != nil { openDetails[.taxonomy] = nil }
+            }
         )
     }
 
     var body: some View {
-        content
-            .navigationTitle("Taxonomy")
-            .toolbar { ProjectSwitcher() }
-            .projectSubtitle()
-            .searchable(text: $search, prompt: "Search events")
-            .refreshable { await load() }
-            .task(id: model.projectID) { await load() }
-            .navigationDestination(item: selection) { event in
-                TaxonomyEventDetailView(event: event)
+        VStack(spacing: 0) {
+            GlassFilterBar {
+                adaptivelyStyled(
+                    Picker("View", selection: $scope) {
+                        ForEach(TaxonomyScope.allCases) { choice in
+                            Text(choice.title).tag(choice)
+                        }
+                    }
+                )
             }
+            .padding(.vertical, Theme.Space.s)
+
+            scopedContent
+        }
+        // The lists below paint their own ground; this covers the strip the
+        // filter bar sits on, which would otherwise stay system grey and leave
+        // the warm glass floating on the wrong surface.
+        .background(Theme.pageBackground)
+        .navigationTitle("Taxonomy")
+        .toolbar { ProjectSwitcher() }
+        .projectSubtitle()
+        .searchable(text: $search, prompt: scope.searchPrompt)
+        .refreshable { await refresh() }
+        .task(id: model.projectID) { await load() }
+        // Fires on the first switch to Properties and on a project change while
+        // that half is showing. Switching back and forth does not re-request.
+        .task(id: "\(model.projectID ?? 0)|\(scope.rawValue)") {
+            guard scope == .properties else { return }
+            await loadPropertiesIfNeeded()
+        }
+        .navigationDestination(item: selection) { event in
+            TaxonomyEventDetailView(event: event)
+        }
+        .navigationDestination(item: propertySelection) { definition in
+            TaxonomyPropertyDetailView(definition: definition)
+        }
+    }
+
+    @ViewBuilder
+    private var scopedContent: some View {
+        switch scope {
+        case .events: content
+        case .properties: propertiesContent
+        }
+    }
+
+    @ViewBuilder
+    private func adaptivelyStyled(_ picker: some View) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            picker.pickerStyle(.menu)
+        } else {
+            picker.pickerStyle(.segmented)
+        }
     }
 
     @ViewBuilder
@@ -249,9 +402,127 @@ struct TaxonomyRoot: View {
         }
     }
 
+    // MARK: - Properties
+
+    @ViewBuilder
+    private var propertiesContent: some View {
+        if !model.isAvailable(.events) {
+            // Approximate for the same reason the events half is: this list
+            // wants `property_definition:read`, which no capability models, and
+            // `.events` is the nearest probe the app actually runs.
+            LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
+                Task { await model.refreshCapabilities() }
+            }
+        } else if let error = store.propertiesError, store.properties.isEmpty {
+            LoadFailureState(title: "Couldn't load properties", failure: error) {
+                Task { await loadProperties() }
+            }
+        } else if store.properties.isEmpty && !store.propertiesLoading {
+            // Says what the call returned. Not "this project has no properties":
+            // this list is the *definitions* endpoint for event properties, and
+            // an empty answer from it is not evidence about the events table.
+            EmptyStateView(
+                title: "No property definitions",
+                systemImage: "tag",
+                message: "PostHog registered no event properties for this project. Person, group and session properties are listed separately in PostHog and are not in this list."
+            )
+        } else {
+            propertiesList
+        }
+    }
+
+    private var propertiesList: some View {
+        List(selection: propertySelection) {
+            Section {
+                if filteredProperties.isEmpty {
+                    Text("No properties matched “\(search)”.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                } else {
+                    ForEach(filteredProperties) { definition in
+                        NavigationLink(value: definition) {
+                            TaxonomyPropertyDefinitionRowView(definition: definition)
+                        }
+                        .listRowBackground(
+                            Theme.cardBackground
+                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                .padding(.vertical, 1)
+                        )
+                        .listRowSeparator(.hidden)
+                    }
+                }
+            } header: {
+                SectionLabel(text: propertiesHeader, systemImage: "tag")
+            } footer: {
+                Text(propertiesFooter)
+            }
+
+            if let error = store.propertiesError, !store.properties.isEmpty {
+                Label("Part of this list may be stale. \(error.summary)", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+
+            FreshnessLabel(date: store.propertiesLoadedAt)
+                .listRowBackground(Color.clear)
+        }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
+        .skeleton(store.propertiesLoading && store.properties.isEmpty)
+    }
+
+    /// Two figures only when they differ, so a complete list is not captioned
+    /// "386 of 386" as though something were missing.
+    private var propertiesHeader: String {
+        guard let total = store.propertyTotal, total > store.properties.count else {
+            return "\(store.properties.count) event propert\(store.properties.count == 1 ? "y" : "ies")"
+        }
+        return "\(store.properties.count) of \(total)"
+    }
+
+    private var propertiesFooter: String {
+        var text = "Event properties this project has registered, in PostHog's own order. Hidden properties are included and labelled — they are removed from pickers elsewhere in PostHog, not from the data."
+        if let missing = store.undisplayedPropertyCount, missing > 0 {
+            text += " \(missing.formatted()) more exist than this one request carried."
+        }
+        return text
+    }
+
+    private var filteredProperties: [PropertyDefinitionSummary] {
+        guard !search.isEmpty else { return store.properties }
+        return store.properties.filter {
+            $0.name.localizedCaseInsensitiveContains(search)
+                || ($0.description ?? "").localizedCaseInsensitiveContains(search)
+                || ($0.propertyType ?? "").localizedCaseInsensitiveContains(search)
+        }
+    }
+
+    // MARK: - Loading
+
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID)
+    }
+
+    /// Pull-to-refresh reloads only the half on screen. Refreshing both would
+    /// cost three requests to update the one list somebody is looking at.
+    private func refresh() async {
+        switch scope {
+        case .events: await load()
+        case .properties: await loadProperties()
+        }
+    }
+
+    private func loadProperties() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.loadProperties(client: client, projectID: projectID)
+    }
+
+    private func loadPropertiesIfNeeded() async {
+        guard store.properties.isEmpty, store.propertiesError == nil else { return }
+        await loadProperties()
     }
 }
 
@@ -382,6 +653,54 @@ struct TaxonomyEventRowView: View {
         } else {
             parts.append(volumeText)
         }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// A property definition in the root list.
+///
+/// Distinct from `TaxonomyPropertyRowView` in the event detail, which pairs a
+/// definition with the values that were sampled on one event. Here there is no
+/// event and therefore no sample — the row shows what the definition itself
+/// declares, and the values are one tap away rather than guessed at.
+struct TaxonomyPropertyDefinitionRowView: View {
+    let definition: PropertyDefinitionSummary
+
+    var body: some View {
+        DataRow(
+            glyph: "tag",
+            title: definition.name,
+            subtitle: definition.description,
+            footnote: typeText,
+            accessory: curationAccessory
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(spokenSummary)
+    }
+
+    /// Verified and hidden are mutually exclusive in PostHog, so this reads as
+    /// one state rather than two flags — and an ordinary property gets no pill,
+    /// because "not verified" on 380 of 386 rows is noise.
+    private var curationAccessory: RowAccessory {
+        if definition.isHidden { return .pill("Hidden", .secondary) }
+        if definition.isVerified { return .pill("Verified", Theme.Status.good) }
+        return .none
+    }
+
+    /// A property PostHog has not typed says so. Measured: 57 of this project's
+    /// 386 come back with `property_type: null`, and printing "Unknown" for them
+    /// would be a claim the API never made.
+    private var typeText: String {
+        guard let type = definition.propertyType else { return "Not typed by PostHog" }
+        return definition.isNumerical ? "\(type) · numerical" : type
+    }
+
+    private var spokenSummary: String {
+        var parts = [definition.name]
+        if definition.isVerified { parts.append("verified") }
+        if definition.isHidden { parts.append("hidden") }
+        if let description = definition.description { parts.append(description) }
+        parts.append(typeText)
         return parts.joined(separator: ", ")
     }
 }

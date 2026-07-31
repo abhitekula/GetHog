@@ -48,6 +48,24 @@ struct GetHogApp: App {
                 // this fires before `bootstrap()` has found a project to resolve
                 // the link against, so `RootView` takes it once it is ready.
                 .onOpenURL { LinkInbox.deliver($0) }
+                // The inbound half of Handoff, and the reason
+                // `NSUserActivityTypes` in the Info.plist is not a one-way
+                // claim. `HandoffModifier` publishes the console URL for the
+                // screen being looked at; a second device running GetHog
+                // continues it here and lands on that object's *own* screen,
+                // because the continued `webpageURL` is exactly the posthog.com
+                // URL `LinkInbox` and `PostHogLinkParser` already accept from a
+                // paste or a share. Anything else — a Mac with no GetHog —
+                // opens the same URL in a browser, which is what `webpageURL`
+                // means and needs no code here at all.
+                //
+                // Declared without it, the plist key would still make iOS offer
+                // this app as a continuation target and then leave the user on
+                // whatever screen the app happened to open on.
+                .onContinueUserActivity(HandoffActivity.browsing) { activity in
+                    guard let url = HandoffActivity.continuationURL(from: activity) else { return }
+                    LinkInbox.deliver(url)
+                }
                 .task {
                     #if DEBUG
                     // Staged into the same inbox a real link uses, so a

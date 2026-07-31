@@ -17,19 +17,65 @@ import os
 /// switch can change the answer between two runs, and a cached project id would
 /// silently report another project's numbers — the one failure mode an
 /// analytics client must never have.
+///
+/// **Which process that is, established rather than assumed.** An App Intent is
+/// performed by whichever bundle *declared* it, so "not the app's session" does
+/// not have to mean "not the app's process". Every type in this directory is
+/// declared by the app target and only the app target — `project.yml` used to
+/// compile the whole directory into `GetHogWidgets` as well, which put a
+/// second, identical copy of `GetMetricValueIntent`, `SearchEventsIntent`,
+/// `SetFeatureFlagIntent`, `OpenDashboardIntent`, `ProjectFocusFilter` and
+/// `ShowGetHogSearchResultsIntent` in the widget extension's
+/// `Metadata.appintents`, alongside a second `AppShortcutsProvider` whose Siri
+/// phrases were trained against `app.gethog.GetHog.Widgets`. Read out of
+/// the built `.appex`, not inferred. That is gone: the extension's metadata now
+/// lists only its own widget and Control Center intents, so everything here runs
+/// in the app — which is where the rate-limit governor, the keychain and
+/// somewhere to show a 403 all are.
 struct IntentDependencies: Sendable {
 
     /// Shared container for the app, the widget extension and Focus filters.
+    ///
+    /// The same identifier `GetHogKit.SharedSnapshotStore.appGroupIdentifier`
+    /// uses, which is how the widget extension reaches the container without
+    /// compiling anything from this directory.
     static let appGroupID = "group.app.gethog"
 
     /// Defaults key holding the selected project id. This exact string is the
     /// contract between `AppModel`, the Focus filter and every intent.
     static let selectedProjectKey = "selectedProjectID"
 
-    /// Set this once the app and its extensions share a `keychain-access-groups`
-    /// entitlement. Until then the default (per-bundle) group is correct: intents
-    /// declared in the app target run in the app's own container, so they see the
-    /// item the app wrote.
+    /// Which keychain access group the credential is read from. `nil` means "the
+    /// process default", and **the process default here is already the shared
+    /// group** — this is not a placeholder waiting on an entitlement.
+    ///
+    /// The comment this replaces said to set it "once the app and its extensions
+    /// share a `keychain-access-groups` entitlement", and described the default
+    /// as per-bundle. Both halves were wrong by the time they were read. The
+    /// entitlement has been in `GetHog.entitlements` and
+    /// `GetHogWidgets.entitlements` all along, identically
+    /// (`$(AppIdentifierPrefix)app.gethog.shared`), and the default access
+    /// group is not per-bundle: it is the **first entry of the
+    /// `keychain-access-groups` entitlement**, falling back to
+    /// `application-identifier` only when that entitlement is absent.
+    ///
+    /// Measured rather than reasoned about, because getting it wrong signs a user
+    /// out. In the app process, `SecItemAdd` with no `kSecAttrAccessGroup`
+    /// followed by a read of the stored attribute returns
+    /// `[REMOVED PRIVATE DATA].app.gethog.shared` — the shared group, not
+    /// `[REMOVED PRIVATE DATA].app.gethog.GetHog`. `KeychainAccessGroupTests` is that
+    /// measurement, kept as a test so a second entry added ahead of this one in
+    /// the entitlement — which would silently move every stored credential —
+    /// fails the build instead of the user.
+    ///
+    /// So there is nothing to migrate: naming the group explicitly would select
+    /// the same group the empty query already selects. It is also not expressible
+    /// here. `$(AppIdentifierPrefix)` is substituted by Xcode while processing
+    /// the entitlements file and resolves to a team prefix that differs per
+    /// signing identity; a literal in Swift would be correct on one machine and
+    /// lock the user out on every other. Deriving it at runtime means probing the
+    /// keychain with a throwaway item on every launch, to arrive at the value
+    /// `nil` already produces.
     static let keychainAccessGroup: String? = nil
 
     static let log = Logger(subsystem: "app.gethog", category: "intents")

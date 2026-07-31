@@ -59,6 +59,9 @@ struct ErrorIssueDetailView: View {
         .pageSurface()
         .navigationTitle(issue.name)
         .navigationBarTitleDisplayMode(.inline)
+        // Triage starts on a phone and finishes wherever the source is. The
+        // console page is the one place both halves of that meet.
+        .handoff(webURL: webURL, title: issue.name)
         .toolbar {
             if let webURL {
                 ToolbarItem(placement: .topBarTrailing) {

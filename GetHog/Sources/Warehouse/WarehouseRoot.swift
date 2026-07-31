@@ -74,21 +74,37 @@ final class WarehouseStore {
     }
 }
 
+/// What the warehouse screen can push.
+///
+/// One type rather than two selection bindings, because `List(selection:)` takes
+/// exactly one and a second binding would have to be driven by a `Button`
+/// instead of a `NavigationLink` — losing the row's selection highlight on iPad,
+/// which is the affordance that says which row the detail column belongs to.
+///
+/// It also keeps the `OpenDetails` slot single-valued. That box stores an
+/// `AnyHashable` per screen, so two types sharing the slot would have made
+/// "which detail is open" a question of casting order rather than of one value.
+enum WarehouseDetail: Hashable {
+    case table(WarehouseTable)
+    case view(SavedQuery)
+}
+
 struct WarehouseRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
     @State private var store = WarehouseStore()
+    @State private var views = SavedQueryStore()
     @State private var search = ""
 
-    /// The open table, held in `OpenDetails` rather than pushed as a value onto
-    /// the container's path.
+    /// The open table or view, held in `OpenDetails` rather than pushed as a
+    /// value onto the container's path.
     ///
     /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
     /// the size-class boundary and by the search stack below it, and a value on
     /// the host's stack goes when the host does.
-    private var selection: Binding<WarehouseTable?> {
+    private var selection: Binding<WarehouseDetail?> {
         Binding(
-            get: { openDetails[.warehouse] as? WarehouseTable },
+            get: { openDetails[.warehouse] as? WarehouseDetail },
             set: { openDetails[.warehouse] = $0.map(AnyHashable.init) }
         )
     }
@@ -98,11 +114,14 @@ struct WarehouseRoot: View {
             .navigationTitle("Warehouse")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search sources and tables")
+            .searchable(text: $search, prompt: "Search sources, tables and views")
             .refreshable { await load() }
             .task(id: model.projectID) { await load() }
-            .navigationDestination(item: selection) { table in
-                WarehouseTableDetailView(table: table)
+            .navigationDestination(item: selection) { detail in
+                switch detail {
+                case .table(let table): WarehouseTableDetailView(table: table)
+                case .view(let view): WarehouseViewDetailView(view: view)
+                }
             }
     }
 
@@ -117,19 +136,26 @@ struct WarehouseRoot: View {
             ) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let error = store.error, store.isEmpty {
+        } else if let error = store.error, store.isEmpty, views.views.isEmpty {
+            // Takes the screen only when there is *nothing* to show. The views
+            // list can succeed while sources and tables fail — they are three
+            // requests to two different endpoint families — and an error state
+            // over a list that loaded reads as a broken screen rather than as a
+            // partial one. The inline notice at the foot of `list` covers that
+            // case instead.
             EmptyStateView(
                 title: "Couldn't load the warehouse",
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                message: [error, views.error].compactMap { $0 }.joined(separator: " "),
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.isEmpty && !store.isLoading {
+        } else if store.isEmpty && views.views.isEmpty && views.error == nil
+            && !store.isLoading && !views.isLoading {
             EmptyStateView(
                 title: "Nothing in the warehouse",
                 systemImage: "cylinder.split.1x2",
-                message: "The warehouse holds tables imported from outside PostHog — a Stripe account, a Postgres replica, files in an S3 bucket. This project has no sources connected and no tables, which is where every project starts."
+                message: "The warehouse holds tables imported from outside PostHog — a Stripe account, a Postgres replica, files in an S3 bucket — and the views a team defines on top of them. This project has none of the three, which is where every project starts."
             )
         } else {
             list
@@ -143,6 +169,20 @@ struct WarehouseRoot: View {
             if !store.unhealthySources.isEmpty && search.isEmpty {
                 Section {
                     WarehouseAlertBanner(sources: store.unhealthySources)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                }
+            }
+
+            // A second banner rather than more rows inside the first. A failing
+            // source and a stale view are different problems with different
+            // fixes — nothing is arriving, versus old rows are being served as
+            // if they were new — and merging them would leave a reader unable to
+            // tell which they have. It sits below the source banner because a
+            // source that stopped is usually the *cause* of the view behind it.
+            if !views.stale.isEmpty && search.isEmpty {
+                Section {
+                    WarehouseModelingAlertBanner(views: views.stale)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
@@ -176,7 +216,7 @@ struct WarehouseRoot: View {
                         .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredTables) { table in
-                        NavigationLink(value: table) {
+                        NavigationLink(value: WarehouseDetail.table(table)) {
                             WarehouseTableRowView(table: table)
                         }
                         .warehouseRowCard()
@@ -186,6 +226,55 @@ struct WarehouseRoot: View {
                 SectionLabel(text: "Tables", systemImage: "tablecells")
             }
 
+            Section {
+                if let error = views.error, views.views.isEmpty {
+                    // The views list can fail on its own — a plan without data
+                    // modelling still has sources and tables — so its failure is
+                    // stated inside its own section rather than taking the
+                    // screen.
+                    Text("Couldn't load views. \(error)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                } else if filteredViews.isEmpty {
+                    Text(views.views.isEmpty ? "No saved views." : "No matching views.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                } else {
+                    ForEach(filteredViews) { view in
+                        NavigationLink(value: WarehouseDetail.view(view)) {
+                            WarehouseViewRowView(view: view)
+                        }
+                        .warehouseRowCard()
+                    }
+                }
+
+                if views.hasMorePages {
+                    // The list endpoint paginates by page number and ignores
+                    // `?limit=`, so this cannot be widened away. Saying "showing
+                    // the first page" is the difference between a partial answer
+                    // and a wrong one.
+                    Text("Showing the first page of views. PostHog reports more.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+            } header: {
+                SectionLabel(text: "Views", systemImage: "square.stack.3d.up")
+            } footer: {
+                // The second sentence is the honest caveat on the banner above.
+                // `suspended` — PostHog having given up retrying a view after
+                // repeated failures — is on the detail serializer and not on the
+                // list one, so a quiet banner is not proof that nothing is
+                // suspended. Saying so here costs a line and stops the absence
+                // of an alarm being read as an all-clear.
+                Text("Saved queries the team defined on top of these tables. A materialised view answers from a stored table, so a failed run leaves it serving old rows. A view PostHog has stopped retrying only shows that on its own screen — the list PostHog returns does not carry it.")
+            }
+
             if let error = store.error, !store.isEmpty {
                 Label("Part of this screen is from an earlier load. \(error)", systemImage: "exclamationmark.circle")
                     .font(.caption)
@@ -193,7 +282,11 @@ struct WarehouseRoot: View {
                     .listRowBackground(Color.clear)
             }
 
-            FreshnessLabel(date: store.loadedAt)
+            // The **older** of the two loads, not the newer. Three lists from
+            // two stores can succeed at different moments, and a label showing
+            // the most recent success would date the whole screen by its
+            // freshest part — overstating exactly when one half is stale.
+            FreshnessLabel(date: [store.loadedAt, views.loadedAt].compactMap { $0 }.min())
                 .listRowBackground(Color.clear)
         }
         .listRowSpacing(Theme.Space.xs)
@@ -217,9 +310,38 @@ struct WarehouseRoot: View {
         }
     }
 
+    /// Filtered locally, not through the endpoint's `search` parameter.
+    ///
+    /// The endpoint has one, but using it would spend a request per keystroke on
+    /// an organisation-wide budget to filter a list already in memory. The
+    /// server-side search only earns its cost once a project has more views than
+    /// one page holds, which is the case `hasMorePages` reports rather than
+    /// silently papers over.
+    ///
+    /// `query` is deliberately not searched: it is nil for every row here — the
+    /// list serializer drops it — so matching on it would find nothing and read
+    /// as a broken search rather than an absent field.
+    private var filteredViews: [SavedQuery] {
+        guard !search.isEmpty else { return views.views }
+        return views.views.filter {
+            $0.name.localizedCaseInsensitiveContains(search)
+                || ($0.description ?? "").localizedCaseInsensitiveContains(search)
+                || ($0.folderName ?? "").localizedCaseInsensitiveContains(search)
+        }
+    }
+
+    /// Three requests, all `.crud`, issued concurrently.
+    ///
+    /// The views list is a third request on a screen that already made two. It
+    /// is worth the budget because it is the only one of the three that can
+    /// report data being *wrong* rather than merely absent — but it is one
+    /// request per screen load, not per row, and the detail requests behind it
+    /// are only made for a view the reader opens.
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        async let warehouse: Void = store.load(client: client, projectID: projectID)
+        async let modeling: Void = views.load(client: client, projectID: projectID)
+        _ = await (warehouse, modeling)
     }
 }
 

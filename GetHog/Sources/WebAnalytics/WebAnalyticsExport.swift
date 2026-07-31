@@ -56,10 +56,32 @@ extension WebAnalyticsStore {
         }
         if !rows.isEmpty {
             let rows = self.rows
+            // The breakdown is the one table on this screen PostHog truncates,
+            // and the screen says so — `WebAnalyticsRoot.truncationNote` draws
+            // "Top 50 pages by visitors. PostHog has more." above these very
+            // rows. The export used to carry the rows and drop the sentence,
+            // which is the wrong way round: a CSV is the artifact that reaches
+            // somebody who never saw the screen, and fifty ranked rows with
+            // nothing under them read as the whole list. The caveat is captured
+            // here rather than re-derived in the closure because the store is
+            // `@MainActor` and the closure is `@Sendable`.
+            let caveat = truncationCaveat(dimension: dimension)
             all.append((
                 dimension.title,
-                CSVExport(title: "Web \(dimension.pluralTitle)", rowCount: rows.count) {
-                    InsightCSV.data(rows: WebAnalyticsCSV.breakdownRows(rows, dimension: dimension))
+                CSVExport(
+                    // Named in the title as well, because the title becomes the
+                    // file name and the share-sheet preview — the two parts of
+                    // an export that survive being forwarded without it.
+                    title: caveat == nil
+                        ? "Web \(dimension.pluralTitle)"
+                        : "Web \(dimension.pluralTitle) (top \(rows.count))",
+                    rowCount: rows.count
+                ) {
+                    InsightCSV.data(
+                        rows: WebAnalyticsCSV.breakdownRows(
+                            rows, dimension: dimension, caveat: caveat
+                        )
+                    )
                 }
             ))
         }
@@ -104,6 +126,27 @@ extension WebAnalyticsStore {
         return all
     }
 
+    /// The breakdown's "there is more" sentence, or `nil` when PostHog did not
+    /// say there was.
+    ///
+    /// Reads the same two stored values `truncationNote` renders from, so the
+    /// file and the screen can only ever agree — the alternative, re-deriving
+    /// truncation from `rows.count` against some remembered limit, is how the
+    /// two came to disagree in the first place.
+    ///
+    /// **Not suppressed by the search field**, and that is the one deliberate
+    /// difference from the on-screen note. The note is suppressed while a search
+    /// is active because the visible count is then the filter's doing; the
+    /// export is built from `rows`, the unfiltered set, so the caveat describes
+    /// exactly what is in the file.
+    private func truncationCaveat(dimension: WebStatsDimension) -> String? {
+        guard rowsAreTruncated else { return nil }
+        return rowLimit.map {
+            "Top \($0) \(dimension.pluralTitle) by visitors. PostHog returned more than this file holds."
+        }
+            ?? "Ranked by visitors. PostHog has more \(dimension.pluralTitle) than this file holds."
+    }
+
 }
 
 /// The report's six tables, flattened to text.
@@ -139,13 +182,23 @@ enum WebAnalyticsCSV {
     /// The first column is named for the dimension the reader chose, because the
     /// same table means something different under each one — a column headed
     /// "Value" over a list of countries is a file nobody can read back in a week.
+    ///
+    /// `caveat` goes in a **trailing** row, not a leading one, and the placement
+    /// is the whole design. `InsightCSV.data(rows:)` writes the first row as the
+    /// header, and every spreadsheet that opens a .csv reads it the same way —
+    /// a note above the header would become the column names and the real ones
+    /// would become data. Below the last row it is where a footnote belongs,
+    /// it lands in the first column beside empties so nothing is shifted, and a
+    /// reader who scrolls to the bottom of a ranked list — which is exactly the
+    /// reader about to conclude the list is complete — meets it there.
     static func breakdownRows(
-        _ rows: [WebStatsRow], dimension: WebStatsDimension
+        _ rows: [WebStatsRow], dimension: WebStatsDimension, caveat: String? = nil
     ) -> [[String]] {
         [[dimension.title, "Visitors", "Views"]]
             + rows.map {
                 [$0.breakdownValue, InsightCSV.number($0.visitors), InsightCSV.number($0.views)]
             }
+            + (caveat.map { [[$0, "", ""]] } ?? [])
     }
 
     /// Worst band first: the caller passes `allEntries`, which is already sorted

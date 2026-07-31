@@ -48,6 +48,9 @@ struct SavedInsightDetailView: View {
             .background(Theme.pageBackground)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            // The same console page the share menu offers, handed to whatever
+            // device can do more with it than a phone can.
+            .handoff(webURL: webURL, title: title)
             .navigationDestination(for: DashboardReference.self) { reference in
                 DashboardDetailView(dashboardID: reference.id)
             }

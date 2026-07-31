@@ -48,6 +48,9 @@ final class SessionTimelineStore {
     private(set) var error: String?
     private(set) var loadedAt: Date?
     private(set) var didHitLimit = false
+    /// Rows PostHog returned, which is not `events.count` — see `load`. Kept so
+    /// the truncation notice can name the figure that is actually on the wire.
+    private(set) var rowsReturned = 0
 
     /// `window` is the recording's own span, which the caller always has.
     ///
@@ -72,7 +75,27 @@ final class SessionTimelineStore {
                 )
             )
             events = response.rows.compactMap(EventRow.init(row:))
-            didHitLimit = events.count >= Self.limit
+            // **`response.rows`, not `events`.** This read `events.count >=
+            // limit`, and `events` is what survived `EventRow.init(row:)` — a
+            // failable initialiser that returns nil for any row without an
+            // `event` column. One undecodable row in a full page put the count
+            // at 499 against a ceiling of 500 and the notice below vanished
+            // silently, which is to say the notice disappeared precisely when
+            // the data was least trustworthy: the reader was shown a partial
+            // timeline, missing a row, with nothing saying either thing.
+            // Counting the rows PostHog returned answers the question actually
+            // being asked — did this query reach its ceiling — and is unaffected
+            // by what the client could make of them.
+            //
+            // `isTruncated` as well, and it is not redundant: measured and
+            // recorded in `PostHogAPI+Groups.swift`, `hasMore` and `limit` come
+            // back only when PostHog applied its *own* cap, so for a query that
+            // writes `LIMIT 500` the flag is silent at the ceiling and the count
+            // is the evidence. If PostHog ever caps below our limit, the flag is
+            // the only evidence and the count would miss it. Neither subsumes
+            // the other.
+            rowsReturned = response.rows.count
+            didHitLimit = response.isTruncated || rowsReturned >= Self.limit
             loadedAt = Date()
             error = nil
         } catch {
@@ -204,7 +227,14 @@ struct SessionTimelineView: View {
                 }
 
                 if store.didHitLimit {
-                    Text("Showing the first \(SessionTimelineStore.limit) events.")
+                    // Reports what came back, not what was asked for. The two
+                    // used to be the same number by construction, because the
+                    // only way this notice appeared was the count reaching the
+                    // ceiling; now that PostHog's own cap can raise it as well,
+                    // the request's limit is no longer necessarily the figure on
+                    // screen. Naming the wrong one would be a smaller version of
+                    // the defect this whole notice exists to prevent.
+                    Text("Showing the first \(store.rowsReturned) events of this session.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

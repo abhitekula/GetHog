@@ -29,6 +29,10 @@ struct FlagDetailView: View {
     private var isActive: Bool { controller.effectiveActive(flag) }
     private var isBusy: Bool { controller.isBusy(flag) }
 
+    /// This flag's page in the console, shared by the toolbar link and the
+    /// Handoff activity so the two can't name different pages.
+    private var webURL: URL? { model.webURL(path: "feature_flags/\(flag.id)") }
+
     var body: some View {
         List {
             identitySection
@@ -59,8 +63,12 @@ struct FlagDetailView: View {
         // screen in the app that writes to production, and the confirmation
         // dialog already names the project for the same reason.
         .navigationSubtitle(sizeClass == .compact ? "" : model.selectedProject?.name ?? "")
+        // Titled with the key rather than the display name, for the same reason
+        // the navigation bar is: the key is what the rollout conditions, the
+        // confirmation dialog and the console all call this flag.
+        .handoff(webURL: webURL, title: flag.key)
         .toolbar {
-            if let url = model.webURL(path: "feature_flags/\(flag.id)") {
+            if let url = webURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     Link(destination: url) {
                         Image(systemName: "arrow.up.forward.square")

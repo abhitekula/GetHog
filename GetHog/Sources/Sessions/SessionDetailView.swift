@@ -92,6 +92,10 @@ struct SessionDetailView: View {
         .pageSurface()
         .navigationTitle(recording.personDisplayName)
         .navigationBarTitleDisplayMode(.inline)
+        // The strongest case in the app for continuing elsewhere: this screen
+        // already offers "watch in PostHog" three times over, because a replay
+        // is the thing a phone is worst at and a large screen is best at.
+        .handoff(webURL: replayWebURL, title: recording.personDisplayName)
         .toolbar {
             if let replayWebURL {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -178,6 +178,9 @@ struct DashboardDetailView: View {
             .background(Theme.pageBackground)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            // Same URL the "Open in PostHog" item below opens, offered to the
+            // *other* device instead of this one.
+            .handoff(webURL: webURL, title: title)
             .toolbar { toolbarContent }
             .keyboardActions([
                 KeyboardAction(key: "r", title: "Recompute results") {
@@ -344,8 +347,8 @@ struct DashboardDetailView: View {
                         Label("Open in new window", systemImage: "macwindow.badge.plus")
                     }
                 }
-                if let url = model.webURL(path: "dashboard/\(dashboardID)") {
-                    Link(destination: url) {
+                if let webURL {
+                    Link(destination: webURL) {
                         Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                     }
                 }
@@ -360,6 +363,13 @@ struct DashboardDetailView: View {
         // Stored layouts only contain `sm`/`xs`, so there is no iPad layout to
         // honour — order is ours to decide.
         (store.dashboard?.tiles ?? []).sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    /// This dashboard's page in the console. One property rather than two call
+    /// sites, because the toolbar link and the Handoff activity must name the
+    /// same page or the second device lands somewhere the first never was.
+    private var webURL: URL? {
+        model.webURL(path: "dashboard/\(dashboardID)")
     }
 
     private func tileWebURL(_ tile: Tile) -> URL? {

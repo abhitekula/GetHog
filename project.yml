@@ -66,10 +66,42 @@ targets:
     platform: iOS
     sources:
       - path: GetHogWidgets
-      # Entities and intents are shared with the app target; FlagQuickToggle /
-      # BiometricGate are the only app-target symbols they depend on.
-      - path: GetHog/Sources/Intents
-      - path: GetHog/Sources/Flags/FlagToggleController.swift
+      # `GetHog/Sources/Intents` is deliberately **not** compiled here, and it
+      # used to be, under a comment claiming "entities and intents are shared
+      # with the app target". Nothing in `GetHogWidgets/` references a single
+      # symbol from that directory — the widgets' own configuration intents use
+      # `WidgetFlagEntity` / `WidgetMetricEntity`, which read the App Group
+      # snapshot. So it bought nothing, and it cost the following, all read out
+      # of the built bundles rather than reasoned about:
+      #
+      #   - `GetHogWidgets.appex/Metadata.appintents/extract.actionsdata`
+      #     declared `GetMetricValueIntent`, `SearchEventsIntent`,
+      #     `SetFeatureFlagIntent`, `OpenDashboardIntent`, `ProjectFocusFilter`
+      #     and `ShowGetHogSearchResultsIntent` — the same type names the app
+      #     declares — plus all four API-backed entity queries. An intent vended
+      #     by an extension is performed *in that extension's process*.
+      #   - `Metadata.appintents/root.ssu.yaml` in the appex carried
+      #     `bundleIdentifier: app.gethog.GetHog.Widgets` and the four App
+      #     Shortcut phrase sets, because `GetHogShortcuts` compiled into both
+      #     targets and both registered an `AppShortcutsProvider`.
+      #
+      # Which made the extension able to run exactly what this target's whole
+      # design forbids: `IntentDependencies.resolve()` builds a `PostHogClient`
+      # and spends the organisation-wide rate-limit budget, and
+      # `ToggleFlagFromWidgetIntent` right there in `FlagWidget.swift` documents
+      # at length why a keychain read, the governor and a biometric prompt do not
+      # belong in an extension — while `SetFeatureFlagIntent`, compiled in beside
+      # it, did all three.
+      #
+      # `GetHog/Sources/Flags/FlagToggleController.swift` is gone from this
+      # list for the same reason and by the same measurement. It was here for
+      # `FlagQuickToggle` / `BiometricGate`, and nothing in `GetHogWidgets/`
+      # names either: the widgets read the quick-toggle opt-in out of the App
+      # Group snapshot (`SharedSnapshot.quickToggleFlags`, via
+      # `WidgetCache.quickToggleFlags()`), which is the only form of it that
+      # crosses the process boundary anyway. Compiling the file here also pulled
+      # `IntentDonations` — and therefore the whole intents directory — in behind
+      # it, which is how the two entries kept each other alive.
       # The one design token file. Two places had hand-copied `Theme.accent`'s
       # literals under a comment saying importing it here was impossible; it
       # never was — `Theme.swift` imports only SwiftUI and UIKit and depends on

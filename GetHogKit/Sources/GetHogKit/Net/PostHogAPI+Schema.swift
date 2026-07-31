@@ -20,10 +20,17 @@ extension PostHogAPI {
     /// Measured 2026-07-30 against project [REMOVED PRIVATE DATA]: `SELECT table_name FROM
     /// system.information_schema.tables` with no `LIMIT` returns **100 of 141
     /// rows**, HTTP 200, with `"hasMore": true` and `"limit": 100` in the
-    /// envelope and no error anywhere. `QueryResponse` decodes neither field, so
-    /// the browser would have shown 100 tables and claimed that was all of them
-    /// — a wrong answer, not a missing one. With `LIMIT 1000` the same query
-    /// returns all 141 and `hasMore` is absent.
+    /// envelope and no error anywhere — so without the `LIMIT` the browser shows
+    /// 100 tables and claims that is all of them, a wrong answer rather than a
+    /// missing one. With `LIMIT 1000` the same query returns all 141 and
+    /// `hasMore` is absent.
+    ///
+    /// This used to add that `QueryResponse` "decodes neither field", which
+    /// stopped being true in the commit that wrote it: `hasMore` and
+    /// `appliedLimit` are decoded and `isTruncated` exposes them. That does not
+    /// make the `LIMIT` optional, and `PostHogAPI+Groups.swift` records why —
+    /// the two fields report only a cap **PostHog** applied, never one the query
+    /// asked for. Detecting the default is not the same as avoiding it.
     ///
     /// 1000 against 141 observed: the ceiling exists to bound the response, not
     /// to be reached. A project with more than 1000 tables would be truncated,

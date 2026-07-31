@@ -77,11 +77,44 @@ final class SQLConsoleStore {
             + Double(elapsed.components.attoseconds) / 1e18
     }
 
+    /// What PostHog said about this result being a prefix of the real one.
+    ///
+    /// `nil` when there is no result, or when PostHog said nothing — which is
+    /// **not** the same as "nothing was cut". Measured and recorded in
+    /// `PostHogAPI+Groups.swift`: `hasMore` and `limit` appear in a HogQL
+    /// response only when PostHog applied *its own* cap. A query with no `LIMIT`
+    /// came back `hasMore: false, limit: 100` over 63 rows and `hasMore: true,
+    /// limit: 100` over 423; the identical query written `LIMIT 200` came back
+    /// with **neither field**, holding 200 rows of 423.
+    ///
+    /// So this console can tell the reader one thing truthfully and not the
+    /// other: when *PostHog* capped the query, say so and say at what. When the
+    /// reader's own `LIMIT` capped it, the envelope is silent and so is this —
+    /// claiming completeness there would be inventing a fact, and claiming
+    /// truncation would be crying wolf on every `LIMIT 20` that happened to
+    /// match twenty rows.
+    var appliedCap: Int? {
+        guard let response, response.isTruncated else { return nil }
+        return response.appliedLimit
+    }
+
+    var isTruncated: Bool { response?.isTruncated ?? false }
+
     /// The result as a CSV somebody can take away.
     ///
     /// This screen holds the only raw `columns` + `rows` pair left in the app —
     /// every other surface decodes into structs and drops the wire shape — which
     /// is why it is also the export that needs no translation at all.
+    ///
+    /// **The title carries the cap when there is one**, and the title is not
+    /// decoration: it is the share-sheet preview, the accessibility label of the
+    /// export control, and — through `CSVExport.fileName` — the name of the file
+    /// itself. A CSV is the artifact that reaches somebody who never saw this
+    /// screen, so "Query result.csv" holding the first hundred rows of a hundred
+    /// thousand is the one place the truncation had to survive. It does not go
+    /// into the bytes: `InsightCSV.data(columns:rows:)` writes the wire's own
+    /// columns and nothing else, and a prose row spliced into a machine-read
+    /// table is read as data by whatever opens it.
     ///
     /// **Nothing is computed here.** This is read from a `View` body, which runs
     /// on every toolbar re-render, so even the `rows.map(\.values)` projection is
@@ -92,7 +125,10 @@ final class SQLConsoleStore {
     /// that large is exactly the case this screen has to survive.
     var export: CSVExport? {
         guard let response, !response.rows.isEmpty else { return nil }
-        return CSVExport(title: "Query result", rowCount: response.rows.count) {
+        let title = isTruncated
+            ? "Query result (first \(response.rows.count), PostHog capped)"
+            : "Query result"
+        return CSVExport(title: title, rowCount: response.rows.count) {
             InsightCSV.data(columns: response.columns, rows: response.rows.map(\.values))
         }
     }
@@ -325,12 +361,68 @@ struct SQLConsoleRoot: View {
         .padding(16)
     }
 
+    /// Row count, elapsed time, and — when PostHog capped the result — that it
+    /// did.
+    ///
+    /// This line read "\(n) rows" unconditionally, on the one screen in the app
+    /// where the *reader* writes the query and is therefore most likely to omit
+    /// a `LIMIT`. `SELECT * FROM events` was answered "100 rows", which is not a
+    /// partial answer but a wrong one: the number is the cap, and nothing on the
+    /// screen said so. See `SQLConsoleStore.appliedCap` for why the console can
+    /// state this when PostHog capped the query and must stay silent when the
+    /// reader's own `LIMIT` did.
     private var statusText: String {
         if store.isRunning { return "Running…" }
         guard let response = store.response else { return "" }
         let rows = response.rows.count == 1 ? "1 row" : "\(response.rows.count) rows"
-        guard let seconds = store.elapsedSeconds else { return rows }
-        return "\(rows) · \(seconds.formatted(.number.precision(.fractionLength(2))))s"
+        // "capped" and not "of more": the envelope says a cap was applied and
+        // that rows were withheld, never how many there were.
+        let counted = store.isTruncated ? "\(rows) · capped" : rows
+        guard let seconds = store.elapsedSeconds else { return counted }
+        return "\(counted) · \(seconds.formatted(.number.precision(.fractionLength(2))))s"
+    }
+
+    /// The full sentence, under the results, whenever PostHog held rows back.
+    ///
+    /// The status line has one line and shares it with a timing, so it can only
+    /// carry the word; this carries what to do about it. **It says "add a
+    /// `LIMIT`" rather than offering to re-run**, and that was a decision rather
+    /// than an omission:
+    ///
+    /// - A re-run costs a second `.query` request against a budget that is
+    ///   organisation-wide and shared with whatever else the reader has
+    ///   integrated. This app declines to spend that on the reader's behalf
+    ///   everywhere else it comes up — the schema browser composes a statement
+    ///   and deliberately does not run it, for exactly this reason.
+    /// - Re-running means editing the reader's SQL, and there is no safe edit.
+    ///   Appending `LIMIT 1000` to arbitrary HogQL lands after a trailing `--`
+    ///   comment, after an existing `LIMIT`, or inside a subquery's tail; the
+    ///   console's `TextField` publishes no cursor position, which is the same
+    ///   constraint that made `SchemaQueryBuilder` compose whole statements
+    ///   rather than insert fragments.
+    /// - The remedy is one word of typing in a box the reader is already in, and
+    ///   it leaves the query theirs. Naming the cap is what they could not get
+    ///   anywhere else — PostHog returned HTTP 200 with no warning in it.
+    @ViewBuilder
+    private var truncationNote: some View {
+        if store.isTruncated {
+            Label {
+                Text(
+                    store.appliedCap.map {
+                        "PostHog capped this at \($0) rows and there are more. A query with no LIMIT of its own is capped silently — add one to read further."
+                    }
+                        ?? "PostHog held rows back from this result. A query with no LIMIT of its own is capped silently — add one to read further."
+                )
+            } icon: {
+                Image(systemName: "scissors")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.cardBackground)
+        }
     }
 
     @ViewBuilder
@@ -363,7 +455,16 @@ struct SQLConsoleRoot: View {
                     )
                 )
             } else {
-                QueryResultsTable(response: response)
+                // The note sits **below** the grid rather than above it: the
+                // grid owns a vertical scroll view, so a note above it would be
+                // the thing that scrolls away, and this is the one fact about
+                // the result that must still be true after the reader has
+                // scrolled to the last row — which is precisely where a capped
+                // result stops looking capped.
+                VStack(spacing: 0) {
+                    QueryResultsTable(response: response)
+                    truncationNote
+                }
             }
         } else {
             scrollingIfNeeded(

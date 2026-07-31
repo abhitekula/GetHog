@@ -129,3 +129,106 @@ public struct GroupRow: Sendable, Identifiable, Hashable {
         }
     }
 }
+
+// MARK: - Group activity
+//
+// Everything below is scoped by the `$group_N` column on `events`, which is
+// what group attribution actually is in the store — see
+// `PostHogAPI.groupColumn(index:)` for what was measured and what was ruled
+// out. All of it is therefore *observed over a window* rather than read from a
+// membership record, and every type here carries the totals needed to say so.
+
+/// One event name inside one group, with the group's own totals attached.
+public struct GroupEventBreakdownRow: Sendable, Identifiable, Hashable {
+    public let event: String
+    public let occurrences: Int
+    /// Distinct persons who sent this event inside the group.
+    public let people: Int
+    public let lastSeen: Date?
+    /// Every event the group sent in the window, across all names.
+    public let totalOccurrences: Int
+    /// Every distinct event name in the window, not only the ones returned.
+    public let distinctEvents: Int
+
+    public var id: String { event }
+
+    public init?(row: QueryRow) {
+        guard let event = row.string("event"), let occurrences = row.int("occurrences")
+        else { return nil }
+        self.event = event
+        self.occurrences = occurrences
+        self.people = row.int("people") ?? 0
+        self.lastSeen = row.date("last_seen")
+        self.totalOccurrences = row.int("total_occurrences") ?? occurrences
+        self.distinctEvents = row.int("distinct_events") ?? 0
+    }
+
+    /// `nil` with no total to divide by, so a caller draws nothing rather than
+    /// a zero bar for an unknown share.
+    public var share: Double? {
+        guard totalOccurrences > 0 else { return nil }
+        return Double(occurrences) / Double(totalOccurrences)
+    }
+
+    /// Event names the response did not carry, because the query limited itself.
+    /// A HogQL query that writes its own `LIMIT` gets no `hasMore` back at all
+    /// — see `PostHogAPI.groupEventBreakdown` — so this is the only truncation
+    /// evidence there is.
+    public static func hiddenEventCount(_ rows: [GroupEventBreakdownRow]) -> Int {
+        guard let first = rows.first else { return 0 }
+        return max(0, first.distinctEvents - rows.count)
+    }
+}
+
+/// One person seen acting inside a group.
+///
+/// "Related" here means the person emitted an event carrying this group's key
+/// within the window, which is the only relationship the events table records.
+/// It is not a roster: a person who left the account last quarter is simply
+/// absent, and this type has no way to distinguish that from never having been
+/// there. The screen says which window it asked about for that reason.
+public struct GroupPersonRow: Sendable, Identifiable, Hashable {
+    public let personID: String
+    public let distinctID: String?
+    /// Read through person-on-events, so it is the value attached at ingestion
+    /// rather than the person's current one.
+    public let email: String?
+    public let name: String?
+    public let occurrences: Int
+    public let lastSeen: Date?
+    /// Every distinct person in the window, not only the ones returned.
+    public let distinctPeople: Int
+
+    public var id: String { personID }
+
+    public init?(row: QueryRow) {
+        guard let personID = row.string("person_id") else { return nil }
+        self.personID = personID
+        self.distinctID = row.string("distinct_id")
+        self.email = Self.nonEmpty(row.string("email"))
+        self.name = Self.nonEmpty(row.string("name"))
+        self.occurrences = row.int("occurrences") ?? 0
+        self.lastSeen = row.date("last_seen")
+        self.distinctPeople = row.int("distinct_people") ?? 0
+    }
+
+    /// Never invents a name. A person with neither name nor email nor distinct
+    /// id is shown by their person uuid, which is what the row actually knows.
+    public var displayName: String { name ?? email ?? distinctID ?? personID }
+
+    /// True when `displayName` is only an identifier, so a row can label it as
+    /// one instead of printing a uuid where a name is expected.
+    public var hasHumanName: Bool { name != nil || email != nil }
+
+    public static func hiddenPersonCount(_ rows: [GroupPersonRow]) -> Int {
+        guard let first = rows.first else { return 0 }
+        return max(0, first.distinctPeople - rows.count)
+    }
+
+    /// PostHog returns `''` rather than null for an unset person property read
+    /// through the join, and an empty string rendered as a name is a blank row.
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty, value != "null" else { return nil }
+        return value
+    }
+}

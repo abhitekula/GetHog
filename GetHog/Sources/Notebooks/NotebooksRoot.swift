@@ -181,7 +181,23 @@ struct NotebookRowView: View {
 final class NotebookDetailStore {
     var notebook: Notebook?
     var isLoading = false
-    var error: String?
+    /// A summary fit for a reader, with the verbatim fault kept separately.
+    ///
+    /// This used to be a bare `String` holding `PostHogError.localizedDescription`,
+    /// which for `.decoding` is a `String(describing: DecodingError)` — a Swift
+    /// dump, printed at the reader as the message. It was reachable: demo mode
+    /// does not route `/notebooks/:shortID/`, so the request fell through to an
+    /// empty page whose `{"count": 0, "results": []}` has no `id`, the decode
+    /// threw `keyNotFound`, and the screen showed it. Every *list* screen escapes
+    /// this because `Page<T>` never has to decode an element.
+    ///
+    /// `LoadFailure` is the pattern the rest of the app already uses for exactly
+    /// this: it asks `hasReadableDescription` and substitutes a written sentence
+    /// when the error cannot describe itself, keeping the dump behind a
+    /// disclosure for whoever can use it. The decoder was loosened as well —
+    /// `Notebook` now needs only one of `id`/`short_id` — so a real notebook
+    /// missing one no longer reaches this path at all.
+    var failure: LoadFailure?
 
     func load(client: PostHogClient, projectID: Int, shortID: String) async {
         isLoading = true
@@ -190,26 +206,40 @@ final class NotebookDetailStore {
             notebook = try await client.send(
                 PostHogAPI.notebook(projectID: projectID, shortID: shortID)
             )
-            error = nil
+            failure = nil
         } catch {
-            self.error = (error as? PostHogError)?.localizedDescription
-                ?? error.localizedDescription
+            failure = LoadFailure(error, loading: "notebook")
         }
     }
 }
 
-/// A notebook, rendered as the plain text PostHog stores alongside its blocks.
+/// A notebook, rendered from its ProseMirror `content` tree.
 ///
-/// The `content` tree is ProseMirror: headings, paragraphs, queries, embedded
-/// insights, images. A partial renderer for it would drop the blocks it doesn't
-/// know about *silently*, which on a notebook — a document whose point is the
-/// charts in it — reads as a shorter document rather than an incomplete one.
-/// Plain text plus a link out is the honest version.
+/// This screen used to show `text_content` and a link out, on the reasoning that
+/// a partial renderer would drop unknown blocks *silently* — which on a notebook,
+/// a document whose point is often the charts in it, reads as a shorter document
+/// rather than an incomplete one. That reasoning was right about the failure
+/// mode and wrong about the remedy: the fix for silent dropping is to stop
+/// dropping silently, not to stop rendering. `NotebookUnsupportedBlock` names
+/// every node this build cannot draw, in place, so the document's shape survives
+/// even where its content does not.
 struct NotebookDetailView: View {
     let summary: Notebook
 
     @Environment(AppModel.self) private var model
     @State private var store = NotebookDetailStore()
+    /// A recording opened from an embedded `ph-recording` block.
+    ///
+    /// Pushed from here rather than from the block so the destination is
+    /// declared once. It is a push *below* an already-open secondary screen, so
+    /// unlike the notebook itself — which `OpenDetails` keeps across the
+    /// compact-width boundary — an open recording is lost when the window
+    /// crosses it and SwiftUI swaps hosts. The notebook underneath survives, so
+    /// the reader lands back on the block they tapped, which is the recoverable
+    /// half of the two.
+    @State private var openRecording: SessionRecording?
+    /// Owned here rather than by each block — see `NotebookInsightCache`.
+    @State private var insightCache = NotebookInsightCache()
 
     private var notebook: Notebook { store.notebook ?? summary }
 
@@ -245,50 +275,102 @@ struct NotebookDetailView: View {
                     }
                 }
             } footer: {
-                Text("GetHog shows a notebook's text. Its charts, queries and embedded insights are drawn in the web console.")
+                Text(footerText)
             }
         }
         .pageSurface()
         .navigationTitle(notebook.title)
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.notebookRecordingOpener) { openRecording = $0 }
+        .navigationDestination(item: $openRecording) { SessionDetailView(recording: $0) }
         .task { await load() }
         .refreshable { await load() }
+    }
+
+    /// Named once, at the foot of the document, rather than as a badge on every
+    /// block: a reader who has just scrolled past four unsupported cards does
+    /// not need a fifth explanation, they need to know what the document as a
+    /// whole is missing.
+    private var footerText: String {
+        guard let document = store.notebook?.document else {
+            return "Notebooks are composed in the PostHog web console."
+        }
+        let missing = document.unsupportedTypeNames
+        guard !missing.isEmpty else {
+            return "Notebooks are composed in the PostHog web console."
+        }
+        let list = missing.map { $0.lowercased() }.formatted(.list(type: .and))
+        return "This notebook also contains \(list). Those blocks aren't drawn here — open it in PostHog to see them."
     }
 
     @ViewBuilder
     private func contents(for notebook: Notebook) -> some View {
         Section {
             if store.isLoading && store.notebook == nil {
-                Text(String(repeating: "Loading notebook text ", count: 6))
+                Text(String(repeating: "Loading notebook ", count: 6))
                     .font(.callout)
                     .skeleton(true)
-            } else if let error = store.error {
-                EmptyStateView(
+            } else if let failure = store.failure, store.notebook == nil {
+                // `LoadFailureState`, not `EmptyStateView` with the error string
+                // in its `message` slot: that slot is where a `DecodingError`
+                // dump used to be printed at the reader. The sentence is the
+                // message; the verbatim fault is one disclosure away.
+                LoadFailureState(
                     title: "Couldn't load this notebook",
-                    systemImage: "exclamationmark.triangle",
-                    message: error,
-                    actionTitle: "Try again",
-                    action: { Task { await load() } }
-                )
-            } else if let text = notebook.textContent {
-                Text(text)
-                    .font(.callout)
-                    .textSelection(.enabled)
-            } else if notebook.isRichContentOnly {
-                EmptyStateView(
-                    title: "Nothing to show as text",
-                    systemImage: "chart.bar.doc.horizontal",
-                    message: "This notebook is made entirely of charts, queries or images. Open it in PostHog to read it."
+                    failure: failure,
+                    retry: { Task { await load() } }
                 )
             } else {
-                EmptyStateView(
-                    title: "This notebook is empty",
-                    systemImage: "doc",
-                    message: "It has been created but nothing has been written in it yet."
-                )
+                documentBody(of: notebook)
             }
         } header: {
             SectionLabel(text: "Contents", systemImage: "text.alignleft")
+        }
+    }
+
+    @ViewBuilder
+    private func documentBody(of notebook: Notebook) -> some View {
+        switch notebook.readingStrategy {
+        case .richContent:
+            // Each block is its own row so a long notebook stays scrollable at
+            // AX5 and so `Text` selection works per block rather than fighting
+            // one enormous string. Index-keyed because two identical paragraphs
+            // are a normal thing for a document to contain.
+            let blocks = notebook.document?.blocks ?? []
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                NotebookBlockRow(block: block, insightCache: insightCache)
+                    .listRowSeparator(.hidden)
+            }
+
+        case .plainTextFallback:
+            // Says what it is doing rather than pretending this is the document.
+            // The likely cause is PostHog's newer markdown notebook format,
+            // whose body this build cannot walk — see `Notebook.ReadingStrategy`.
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                Label {
+                    Text("Shown as plain text")
+                        .font(.subheadline.weight(.medium))
+                } icon: {
+                    Image(systemName: "text.alignleft")
+                        .foregroundStyle(Theme.Ink.tertiary)
+                }
+                Text("This notebook's body is in a format GetHog can't lay out, so this is the text PostHog stores alongside it. Any charts, queries or images it contains are missing here.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let text = notebook.textContent {
+                    Text(text)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                }
+            }
+
+        case .empty:
+            EmptyStateView(
+                title: "This notebook is empty",
+                systemImage: "doc",
+                message: "It has been created but nothing has been written in it yet."
+            )
         }
     }
 
