@@ -125,11 +125,9 @@ public struct HealthIssue: Sendable, Decodable, Identifiable, Hashable {
         func string(_ key: PayloadKeys) -> String? {
             try? payload?.decodeIfPresent(String.self, forKey: key)
         }
-        /// First non-empty of several plausible fields. The kinds other than
-        /// `sdk_outdated` were not observable in the project this was built
-        /// against, so the exact field name is not certain for them — this
-        /// takes whichever is present rather than guessing one and showing a
-        /// blank row if it guessed wrong.
+        /// First non-empty of the documented text fields. Different issue kinds
+        /// use different keys, so accepting each supported key keeps the view
+        /// independent of that payload variation.
         func firstText() -> String {
             [string(.summary), string(.message), string(.reason),
              string(.description), string(.metric)]
@@ -204,12 +202,12 @@ public struct SignalReport: Sendable, Decodable, Identifiable, Hashable {
     public let title: String
     public let summary: String?
     public let status: SignalReportStatus
-    /// `nil` on roughly half the live rows, and that absence is meaningful —
-    /// it means nobody has triaged this yet, which is different from "low".
+    /// Absence means nobody has triaged this yet, which is different from a
+    /// low priority.
     public let priority: String?
     public let signalCount: Int
-    /// Often more than one: `[error_tracking, github]` is the commonest value
-    /// in the live data, so this is a set rather than a scalar.
+    /// A report can combine signals from multiple products, so this remains an
+    /// array rather than collapsing to a single source.
     public let sourceProducts: [String]
     public let alreadyAddressed: Bool?
     public let implementationPRURL: URL?
@@ -271,16 +269,15 @@ public struct AgentTaskRun: Sendable, Decodable, Hashable {
 
 /// An item in the Inbox.
 ///
-/// Every task in the project this was built against was filed by an agent —
-/// half by a scout, half from a signal report, none by hand. That is what makes
-/// this a triage queue rather than a to-do list.
+/// Tasks can originate from a scheduled scout or a signal report, making this
+/// a triage queue rather than a general-purpose to-do list.
 public struct AgentTask: Sendable, Decodable, Identifiable, Hashable {
     public let id: String
     public let title: String
     public let description: String?
     public let taskNumber: Int?
     public let originProduct: String?
-    /// Absent on half the live rows.
+    /// Scout tasks can run without a repository.
     public let repository: String?
     public let latestRun: AgentTaskRun?
     /// Set on tasks a signal report filed, which is what lets Inbox link back
@@ -317,12 +314,11 @@ public struct AgentTask: Sendable, Decodable, Identifiable, Hashable {
     /// A scout-filed task stores its entire prompt as the title, behind a
     /// bracketed internal identifier:
     ///
-    ///     [sandbox_prompt:signals_scout:signals-scout-feature-flags] You are a
-    ///     Signals scout agent for PostHog. Your job: explore this project…
+    ///     [sandbox_prompt:signals_scout:signals-scout-feature-flags] Review the
+    ///     fixture application's flag behavior.
     ///
     /// The identifier's last component is the only part that distinguishes one
-    /// scout task from another; everything after the bracket is the same
-    /// boilerplate on every row.
+    /// scout task from another; the prompt text is not a useful row title.
     public var scoutName: String? {
         guard title.hasPrefix("["), let close = title.firstIndex(of: "]") else { return nil }
         let inside = title[title.index(after: title.startIndex)..<close]
