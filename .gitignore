@@ -18,13 +18,24 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # macOS
 .DS_Store
 
 # Secrets — never commit a PostHog personal API key.
-# Keys live in the Keychain at runtime and in your shell env for scripts.
-.env
+.env*
 *.pat
 secrets.json
+
+# Local probes and generated screenshots
+.probes/
+probes/
+screenshots/
+build/Screenshots/
+
+# Keep recovery bundles outside the repository. These patterns protect local
+# private or history-rewrite artifacts if one is created here by mistake.
+*.private.bundle
+*.rewrite.bundle
+.rewrite/
+.rewrite-worktrees/
