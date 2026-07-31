@@ -45,6 +45,9 @@ struct SettingsRoot: View {
         }
         .listStyle(.insetGrouped)
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle("Settings")
         // No `ProjectSwitcher()` here: the Project section below already is
         // the switcher, and two controls for one piece of state on one

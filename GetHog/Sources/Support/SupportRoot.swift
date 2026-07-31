@@ -596,6 +596,9 @@ struct SupportTicketDetailView: View {
             }
         }
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle(ticket.reference)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
