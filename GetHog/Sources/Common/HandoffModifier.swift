@@ -118,9 +118,18 @@ extension View {
     ///
     /// Applied only to the five **detail** screens — one dashboard, one insight,
     /// one replay, one flag, one issue. Not to lists: "the dashboards list" is
-    /// not a thing a person continues on a Mac, and every screen advertising the
-    /// same activity type would mean the one that happens to publish last wins,
-    /// which is a race nobody can see the outcome of.
+    /// not a thing a person continues on a Mac, and it keeps the number of
+    /// screens advertising this activity type at once as small as it can be.
+    ///
+    /// It does not get it to one. A dashboard tile opens an insight, so both can
+    /// be in the same `NavigationStack` and both advertise `browsing`. Which one
+    /// the system ends up offering was **not observable from here** — see
+    /// `HandoffTests.swiftUIPublishingIsNotObservableHere`, where SwiftUI's
+    /// update closure never ran at all in a test host — so this is written down
+    /// rather than claimed either way. The plausible reading is last-to-appear
+    /// wins, which is the pushed screen and therefore the right one; the case to
+    /// actually check on two devices is popping *back*, where the covering
+    /// screen's activity has to be withdrawn for the covered one to return.
     func handoff(webURL: URL?, title: String) -> some View {
         modifier(HandoffModifier(webURL: webURL, title: title))
     }
