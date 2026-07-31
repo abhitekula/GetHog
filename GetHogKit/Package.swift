@@ -21,7 +21,7 @@ let package = Package(
             name: "GetHogKitTests",
             dependencies: ["GetHogKit"],
             resources: [
-                // Real API responses captured from project [REMOVED PRIVATE DATA] during Phase 0.
+                // Deterministic synthetic API shapes.
                 .copy("Fixtures")
             ],
             swiftSettings: [
