@@ -3,15 +3,120 @@ import Foundation
 public struct ErrorTrackingResponse: Sendable, Decodable {
     public let issues: [ErrorIssue]
 
-    enum CodingKeys: String, CodingKey { case results }
+    /// Rows PostHog put in `results`, counted before any of them were decoded.
+    ///
+    /// Not `issues.count`. `ErrorIssue` is decoded through a `try?` that covers
+    /// the *whole array*, so a single malformed issue yields zero issues rather
+    /// than one fewer — which would take a full page to a count of 0 and read as
+    /// "this project has no errors". Counting the raw array answers the question
+    /// actually being asked, did this query reach its ceiling, and is unaffected
+    /// by what the client could make of the rows.
+    public let resultCount: Int
+
+    /// Whether PostHog is holding issues back.
+    ///
+    /// `ErrorTrackingQuery` is a query *node*, not HogQL, so the reasoning on
+    /// `QueryResponse.isTruncated` about a caller-written `LIMIT` does not
+    /// transfer wholesale — the limit here is a field in the request body rather
+    /// than text in a statement, and PostHog reports it back. Measured, from the
+    /// recorded live response in `Fixtures/error_tracking.json` (project [REMOVED PRIVATE DATA],
+    /// `last_refresh` 2026-07-29; the app ships the same recording as a demo
+    /// fixture): the envelope carries `hasMore: true` and `limit: 5` beside
+    /// **six** results. Both fields were
+    /// being dropped on the floor here until now, so every figure folded out of
+    /// this page — `ErrorsOverview` sums occurrences across it and prints the
+    /// total — was a page's worth of arithmetic presented as the window's.
+    ///
+    /// Six results against a limit of five is also why `ErrorIssueCoverage`
+    /// compares with `>=` rather than `==`. Why the payload carries one row more
+    /// than it was asked for has **not** been established here; the recording is
+    /// the observation, and the comparison is written so it does not depend on
+    /// the explanation.
+    public let hasMore: Bool
+
+    /// The limit PostHog reports having applied, which is not necessarily the
+    /// one the request asked for.
+    public let appliedLimit: Int?
+
+    enum CodingKeys: String, CodingKey { case results, hasMore, limit }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         issues = (try? c.decodeIfPresent([ErrorIssue].self, forKey: .results)) ?? []
+        resultCount = ((try? c.decodeIfPresent([JSONValue].self, forKey: .results)) ?? [])?.count ?? 0
+        hasMore = ((try? c.decodeIfPresent(Bool.self, forKey: .hasMore)) ?? nil) ?? false
+        appliedLimit = (try? c.decodeIfPresent(Int.self, forKey: .limit)) ?? nil
     }
 
     public static func decode(from data: Data) throws -> ErrorTrackingResponse {
         try JSONDecoder().decode(ErrorTrackingResponse.self, from: data)
+    }
+
+    /// What one page of issues does and does not add up to.
+    ///
+    /// - Parameter requestedLimit: what the call site asked for, needed because
+    ///   the envelope reports `limit` only when PostHog decided it.
+    public func coverage(requestedLimit: Int) -> ErrorIssueCoverage {
+        ErrorIssueCoverage(
+            issuesReturned: resultCount,
+            cap: appliedLimit ?? requestedLimit,
+            envelopeHasMore: hasMore
+        )
+    }
+}
+
+/// What a page of error issues is a complete answer to, and what it is not.
+///
+/// Exists because `ErrorsOverview` folds a headline out of this page — an issue
+/// count, a sum of occurrences, a status split, a "new in period" count — and
+/// every one of those is a total over whatever `ErrorTrackingQuery` returned
+/// rather than over the window the screen names. A sum across the top 50 issues
+/// by users affected, printed as "Occurrences", is not a partial answer to "how
+/// many occurrences were there"; it is a different number.
+///
+/// There is **no denominator to be had** from this query. `ErrorTrackingQuery`
+/// is a fixed query node — nothing here can add a `sum(count()) OVER ()` to it
+/// the way `PostHogAPI.groupEventBreakdown` does, and the envelope carries no
+/// project-wide issue count either — the recorded response's top level is
+/// `cache_key`, `columns`, `hasMore`, `hogql`, `limit`, `offset`, `results`,
+/// `timezone` and assorted cache and modifier fields, with nothing anywhere
+/// stating how many issues the window holds. So the honest remedy is the one
+/// `HeatmapProfile` already takes for the same shape of problem: state exactly
+/// what the figure spans, and never name it as a total.
+public struct ErrorIssueCoverage: Sendable, Hashable {
+    public let issuesReturned: Int
+    /// The ceiling `issuesReturned` is read against.
+    public let cap: Int
+    public let envelopeHasMore: Bool
+
+    public init(issuesReturned: Int, cap: Int, envelopeHasMore: Bool) {
+        self.issuesReturned = issuesReturned
+        self.cap = cap
+        self.envelopeHasMore = envelopeHasMore
+    }
+
+    public var isTruncated: Bool { envelopeHasMore || issuesReturned >= cap }
+
+    /// Always says something, the way `HeatmapProfile.coverageNote` does: "these
+    /// are all of them" is as much a fact as "these are some of them", and a
+    /// figure that is a total in one window and a page-sum in the next needs the
+    /// difference stated in both.
+    ///
+    /// - Parameters:
+    ///   - shown: issues actually on screen, which is `issuesReturned` minus
+    ///     whatever failed to decode.
+    ///   - window: how the screen names its period, lower-cased for the middle
+    ///     of a sentence.
+    public func note(shown: Int, window: String) -> String {
+        let issues = shown == 1 ? "1 issue" : "\(shown.formatted()) issues"
+        guard isTruncated else {
+            return "Every figure here is over all \(issues) PostHog reported for the \(window)."
+        }
+        return """
+            Every figure here is over the \(issues) on this page — the ones with the most people \
+            affected. PostHog reported more for the \(window), and an issue past the cut \
+            contributes nothing to these counts or to the occurrence total.
+            """
     }
 }
 

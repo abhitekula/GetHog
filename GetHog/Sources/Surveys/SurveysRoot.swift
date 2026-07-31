@@ -235,7 +235,8 @@ struct SurveyDetailSheet: View {
                             SurveyQuestionRowView(
                                 index: index,
                                 question: question,
-                                results: questionResults(at: index)
+                                results: questionResults(at: index),
+                                coverage: answerCoverage
                             )
                         }
                     }
@@ -299,7 +300,18 @@ struct SurveyDetailSheet: View {
                         ),
                         questions: [],
                         submissions: [],
-                        isTruncated: false
+                        // An empty read of nothing: no rows, no ceiling reached,
+                        // so the placeholder draws the funnel's shape and no
+                        // coverage line. A skeleton that redacted a truncation
+                        // notice would flash a caveat about data that has not
+                        // arrived and then withdraw it.
+                        coverage: SurveyAnswerCoverage(
+                            rowsReturned: 0,
+                            rowCap: SurveyResultsQuery.responseLimit,
+                            envelopeHasMore: false,
+                            submissionsRead: 0,
+                            submissionsReported: 0
+                        )
                     )
                 )
             )
@@ -314,6 +326,13 @@ struct SurveyDetailSheet: View {
         return results.questions.first { $0.index == index }
     }
 
+    /// What every breakdown on this sheet was computed over, or `nil` when there
+    /// is no measured reading to qualify.
+    private var answerCoverage: SurveyAnswerCoverage? {
+        guard case .measured(let results)? = results.state else { return nil }
+        return results.coverage
+    }
+
     private func loadResults() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await results.load(client: client, projectID: projectID, survey: survey)
@@ -326,6 +345,8 @@ struct SurveyQuestionRowView: View {
     /// `nil` while results are loading, or when this survey has none — in which
     /// case the row falls back to the configuration it always showed.
     var results: SurveyQuestionResults?
+    /// Travels with `results` and is `nil` in exactly the same cases.
+    var coverage: SurveyAnswerCoverage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -337,7 +358,7 @@ struct SurveyQuestionRowView: View {
             }
 
             if let results {
-                SurveyQuestionResultsView(results: results)
+                SurveyQuestionResultsView(results: results, coverage: coverage)
                     .padding(.top, Theme.Space.xs)
             } else if let choices = question.choices, !choices.isEmpty {
                 // The declared options, when there are no answers to show them

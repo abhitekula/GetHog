@@ -79,7 +79,11 @@ struct LogDetailView: View {
                     // the message needs instead of the List settling on a height
                     // and clipping. Monospaced because alignment is meaning in
                     // structured output — a reflowed stack trace is a different
-                    // document.
+                    // document, and by the same argument it must not be given a
+                    // hyphen it does not contain: `zxx` is the ISO code for "no
+                    // linguistic content", so no hyphenation dictionary applies
+                    // to a symbol name or a path in this payload.
+                    .typesettingLanguage(Locale.Language(identifier: "zxx"))
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

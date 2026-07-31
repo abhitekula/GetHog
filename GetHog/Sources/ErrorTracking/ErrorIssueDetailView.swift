@@ -57,6 +57,9 @@ struct ErrorIssueDetailView: View {
             .padding(.vertical, Theme.Space.l)
         }
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle(issue.name)
         .navigationBarTitleDisplayMode(.inline)
         // Triage starts on a phone and finishes wherever the source is. The
@@ -137,21 +140,31 @@ struct ErrorIssueDetailView: View {
         }
     }
 
+    /// A `LabeledContent`, not the `HStack { label; Spacer(); value }` this used
+    /// to be — and the same conversion the two rows below make.
+    ///
+    /// The shape was identical to what a `LabeledContent` draws, so writing it
+    /// by hand bought nothing and cost the thing that matters here: the
+    /// hand-rolled row cannot be reached by `.measuredPairs()`, so on an iPad it
+    /// went on flinging "First seen" and its date ~560pt apart while the rows
+    /// around it stopped at a readable measure. Expressed as a
+    /// `LabeledContent`, this row is styled by the same environment as every
+    /// other pair on the screen.
     @ViewBuilder
     private func seenRow(_ title: String, _ date: Date?) -> some View {
         if let date {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 12)
+            LabeledContent {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(date, format: .dateTime.day().month().year().hour().minute())
                         .font(.subheadline.monospacedDigit())
                     Text(date, format: .relative(presentation: .named))
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                 }
+            } label: {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
@@ -278,14 +291,13 @@ struct ErrorIssueDetailView: View {
         let assignee = triage.effectiveAssignee(issue)
 
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            HStack(alignment: .firstTextBaseline) {
+            LabeledContent {
+                Text(assigneeDescription(assignee))
+                    .font(.subheadline)
+            } label: {
                 Text("Assignee")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Spacer(minLength: 12)
-                Text(assigneeDescription(assignee))
-                    .font(.subheadline)
-                    .multilineTextAlignment(.trailing)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Assignee, \(assigneeDescription(assignee))")
@@ -425,15 +437,14 @@ struct ErrorIssueDetailView: View {
     }
 
     private func detailRow(_ title: String, _ value: String, monospaced: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        LabeledContent {
+            Text(value)
+                .font(monospaced ? .subheadline.monospaced() : .subheadline)
+                .textSelection(.enabled)
+        } label: {
             Text(title)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(value)
-                .font(monospaced ? .subheadline.monospaced() : .subheadline)
-                .multilineTextAlignment(.trailing)
-                .textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(value)")

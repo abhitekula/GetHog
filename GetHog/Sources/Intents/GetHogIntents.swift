@@ -247,11 +247,34 @@ struct SearchEventsIntent: AppIntent {
         }
 
         let rows = response.rows.compactMap(EventRow.init(row:))
+        // The row count, not the decoded one, and against this query's own
+        // `LIMIT`. `EventRow.init(row:)` is failable, so a full page holding one
+        // unreadable row decodes one short of the ceiling and would have retired
+        // the qualifier below at the moment it was most needed — the measured
+        // trap `SessionTimelineStore` records. The flag is OR'd in for the case
+        // the count cannot see, PostHog capping under the limit that was asked
+        // for; on its own it is silent here, because a HogQL query that writes
+        // its own `LIMIT` gets neither `hasMore` nor `limit` back.
+        let filled = response.rows.count >= limit || response.isTruncated
+
         // Says "in the last week" because that is what was searched. A bare
         // "no recent events" would imply a search this never made.
-        let dialog: IntentDialog = rows.isEmpty
-            ? IntentDialog("No events in the last week match “\(needle)”.")
-            : IntentDialog("Found \(rows.count) event\(rows.count == 1 ? "" : "s") in the last week matching “\(needle)”.")
+        //
+        // And "the \(n) most recent" rather than "found \(n)" once the page is
+        // full, because those are different claims and Siri speaks this one
+        // aloud with no screen beside it to qualify it. `limit` is a parameter
+        // the user sets, default 10 — so "Found 10 events matching checkout" was
+        // being said about a term with ten matches and about one with ten
+        // thousand, in the same words, and the second is a wrong answer rather
+        // than a short one. The snippet under it shows six rows and a "+N more",
+        // which counts the same capped page and cannot fix the sentence.
+        let dialog: IntentDialog = if rows.isEmpty {
+            IntentDialog("No events in the last week match “\(needle)”.")
+        } else if filled {
+            IntentDialog("The \(rows.count) most recent events in the last week matching “\(needle)”. The search stops at \(limit), so there are likely more.")
+        } else {
+            IntentDialog("Found \(rows.count) event\(rows.count == 1 ? "" : "s") in the last week matching “\(needle)”.")
+        }
 
         return .result(
             dialog: dialog,

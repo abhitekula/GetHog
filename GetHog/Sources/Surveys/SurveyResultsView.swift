@@ -93,6 +93,7 @@ struct SurveyResultsSummaryView: View {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 stats(results.summary)
                 conversion(results.summary)
+                coverage(results.coverage)
             }
         }
     }
@@ -157,6 +158,32 @@ struct SurveyResultsSummaryView: View {
         }
     }
 
+    /// What the per-question breakdowns below actually cover.
+    ///
+    /// The one place on this sheet where the two figures a reader is most likely
+    /// to conflate sit together: the funnel directly above comes from a query
+    /// with **no** `LIMIT`, so its response and dismissal counts are the whole
+    /// survey's, while every mean, share and score below comes from at most 500
+    /// answer events. `SurveyAnswerCoverage` was computed from the moment this
+    /// screen shipped and rendered nowhere, which put a correct total and a
+    /// capped statistic side by side with nothing distinguishing them.
+    ///
+    /// A sentence rather than a badge, and no tint: this is not a failure, it is
+    /// the scope of a figure, and the same `Label`-plus-caption treatment
+    /// `WebAnalyticsRoot.truncationNote` and `SchemaBrowser` already use. The
+    /// glyph carries no state — the words do — so nothing here is conveyed by
+    /// colour, and `fixedSize` lets it wrap to as many lines as AX5 needs
+    /// instead of truncating a caveat down to half a caveat.
+    @ViewBuilder
+    private func coverage(_ coverage: SurveyAnswerCoverage) -> some View {
+        if let note = coverage.note {
+            Label(note, systemImage: "line.3.horizontal.decrease")
+                .font(.caption)
+                .foregroundStyle(Theme.Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private func freshness(_ summary: SurveyResultsSummary) -> String {
         guard let last = summary.lastSeen else { return "" }
         return "Last event \(last.formatted(.relative(presentation: .named)))"
@@ -167,6 +194,9 @@ struct SurveyResultsSummaryView: View {
 
 struct SurveyQuestionResultsView: View {
     let results: SurveyQuestionResults
+    /// What the answers behind this breakdown span, when that is less than the
+    /// survey. `nil` while results are loading, and on the placeholder.
+    var coverage: SurveyAnswerCoverage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
@@ -204,6 +234,20 @@ struct SurveyQuestionResultsView: View {
                  : "No answers yet.")
                 .font(.caption)
                 .foregroundStyle(Theme.Ink.secondary)
+        } else if let scope = coverage?.shortNote {
+            // The count qualified where it is read, not only in the summary at
+            // the top of the sheet. A reader scrolling to question four meets
+            // "Mean 2.75" long after any header has gone, and the mean is the
+            // figure this project has already had wrong once — the whole reason
+            // `SurveyRatingBreakdownView` prints the scale's provenance under
+            // every chart. The provenance of the *sample* belongs there for the
+            // same reason. The full sentence, with the survey's real size in it,
+            // stays in one place above; this is the fragment that says which
+            // number the answer count is.
+            Text("\(results.answered.formatted()) answer\(results.answered == 1 ? "" : "s"), \(scope)")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Theme.Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         } else {
             Text("\(results.answered.formatted()) answer\(results.answered == 1 ? "" : "s")")
                 .font(.caption.weight(.medium))

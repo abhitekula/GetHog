@@ -18,6 +18,9 @@ import SwiftUI
 /// same question of whether this is getting worse.
 struct ErrorsOverview: View {
     let issues: [ErrorIssue]
+    /// What `issues` is a page of. `nil` before the first load, when there are
+    /// no figures to qualify yet.
+    var coverage: ErrorIssueCoverage?
     let window: AnalyticsWindow
     let loadedAt: Date?
     @Binding var selection: ErrorIssue?
@@ -59,6 +62,45 @@ struct ErrorsOverview: View {
                 }
             }
             .padding(.horizontal, -Theme.Space.l)
+
+            coverageNote
+        }
+    }
+
+    /// What the tiles above — and the status split and both rankings below —
+    /// are totals *of*.
+    ///
+    /// The file header already said, correctly, that every figure here is folded
+    /// out of the page the list is holding — and then the screen printed them as
+    /// "Issues" and "Occurrences" with nothing on it naming the page. The query
+    /// asks for the 50 issues with the most people affected, and the recorded
+    /// live response carries `hasMore: true`; on a project past that cut,
+    /// "Occurrences" is not a partial answer to how many occurrences there were,
+    /// it is the sum over a ranked prefix. `ErrorIssueCoverage` explains why the
+    /// better remedy — a denominator inside the query, the way
+    /// `PostHogAPI.groupEventBreakdown` carries one — is not available for this
+    /// query node.
+    ///
+    /// Always present, both readings, for the reason `HeatmapProfile.coverageNote`
+    /// is: a line that appears only in the bad case makes its absence a claim,
+    /// and the reader has no way to tell "complete" from "nobody wired the
+    /// notice up on this branch".
+    ///
+    /// A sentence in the screen's own caption style, with no tint and no status
+    /// glyph. Ranked coverage is not a fault — the app asked for a page and got
+    /// one — and dressing it as a warning would put an alarm on every healthy
+    /// project with more than fifty issues.
+    @ViewBuilder
+    private var coverageNote: some View {
+        if let coverage, !issues.isEmpty {
+            Text(coverage.note(shown: issues.count, window: window.spokenTitle.lowercased()))
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.secondary)
+                // Wraps to whatever AX5 needs: the sentence names the scope of
+                // every number on the screen, and half of that scope is not a
+                // scope. Rendered and looked at at AX5 — it reflows to nine
+                // lines in a 393pt window and is not clipped.
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

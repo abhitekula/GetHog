@@ -336,24 +336,146 @@ public struct SurveyQuestionResults: Sendable, Hashable, Identifiable {
 
 // MARK: - Results
 
+/// How much of a survey the breakdowns were actually computed over.
+///
+/// Every figure on the results screen below the funnel is *derived* — a mean, a
+/// share, an NPS score — and a derived figure over a truncated set is wrong
+/// rather than merely partial. This project has already paid for that once at
+/// the top of this file: counting completions alone read a rating mean of 5.00
+/// where the four answer-bearing submissions give 2.75.
+///
+/// **Why the row count, and why the flag as well.** `answersSQL` writes its own
+/// `LIMIT 500`, and the `/query/` envelope says nothing about a limit the caller
+/// wrote — measured and recorded on `QueryResponse.isTruncated`: the same query
+/// at `LIMIT 200` came back with **neither** `hasMore` nor `limit` while holding
+/// 200 rows of 423. So at the ceiling the flag is silent and the row count is
+/// the only evidence; if PostHog ever caps *below* 500 the count cannot see it
+/// and the flag is the only evidence. Neither subsumes the other, which is the
+/// same conclusion `SessionTimelineStore` and `SchemaStore` reached.
+///
+/// **Why the denominator does not have to be guessed at.** `summarySQL` writes
+/// no `LIMIT` at all and is a single aggregate row, so its counters run over
+/// every outcome event the survey ever produced — the same trick
+/// `PostHogAPI.groupEventBreakdown` plays with `sum(count()) OVER ()`, except
+/// here the second query already carried it and nothing had to be added.
+/// `responses + partials` is therefore a real project-wide figure sitting beside
+/// a capped one, and stating both is what stops the capped one being read as the
+/// survey's.
+///
+/// That pairing is not exact and the note below is worded so it does not pretend
+/// to be: `responses` counts every submission that reached `survey sent`,
+/// whether or not it carried an answer, so it is an upper bound on the
+/// answer-bearing submissions rather than a count of them. The note therefore
+/// names it as what it is — responses and partial dismissals recorded — instead
+/// of subtracting the two into a "hidden" figure the data does not support.
+public struct SurveyAnswerCoverage: Sendable, Hashable {
+    /// Rows the answers query returned.
+    ///
+    /// **`QueryResponse.rows.count`, never the submissions that survived
+    /// decoding.** `SessionTimelineStore` documents the measured version of this
+    /// trap: one undecodable row in a full page puts the decoded count one under
+    /// the ceiling and retires the notice exactly when the data is least
+    /// trustworthy. Here it would be worse than a lost notice, because the rows
+    /// that fail to decode are also the answers missing from the mean.
+    public let rowsReturned: Int
+
+    /// The ceiling those rows met: PostHog's own cap when it applied one,
+    /// otherwise the `LIMIT` the query wrote.
+    public let rowCap: Int
+
+    /// The envelope's `hasMore`, kept separate from the row comparison because
+    /// the two cover disjoint cases — see the type's own note.
+    public let envelopeHasMore: Bool
+
+    /// Submissions carrying at least one answer, which is the set every
+    /// breakdown on the screen was built from.
+    public let submissionsRead: Int
+
+    /// `responses + partials` from the unbounded summary query.
+    public let submissionsReported: Int
+
+    public init(
+        rowsReturned: Int,
+        rowCap: Int,
+        envelopeHasMore: Bool,
+        submissionsRead: Int,
+        submissionsReported: Int
+    ) {
+        self.rowsReturned = rowsReturned
+        self.rowCap = rowCap
+        self.envelopeHasMore = envelopeHasMore
+        self.submissionsRead = submissionsRead
+        self.submissionsReported = submissionsReported
+    }
+
+    public var isTruncated: Bool { envelopeHasMore || rowsReturned >= rowCap }
+
+    /// What the breakdowns cover, or `nil` when they cover everything the
+    /// answers query could reach.
+    ///
+    /// `nil` rather than a reassuring sentence, deliberately. The funnel
+    /// directly above already states the survey's real size, so a permanent
+    /// "these are all of them" line under it would be the third statement of the
+    /// same fact on one sheet — and a notice a reader learns to skip is not a
+    /// notice. `HeatmapProfile.coverageNote` always says something because the
+    /// figure it sits under, a click total, has no honest whole to be read
+    /// against; this one does.
+    public var note: String? {
+        guard isTruncated else { return nil }
+        let read = submissionsRead == 1
+            ? "1 submission"
+            : "\(submissionsRead.formatted()) submissions"
+        let tail = """
+            The answers query stops at \(rowCap.formatted()) events and reached that ceiling, \
+            so the means, shares and any score below describe that recent slice rather than \
+            the whole survey.
+            """
+        guard submissionsReported > submissionsRead else {
+            return "These breakdowns cover the \(read) carrying an answer that the query read. \(tail)"
+        }
+        return """
+            These breakdowns cover the most recent \(read) carrying an answer, against \
+            \(submissionsReported.formatted()) responses and partial dismissals this survey has \
+            recorded. \(tail)
+            """
+    }
+
+    /// The same fact in a fragment, for a line that sits beside one figure
+    /// rather than above all of them.
+    /// Reads as the tail of "N answers, …", which is why it begins with "from"
+    /// and carries no leading capital — rendered, "12 answers in the 12 most
+    /// recent submissions read" parsed as one run-on figure, and the comma plus
+    /// "from" is what separates the count from its sample.
+    public var shortNote: String? {
+        guard isTruncated else { return nil }
+        return submissionsRead == 1
+            ? "from the 1 most recent submission read"
+            : "from the \(submissionsRead.formatted()) most recent submissions read"
+    }
+}
+
 public struct SurveyResults: Sendable, Hashable {
     public let summary: SurveyResultsSummary
     public let questions: [SurveyQuestionResults]
     public let submissions: [SurveySubmission]
+    /// What the breakdowns were computed over, and what the survey actually
+    /// holds. See `SurveyAnswerCoverage`.
+    public let coverage: SurveyAnswerCoverage
+
     /// True when the answer query hit its row cap, so the breakdowns describe a
     /// recent slice rather than the whole survey.
-    public let isTruncated: Bool
+    public var isTruncated: Bool { coverage.isTruncated }
 
     public init(
         summary: SurveyResultsSummary,
         questions: [SurveyQuestionResults],
         submissions: [SurveySubmission],
-        isTruncated: Bool
+        coverage: SurveyAnswerCoverage
     ) {
         self.summary = summary
         self.questions = questions
         self.submissions = submissions
-        self.isTruncated = isTruncated
+        self.coverage = coverage
     }
 }
 
@@ -404,7 +526,28 @@ public extension SurveyResults {
             summary: summary,
             questions: questions,
             submissions: submissions,
-            isTruncated: answersResponse.rows.count >= rowLimit
+            coverage: SurveyAnswerCoverage(
+                rowsReturned: answersResponse.rows.count,
+                // PostHog's own cap when it applied one, ours otherwise. The
+                // envelope carries `limit` only for a cap PostHog imposed, so
+                // this is `rowLimit` for every ordinary run of this query and
+                // becomes the smaller server figure on the day PostHog decides
+                // to cap below it. **Not observed here** — no run of this query
+                // has been seen coming back with a `limit` field, because it has
+                // always written its own.
+                rowCap: answersResponse.appliedLimit ?? rowLimit,
+                // This used to be `rows.count >= rowLimit` alone. The count is
+                // still the load-bearing half — see `SurveyAnswerCoverage` — but
+                // on its own it cannot see a cap applied below the one asked
+                // for, and the flag is free.
+                envelopeHasMore: answersResponse.isTruncated,
+                // Submissions that carry an answer, not every submission the
+                // query returned: a `survey dismissed` with nothing filled in
+                // reaches this list and contributes to no breakdown, so counting
+                // it here would overstate what the means were computed from.
+                submissionsRead: submissions.count { !$0.answers.isEmpty },
+                submissionsReported: summary.answeringSubmissions
+            )
         )
     }
 

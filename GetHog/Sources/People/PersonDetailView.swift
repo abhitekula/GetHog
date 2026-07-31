@@ -13,17 +13,43 @@ final class PersonEventsStore {
     var error: String?
     var loadedAt: Date?
 
+    /// The `LIMIT` this store's own query writes, kept as a constant so the
+    /// number in the SQL, the number the footer states and the number the row
+    /// count is compared against cannot drift apart.
+    static let limit = 50
+
     /// Whether this person has more activity than the 50 rows below.
     ///
-    /// `QueryResponse.hasMore`, which is the envelope flag PostHog uses to say a
-    /// result was cut. The query here has always carried its own `LIMIT 50`, so
-    /// it was never exposed to the *silent* form of this — a HogQL query with no
-    /// limit of its own is capped at 100 rows with HTTP 200 and no error, and
-    /// this response would have been a hundred events reading as all of them.
-    /// The flag is still worth reading with an explicit limit: it is the
-    /// difference between "this person has done 50 things" and "here are the
-    /// last 50 of more", and the section footer said neither before it existed.
+    /// **This read `response.isTruncated` alone, and the comment here asserted
+    /// that the flag was "still worth reading with an explicit limit: it is the
+    /// difference between 'this person has done 50 things' and 'here are the
+    /// last 50 of more'". Measurement says the opposite**, and it is recorded on
+    /// `QueryResponse.isTruncated` and again in `PostHogAPI+Groups.swift`:
+    /// `hasMore` and `limit` come back **only when PostHog applied its own cap**.
+    /// The same query with no `LIMIT` returned `hasMore: true, limit: 100` over
+    /// 423 rows; written `LIMIT 200` it returned 200 rows of 423 with *neither
+    /// field present*. This query has always written `LIMIT 50`, so the flag was
+    /// silent at exactly the ceiling it was supposed to detect — the notice
+    /// never appeared, and `scopeNote` went on to read the flag's falsity as
+    /// evidence of completeness and say "PostHog reported no more" over a person
+    /// with fifty thousand events. That is the failure mode the spec comment
+    /// calls *more confidently wrong than never having looked*.
+    ///
+    /// Both signals now, because they cover disjoint cases: the row count is the
+    /// only evidence at our own ceiling, and the flag is the only evidence if
+    /// PostHog ever caps below it. `SessionTimelineStore` and `SchemaStore` are
+    /// the worked examples this now matches.
     var isTruncated = false
+
+    /// Rows PostHog returned, which is **not** `events.count`.
+    ///
+    /// `PersonEvent.init(row:)` is failable — it returns nil for any row without
+    /// an `event` column — so counting decoded events puts a full page at 49
+    /// against a ceiling of 50 and retires the notice precisely when the data is
+    /// least trustworthy: a list that is both truncated and lossy, described as
+    /// neither. Measured and corrected once already in `SessionTimelineStore`;
+    /// `QueryTruncationTests` pins it there and now here.
+    private(set) var rowsReturned = 0
 
     func load(client: PostHogClient, projectID: Int, distinctID: String) async {
         isLoading = true
@@ -33,7 +59,8 @@ final class PersonEventsStore {
                 PostHogAPI.hogql(projectID: projectID, sql: Self.query(distinctID: distinctID))
             )
             events = response.rows.compactMap(PersonEvent.init(row:))
-            isTruncated = response.isTruncated
+            rowsReturned = response.rows.count
+            isTruncated = response.isTruncated || rowsReturned >= Self.limit
             loadedAt = Date()
             error = nil
         } catch {
@@ -48,7 +75,7 @@ final class PersonEventsStore {
         FROM events
         WHERE distinct_id = '\(escapedForHogQL(distinctID))'
         ORDER BY timestamp DESC
-        LIMIT 50
+        LIMIT \(limit)
         """
     }
 
@@ -123,6 +150,9 @@ struct PersonDetailView: View {
             propertiesSection
         }
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle(person.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(model.projectID ?? 0)|\(person.id)") { await loadEvents() }
@@ -230,8 +260,9 @@ struct PersonDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // "Up to 50" was true of the *request* and said nothing about
                 // the answer: 50 rows from a person with 50 events and 50 rows
-                // from a person with 50,000 were the same sentence. `hasMore` is
-                // the envelope flag that distinguishes them.
+                // from a person with 50,000 were the same sentence. What tells
+                // them apart is the row count against this query's own `LIMIT`,
+                // not the envelope flag — see `PersonEventsStore.isTruncated`.
                 Text(scopeNote)
                 if let distinctID = queriedDistinctID, person.distinctIDs.count > 1 {
                     Text("From \(distinctID) only — this person has \(person.distinctIDs.count) distinct IDs.")
@@ -242,16 +273,23 @@ struct PersonDetailView: View {
     }
 
     /// What the events section is, and is not, a complete answer to.
+    ///
+    /// Reports the rows that came back rather than the events that decoded, for
+    /// the reason `PersonEventsStore.rowsReturned` records: the two differ
+    /// exactly when a row could not be read, and naming the smaller one would
+    /// quietly shrink the page in the sentence that exists to describe it.
     private var scopeNote: String {
         if eventsStore.isTruncated {
-            return "The 50 most recent events. There are more — PostHog cut the result here."
+            let count = eventsStore.rowsReturned
+            return "The \(count) most recent events for this ID. This query stops at \(PersonEventsStore.limit) and filled it, so there are older events it did not read."
         }
-        if eventsStore.events.isEmpty { return "Up to 50 most recent events." }
-        let count = eventsStore.events.count
-        // Not "all this person's events": the events table has its own
-        // retention, and what was measured is only that PostHog reported no
-        // more beyond these.
-        return "\(count) recent \(count == 1 ? "event" : "events"), and PostHog reported no more."
+        if eventsStore.events.isEmpty { return "Up to \(PersonEventsStore.limit) most recent events." }
+        let count = eventsStore.rowsReturned
+        // Not "all this person's events", and no longer "PostHog reported no
+        // more" either — that sentence was drawn from a flag this query cannot
+        // make speak, so it claimed completeness on no evidence at all. What is
+        // actually known is that the page came back short of its own ceiling.
+        return "\(count) recent \(count == 1 ? "event" : "events") — fewer than this query's ceiling of \(PersonEventsStore.limit), so this is everything the events table still holds for this ID."
     }
 
     // MARK: - Properties

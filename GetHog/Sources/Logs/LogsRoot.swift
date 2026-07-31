@@ -75,10 +75,38 @@ extension LogSeverity {
 @MainActor
 @Observable
 final class LogsStore {
+    /// The `limit` this screen sends with every `LogsQuery`, held here so the
+    /// number in the request and the number the row count is measured against
+    /// are the same one.
+    static let limit = 100
+
     private(set) var state: ResourceAccessState = .loading
     private(set) var rows: [LogRow] = []
     private(set) var loadedAt: Date?
     private(set) var isLoading = false
+
+    /// Rows PostHog returned, which is not `rows.count`: `LogRow.rows(from:)`
+    /// drops what it cannot read, and a page one row short of its ceiling is
+    /// indistinguishable from a page that was never full.
+    private(set) var rowsReturned = 0
+
+    /// Whether this window holds more lines than the page below.
+    ///
+    /// `LogsQuery` sends its own `limit`, so the reasoning recorded on
+    /// `QueryResponse.isTruncated` applies: an envelope reports the cap PostHog
+    /// chose, and says nothing about one the caller asked for. The row count is
+    /// therefore the evidence at our own ceiling and the flag is OR'd in for a
+    /// cap applied below it — the pattern `SessionTimelineStore` and
+    /// `SchemaStore` are the worked examples of.
+    ///
+    /// **Not observed on this deployment.** `LogsQuery` is a query *node* rather
+    /// than HogQL, the measurements behind `QueryResponse.isTruncated` were all
+    /// taken on `HogQLQuery`, and this project has ingested no logs — demo mode
+    /// carries no logs fixture either, which is why the rotor below is tested
+    /// through a separately-applied modifier. So whether this kind populates
+    /// `hasMore` at all is unverified here; the row comparison does not depend
+    /// on the answer, and the flag costs nothing if the field never arrives.
+    private(set) var isTruncated = false
 
     // Held here rather than in the view so a project switch or a pull-to-refresh
     // reuses whatever the reader last chose.
@@ -119,15 +147,20 @@ final class LogsStore {
                 PostHogAPI.logs(
                     projectID: projectID,
                     dateFrom: window.rawValue,
-                    search: search
+                    search: search,
+                    limit: Self.limit
                 )
             )
             rows = LogRow.rows(from: response)
+            rowsReturned = response.rows.count
+            isTruncated = response.isTruncated || rowsReturned >= Self.limit
             state = .resolved(rowCount: rows.count)
             loadedAt = Date()
         } catch {
             state = ResourceAccessState(failure: error, resource: "logs", defaultScope: "logs:read")
             rows = []
+            rowsReturned = 0
+            isTruncated = false
         }
     }
 }
@@ -234,35 +267,47 @@ struct LogsRoot: View {
         return sentence + " Logs are the lines your own services send to PostHog over OpenTelemetry, carrying a severity, a service name and the trace they belong to."
     }
 
-    /// The glass bar rides a horizontal scroll view because its controls grow
-    /// with Dynamic Type and would otherwise be clipped rather than reachable.
+    /// No scroll view around it, deliberately — the same correction `RendersRoot`
+    /// records, arrived at from the other end.
+    ///
+    /// This bar used to ride a horizontal `ScrollView` so its controls could grow
+    /// with Dynamic Type without being clipped. Reachable is not the same as
+    /// legible: at AX5 the screenshot sweep caught the severity toggle scrolled
+    /// almost entirely out of the bar, leaving a bare teal `!` glyph about 5px
+    /// from the trailing edge with its word — the only thing that says what the
+    /// control filters — off-screen and behind a gesture nothing announces.
+    ///
+    /// `GlassFilterBar` now stacks its controls past the accessibility threshold,
+    /// which is what the scroll view was standing in for, so both controls are on
+    /// screen with their labels intact and the list below is the only scroll view
+    /// on the screen again.
     private var filterBar: some View {
         @Bindable var store = store
 
-        return ScrollView(.horizontal) {
-            GlassFilterBar {
-                Picker("Time range", selection: $store.window) {
-                    ForEach(LogsWindow.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: store.window) { Task { await load() } }
-
-                Toggle(isOn: $store.problemsOnly) {
-                    Label("Errors only", systemImage: "exclamationmark.octagon")
-                }
-                .toggleStyle(.button)
-                .font(.footnote)
-                // Measured 84.3×14.3pt: wide enough, and a third of the height a
-                // fingertip needs — `.footnote` set the line height and the
-                // button chrome added almost nothing to it. The identical
-                // control on Tracing measured the same. A bordered style fills
-                // the size it is offered, so this grows the visible capsule to
-                // the standard control height without touching its font or tint.
-                .minimumHitTarget()
+        return GlassFilterBar {
+            Picker("Time range", selection: $store.window) {
+                ForEach(LogsWindow.allCases) { Text($0.title).tag($0) }
             }
-            .padding(.vertical, Theme.Space.s)
+            .pickerStyle(.menu)
+            .onChange(of: store.window) { Task { await load() } }
+            // Takes the row's slack so the toggle sits at the trailing edge, and
+            // the whole line once the bar stacks.
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle(isOn: $store.problemsOnly) {
+                Label("Errors only", systemImage: "exclamationmark.octagon")
+            }
+            .toggleStyle(.button)
+            .font(.footnote)
+            // Measured 84.3×14.3pt: wide enough, and a third of the height a
+            // fingertip needs — `.footnote` set the line height and the
+            // button chrome added almost nothing to it. The identical
+            // control on Tracing measured the same. A bordered style fills
+            // the size it is offered, so this grows the visible capsule to
+            // the standard control height without touching its font or tint.
+            .minimumHitTarget()
         }
-        .scrollIndicators(.hidden)
+        .padding(.vertical, Theme.Space.s)
         .background(Theme.pageBackground)
     }
 
@@ -275,10 +320,22 @@ struct LogsRoot: View {
                     // Reached only by the client-side severity filter: the rows
                     // exist, none of them are problems. Saying so beats an empty
                     // list that looks like a failed load.
+                    //
+                    // But *which* rows matters, and this used to claim more than
+                    // it could. The filter runs over the page in memory, and the
+                    // page is the newest 100 lines of the window — so "no error
+                    // or fatal lines in the last 24 hours" was a project-wide
+                    // absence asserted from a recency slice, and a fatal at line
+                    // 101 reads here as a clean bill of health. That is a wrong
+                    // answer rather than a partial one, which is the whole point
+                    // of the distinction: the sentence now scopes itself to what
+                    // was actually read.
                     EmptyStateView(
-                        title: "No problems in this window",
+                        title: "No problems in what was read",
                         systemImage: "checkmark.circle",
-                        message: "No error or fatal lines in the last \(store.window.title.lowercased())."
+                        message: store.isTruncated
+                            ? "None of the \(store.rowsReturned.formatted()) newest lines in the last \(store.window.title.lowercased()) are errors or fatals. This screen reads at most \(LogsStore.limit) lines and reached that ceiling, so older ones in the window went unread."
+                            : "No error or fatal lines among the \(store.rowsReturned.formatted()) this window holds."
                     )
                     .listRowBackground(Color.clear)
                 } else {
@@ -297,6 +354,23 @@ struct LogsRoot: View {
                     text: "\(store.visibleRows.count) line\(store.visibleRows.count == 1 ? "" : "s")",
                     systemImage: "text.alignleft"
                 )
+            } footer: {
+                // The heading counts what is on screen, which is right for a
+                // heading and is not an answer to "how much was logged". A log
+                // viewer is read as a window onto everything in the period, and
+                // a full page with nothing under it says the period held exactly
+                // this — so when the page is full, the footer says what it is a
+                // page of.
+                //
+                // Only when the ceiling was reached. `LIMIT 100` matching
+                // eleven lines is the ordinary outcome of a quiet window, and
+                // crying truncation over it would train the reader to ignore the
+                // one notice that matters — the same reason the SQL console
+                // stays silent about a limit its reader wrote.
+                if store.isTruncated {
+                    Text("The \(store.rowsReturned.formatted()) newest lines in the last \(store.window.title.lowercased()). This screen reads at most \(LogsStore.limit) and reached that ceiling, so the window holds more than these — narrow the range or search to see further back.")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             FreshnessLabel(date: store.loadedAt)
@@ -403,6 +477,13 @@ struct LogsLockedView: View {
                 if case .denied(let resource) = state {
                     Text(resource)
                         .font(.footnote.monospaced())
+                        // A scope string PostHog named, not prose: measured at
+                        // AX5 in a narrow chip, `zxx`-less text acquires a real
+                        // hyphen at a case boundary — `UnhandledRejection` set as
+                        // `Unhandled-` / `Rejection` — and nobody can tell an
+                        // invented hyphen from one the scope contains. `zxx` is
+                        // the ISO code for "no linguistic content".
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .padding(.horizontal, Theme.Space.s)
                         .padding(.vertical, Theme.Space.xs)
                         .background(.quaternary, in: .rect(cornerRadius: 6))

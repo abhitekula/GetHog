@@ -153,8 +153,11 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Leads every row of the breakdown, so switching dimension is visible
-    /// before a single value is read.
+    /// Names the *dimension*, for the picker and the section header.
+    ///
+    /// Not for a row — see `glyph(for:)`. A dimension glyph is a label for a
+    /// choice ("show me devices"); a row glyph sits beside a value and is read
+    /// as a statement about it.
     var glyph: String {
         switch self {
         case .page: "doc.text"
@@ -173,6 +176,38 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
         case .city: "building.2"
         case .timezone: "clock"
         case .language: "character.bubble"
+        }
+    }
+
+    /// Leads one row of the breakdown, so switching dimension is visible before
+    /// a single value is read.
+    ///
+    /// Every dimension but `device` draws its own glyph on every row, because the
+    /// value is a page path or a country name and no symbol says it. `device` is
+    /// the one whose values *are* device kinds, and the fixed dimension glyph
+    /// contradicted them outright: the breakdown's largest row is `Desktop`, and
+    /// it was led by a phone. A glyph that disagrees with the word beside it is
+    /// worse than no glyph, because it is the part read first.
+    func glyph(for value: String) -> String {
+        guard self == .device else { return glyph }
+        return Self.deviceGlyph(for: value)
+    }
+
+    /// The form factor PostHog's `$device_type` names.
+    ///
+    /// Matched case-insensitively on the raw value. Anything unrecognised — a
+    /// bucket PostHog adds later, or the `null` bucket `label(for:)` renders as
+    /// "Not recorded" — falls back to a generic screen rather than to one of the
+    /// four specific shapes, so an unknown value is never drawn as a claim.
+    static func deviceGlyph(for value: String) -> String {
+        switch value.lowercased() {
+        case "desktop": "desktopcomputer"
+        case "mobile": "iphone"
+        case "tablet": "ipad"
+        case "console": "gamecontroller"
+        case "tv", "smarttv", "smart tv": "tv"
+        case "wearable": "applewatch"
+        default: "rectangle.on.rectangle"
         }
     }
 
@@ -326,6 +361,20 @@ final class WebAnalyticsStore {
     var rowLimit: Int?
     var notableChanges: [WebNotableChange] = []
     var externalClicks: [WebExternalClickRow] = []
+    /// Whether PostHog held outbound destinations back.
+    ///
+    /// **The one query on this screen where `QueryResponse.isTruncated` is the
+    /// whole answer.** `webExternalClicks` sends no `limit` of its own, so what
+    /// comes back is capped by PostHog and reported in the envelope — the shape
+    /// the flag was decoded for, and the only shape it is reliable in. The
+    /// recorded response in `web_external_clicks.json` shows the fields present
+    /// and the cap in force: `hasMore: false`, `limit: 100`, two results. That
+    /// recording is *not* truncated; the point is that the envelope is speaking,
+    /// and this screen was not listening.
+    var externalClicksAreTruncated = false
+    /// The cap PostHog applied, which for this query is PostHog's own default
+    /// rather than anything the app chose.
+    var externalClicksLimit: Int?
     var vitals: WebVitalsBreakdown?
     var marketingColumns: [String] = []
     var marketingRows: [MarketingRow] = []
@@ -433,6 +482,8 @@ final class WebAnalyticsStore {
                 PostHogAPI.webExternalClicks(projectID: projectID, dateFrom: window.rawValue)
             )
             externalClicks = WebExternalClickRow.rows(from: response)
+            externalClicksAreTruncated = response.isTruncated
+            externalClicksLimit = response.appliedLimit
             loadedAt = Date()
             clicksError = nil
         } catch {
@@ -834,7 +885,10 @@ struct WebAnalyticsRoot: View {
                     row: row,
                     rank: index + 1,
                     fraction: store.peakVisitors > 0 ? row.visitors / store.peakVisitors : 0,
-                    glyph: dimension.glyph
+                    // Per row, not per dimension: on `device` the value *is* the
+                    // form factor, and the dimension's own glyph drew a phone
+                    // beside `Desktop`.
+                    glyph: dimension.glyph(for: row.breakdownValue)
                 )
             }
         }
@@ -941,6 +995,8 @@ struct WebAnalyticsRoot: View {
                     }
                 }
                 .skeleton(store.isLoadingClicks && store.externalClicks.isEmpty)
+
+                outboundCoverageNote
             }
 
             if let error = store.clicksError, !store.externalClicks.isEmpty {
@@ -950,6 +1006,48 @@ struct WebAnalyticsRoot: View {
                 )
             }
         }
+    }
+
+    /// Says what the ranked outbound list is a ranking *of*.
+    ///
+    /// Two independent cuts sit between PostHog's answer and these rows, and
+    /// neither was on screen. The query sends no `limit`, so PostHog applies its
+    /// own — the recorded response carries `limit: 100` — and then
+    /// `topExternalClicks` keeps the 25 busiest of whatever arrived. Ranked rows
+    /// with nothing under them read as the whole list, which is the same defect
+    /// the breakdown table's `truncationNote` above exists for; this section
+    /// simply never got one.
+    ///
+    /// The client-side cut is stated whenever it bit, because it is this app's
+    /// doing and a reader cannot infer it from anywhere. The server-side cut is
+    /// stated only when the envelope says rows were withheld — that flag is
+    /// trustworthy here precisely because the query wrote no limit of its own,
+    /// which is the narrow case `QueryResponse.isTruncated` was decoded for.
+    @ViewBuilder
+    private var outboundCoverageNote: some View {
+        let shown = topExternalClicks.count
+        let fetched = store.externalClicks.count
+        if store.externalClicksAreTruncated || shown < fetched {
+            Label(
+                outboundCoverageText(shown: shown, fetched: fetched),
+                systemImage: "list.number"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func outboundCoverageText(shown: Int, fetched: Int) -> String {
+        var sentence = shown < fetched
+            ? "The \(shown) busiest of \(fetched) destinations PostHog returned."
+            : "The \(shown) busiest destination\(shown == 1 ? "" : "s"), ranked by clicks."
+        if store.externalClicksAreTruncated {
+            sentence += store.externalClicksLimit.map {
+                " PostHog capped its own answer at \($0) and had more, so this is not every destination visitors left through."
+            } ?? " PostHog had more destinations than it returned, so this is not every one visitors left through."
+        }
+        return sentence
     }
 
     private var vitalsSection: some View {
@@ -1098,7 +1196,16 @@ struct WebKPITile: View {
             if metric.isIncreaseBad == true {
                 Text("Lower is better")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    // Measured on the page ground: `.tertiary` sampled
+                    // `#BCBAB8` on `#F2EFE9` for **1.69:1** in light and
+                    // `#555456` on `#151413` for **2.44:1** in dark, against a
+                    // 4.5:1 floor. This is the only thing on the tile that stops
+                    // a green downward arrow reading as a bug, and it was the
+                    // least legible text on the screen. `Ink.secondary` rather
+                    // than `Ink.tertiary` for the reason `FreshnessLabel` gives:
+                    // this is caption2, the smallest type the app sets, and
+                    // small type needs the most contrast.
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         // A floor rather than a fixed width: tiles stay comparable across the

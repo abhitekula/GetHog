@@ -63,11 +63,20 @@ struct WebNotableChangeRow: View {
     /// implied a relationship between a row and a plotted line that does not
     /// exist. Shape carries the distinction instead, and the type is still
     /// spelled out in the row's footnote.
+    ///
+    /// `Device` is the exception, and it is a correction: the dimension's own
+    /// glyph was a phone, so the ranking's `Desktop` row — the second entry in
+    /// the demo capture, and routinely the largest in a real project — drew a
+    /// phone next to the word "Desktop". Every other dimension here names a
+    /// thing no symbol can state (a path, a domain, a country), so its glyph
+    /// stays a label for the *type*; a device value is a form factor and the
+    /// glyph has to agree with it. Shared with the breakdown table's rows rather
+    /// than restated, so the two lists cannot drift apart.
     private var dimensionGlyph: String {
         switch change.dimensionType {
         case "Page": "doc.text"
         case "Referrer": "arrow.turn.down.right"
-        case "Device": "iphone"
+        case "Device": WebStatsDimension.deviceGlyph(for: change.displayValue)
         case "Browser": "safari"
         case "Country": "globe"
         case "Channel": "arrow.triangle.branch"

@@ -100,10 +100,26 @@ extension ErrorIssue {
 @MainActor
 @Observable
 final class ErrorTrackingStore {
+    /// The `limit` sent with the query, kept here so the request and the
+    /// comparison the coverage note is built from cannot disagree.
+    static let limit = 50
+
     var issues: [ErrorIssue] = []
     var isLoading = false
     var error: String?
     var loadedAt: Date?
+
+    /// What this page of issues is, and is not, a total over.
+    ///
+    /// `ErrorsOverview` sums occurrences across `issues` and prints the result
+    /// beside an issue count and a status split — four figures derived from one
+    /// ranked, capped page and labelled as if they described the window. Nothing
+    /// said so, and nothing *could*: `ErrorTrackingResponse` decoded `results`
+    /// and dropped `hasMore` and `limit` on the floor, even though the recorded
+    /// live response in `error_tracking.json` carries both. See
+    /// `ErrorIssueCoverage`, which also records why there is no denominator to
+    /// be had from this query and what is done instead.
+    var coverage: ErrorIssueCoverage?
 
     func load(
         client: PostHogClient,
@@ -118,10 +134,12 @@ final class ErrorTrackingStore {
                 PostHogAPI.errorTrackingIssues(
                     projectID: projectID,
                     dateFrom: window.rawValue,
-                    orderBy: order.rawValue
+                    orderBy: order.rawValue,
+                    limit: Self.limit
                 )
             )
             issues = response.issues
+            coverage = response.coverage(requestedLimit: Self.limit)
             loadedAt = Date()
             error = nil
         } catch {
@@ -246,6 +264,7 @@ struct ErrorTrackingRoot: View {
         } else {
             ErrorsOverview(
                 issues: store.issues,
+                coverage: store.coverage,
                 window: window,
                 loadedAt: store.loadedAt,
                 selection: selection
