@@ -7,10 +7,42 @@ final class WarehouseStore {
     var sources: [ExternalDataSource] = []
     var tables: [WarehouseTable] = []
     var isLoading = false
-    var error: String?
+
+    /// The failure of each list, kept apart rather than joined into one string.
+    ///
+    /// They are two requests to two endpoints and either can fail alone, so a
+    /// single combined `error` cannot answer the question each section has to
+    /// ask before it writes anything: *did my own request answer?* Without that,
+    /// a section whose request failed falls through to its empty branch and
+    /// states "No external data sources." — an absence presented as a finding
+    /// about a request that never returned. Measured in demo mode, where
+    /// `/external_data_sources/` and `/warehouse_tables/` are both deliberately
+    /// unrouted and answer 501: both sections said "No …" while the views list
+    /// beside them loaded, and the screen-level notice was suppressed because
+    /// the screen was no longer empty.
+    var sourcesError: String?
+    var tablesError: String?
+
     var loadedAt: Date?
 
     var isEmpty: Bool { sources.isEmpty && tables.isEmpty }
+
+    /// Both requests' failures, for the state that takes the whole screen.
+    var error: String? {
+        let failures = [sourcesError, tablesError].compactMap { $0 }
+        return failures.isEmpty ? nil : failures.joined(separator: " ")
+    }
+
+    /// A list that failed while still holding rows from a previous success.
+    ///
+    /// This — and not "the screen has content" — is what makes "from an earlier
+    /// load" a true sentence. A first load that fails leaves nothing behind, so
+    /// there is no earlier load to attribute anything to; the failure is stated
+    /// in the section it cost instead. Same distinction `HeatmapsRoot` draws
+    /// with `sectionErrorNote(_:hasEarlierData:)`.
+    var hasStaleRows: Bool {
+        (sourcesError != nil && !sources.isEmpty) || (tablesError != nil && !tables.isEmpty)
+    }
 
     func load(client: PostHogClient, projectID: Int) async {
         isLoading = true
@@ -19,7 +51,8 @@ final class WarehouseStore {
         // Two independent lists. A failure in either must not blank the other:
         // a sources outage should still leave the table catalog on screen, so
         // each is caught on its own and only a total failure empties the view.
-        var failures: [String] = []
+        sourcesError = nil
+        tablesError = nil
 
         do {
             let page: Page<ExternalDataSource> = try await client.send(
@@ -30,7 +63,7 @@ final class WarehouseStore {
                 ($0.health.severity, $0.displayName) < ($1.health.severity, $1.displayName)
             }
         } catch {
-            failures.append(Self.message(for: error))
+            sourcesError = Self.message(for: error)
         }
 
         do {
@@ -41,11 +74,10 @@ final class WarehouseStore {
                 $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
         } catch {
-            failures.append(Self.message(for: error))
+            tablesError = Self.message(for: error)
         }
 
-        error = failures.isEmpty ? nil : failures.joined(separator: " ")
-        if failures.count < 2 { loadedAt = Date() }
+        if sourcesError == nil || tablesError == nil { loadedAt = Date() }
     }
 
     /// Sources whose last run failed or that have nothing left syncing.
@@ -189,12 +221,18 @@ struct WarehouseRoot: View {
             }
 
             Section {
-                if filteredSources.isEmpty {
-                    Text(store.sources.isEmpty ? "No external data sources." : "No matching sources.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                if let error = store.sourcesError, store.sources.isEmpty {
+                    // Said here, in the section the failed request was for, and
+                    // in the same idiom the views section below has always used.
+                    // The alternative — falling through to "No external data
+                    // sources." — is the failure mode this project keeps
+                    // producing: an absence stated as a finding when the request
+                    // that would have established it never answered.
+                    sectionNote("Couldn't load sources. \(error)")
+                } else if filteredSources.isEmpty {
+                    sectionNote(
+                        store.sources.isEmpty ? "No external data sources." : "No matching sources."
+                    )
                 } else {
                     ForEach(filteredSources) { source in
                         WarehouseSourceRowView(source: source)
@@ -208,12 +246,12 @@ struct WarehouseRoot: View {
             }
 
             Section {
-                if filteredTables.isEmpty {
-                    Text(store.tables.isEmpty ? "No warehouse tables." : "No matching tables.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                if let error = store.tablesError, store.tables.isEmpty {
+                    sectionNote("Couldn't load tables. \(error)")
+                } else if filteredTables.isEmpty {
+                    sectionNote(
+                        store.tables.isEmpty ? "No warehouse tables." : "No matching tables."
+                    )
                 } else {
                     ForEach(filteredTables) { table in
                         NavigationLink(value: WarehouseDetail.table(table)) {
@@ -231,18 +269,10 @@ struct WarehouseRoot: View {
                     // The views list can fail on its own — a plan without data
                     // modelling still has sources and tables — so its failure is
                     // stated inside its own section rather than taking the
-                    // screen.
-                    Text("Couldn't load views. \(error)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                    // screen. Sources and tables above now do the same.
+                    sectionNote("Couldn't load views. \(error)")
                 } else if filteredViews.isEmpty {
-                    Text(views.views.isEmpty ? "No saved views." : "No matching views.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                    sectionNote(views.views.isEmpty ? "No saved views." : "No matching views.")
                 } else {
                     ForEach(filteredViews) { view in
                         NavigationLink(value: WarehouseDetail.view(view)) {
@@ -275,11 +305,37 @@ struct WarehouseRoot: View {
                 Text("Saved queries the team defined on top of these tables. A materialised view answers from a stored table, so a failed run leaves it serving old rows. A view PostHog has stopped retrying only shows that on its own screen — the list PostHog returns does not carry it.")
             }
 
-            if let error = store.error, !store.isEmpty {
-                Label("Part of this screen is from an earlier load. \(error)", systemImage: "exclamationmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .listRowBackground(Color.clear)
+            // The one failure case the sections above **cannot** state, and the
+            // only one left for this line.
+            //
+            // It used to read `if let error = store.error, !store.isEmpty`, and
+            // the second clause was the bug: sources and tables can both fail
+            // while the views list — a different endpoint family, a third
+            // request — succeeds, so the screen is not empty, so the notice was
+            // suppressed, and the only things left speaking for those two
+            // requests were the "No external data sources." and "No warehouse
+            // tables." lines that had already stated their absence as findings.
+            // Reproduced in demo mode, where both paths answer 501 by design.
+            //
+            // The fix is split rather than widened here, because a failure has
+            // two shapes and they want different sentences. A list that failed
+            // with **nothing** to show says so in its own section, next to the
+            // header the failed request belongs to — repeating it down here
+            // would print the same decoder message a third time. A list that
+            // failed while **still holding rows** cannot say so in its section:
+            // it is drawing those rows, so nothing up there is a failure state.
+            // That is this line, and it is also what makes "from an earlier
+            // load" a true sentence — the rows are literally from one. Same
+            // distinction `HeatmapsRoot.sectionErrorNote(_:hasEarlierData:)`
+            // draws, arrived at from the other end.
+            if store.hasStaleRows, let error = store.error {
+                Label(
+                    "Part of this screen is from an earlier load. \(error)",
+                    systemImage: "exclamationmark.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .listRowBackground(Color.clear)
             }
 
             // The **older** of the two loads, not the newer. Three lists from
@@ -292,6 +348,19 @@ struct WarehouseRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
+    }
+
+    /// The one-line note a section writes in place of its rows.
+    ///
+    /// Factored out only after a third copy of the same four modifiers appeared;
+    /// it carries no logic, so a caller choosing the wrong string is still the
+    /// caller's mistake.
+    private func sectionNote(_ text: String) -> some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 
     private var filteredSources: [ExternalDataSource] {

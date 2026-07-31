@@ -197,7 +197,10 @@ struct SavedInsightDetailView: View {
                         compact: false,
                         webURL: webURL,
                         // The chart's descriptor has nowhere else to get a name.
-                        title: insight.title
+                        title: insight.title,
+                        // A full-size chart with nothing between it and a
+                        // finger, so the gesture the tip describes works here.
+                        showsScrubTip: true
                     )
                 } else if store.isComputing || store.isLoading {
                     VStack(spacing: Theme.Space.s) {

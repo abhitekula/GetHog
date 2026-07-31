@@ -393,11 +393,12 @@ struct TracingLockedView: View {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
-                    // White on `Theme.accent` measures 2.08:1 in dark; the
-                    // label takes the app's ground instead. Same measurement
-                    // and same reasoning as onboarding's "Get started" — see
-                    // `OnboardingView.welcome`.
-                    .foregroundStyle(Theme.pageBackground)
+                    // White on `Theme.accent` measures 2.08:1 in dark. This was
+                    // `Theme.pageBackground`, one of four sites that had each
+                    // arrived at that answer separately; see
+                    // `Theme.inkOnAccent`, which is the one answer and keeps
+                    // light at white's 6.00:1 rather than the ground's 5.23:1.
+                    .foregroundStyle(Theme.inkOnAccent)
             }
         }
     }

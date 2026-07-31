@@ -226,6 +226,34 @@ public struct Survey: Sendable, Decodable, Identifiable, Hashable {
         if isRunning { return "Running" }
         return startDate == nil ? "Draft" : "Stopped"
     }
+
+    /// Returns a copy with different lifecycle dates, for optimistic display
+    /// while a write is in flight. Nothing here talks to the API.
+    ///
+    /// The dates and not the status word, because there **is** no status word on
+    /// a survey: `GET /surveys/` returns 37 keys and none of them is `status`.
+    /// Running is derived from exactly these three fields, so an optimistic
+    /// change has to be made where the derivation reads it — otherwise the app
+    /// ends up with two definitions of "Running", one derived and one asserted,
+    /// and they drift the first time either changes.
+    ///
+    /// Same shape as `ErrorIssue.withStatus`, and for the same reason: the model
+    /// is `Decodable`-only so that "what the server last said" has exactly one
+    /// spelling, and a caller that wants to show something else has to say so.
+    public func withDates(startDate: Date?, endDate: Date?) -> Survey {
+        Survey(copying: self, startDate: startDate, endDate: endDate)
+    }
+
+    private init(copying other: Survey, startDate: Date?, endDate: Date?) {
+        self.id = other.id
+        self.name = other.name
+        self.description = other.description
+        self.type = other.type
+        self.archived = other.archived
+        self.questions = other.questions
+        self.startDate = startDate
+        self.endDate = endDate
+    }
 }
 
 public struct SurveyQuestion: Sendable, Decodable, Hashable {
@@ -376,7 +404,12 @@ public enum ExperimentStatus: String, Sendable, Hashable, Decodable {
 ///
 /// `ConclusionEnum`. This is a *human* judgement recorded on the experiment, not
 /// a statistical output, and the screen must not let the two be confused.
-public enum ExperimentConclusion: String, Sendable, Hashable, Decodable {
+/// `CaseIterable` because ending an experiment has to *offer* these: the API
+/// makes `conclusion` optional and then assigns it unconditionally, so a caller
+/// that ends an experiment without naming one writes `null` over whatever was
+/// recorded. `PostHogAPI.endExperiment` therefore requires a value, and a
+/// required value needs a full list to pick from.
+public enum ExperimentConclusion: String, Sendable, Hashable, Decodable, CaseIterable {
     case won, lost, inconclusive
     case stoppedEarly = "stopped_early"
     case invalid
@@ -388,6 +421,22 @@ public enum ExperimentConclusion: String, Sendable, Hashable, Decodable {
         case .inconclusive: "Inconclusive"
         case .stoppedEarly: "Stopped early"
         case .invalid: "Invalid"
+        }
+    }
+
+    /// What choosing this conclusion asserts, in the words of someone who will
+    /// read it later without the context of the day it was written.
+    ///
+    /// These are labels on a *human judgement*, not statistical outputs, and the
+    /// picker sits directly under a card showing a computed verdict — so each one
+    /// has to say what a person is claiming rather than restating the word.
+    public var meaning: String {
+        switch self {
+        case .won: "The test variant beat the control and you're keeping it."
+        case .lost: "The control won, or the test variant did harm."
+        case .inconclusive: "It ran its course and the result wasn't clear either way."
+        case .stoppedEarly: "It was cut short before it could answer the question."
+        case .invalid: "Something was wrong with the setup, so the numbers don't mean what they appear to."
         }
     }
 }

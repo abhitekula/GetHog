@@ -782,13 +782,20 @@ struct WebAnalyticsRoot: View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "Overview", systemImage: "chart.bar.xaxis")
 
-            overviewFigures
+            if let error = store.overviewError, store.metrics.isEmpty {
+                // Before this branch existed the failure drew *nothing*: the
+                // grid rendered over an empty `metrics` and the skeleton had
+                // already stopped, so a header sat over blank space.
+                sectionFailure(error) { Task { await loadOverview() } }
+            } else {
+                overviewFigures
 
-            if let error = store.overviewError, !store.metrics.isEmpty {
-                staleNote(
-                    "These figures are from an earlier load. \(error.summary)",
-                    detail: error.detail
-                )
+                if let error = store.overviewError {
+                    staleNote(
+                        "These figures are from an earlier load. \(error.summary)",
+                        detail: error.detail
+                    )
+                }
             }
         }
         .padding(.horizontal, Theme.Space.l)
@@ -841,7 +848,14 @@ struct WebAnalyticsRoot: View {
 
             dimensionPicker
 
-            if filteredRows.isEmpty && !store.isLoadingRows {
+            if let error = store.rowsError, store.rows.isEmpty {
+                // Ahead of the empty state, not after it. The searching variant
+                // was the worse of the two readings — "No pages matched “x”"
+                // blames the reader's search term for a request that never
+                // answered — but both state a finding about a period nothing was
+                // ever learned about.
+                sectionFailure(error) { Task { await loadBreakdown() } }
+            } else if filteredRows.isEmpty && !store.isLoadingRows {
                 SectionEmptyState(
                     text: search.isEmpty
                         ? "PostHog returned no \(dimension.pluralTitle) for this period."
@@ -933,7 +947,12 @@ struct WebAnalyticsRoot: View {
                 subtitle: "PostHog's ranking of the dimensions that stand out, highest impact first."
             )
 
-            if store.notableChanges.isEmpty && !store.isLoadingChanges {
+            if let error = store.changesError, store.notableChanges.isEmpty {
+                // The empty state below attributes a *judgement* to PostHog —
+                // "PostHog flagged no standout dimensions" — which is a claim
+                // about a ranking PostHog was never asked for successfully.
+                sectionFailure(error) { Task { await loadNotableChanges() } }
+            } else if store.notableChanges.isEmpty && !store.isLoadingChanges {
                 SectionEmptyState(
                     text: "PostHog flagged no standout dimensions in the \(window.spokenTitle.lowercased()).",
                     systemImage: "sparkles"
@@ -975,7 +994,14 @@ struct WebAnalyticsRoot: View {
                 subtitle: "External destinations visitors clicked through to."
             )
 
-            if topExternalClicks.isEmpty && !store.isLoadingClicks {
+            if let error = store.clicksError, store.externalClicks.isEmpty {
+                // The worst of the four, and the reason this sweep happened: the
+                // empty state does not merely assert the absence, it offers a
+                // *diagnosis* for it — that external link tracking is switched
+                // off — which sends a reader to change an SDK setting that was
+                // never the problem.
+                sectionFailure(error) { Task { await loadExternalClicks() } }
+            } else if topExternalClicks.isEmpty && !store.isLoadingClicks {
                 SectionEmptyState(
                     text: """
                         Nothing led off the site in the \(window.spokenTitle.lowercased()). \
@@ -1100,6 +1126,43 @@ struct WebAnalyticsRoot: View {
     /// Stale data still owes the reader the reason it is stale — and, when the
     /// reason was a decoding fault, the fault itself rather than a summary that
     /// quietly loses it.
+    /// A section whose own request failed and left it with nothing.
+    ///
+    /// Every one of the six sections on this screen had a stale note gated on
+    /// `!collection.isEmpty` and an empty state gated on `collection.isEmpty`,
+    /// which between them cover the width of the screen and leave a hole exactly
+    /// where it matters: a **first** load that fails leaves the collection empty,
+    /// so the note is suppressed and the empty state speaks instead — stating an
+    /// absence the failed request never established. The four worst readings were
+    /// "PostHog returned no pages for this period", "PostHog flagged no standout
+    /// dimensions", "Nothing led off the site in the last 7 days. PostHog only
+    /// records these when external link tracking is switched on" — a false
+    /// *diagnosis* on top of a false finding — and, for the overview, no words at
+    /// all: an empty metric grid under its own header, because the skeleton stops
+    /// once the request has failed.
+    ///
+    /// The screen-level `LoadFailureState` does not cover this. It needs
+    /// `store.isEmpty`, which is all **six** collections empty at once, so one
+    /// query returning rows silences the failures of the other five.
+    ///
+    /// Same shape `WebVitalsSection.emptyOrError` and `MarketingSection` already
+    /// use — error branch ahead of the "no data" copy — and it is a section
+    /// state, not a screen state, for the reason recorded there: three
+    /// full-screen error treatments stacked down an iPad leave the canvas to
+    /// prose.
+    private func sectionFailure(
+        _ failure: LoadFailure,
+        retry: @escaping () -> Void
+    ) -> some View {
+        SectionEmptyState(
+            text: failure.summary,
+            systemImage: "exclamationmark.triangle",
+            detail: failure.detail,
+            actionTitle: "Try again",
+            action: retry
+        )
+    }
+
     private func staleNote(_ text: String, detail: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Label(text, systemImage: "exclamationmark.circle")

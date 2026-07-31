@@ -265,6 +265,12 @@ struct RenderDetailView: View {
                     )
                     Button("Try again") { startPlayback() }
                         .buttonStyle(.glassProminent)
+                        // See `Theme.inkOnAccent`. `.glassProminent` fills with
+                        // the app tint and labels it white, which is 2.09:1 in
+                        // dark — sampled on the "Play" button below, which is
+                        // this same style on this same card. This branch itself
+                        // needs a failed URL resolution and is not captured.
+                        .foregroundStyle(Theme.inkOnAccent)
                 } else {
                     poster
                 }
@@ -283,6 +289,10 @@ struct RenderDetailView: View {
                     .padding(.vertical, Theme.Space.s)
             }
             .buttonStyle(.glassProminent)
+            // The button this whole class of defect was measured on: white on
+            // `#3CC5CE` for **2.09:1**, sampled off `render-detail.png`. See
+            // `Theme.inkOnAccent`.
+            .foregroundStyle(Theme.inkOnAccent)
 
             Text("PostHog signs a fresh link for each play. They stop working about an hour after they're issued, so this one is fetched when you press play rather than when the list loaded.")
                 .font(Theme.Typography.caption)

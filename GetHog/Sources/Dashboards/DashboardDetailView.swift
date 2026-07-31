@@ -576,7 +576,11 @@ struct InsightDetailBody: View {
                     model: tile.renderModel,
                     compact: false,
                     webURL: webURL,
-                    title: tile.title
+                    title: tile.title,
+                    // The opened tile, which is a full-size chart outside any
+                    // button — unlike the tile itself, whose chart is
+                    // `.allowsHitTesting(false)` above and cannot be scrubbed.
+                    showsScrubTip: true
                 )
 
                 if case .timeSeries(let series, _) = tile.renderModel {

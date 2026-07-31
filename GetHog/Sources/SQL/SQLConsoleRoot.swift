@@ -342,6 +342,14 @@ struct SQLConsoleRoot: View {
                     Label("Run", systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                // See `Theme.inkOnAccent`: a prominent button's default white
+                // label is 2.09:1 on the dark accent. Ordered above `.disabled`
+                // to match the three onboarding buttons, which is the only
+                // reason for the order — what an explicit `foregroundStyle`
+                // does to the *disabled* rendering has not been measured here,
+                // and WCAG exempts an inactive control from the text floor
+                // either way.
+                .foregroundStyle(Theme.inkOnAccent)
                 .disabled(store.isRunning || sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                 if store.isRunning {

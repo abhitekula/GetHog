@@ -209,6 +209,32 @@ struct TaxonomyEventDetailView: View {
                             event: event.name
                         )
                     } label: {
+                        // **The label carries a gesture of its own, and that is
+                        // the shape that broke the dashboard tile.**
+                        //
+                        // `TaxonomyPropertyRowView` puts `.textSelection(.enabled)`
+                        // on the whole row, and selectable text installs
+                        // recognisers. Inside `TileCard`'s `Button` the equivalent
+                        // — `.chartXSelection` — did not merely swallow the tap
+                        // over its own area: one touch left that button unable to
+                        // perform its action again, anywhere in its bounds, for
+                        // the life of the screen, with nothing rendered, nothing
+                        // logged and byte-identical screenshots either side of it.
+                        //
+                        // So this is **not** left to reasoning. Measured on
+                        // iPhone 17, demo build, via
+                        // `NestedGestureTapTests.testTaxonomyPropertyRowOpensOnFirstTap`:
+                        // a tap at the row's centre — over the selectable text
+                        // rather than beside it, on a 370×91.7pt row — pushed
+                        // `$insert_id` on the *first* touch. Selection here
+                        // neither swallows the tap nor latches the button, so no
+                        // `.allowsHitTesting(false)` is warranted and the ability
+                        // to copy a property key out of the row is kept.
+                        //
+                        // The test taps once per launch and asserts from that tap
+                        // alone. A probe that taps twice and concludes from the
+                        // second reading exonerates a latch, which is how the
+                        // tile's cause was missed eight times over.
                         TaxonomyPropertyRowView(
                             sample: property,
                             definition: store.definitions[property.property],

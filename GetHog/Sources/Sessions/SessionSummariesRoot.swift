@@ -280,8 +280,9 @@ struct SessionSummaryDetailView: View {
     let row: SessionSummaryRow
 
     @Environment(AppModel.self) private var model
-    /// Read because the facts card changes shape rather than shrinking; see
-    /// `factsCard`.
+    /// Read for the facts card's *heading*, which changes shape rather than
+    /// shrinking; see `factsCard`. The rows below it no longer need this — their
+    /// stacking is `MeasuredPairStyle`'s, applied through the environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = SessionSummaryStore()
 
@@ -327,6 +328,10 @@ struct SessionSummaryDetailView: View {
 
             FreshnessLabel(date: store.loadedAt)
         }
+        // Every label/value pair in `factsCard` stops at a readable measure
+        // instead of spanning the card. See `Theme.Measure.pair`: on an iPad this
+        // screen was putting "Session" and a 36-character UUID ~600pt apart.
+        .measuredPairs()
         .navigationTitle("Session summary")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -401,27 +406,39 @@ struct SessionSummaryDetailView: View {
         }
     }
 
-    /// Label and value, in a row until the value stops fitting one.
+    /// Label and value, capped at a readable measure.
     ///
-    /// Two of these five values are identifiers rather than prose — a distinct ID
-    /// and a 36-character session UUID — and a right-aligned column half a phone
-    /// wide is where a `zxx`-less token would be hyphenated. At AX5 the label side
-    /// alone takes most of the width, so past that threshold the value gets its
-    /// own line rather than a two-character gutter.
-    @ViewBuilder
+    /// A `LabeledContent`, not the `HStack { label; Spacer(); value }` this used
+    /// to be — the same conversion `ErrorIssueDetailView.seenRow` and
+    /// `detailRow` made. The hand-rolled row drew exactly what a
+    /// `LabeledContent` draws, so writing it out bought nothing and cost the one
+    /// thing that matters: a hand-rolled row cannot be reached by
+    /// `.measuredPairs()`. It obeyed "label on one edge, value on the other"
+    /// literally, which on a phone is the Settings app and on an iPad card is
+    /// two facts a hand's width apart.
+    ///
+    /// Both behaviours this row used to implement itself are ones
+    /// `MeasuredPairStyle` deliberately reproduces, so the conversion loses
+    /// neither — which is why the style was adopted rather than a third variant
+    /// hand-rolled:
+    ///
+    /// - **It stacks at accessibility sizes.** Two of these five values are
+    ///   identifiers rather than prose — a distinct ID and a 36-character
+    ///   session UUID — and at AX5 the label side alone takes most of the width,
+    ///   so past that threshold the value gets its own line rather than a
+    ///   two-character gutter.
+    /// - **It stays one VoiceOver element.** The style combines label and value
+    ///   into a single stop; the explicit label at the call site then states the
+    ///   pair in words.
+    ///
+    /// Text alignment is the style's too, and it lands where the two call sites
+    /// used to put it by hand: trailing in the horizontal branch, and the
+    /// leading default in the stacked one.
     private func factRow(_ fact: (label: String, value: String)) -> some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 2) {
-                factLabel(fact.label)
-                factValue(fact.value, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            HStack(alignment: .top, spacing: Theme.Space.s) {
-                factLabel(fact.label)
-                Spacer(minLength: Theme.Space.s)
-                factValue(fact.value, alignment: .trailing)
-            }
+        LabeledContent {
+            factValue(fact.value)
+        } label: {
+            factLabel(fact.label)
         }
     }
 
@@ -434,16 +451,26 @@ struct SessionSummaryDetailView: View {
             .foregroundStyle(Theme.Ink.secondary)
     }
 
-    private func factValue(_ text: String, alignment: TextAlignment) -> some View {
+    private func factValue(_ text: String) -> some View {
         Text(text)
             .font(.caption)
+            // Explicit, so the style's own greying does not apply.
+            //
+            // `MeasuredPairStyle` puts the *value* on `Theme.Ink.secondary`,
+            // because the built-in style it replaces greys the value to separate
+            // it from a primary label. This card is the other way round — the
+            // label is already `Theme.Ink.secondary` — so inheriting would paint
+            // both sides the same colour and flatten the pair into one
+            // undifferentiated line. An explicit style on the content wins over
+            // the inherited one, which is the escape hatch that style documents
+            // and the same one the `StatusPill` in a span's Status row uses.
+            .foregroundStyle(.primary)
             // `Person` and `Session` are opaque identifiers, and this is the
             // same idiom `DataRow` applies to every token it draws: `zxx` is the
             // ISO code for "no linguistic content", so no hyphenation dictionary
             // applies and a hyphen this app invented cannot be mistaken for one
             // the id contains.
             .typesettingLanguage(Locale.Language(identifier: "zxx"))
-            .multilineTextAlignment(alignment)
             .textSelection(.enabled)
     }
 

@@ -41,6 +41,32 @@ struct InsightSidePanel: View {
         HStack(spacing: 8) {
             Text(tile.title)
                 .font(.headline)
+                // An insight's name off the API, not prose, so a hyphen invented
+                // here would misstate what the tile is called. `zxx` is the ISO
+                // code for "no linguistic content"; same idiom as `SectionLabel`
+                // and the scope chips.
+                //
+                // **A guard, and the honest scope of it.** This was briefed as
+                // the site where `My App Dashboard` sets as `My App` /
+                // `Dashboar` / `d`. Not reproduced: rendered through
+                // `ImageRenderer` in this header's exact configuration —
+                // `.font(.headline)`, `.lineLimit(2)` — and swept from 90pt to
+                // 420pt at five type sizes up to AX5, the `zxx` and non-`zxx`
+                // renders of that string are **byte-identical at every point**.
+                // A title with a space in it breaks at the space, and the
+                // `lineLimit(2)` truncates the tail rather than hyphenating it.
+                // `Daily active users (DAUs)`, the demo fixture's title, differs
+                // at exactly one width in the whole sweep (110pt at AX5), which
+                // is far narrower than this panel is ever granted.
+                //
+                // What the same sweep does show is the case this is here for: a
+                // **single long token**, which is what an insight named
+                // `weekly_active_users` or `UnhandledRejection` is. In this
+                // header's configuration that string hyphenates across the whole
+                // 90–420pt band at AX3 and AX5, and across 90–160pt at the
+                // default size. So the modifier is not decorative — it is just
+                // not observable on the title the demo happens to carry.
+                .typesettingLanguage(Locale.Language(identifier: "zxx"))
                 .lineLimit(2)
 
             Spacer(minLength: 8)

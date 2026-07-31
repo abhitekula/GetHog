@@ -116,7 +116,13 @@ struct SettingsRoot: View {
 
     private var projectSection: some View {
         Section {
-            TipView(ProjectSwitchTip())
+            // `AppTipView` rather than `TipView`, for the contrast measured on
+            // the Flags card — see `AppTipView`. **Not observed here**: this tip
+            // needs `ProjectSwitchTip.hasMultipleProjects`, and the demo fixture
+            // has one project, so it does not appear in any captured screenshot
+            // of this screen. It is the same view with the same style, which is
+            // the whole reason the style is not written twice.
+            AppTipView(ProjectSwitchTip())
                 .listRowBackground(Color.clear)
             Picker("Project", selection: Binding(
                 get: { model.selectedProject?.id ?? -1 },

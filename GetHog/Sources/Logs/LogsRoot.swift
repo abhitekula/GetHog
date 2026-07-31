@@ -494,6 +494,12 @@ struct LogsLockedView: View {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    // See `Theme.inkOnAccent`: a prominent button's default
+                    // white label is 2.09:1 on the dark accent. **Not
+                    // photographed** — the demo Logs screen renders its
+                    // no-lines state, never the denied one, so this branch has
+                    // no capture. Same construction as SQL's "Run", which does.
+                    .foregroundStyle(Theme.inkOnAccent)
             }
         }
     }

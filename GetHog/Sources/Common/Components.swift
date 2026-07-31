@@ -115,6 +115,12 @@ struct LockedCapabilityView: View {
             if let onRecheck {
                 Button("Re-check permissions", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    // See `Theme.inkOnAccent`: a prominent button's default
+                    // white label is 2.09:1 on the dark accent. **Not
+                    // photographed on this view** — demo mode's key holds every
+                    // capability, so the locked state never renders. The
+                    // construction is the one measured on Renders and SQL.
+                    .foregroundStyle(Theme.inkOnAccent)
             }
         }
         // The app's ground, for the reason `EmptyStateView` gives: this is the

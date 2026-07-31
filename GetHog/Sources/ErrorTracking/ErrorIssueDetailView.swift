@@ -119,6 +119,35 @@ struct ErrorIssueDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(issue.name)
                         .font(.title3.monospaced().weight(.semibold))
+                        // An exception type, not prose — and this is the screen
+                        // where the defect is visible. Rendered in this exact
+                        // configuration at AX5, without `zxx`:
+                        //
+                        //   UnhandledRejection → `Unhan-` `dled-` `Rejec-` `tion`
+                        //   ReferenceError     → `Refer-` `enceEr-` `ror`
+                        //
+                        // — three and two invented hyphens. With it:
+                        //
+                        //   UnhandledRejection → `Unhandl` `edRejec` `tion`
+                        //   ReferenceError     → `Referen` `ceError`
+                        //
+                        // which is uglier and *true*. Confirmed on the captured
+                        // screen as well, not only in a renderer: `ax5/
+                        // error-issue-detail.png` now sets the fixture's
+                        // `ReferenceError` as `Refer` / `enceE` / `rror`.
+                        //
+                        // The text is selectable, which is what makes this worse
+                        // than cosmetic — a reader copying the type out would
+                        // carry the invented hyphen with them into a search.
+                        // `zxx` is the ISO code for "no linguistic content".
+                        //
+                        // The limit of the idiom, measured on the People list
+                        // rather than assumed: it suppresses *invented* hyphens
+                        // only. `nina.drill.0729@example.com` breaks identically
+                        // with and without it — an orphaned trailing character is
+                        // a width problem wearing the same costume, and `zxx`
+                        // does not touch it.
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .textSelection(.enabled)
                     Spacer(minLength: 8)
                     StatusPill(text: live.statusTitle, tint: live.statusTint)

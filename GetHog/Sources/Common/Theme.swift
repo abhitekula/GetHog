@@ -90,6 +90,63 @@ enum Theme {
         )
     }
 
+    /// The label on top of a slab painted `Theme.accent`.
+    ///
+    /// **The accent is an ink colour, not a fill colour, and this is the bill
+    /// for using it as one.** `accent` was chosen so it reads *on* the ground;
+    /// in dark that makes it a light cyan, and SwiftUI's `.borderedProminent`
+    /// and `.glassProminent` both draw a **white** label on it by default.
+    /// Sampled off the rendered screen — `render-detail.png`, iPhone 17 Pro,
+    /// the "Play" button — that is `#FFFFFF` on `#3CC5CE` for **2.09:1**, less
+    /// than half the 4.5:1 AA floor for text this size. Light is fine at
+    /// **6.00:1** (`#FFFFFF` on `#0B6E75`), which is why it survived a
+    /// light-only reading of eleven separate buttons.
+    ///
+    /// **Why the token and not eleven local fixes.** Eleven is what there are,
+    /// and four of them had already been corrected in place — three in
+    /// onboarding, one in Tracing — each with its own literal and its own copy
+    /// of the comment. That is the shape a rule takes when it lives at call
+    /// sites: it drifts, and the next prominent button starts white again
+    /// because nothing in `Theme` says otherwise. One named token is the thing a
+    /// new call site can be pointed at.
+    ///
+    /// **Two constraints, not one.** The first correction reached for
+    /// `pageBackground`, which fixes dark (`#151413` on `#3EC5CE`, **8.83:1**,
+    /// sampled on the rendered "Run" and "Get started" buttons) and costs light:
+    /// `#F2EFE9` on `#0B6E75` is **5.23:1**, still AA but a move *down* from
+    /// white's 6.00:1 on the one appearance that was never broken. That 5.23 is
+    /// the one figure here computed rather than sampled — it is the ratio
+    /// between two independently sampled colours, the ground off this screen and
+    /// `pageBackground` off the session filter sheet — because the intermediate
+    /// state it describes is not what any current build renders. So the value is
+    /// picked per appearance:
+    ///
+    /// | | ink | on accent | ratio |
+    /// |---|---|---|---|
+    /// | light | `#FFFFFF` | `#0B6E75` | **6.00:1** — unchanged |
+    /// | dark  | `#151413` | `#3EC5CE` | **8.83:1** — was 2.08:1 |
+    ///
+    /// In light, white is not merely acceptable, it is *optimal*: `#0B6E75` has
+    /// a relative luminance of 0.128, so the best a dark ink can reach on it is
+    /// 3.55:1 against pure black — below the floor. Light must stay light and
+    /// dark must go dark, which is exactly what a `Color(light:dark:)` is for.
+    ///
+    /// **Written as literals rather than as `cardBackground` / `pageBackground`,
+    /// which they currently equal.** Those two are surface tokens; re-tuning the
+    /// cream ground half a step is a legitimate change to make to them and must
+    /// not silently move a button label's contrast. This token has one job and
+    /// one measurement, so it owns its own values.
+    ///
+    /// `Theme.swift` compiles into `GetHogWidgets` as well, so this is
+    /// reachable there — but nothing in that target has the defect: there is no
+    /// `.borderedProminent`/`.glassProminent` and no label drawn over an accent
+    /// fill anywhere in `GetHogWidgets/`. See the note on
+    /// `WidgetPalette.accent`.
+    static let inkOnAccent = Color(
+        light: Color(hex: 0xFFFFFF),
+        dark: Color(hex: 0x151413)
+    )
+
     /// A second accent for chrome that needs warmth without competing with the
     /// data — badges, small-caps section headers, selected pills.
     static let accentWarm = Color(

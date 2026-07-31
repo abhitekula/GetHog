@@ -60,6 +60,24 @@ struct SessionFilterSheet: View {
                 sortSection
                 moreSection
             }
+            // The app's ground, for the measured reason `AnnotationComposerView`
+            // gives: a `Form` paints its own background over anything behind it,
+            // so without this the sheet comes up on the system's grouped grey.
+            // Sampled off `session-filter-sheet.png` on iPhone 17 Pro —
+            // `#F2F2F7` in light and `#1C1C1E` in dark, against the app's
+            // `#F2EFE9` / `#151413`. The annotation composer beside it already
+            // carries this, which is why the two read as different apps.
+            //
+            // The sheet's own header and footer prose moves with the ground
+            // rather than staying on the system's `.secondary`. That is not
+            // tidying: `.secondary` composites to `#85858B` on the grouped grey
+            // for **3.29:1** in light, below the 4.5:1 floor already, and
+            // painting the same alpha ink on the cream ground would land it at
+            // 3.26:1 — i.e. this change would have made a failing number
+            // marginally worse. `Theme.Ink.secondary` is opaque and is the
+            // token that exists for exactly this, at 6.95:1 on the light ground
+            // and 10.09:1 on the dark one.
+            .pageSurface()
             .navigationTitle("Filter sessions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -107,9 +125,10 @@ struct SessionFilterSheet: View {
             .pickerStyle(.inline)
             .labelsHidden()
         } header: {
-            Text("What went wrong")
+            Text("What went wrong").foregroundStyle(Theme.Ink.secondary)
         } footer: {
             Text("One at a time. PostHog applies a single combining rule to the whole filter, so asking for two signals would also widen everything else here.")
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -123,7 +142,7 @@ struct SessionFilterSheet: View {
                 }
             }
         } header: {
-            Text("When")
+            Text("When").foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -150,12 +169,13 @@ struct SessionFilterSheet: View {
             .adaptivePickerStyle()
             .disabled((filter.minimumDuration ?? 0) <= 0)
         } header: {
-            Text("How long")
+            Text("How long").foregroundStyle(Theme.Ink.secondary)
         } footer: {
             // These are genuinely different numbers and the gap is large: a
             // 34-minute recording in this project holds 40 seconds of activity.
             // The old picker filtered on wall-clock time without saying so.
             Text("Total length is wall-clock time from first event to last. Active time counts only the parts somebody was interacting — they are often minutes apart.")
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -188,6 +208,7 @@ struct SessionFilterSheet: View {
             ))
         } footer: {
             Text("Mobile recordings need a transform PostHog has not published, so this app lists them but cannot play them.")
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -201,7 +222,7 @@ struct SessionFilterSheet: View {
                 }
             }
         } header: {
-            Text("Sort")
+            Text("Sort").foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -252,7 +273,7 @@ struct SessionFilterSheet: View {
                 }
             }
         } header: {
-            Text("More")
+            Text("More").foregroundStyle(Theme.Ink.secondary)
         }
     }
 }

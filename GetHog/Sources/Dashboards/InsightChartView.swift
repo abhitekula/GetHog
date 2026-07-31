@@ -35,11 +35,20 @@ struct InsightChartView: View {
     /// descriptor to land in, and prints the title above the plot as pixels
     /// instead. Every call site a person can actually navigate passes one.
     var title: String = ""
+    /// Passed through to `TimeSeriesChart`, which is the only form that has a
+    /// scrub gesture to teach. Off by default — see `TimeSeriesChart.body`.
+    var showsScrubTip: Bool = false
 
     var body: some View {
         switch model {
         case .timeSeries(let series, let style):
-            TimeSeriesChart(series: series, style: style, compact: compact, title: title)
+            TimeSeriesChart(
+                series: series,
+                style: style,
+                compact: compact,
+                title: title,
+                showsScrubTip: showsScrubTip
+            )
         case .barValue(let bars):
             BarValueChart(bars: bars, compact: compact, title: title)
         case .bigNumber(let number):
@@ -568,6 +577,10 @@ struct TimeSeriesChart: View {
     var style: TimeSeriesStyle = .line
     var compact: Bool
     var title: String = ""
+    /// Whether to teach the scrub gesture above this chart — see `body`.
+    /// Off by default so a new call site has to say that its chart is one a
+    /// finger can actually reach.
+    var showsScrubTip: Bool = false
 
     @State private var selectedDate: Date?
     /// Width of the visible window, in seconds. `nil` means the whole series,
@@ -729,6 +742,51 @@ struct TimeSeriesChart: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // **Above the chart, not over it.**
+            //
+            // This was `.popoverTip(compact ? nil : ChartScrubTip())` on the
+            // `Chart` itself, which anchors a popover to the plot — a coach mark
+            // positioned over the thing it is teaching you to touch.
+            //
+            // **What was actually observed is worse than that, and the note
+            // should say so rather than repeat the theory.** With the popover
+            // form the tip appears in *neither* capture of a full-size chart —
+            // `light/` and `dark/` of both `saved-insight-detail` and
+            // `dashboard-tile-insight`, iPhone 17 Pro — and this harness uses
+            // `XCUIScreen.main.screenshot()`, which does capture popover
+            // windows (that is why it is used). So it was not merely badly
+            // placed; on the evidence available it was not presenting at all.
+            // Inline it appears on both, above the plot, with the chart intact
+            // beneath it. Nobody here has seen the popover cover a chart.
+            //
+            // **The gesture it advertises is still live where this appears** —
+            // checked, because `Dashboards/` changed underneath this: a tile's
+            // chart is now `.allowsHitTesting(false)` inside `TileCard`'s
+            // `Button`, so scrubbing genuinely does *not* work on a dashboard
+            // tile. It does not orphan the tip, because the tip was never on a
+            // tile: the old gate was `compact ? nil : …` and a tile is
+            // `compact: true`. `showsScrubTip` is opt-in at the two call sites
+            // that host a full-size, un-buttoned chart — `SavedInsightDetailView`
+            // and `InsightDetailBody` — where `.chartXSelection` below is
+            // reached by a real finger.
+            //
+            // Opt-in rather than `!compact`, and that is not tidiness:
+            // `ChartImageRenderer` also renders `compact: false`, into a PNG the
+            // user shares. A tip inferred from `compact` would have been eligible
+            // to appear in an exported image.
+            //
+            // **Withheld at accessibility sizes**, which is not a precaution
+            // copied from `FlagsRoot` but the same defect measured here:
+            // `ax5/saved-insight-detail.png` on iPhone 17 Pro came back with the
+            // tip filling the viewport — title on three lines, message still
+            // running off the bottom — and the chart it describes entirely below
+            // the fold. A coach mark that displaces its subject is the failure
+            // this move out of the popover was meant to fix, arriving from the
+            // other direction.
+            if showsScrubTip, !dynamicTypeSize.isAccessibilitySize {
+                AppTipView(ChartScrubTip())
+            }
+
             HStack(alignment: .firstTextBaseline) {
                 // Reserve the row unconditionally so the chart never shifts when
                 // a scrub begins.
@@ -823,10 +881,6 @@ struct TimeSeriesChart: View {
             // hand-rolled gesture mask.
             .chartScrollableAxes(allowsZoom ? .horizontal : [])
             .chartXVisibleDomain(length: visibleSpan)
-            // Scrubbing is the one chart interaction nothing on screen hints at,
-            // so it gets the tip. Only on the full-size chart: firing this over
-            // every tile in a dashboard grid at once would be an infestation.
-            .popoverTip(compact ? nil : ChartScrubTip())
             .frame(height: height)
             .simultaneousGesture(allowsZoom ? magnify : nil)
             .sensoryFeedback(.selection, trigger: selectedDate)

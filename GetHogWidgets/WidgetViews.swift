@@ -23,6 +23,22 @@ import WidgetKit
 /// also carried by a glyph and by text, because on the Lock Screen the rendering
 /// mode is `.vibrant` or `.accented` and hue is simply discarded.
 enum WidgetPalette {
+    /// **Not the same defect the app's prominent buttons had.** `Theme.accent`
+    /// used as a *fill* with a white label on it measures 2.09:1 in dark, which
+    /// is what `Theme.inkOnAccent` exists to correct. Checked here rather than
+    /// assumed: nothing in `GetHogWidgets/` uses `.borderedProminent` or
+    /// `.glassProminent`, and nothing draws text over an accent fill — every
+    /// use below is a glyph or a number in `accentInk` *on*
+    /// `Theme.cardBackground`, which is the direction the tint was picked for.
+    ///
+    /// The one place the app's tint does become a fill in this target is
+    /// `FlagControl`'s `ControlWidgetToggle` in `ControlCenterWidgets.swift`.
+    /// That is **not measured**: Control Center is not reachable from the
+    /// screenshot harness or from a UI test, the system draws the symbol on
+    /// that fill and no `foregroundStyle` here reaches it, and Control Center
+    /// renders the control monochrome anyway — which is stated in that file for
+    /// a different reason and is why the label and the symbol never rely on the
+    /// fill to carry state.
     static let accent = Theme.Status.accentInk
     static let positive = Theme.Status.goodInk
     static let neutral = Color.secondary

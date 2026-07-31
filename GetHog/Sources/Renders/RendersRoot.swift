@@ -376,6 +376,13 @@ struct RendersLockedView: View {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    // See `Theme.inkOnAccent`: a prominent button's default
+                    // white label is 2.09:1 on the dark accent. **Not
+                    // photographed** — the demo Renders screen lists exports
+                    // rather than reaching its denied state. The "Play" button
+                    // on `RenderDetailView`, which is where the 2.09:1 was
+                    // sampled, is the same construction one screen along.
+                    .foregroundStyle(Theme.inkOnAccent)
             }
         }
     }

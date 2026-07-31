@@ -142,6 +142,15 @@ struct InsightsRoot: View {
             // into one request rather than one request per character — the same
             // arrangement, and the same 400ms, as the People screen's.
             .task(id: TaskKey(projectID: model.projectID, request: request)) {
+                // `ChartScrubTip`'s rule is a `@Parameter` that only four screens
+                // were pushing capabilities into — and none of them is on the
+                // route to a saved insight, which is one of the two screens that
+                // now hosts the tip. Reaching Insights straight from the search
+                // tab on a fresh install left the parameter `false`, so the tip
+                // was eligible nowhere the user had actually gone. Same call the
+                // other four make; TipKit suppresses the tip if the key cannot
+                // reach the feature.
+                AppTips.refresh(from: model)
                 if !search.isEmpty {
                     try? await Task.sleep(for: .milliseconds(400))
                     guard !Task.isCancelled else { return }

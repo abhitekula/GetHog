@@ -558,6 +558,12 @@ struct EmptyStateView: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.glassProminent)
+                    // See `Theme.inkOnAccent`. The shared empty state, so this
+                    // is the widest single site — and it *is* photographed:
+                    // Inbox reaches this branch in demo mode (no `/tasks/`
+                    // fixture), and its "Try again" measured **2.09:1** in dark
+                    // before and **8.82:1** after, with light unmoved at 6.08:1.
+                    .foregroundStyle(Theme.inkOnAccent)
             }
         }
         .appGround()

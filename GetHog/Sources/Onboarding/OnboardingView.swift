@@ -198,12 +198,15 @@ struct OnboardingView: View {
                 // Darkening the tint is the wrong lever: `Theme.accent` is the
                 // one colour the whole app is keyed to, including the widget
                 // target, and it would be moved here to settle an argument about
-                // a label. Punching the label out in the app's ground instead
-                // costs nothing elsewhere and clears AA in both appearances —
-                // 5.22:1 light (`#F2EFE9` on `#0B6E75`) and 8.84:1 dark
-                // (`#151413` on `#3EC5CE`). No literal: it is the same token the
-                // screen behind the button is painted with.
-                .foregroundStyle(Theme.pageBackground)
+                // a label.
+                //
+                // This was `Theme.pageBackground` — correct in dark and a
+                // measured *regression* in light, where `#F2EFE9` on `#0B6E75`
+                // is 5.23:1 against white's 6.00:1. `Theme.inkOnAccent` is the
+                // same answer written once, and it keeps white in light: on a
+                // slab this dark, light ink is not a preference, it is the only
+                // side of the ramp that can clear AA at all.
+                .foregroundStyle(Theme.inkOnAccent)
             }
         }
     }
@@ -255,8 +258,9 @@ struct OnboardingView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .frame(maxWidth: .infinity)
-            // Same 2.08:1 measurement as "Get started"; see there.
-            .foregroundStyle(Theme.pageBackground)
+            // Same 2.08:1 measurement as "Get started"; see there, and
+            // `Theme.inkOnAccent`.
+            .foregroundStyle(Theme.inkOnAccent)
             .disabled(!selfHostedURL.isEmpty && normalizedSelfHostedURL() == nil)
         }
     }
@@ -334,8 +338,9 @@ struct OnboardingView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            // Same 2.08:1 measurement as "Get started"; see there.
-            .foregroundStyle(Theme.pageBackground)
+            // Same 2.08:1 measurement as "Get started"; see there, and
+            // `Theme.inkOnAccent`.
+            .foregroundStyle(Theme.inkOnAccent)
             .disabled(apiKey.isEmpty || isConnecting)
 
             Spacer(minLength: 0)
