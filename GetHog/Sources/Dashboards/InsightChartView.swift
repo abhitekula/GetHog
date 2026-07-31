@@ -805,6 +805,17 @@ struct TimeSeriesChart: View {
                     AxisValueLabel().font(.caption2)
                 }
             }
+            // **This must never be reachable inside a control.** Left live
+            // inside `TileCard`'s `Button` it did not merely swallow the tap on
+            // the plot, which is what the tile's own comment used to claim: it
+            // left the button unable to fire *at all*, anywhere in its bounds,
+            // for the rest of the screen's life. Measured on iPhone 16e — see
+            // `TileCard.card`, which is where the guard is and where the
+            // measurement is written down. Nothing here can defend against that
+            // on its own, because a chart cannot know what contains it; the
+            // container has to say so. `NotebookQueryBlock` draws the same
+            // compact chart *outside* any button and scrubbing there is a real
+            // feature, which is why this is not gated on `compact`.
             .chartXSelection(value: $selectedDate)
             // Pan. Swift Charts arbitrates the drag between scrolling and
             // scrubbing itself once an axis is scrollable — selection is
@@ -1482,3 +1493,4 @@ extension Comparable {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }
+

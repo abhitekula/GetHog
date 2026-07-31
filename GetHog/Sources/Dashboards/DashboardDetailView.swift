@@ -415,6 +415,14 @@ struct TileCard: View {
     /// effect.
     var open: (() -> Void)?
 
+    /// Both of these were suspects for the tap defect fixed in `card`, and both
+    /// were **exonerated by measurement** rather than by reading. With the
+    /// `Button` otherwise untouched, removing `.draggable`, removing
+    /// `.contextMenu`, and removing both changed nothing at all: the tile opened
+    /// on a first tap and refused every tap after a tap on the plot in all four
+    /// shapes, identically. Recorded because the standing note on this defect
+    /// named these two as the only things between the tap and the control, which
+    /// was true and was not the same as their being responsible.
     var body: some View {
         control
             // Dragging a tile carries the chart as PNG, the series as CSV and
@@ -445,13 +453,9 @@ struct TileCard: View {
     /// every `List` row elsewhere in this app already has, and the audit's four
     /// hits go with it.
     ///
-    /// The tap itself lands exactly where it used to. Verified against a build
-    /// with the old `.onTapGesture` restored: a tap on the title row or the
-    /// freshness stamp opens the insight in both, and a tap on the plot opens it
-    /// in neither, because `chartXSelection` has always owned that region for
-    /// scrubbing. What is new is that the *button* can be activated from
-    /// anywhere — which is the only way a VoiceOver or Full Keyboard Access user
-    /// ever reaches it.
+    /// The button can now be activated from anywhere inside the card, which is
+    /// also the only way a VoiceOver or Full Keyboard Access user ever reaches
+    /// it. That was **not** true when this was written — see `card`.
     @ViewBuilder
     private var control: some View {
         if let open {
@@ -483,6 +487,44 @@ struct TileCard: View {
                     // only place the chart's descriptor can get one from.
                     title: tile.title
                 )
+                // **This one line is why a dashboard tile could not be opened.**
+                //
+                // `TimeSeriesChart` installs `.chartXSelection` so a chart can be
+                // scrubbed. Inside this `Button`'s label that gesture is a child
+                // of the control, and it does not merely win the plot region — it
+                // takes the touch, produces no selection from a tap, and leaves
+                // the enclosing button unable to perform its action *ever again*,
+                // anywhere in its bounds, for as long as the screen lives.
+                //
+                // Measured on iPhone 16e, demo build, six-tile dashboard, one
+                // launch per row:
+                //
+                //   tap the title row first .............. opens
+                //   tap the plot, then the title row ..... neither opens
+                //   …with `.draggable` removed ........... neither opens
+                //   …with `.contextMenu` removed ......... neither opens
+                //   …with both removed ................... neither opens
+                //   …with this modifier ................. the plot tap opens it
+                //
+                // and in the poisoned run the *neighbouring* tile, never touched,
+                // still opened on its first tap — so the damage is one button's,
+                // not the screen's, and it is caused by the touch rather than by
+                // any state the tap leaves behind. Nothing is visible: no scrub
+                // readout, no rule mark, no pressed appearance; screenshots
+                // before and after the poisoning tap are identical.
+                //
+                // The tile is one control by design, so its content is a picture:
+                // hit testing off here is the invariant rather than a patch for
+                // one chart, and it covers every form `InsightChartView` can draw
+                // — including `.unsupported`, whose "Open in PostHog" `Link` is
+                // the same trap in a different shape. Accessibility is untouched:
+                // this suppresses touches, not the tree, so the chart's
+                // `AXChartDescriptor` and the rotor still work.
+                //
+                // `ProjectOverview` switches hit testing off at its own call site
+                // too. That is not this — its tiles are not buttons at all, and
+                // the two are unrelated guards that happen to spell the same.
+                .allowsHitTesting(false)
 
                 FreshnessLabel(date: tile.lastRefresh, isCached: tile.isCached)
             }
