@@ -89,12 +89,18 @@ public struct Notebook: Sendable, Decodable, Identifiable, Hashable {
         //
         // Not tolerance for its own sake. `id` used to be a required decode, and
         // the one payload that reaches this type without one is a *response that
-        // is not a notebook* — demo mode's unrouted `/notebooks/:shortID/` falls
-        // through to an empty page, whose `{"count": 0, "results": []}` has no
+        // is not a notebook* — which is how it was found: demo mode did not
+        // route `/notebooks/:shortID/` at all, so the request fell through to
+        // the empty-page catch-all, whose `{"count": 0, "results": []}` has no
         // `id`. That threw `DecodingError.keyNotFound`, which `PostHogClient`
         // wraps as `PostHogError.decoding(String(describing:))`, and the detail
         // screen printed the Swift dump at the reader. Every *list* endpoint
         // escapes this because `Page<T>` never has to decode an element.
+        //
+        // Both halves of that origin story have since changed — demo mode routes
+        // two notebooks and answers 501 for anything else — but nothing about
+        // the guarantee has: a server is still free to answer this path with
+        // something that is not a notebook.
         //
         // Requiring only that one of the two identifiers is present keeps the
         // genuine "this is not a notebook" case an error — it has neither — while

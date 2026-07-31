@@ -64,7 +64,25 @@ public struct TaxonomyPropertySample: Sendable, Decodable, Hashable, Identifiabl
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        property = try c.decode(String.self, forKey: .property)
+        // **Absent whenever the request named its properties**, which `zip`
+        // below already documents at length — and which a *required* decode
+        // here made unreachable. Measured 2026-07-31 by routing
+        // `ActorsPropertyTaxonomyQuery` in demo mode against its own recording
+        // (`actors_property_taxonomy.json`, `{"results":[{"sample_count":51,
+        // "sample_values":[…]}]}`, the shape `PostHogAPI.actorsPropertyTaxonomy`
+        // records as measured): `Page<TaxonomyPropertySample>` threw
+        // `DecodingError.keyNotFound … Path: results[0]`. `Page` has no lenient
+        // element decode, so one missing key fails the whole page — meaning
+        // `TaxonomyPropertyDetailView.loadActorSample`, the entire property
+        // screen for a person- or group-scoped property, could not decode any
+        // answer the server gives it. `zip` was written for exactly that
+        // response and could never have received a row.
+        //
+        // Empty rather than optional so `id` stays non-optional and no call
+        // site has to unwrap. Nothing should ever read the empty string: the
+        // named form is only meaningful through `zip`, which replaces it with
+        // the key that was asked for, and the discovery form always carries it.
+        property = ((try? c.decodeIfPresent(String.self, forKey: .property)) ?? nil) ?? ""
         sampleCount = try c.decodeIfPresent(Int.self, forKey: .sampleCount) ?? 0
         // Values arrive as strings, but a numeric property has come back as a
         // JSON number, which would fail a `[String]` decode and drop the row.
