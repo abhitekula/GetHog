@@ -187,11 +187,27 @@ public enum InsightCSV {
     ///
     /// **Why the bytes are assembled here rather than `joined` into a `String`.**
     /// An insight's CSV is a few hundred cells and either approach is fine. A
-    /// HogQL result is not bounded at all: measured 2026-07-30 against project
-    /// [REMOVED PRIVATE DATA], `POST /query/` applies **no row cap of its own** — `SELECT number
-    /// FROM numbers(50000)` returns all 50,000 rows — and a realistic
-    /// `SELECT uuid, event, timestamp, distinct_id, properties FROM events`
-    /// measured **6,764 bytes per row**, 13.5 MB at 2,000 rows. Building that as
+    /// HogQL result can be far larger: measured 2026-07-30 against project
+    /// [REMOVED PRIVATE DATA], `SELECT number FROM numbers(50000)` returned all 50,000 rows, and
+    /// a realistic `SELECT uuid, event, timestamp, distinct_id, properties FROM
+    /// events` measured **6,764 bytes per row**, 13.5 MB at 2,000 rows.
+    ///
+    /// This comment used to generalise that first measurement into "`POST
+    /// /query/` applies **no row cap of its own**". That is disproved: the same
+    /// deployment silently caps a `LIMIT`-less statement at 100 rows, reported
+    /// only as `hasMore`/`limit` in the envelope, and `QueryResponse.isTruncated`
+    /// carries the three-way measurement. Whichever reading is right, the general
+    /// rule stated here was wrong, and the byte-assembly decision below never
+    /// depended on it — 13.5 MB at 2,000 rows is reason enough.
+    ///
+    /// **What was actually sent in the 50,000-row run is not settled**, and three
+    /// files disagree: this one and `QueryResponse` both record it as carrying no
+    /// `LIMIT` — a real counter-example to the cap — while `README.md` writes it
+    /// as `… LIMIT 50000`, which would dissolve the anomaly entirely, since a
+    /// caller-set limit being honoured is the documented behaviour. One of the
+    /// three is wrong about the query. Settling it costs two `/query/` requests;
+    /// until someone spends them, treat the counter-example as unconfirmed rather
+    /// than as a rule. Building that as
     /// a `String` and then copying it with `Data(csv.utf8)` holds two full
     /// copies at once, on top of the decoded rows the screen is still showing.
     ///
