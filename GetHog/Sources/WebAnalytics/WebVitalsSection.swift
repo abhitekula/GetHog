@@ -150,11 +150,26 @@ struct WebVitalsSection: View {
                 action: onRetry
             )
         } else {
+            // States the absence and stops. It used to continue: "Core Web
+            // Vitals need performance capture switched on in the PostHog
+            // browser SDK." — the third instance of one defect class, found by
+            // sweeping for the other two (`WebAnalyticsRoot.outboundSection`
+            // and `HeatmapsRoot`). This view's entire input is a query result:
+            // `breakdown`, `isLoading`, `error`. Nothing in it, or in anything
+            // above it, reads a capture setting.
+            //
+            // This one is worth being precise about, because the setting it
+            // named does exist and the sentence was still wrong. `GET
+            // /api/projects/:id/` — read live 2026-07-31 — carries both
+            // `capture_performance_opt_in` and `autocapture_web_vitals_opt_in`,
+            // and on the project this app develops against **both are `true`**
+            // while this branch can still be reached by a window in which no
+            // page happened to report the metric. So the sentence was not
+            // merely unknowable, it was demonstrably false on the one project
+            // available to check it against: an empty result is equally
+            // consistent with capture being on and the window being quiet.
             SectionEmptyState(
-                text: """
-                    No pages reported \(metric.title) in this window. \
-                    Core Web Vitals need performance capture switched on in the PostHog browser SDK.
-                    """,
+                text: "No pages reported \(metric.title) in this window.",
                 systemImage: "gauge.with.needle"
             )
         }

@@ -61,7 +61,7 @@ enum AutomationSection: String, CaseIterable, Identifiable, Hashable {
         case .endpoints:
             "An endpoint publishes a saved query over HTTP so another service can call it. None are defined here, which is what the zero counts above are reporting."
         case .alerts:
-            "An alert watches one insight's value and fires when it crosses a threshold. Nothing on this project is being watched."
+            "An alert watches one insight's value and e-mails people when it crosses a threshold. Nothing on this project is being watched. Open an insight and choose Alerts to set one."
         case .subscriptions:
             "A subscription mails or posts an insight or dashboard on a schedule. Nobody has scheduled a delivery from this project."
         case .exports:
@@ -69,11 +69,23 @@ enum AutomationSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Said on the screen, not just in a commit message: GetHog reads these.
+    /// Said on the screen, not just in a commit message: what GetHog does and
+    /// does not do with each of these.
+    ///
+    /// The alerts line used to read *"GetHog has no server to receive a
+    /// notification, so alerts are read here and managed in PostHog."* Every word
+    /// of the first clause is true and none of it was the reason. PostHog
+    /// evaluates an alert on its own servers and delivers it to
+    /// `subscribed_users` by e-mail — nothing is delivered *to* GetHog either
+    /// way, exactly as the subscriptions line two cases below has always said
+    /// correctly. The app was read-only here because it had not built the
+    /// composer, which is a decision rather than a constraint, and stating a
+    /// constraint instead is what stopped anyone re-examining it. It is built now:
+    /// open an insight and choose Alerts.
     var footer: String? {
         switch self {
         case .alerts:
-            "Viewing only. GetHog has no server to receive a notification, so alerts are read here and managed in PostHog."
+            "PostHog evaluates these on its own servers and e-mails the people subscribed to each one. To set, snooze or pause one, open the insight it watches and choose Alerts."
         case .subscriptions:
             "Viewing only. Deliveries are sent by PostHog to the destinations below — GetHog neither sends nor receives them."
         case .endpoints:
@@ -661,14 +673,28 @@ struct InsightAlertRowView: View {
             tint: alert.state == .firing ? Theme.Status.critical : Theme.accent,
             title: alert.displayTitle,
             subtitle: detailLine,
-            footnote: alert.enabled ? nil : "Not being evaluated",
+            // Who gets told, which is the question a reader answers before they
+            // trust an alert and which this row could not state until
+            // `subscribed_users` was decoded. Two lines because a name list is the
+            // one field here that legitimately runs long.
+            footnote: footnoteLine,
+            footnoteLineLimit: 2,
             accessory: .pill(alert.state.title, alertTint(alert.state))
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(alert.displayTitle), \(alert.state.title), \(detailLine)"
-                + (alert.enabled ? "" : ", not being evaluated")
+            "\(alert.displayTitle), \(alert.state.title), \(detailLine), \(footnoteLine)"
         )
+    }
+
+    /// Delivery first, because it is the fact the row exists to carry; the
+    /// paused state joins it rather than replacing it, since a paused alert with
+    /// subscribers and a running alert with none are different situations and the
+    /// old single-slot footnote could only ever say one of them.
+    private var footnoteLine: String {
+        var parts = [alert.deliverySummary]
+        if !alert.enabled { parts.insert("Not being evaluated", at: 0) }
+        return parts.joined(separator: " · ")
     }
 
     private var detailLine: String {

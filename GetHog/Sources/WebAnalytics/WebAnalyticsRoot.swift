@@ -995,18 +995,35 @@ struct WebAnalyticsRoot: View {
             )
 
             if let error = store.clicksError, store.externalClicks.isEmpty {
-                // The worst of the four, and the reason this sweep happened: the
-                // empty state does not merely assert the absence, it offers a
-                // *diagnosis* for it — that external link tracking is switched
-                // off — which sends a reader to change an SDK setting that was
-                // never the problem.
+                // A failed request must not read as a finding about the project.
+                // That was one of two defects here and it is the one that got
+                // fixed; the other survived directly below it for a while, with
+                // this comment describing it in the past tense.
                 sectionFailure(error) { Task { await loadExternalClicks() } }
             } else if topExternalClicks.isEmpty && !store.isLoadingClicks {
+                // States the absence and stops. It used to continue: "PostHog
+                // only records these when external link tracking is switched
+                // on." — a *diagnosis*, and one this app has no way to reach.
+                //
+                // Empty is a fact; why it is empty is a claim. The app reads no
+                // capture configuration anywhere — measured, 2026-07-31: the
+                // only occurrences of "autocapture" across `GetHog/Sources`
+                // and `GetHogKit/Sources` are event *names* (`$autocapture`)
+                // and prose, never a settings read.
+                //
+                // Nor could it easily start. `GET /api/projects/:id/` was
+                // called against the live project the same day and **carries no
+                // external-link-tracking field at all** — it exposes
+                // `autocapture_opt_out`, `autocapture_exceptions_opt_in`,
+                // `autocapture_web_vitals_opt_in`, `heatmaps_opt_in`,
+                // `capture_dead_clicks`, `capture_console_log_opt_in`,
+                // `session_recording_opt_in` and `surveys_opt_in`, and nothing
+                // resembling this one. PostHog's own docs describe outbound
+                // link capture as a client-side SDK config option, so there may
+                // be no server-side switch to read. A quiet week produces this
+                // identical result either way.
                 SectionEmptyState(
-                    text: """
-                        Nothing led off the site in the \(window.spokenTitle.lowercased()). \
-                        PostHog only records these when external link tracking is switched on.
-                        """,
+                    text: "Nothing led off the site in the \(window.spokenTitle.lowercased()).",
                     systemImage: "arrow.up.forward.square"
                 )
             } else {

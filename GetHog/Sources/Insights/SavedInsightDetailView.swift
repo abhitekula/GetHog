@@ -34,6 +34,18 @@ struct SavedInsightDetailView: View {
     @Environment(\.openURL) private var openURL
     @State private var store = SavedInsightStore()
 
+    /// The narrowing currently applied, and the sheet that edits it.
+    ///
+    /// Held here rather than in the store because it is the *request*, not the
+    /// answer — the store owns what came back. Keeping them apart is what lets
+    /// the chart caption say "showing Chrome" while the store separately reports
+    /// that the run failed, which is the pair `DashboardDetailView` gets wrong by
+    /// having only one of them.
+    @State private var filters: [InsightPropertyFilter] = []
+    @State private var breakdown: InsightBreakdownOverride = .saved
+    @State private var isNarrowing = false
+    @State private var isShowingAlerts = false
+
     private var insight: Insight? { store.insight ?? seeded }
     private var title: String { insight?.title ?? "Insight" }
 
@@ -55,6 +67,29 @@ struct SavedInsightDetailView: View {
                 DashboardDetailView(dashboardID: reference.id)
             }
             .toolbar { toolbarContent }
+            // Both sheets are presented from this screen rather than hoisted into
+            // `RootView`. `AppTab.presentsDetailAsSheet` exists for a *secondary
+            // tab's* own detail, which is torn down and written back through its
+            // binding when the width class changes; this is a pushed detail screen
+            // whose transient composer has no binding to write back through. What
+            // a width change costs here is the sheet closing, which is what a
+            // rebuilt screen should do with a half-typed form anyway.
+            .sheet(isPresented: $isNarrowing) {
+                if let insight {
+                    InsightNarrowSheet(
+                        insight: insight,
+                        filters: $filters,
+                        breakdown: $breakdown
+                    ) {
+                        applyNarrowing()
+                    }
+                }
+            }
+            .sheet(isPresented: $isShowingAlerts) {
+                if let insight {
+                    InsightAlertsView(insight: insight)
+                }
+            }
             .keyboardActions([
                 KeyboardAction(key: "r", title: "Recompute results") { recompute() }
             ])
@@ -112,7 +147,9 @@ struct SavedInsightDetailView: View {
 
                 chart(for: insight)
 
-                if case .timeSeries(let series, _) = insight.renderModel, !series.isEmpty {
+                narrowingNote(for: insight)
+
+                if case .timeSeries(let series, _) = drawnModel(for: insight), !series.isEmpty {
                     SeriesLegend(series: series)
                 }
 
@@ -187,13 +224,96 @@ struct SavedInsightDetailView: View {
     /// decision, and it should look like one. A drawable kind with no numbers yet
     /// gets a button, because that is a state the reader can change. Neither is
     /// ever a blank plot.
+    /// What is actually on screen: the narrowed run when there is one, otherwise
+    /// the saved result.
+    ///
+    /// One accessor rather than a branch at each use, because the chart, the
+    /// legend and the CSV export all have to agree about which numbers they are
+    /// describing. They did not have to before this screen could narrow, and a
+    /// legend keyed to the saved series beneath a chart split by browser is the
+    /// exact failure that makes.
+    private func drawnModel(for insight: Insight) -> InsightRenderModel {
+        store.narrowed ?? insight.renderModel
+    }
+
+    /// Whether the reader has asked for something other than the saved insight.
+    private var isNarrowed: Bool {
+        !filters.isEmpty || breakdown != .saved
+    }
+
+    /// States what the chart is showing whenever it is not the saved insight —
+    /// and, separately, when a narrowing was asked for and did not arrive.
+    ///
+    /// The second half is the one that matters. A chart that quietly keeps
+    /// drawing the saved, unfiltered numbers under a control the user set to
+    /// "Chrome" is the lie this whole feature has to avoid, and it has three ways
+    /// of happening: a refused request, a response that decoded to nothing, and an
+    /// insight with no re-runnable source. `SavedInsightStore.narrowError` names
+    /// which.
+    @ViewBuilder
+    private func narrowingNote(for insight: Insight) -> some View {
+        if let error = store.narrowError {
+            SectionEmptyState(
+                text: error,
+                systemImage: "exclamationmark.triangle",
+                detail: "Asked for: \(narrowingSummary).",
+                actionTitle: "Try again",
+                action: applyNarrowing
+            )
+        } else if isNarrowed, store.narrowed != nil {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                Label(narrowingSummary, systemImage: "line.3.horizontal.decrease.circle.fill")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                // The 44pt floor inside the label, not around the button — see
+                // `InsightAlertsView.controls` for the measurement. A caption-sized
+                // label is the worst case for this: its intrinsic height is well
+                // under half a fingertip.
+                Button {
+                    filters = []
+                    breakdown = .saved
+                    store.clearNarrowing()
+                } label: {
+                    Text("Clear")
+                        .font(Theme.Typography.caption)
+                        .frame(minHeight: 44)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Showing \(narrowingSummary). Double tap Clear to go back to the saved insight.")
+        }
+    }
+
+    /// The narrowing in words, used by the caption, the failure detail and
+    /// VoiceOver — one string so the three cannot describe it differently.
+    private var narrowingSummary: String {
+        var parts = filters.map(\.displayText)
+        switch breakdown {
+        case .saved: break
+        case .none: parts.append("no breakdown")
+        case .property(let value): parts.append("split by \(value.property)")
+        }
+        return parts.isEmpty ? "the saved insight" : parts.joined(separator: ", ")
+    }
+
     @ViewBuilder
     private func chart(for insight: Insight) -> some View {
-        Card(accent: TileStyle.accent(for: insight.renderModel)) {
+        Card(accent: TileStyle.accent(for: drawnModel(for: insight))) {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
-                if insight.hasDrawableResult {
+                if store.isNarrowing {
+                    VStack(spacing: Theme.Space.s) {
+                        ProgressView()
+                        Text("Running…")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Ink.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Space.xxl)
+                } else if store.narrowed != nil || insight.hasDrawableResult {
                     InsightChartView(
-                        model: insight.renderModel,
+                        model: drawnModel(for: insight),
                         compact: false,
                         webURL: webURL,
                         // The chart's descriptor has nowhere else to get a name.
@@ -386,12 +506,38 @@ struct SavedInsightDetailView: View {
                     } label: {
                         Label("Recompute results", systemImage: "arrow.clockwise")
                     }
+                    // Two workflows, one menu, and both are hidden rather than
+                    // disabled when they cannot apply — `InsightNarrowing` and
+                    // `AlertableInsight` each know why, and each sheet states the
+                    // reason on arrival. A permanently greyed item in a menu
+                    // teaches nothing; the sheets do.
+                    if InsightNarrowing(sourceKind: insight.sourceKind).isNarrowable {
+                        Button {
+                            isNarrowing = true
+                        } label: {
+                            Label(
+                                isNarrowed ? "Change narrowing" : "Filter or split",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                        }
+                    }
+                    if AlertableInsight.isAlertable(sourceKind: insight.sourceKind) {
+                        Button {
+                            isShowingAlerts = true
+                        } label: {
+                            Label("Alerts", systemImage: "bell")
+                        }
+                    }
                     // Hidden rather than disabled when there is nothing to
                     // export: `InsightShareMenuItems` already declines to offer
                     // anything for a model it could not decode, and this keeps
                     // the two agreeing.
                     Divider()
-                    InsightShareMenuItems(title: insight.title, model: insight.renderModel)
+                    // Exports what is drawn, not what was saved. A CSV of the
+                    // saved series under a title the reader has just narrowed
+                    // would be the same lie the caption exists to prevent — worse,
+                    // because it leaves the file system.
+                    InsightShareMenuItems(title: insight.title, model: drawnModel(for: insight))
                     if let webURL {
                         Divider()
                         ShareLink(item: webURL) {
@@ -467,5 +613,24 @@ struct SavedInsightDetailView: View {
     private func recompute() {
         guard let client = model.client, let projectID = model.projectID else { return }
         Task { await store.compute(client: client, projectID: projectID) }
+    }
+
+    /// Spends the one `.query` this feature costs, and only from the sheet's
+    /// Apply or from the failure state's Try again. Never from a picker's
+    /// `onChange`, never from a `.task(id:)` keyed on the selection — both would
+    /// turn browsing into a request per tap on a budget the whole organisation
+    /// shares.
+    private func applyNarrowing() {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        Task {
+            await store.applyNarrowing(
+                dateFrom: nil,
+                compare: false,
+                filters: filters,
+                breakdown: breakdown,
+                client: client,
+                projectID: projectID
+            )
+        }
     }
 }

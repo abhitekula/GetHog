@@ -119,7 +119,10 @@ enum WriteFailure {
     /// - Parameters:
     ///   - object: what was being changed, named as the user would name it.
     ///   - action: a bare verb phrase completing "Couldn't …", e.g. `"pause"`.
-    ///   - writeScope: the scope a 403 here almost certainly means is missing.
+    ///   - writeScope: the scope this call site *expects* a 403 to be about.
+    ///     A fallback, never an assertion — it is used only when PostHog named
+    ///     no scope of its own, and is then phrased as a possibility. See the
+    ///     `.forbidden` case below for why that distinction is load-bearing.
     static func message(
         for error: any Error,
         object: String,
@@ -145,17 +148,103 @@ enum WriteFailure {
                     \(detail.map { " PostHog said: \($0)" } ?? "")
                     """
             )
-        case .forbidden:
+        case .forbidden(let named, let detail):
             // A read-scoped key passes every preflight probe the app runs and
             // fails only here, so this is the first moment the user can learn
-            // what to tick.
-            return WriteOutcomeMessage(
-                kind: .failure,
-                text: """
-                    Couldn't \(action) \(object): your personal API key is missing the \
-                    \(writeScope) scope. Add it to the key in PostHog, then try again.
-                    """
+            // what to tick — but "add a scope" is only one of the walls a 403
+            // can be, and it used to be the only one this helper could say.
+            //
+            // This case previously matched `.forbidden` binding *nothing*,
+            // discarding both associated values and asserting `writeScope`, a
+            // constant hardcoded at each call site. That was wrong in the worst
+            // available direction: `missingScope` is nil *precisely when* the
+            // 403 is not about a scope, so the sentence was most confident
+            // exactly where it was least applicable. Measured against the two
+            // 403s README.md already documents — neither detail matches
+            // `PostHogErrorEnvelope.missingScope`'s `/([a-z_]+:(?:read|write))/`,
+            // because neither contains a `scope:verb` pair at all:
+            //
+            //   "This action does not support personal API key access"
+            //   "API keys with scoped projects are only supported on
+            //    project-based endpoints."
+            //
+            // `GetHogKit`'s `ForbiddenDetailTests` pins that neither detail
+            // yields a scope; `WriteForbiddenMessageTests` pins what this
+            // helper says about each of them.
+            //
+            // Classification is delegated rather than rewritten. `ResourceAccessState`
+            // is the kit's existing reader of this exact payload — the only
+            // place that knows a "personal API key" detail is a category
+            // refusal and a "feature flag" detail is PostHog-side. It records
+            // that those four walls came from probing the live API for the read
+            // screens; that provenance is inherited here, not re-verified, and
+            // a write 403 of any kind remains unobserved because the key this
+            // project develops against is read-only. Sharing it means a fifth
+            // wall discovered on a read is understood by every write for free,
+            // which is the whole reason not to hand-roll a fourth copy of this
+            // switch. Only the *sentences* are write-shaped; `ResourceCopy`'s
+            // read phrasing ("re-check") does not fit here.
+            let wall = ResourceAccessState(
+                failure: posthog,
+                resource: object,
+                defaultScope: writeScope
             )
+            let opener = "Couldn't \(action) \(object)"
+
+            switch wall {
+            case .unsupportedForPersonalKeys:
+                return WriteOutcomeMessage(
+                    kind: .failure,
+                    text: """
+                        \(opener): PostHog refuses personal API keys on this endpoint, so no \
+                        scope and no plan will open it. This has to be done in PostHog itself.
+                        """
+                )
+
+            case .featureFlagged(let flag):
+                return WriteOutcomeMessage(
+                    kind: .failure,
+                    text: flag.isEmpty
+                        ? "\(opener): PostHog has to enable this feature for your organisation first."
+                        : """
+                          \(opener): this is behind the `\(flag)` feature flag. PostHog has to \
+                          enable it for your organisation — neither a new key nor an admin can.
+                          """
+                )
+
+            case .missingScope(let scope) where named != nil:
+                // PostHog named the scope itself, so this is the one branch
+                // entitled to assert one.
+                return WriteOutcomeMessage(
+                    kind: .failure,
+                    text: """
+                        \(opener): your personal API key is missing the \(scope) scope. \
+                        Add it to the key in PostHog, then try again.
+                        """
+                )
+
+            default:
+                // PostHog named no scope and the detail matched no known wall.
+                // Its own sentence is the only true statement available, so it
+                // leads; `writeScope` follows as the guess it has always been,
+                // marked as a guess. PostHog also applies role-based access
+                // control to some objects, whose 403 is about the user's
+                // organisation role rather than the key — a remedy this app
+                // cannot distinguish from here, and would previously have
+                // hidden behind "edit your key". **Unverified**: provoking that
+                // needs a key holding the scope and lacking the role, which the
+                // read-only key this project develops against cannot produce.
+                let said = detail.map { " PostHog said: \($0)" } ?? ""
+                return WriteOutcomeMessage(
+                    kind: .failure,
+                    text: """
+                        \(opener): PostHog refused the change and didn't say which permission \
+                        was missing.\(said) If your key is missing the \(writeScope) scope, \
+                        adding it may fix this; otherwise ask an organisation admin to check \
+                        your role.
+                        """
+                )
+            }
         case .unauthorized:
             return WriteOutcomeMessage(
                 kind: .failure,

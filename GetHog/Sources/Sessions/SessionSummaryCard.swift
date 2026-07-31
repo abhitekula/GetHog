@@ -603,6 +603,11 @@ struct SessionChapterRow: View {
         }
     }
 
+    /// Measured at **16.0 × 16.0pt** through XCUITest on iPhone 17, against a
+    /// 44 × 44 floor. Same button, same omission and same fix as
+    /// `TimelineRowView.seekButton`, which carries the long form of the reasoning
+    /// — including why the modifier goes inside the label closure and why the
+    /// 44pt box has to be centred on the baseline rather than resting on it.
     @ViewBuilder
     private var seekButton: some View {
         if canSeek, let offset, let onSeek {
@@ -610,8 +615,10 @@ struct SessionChapterRow: View {
                 Image(systemName: "play.circle")
                     .font(.body)
                     .foregroundStyle(Theme.accent)
+                    .minimumHitTarget()
             }
             .buttonStyle(.plain)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
             .accessibilityLabel("Play the replay from \(SessionClock.spoken(offset))")
         }
     }

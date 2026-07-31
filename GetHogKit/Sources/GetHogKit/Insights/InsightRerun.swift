@@ -48,13 +48,27 @@ public enum InsightRerun {
     /// Non-object input is returned unchanged: a malformed saved query should
     /// fail its request and degrade one tile, not be rewritten into something
     /// that looks valid.
+    ///
+    /// `InsightNarrowing.swift` adds the longer form of this — the same two keys
+    /// plus a property filter and a breakdown — and it calls `dated(_:…)` below
+    /// rather than reimplementing these two, so the date rerun a dashboard makes
+    /// and the one an insight sheet makes cannot drift apart.
     public static func source(
         _ source: JSONValue,
         dateFrom: String,
         compare: Bool
     ) -> JSONValue {
-        guard case .object(var fields) = source else { return source }
+        guard case .object(let fields) = source else { return source }
+        return .object(dated(fields, dateFrom: dateFrom, compare: compare))
+    }
 
+    /// The date half of the rewrite, shared by both `source` overloads.
+    static func dated(
+        _ fields: [String: JSONValue],
+        dateFrom: String,
+        compare: Bool
+    ) -> [String: JSONValue] {
+        var fields = fields
         fields["dateRange"] = .object(["date_from": .string(dateFrom)])
 
         if compare {
@@ -65,8 +79,7 @@ public enum InsightRerun {
             // them differently.
             fields["compareFilter"] = nil
         }
-
-        return .object(fields)
+        return fields
     }
 }
 

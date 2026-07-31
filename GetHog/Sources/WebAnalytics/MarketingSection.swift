@@ -84,10 +84,22 @@ struct MarketingSection: View {
                 action: onRetry
             )
         } else {
+            // The mildest member of the empty-state family swept in correction
+            // 40, and adjusted rather than gutted because — unlike the three
+            // that named an SDK capture toggle — its first sentence is
+            // unconditionally true: this really is built from synced ad spend.
+            //
+            // What was wrong is that it never stated the absence at all, and
+            // went straight to a remedy phrased as an instruction ("Connect one
+            // in Data pipelines"), which asserts that no source *is* connected.
+            // This screen does not check. A project with a source connected and
+            // simply no spend in the window got sent to connect a second one.
+            // The absence now leads and the remedy is conditional.
             SectionEmptyState(
                 text: """
-                    PostHog builds this from ad spend synced by a connected advertising source. \
-                    Connect one in Data pipelines to see campaigns, cost and return here.
+                    No campaign spend in this window. PostHog builds this from ad spend synced \
+                    by a connected advertising source; if none is connected yet, that is set up \
+                    in Data pipelines.
                     """,
                 systemImage: "megaphone"
             )

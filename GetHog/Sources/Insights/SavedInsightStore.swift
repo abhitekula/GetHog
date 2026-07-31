@@ -25,6 +25,20 @@ final class SavedInsightStore {
     /// would otherwise say "not yet loaded" over a chart full of data.
     private(set) var didCompute = false
 
+    /// The result of re-running the insight with a narrowing applied. Absent
+    /// means "draw the saved result", exactly as `DashboardDetailStore.overrides`
+    /// does for a whole grid.
+    private(set) var narrowed: InsightRenderModel?
+    private(set) var isNarrowing = false
+    /// Why the last narrowing did not produce numbers.
+    ///
+    /// Named rather than swallowed, for `DashboardDetailView`'s reason: a chart
+    /// silently showing its saved, *unfiltered* result under a control that says
+    /// "Chrome" is precisely the lie this feature exists to avoid. Three distinct
+    /// paths reach it — a refused request, a response that decoded to nothing,
+    /// and an insight with no runnable source — and each says which.
+    private(set) var narrowError: String?
+
     // MARK: - Resolving
 
     /// Seeds from a row the list already fetched, so opening an insight from the
@@ -147,6 +161,93 @@ final class SavedInsightStore {
             // answer, it has only failed to improve on it.
             failure = LoadFailure(error, loading: "insight")
         }
+    }
+
+    // MARK: - Narrowing
+
+    /// Re-runs the insight with a property filter and a breakdown laid over its
+    /// saved query.
+    ///
+    /// **One `.query` request, and only from an explicit Apply.** The same price
+    /// and the same rule as the dashboard's date rerun — see `InsightRerun`, which
+    /// documents why `GET /insights/:id/?date_from=…` cannot do this and why a
+    /// continuous control must never drive it.
+    ///
+    /// Nothing is written back into `insight`: the saved definition on PostHog is
+    /// untouched, and a reader who clears the narrowing gets the stored result
+    /// back without a second request.
+    func applyNarrowing(
+        dateFrom: String?,
+        compare: Bool,
+        filters: [InsightPropertyFilter],
+        breakdown: InsightBreakdownOverride,
+        client: PostHogClient,
+        projectID: Int
+    ) async {
+        guard let insight else { return }
+
+        // Nothing asked for: drop the override rather than spending a request to
+        // reproduce the result already on screen.
+        if dateFrom == nil, !compare, filters.isEmpty, breakdown == .saved {
+            narrowed = nil
+            narrowError = nil
+            return
+        }
+
+        guard let source = insight.rawSource else {
+            narrowed = nil
+            narrowError = "This insight's saved query isn't in a shape GetHog can re-run, so the chart is still showing the saved result."
+            return
+        }
+
+        isNarrowing = true
+        defer { isNarrowing = false }
+
+        // `dateFrom` absent means "keep the saved window", and the rewrite has no
+        // way to express that — it always writes a `dateRange`. So the saved
+        // range is read back off the node rather than being replaced with a
+        // default, which would silently move a 90-day insight to 30.
+        let effectiveDateFrom = dateFrom
+            ?? source["dateRange"]?["date_from"]?.stringValue
+            ?? "-30d"
+
+        let rebuilt = InsightRerun.source(
+            source,
+            dateFrom: effectiveDateFrom,
+            compare: compare,
+            filters: filters,
+            breakdown: breakdown
+        )
+
+        do {
+            let data = try await client.data(
+                for: PostHogAPI.runQuery(projectID: projectID, source: rebuilt)
+            )
+            guard let model = InsightRerun.renderModel(
+                from: data,
+                sourceKind: insight.sourceKind,
+                display: insight.displayType
+            ) else {
+                // A request that *succeeded* and produced nothing drawable. Not a
+                // failure of the network and not an empty project — the response
+                // arrived in a shape this build could not turn into a chart, and
+                // saying so is the only honest option. Counting it as success
+                // would leave the saved chart on screen under the new filter.
+                narrowed = nil
+                narrowError = "PostHog answered, but not in a shape this app could draw. The chart below is still the saved result."
+                return
+            }
+            narrowed = model
+            narrowError = nil
+        } catch {
+            narrowed = nil
+            narrowError = LoadFailure(error, loading: "insight").summary
+        }
+    }
+
+    func clearNarrowing() {
+        narrowed = nil
+        narrowError = nil
     }
 }
 

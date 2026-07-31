@@ -5,9 +5,18 @@ import Foundation
 // on one screen and they answer one question between them — what is this project
 // doing on a schedule, and is any of it broken?
 //
-// All five are read-only in GetHog. Alerts and subscriptions in particular
-// are *viewed* here, never managed: the app has no server to receive a push, so
-// promising to deliver anything would be a promise it cannot keep.
+// Four of the five are read-only in GetHog. **Alerts are not**, and the
+// sentence that used to stand here — that the app has no server to receive a
+// push — was true and was never a reason. PostHog evaluates an alert on its own
+// servers and delivers it to `subscribed_users` by e-mail or to a configured
+// destination; nothing is delivered *to* GetHog either way, exactly as the
+// subscriptions line has always said. Setting one is a write like any other, and
+// it lives in `AlertDraft.swift` and `PostHogAPI+Alerts.swift`.
+//
+// Subscriptions stay read-only for a different and real reason: a subscription
+// carries a delivery target — an address, a Slack channel, a webhook URL — and
+// composing one from a phone means typing somebody else's address into a
+// recurring send. That is a decision, and it is stated as one.
 
 // MARK: - Workflows (hog flows)
 
@@ -182,12 +191,38 @@ public struct InsightAlert: Sendable, Decodable, Identifiable, Hashable {
     public let lastValue: Double?
     public let lastCheckedAt: Date?
     public let calculationInterval: String?
+    /// When an active snooze expires. `nil` is *not snoozed*.
+    ///
+    /// Read even though `state` already carries a `.snoozed` case, because the
+    /// two answer different questions: `state` says the alert is quiet, this says
+    /// when it stops being quiet. A snooze control that could not show the end
+    /// time would leave "Snoozed" reading as indefinite, which is the one thing a
+    /// snooze is not.
+    public let snoozedUntil: Date?
+    /// When PostHog next evaluates it, if the payload said.
+    public let nextCheckAt: Date?
+    /// Who PostHog e-mails when it fires, by display name.
+    ///
+    /// The whole point of the alerts screen on a phone: "who gets told" is the
+    /// question a person answers before they trust an alert, and this app has
+    /// spent its life unable to state it. `subscribed_users` is a list of ids on
+    /// the way *in* and a list of `UserBasicSerializer` objects on the way *out*
+    /// — the same asymmetry `insight` has — so this decodes objects and reduces
+    /// each to a name.
+    ///
+    /// Empty is a real answer and must not be dressed up: PostHog's own
+    /// `test-delivery` action answers 409 *"Add an email recipient or active
+    /// destination before sending a test."* for an alert in exactly that state.
+    public let subscribedUsers: [String]
 
     enum CodingKeys: String, CodingKey {
         case id, name, insight, threshold, state, enabled
         case lastValue = "last_value"
         case lastCheckedAt = "last_checked_at"
         case calculationInterval = "calculation_interval"
+        case snoozedUntil = "snoozed_until"
+        case nextCheckAt = "next_check_at"
+        case subscribedUsers = "subscribed_users"
     }
 
     private enum InsightKeys: String, CodingKey {
@@ -211,6 +246,19 @@ public struct InsightAlert: Sendable, Decodable, Identifiable, Hashable {
         lastCheckedAt = try c.decodeIfPresent(String.self, forKey: .lastCheckedAt)
             .flatMap(PostHogDate.parse)
         calculationInterval = try c.decodeIfPresent(String.self, forKey: .calculationInterval)
+        // `snoozed_until` is a `RelativeDateTimeField` on the way *in* — "4h",
+        // "1d" — and a stored datetime on the way out, so this reads a date and
+        // `PostHogAPI.setAlertSnoozed` writes a duration. Neither spelling is a
+        // mistake; they are two different directions of the same field.
+        snoozedUntil = try c.decodeIfPresent(String.self, forKey: .snoozedUntil)
+            .flatMap(PostHogDate.parse)
+        nextCheckAt = try c.decodeIfPresent(String.self, forKey: .nextCheckAt)
+            .flatMap(PostHogDate.parse)
+        // `try?`-and-default, like every other optional field on this type: a
+        // subscriber whose shape this build does not recognise must not take the
+        // whole alerts page down with it.
+        subscribedUsers = ((try? c.decodeIfPresent([PostHogNestedUser].self, forKey: .subscribedUsers))
+            ?? nil)?.compactMap(\.displayName) ?? []
 
         // `insight` is a full InsightBasicSerializer object despite the singular
         // field name; decoding it as the id it looks like throws.
@@ -233,6 +281,43 @@ public struct InsightAlert: Sendable, Decodable, Identifiable, Hashable {
     /// Alerts are often unnamed; the insight they watch is the next best label.
     public var displayTitle: String {
         name ?? insightName ?? "Untitled alert"
+    }
+
+    /// Whether a snooze is still running, judged against `now` rather than
+    /// against `state`.
+    ///
+    /// The two can disagree, and the direction they disagree in is the awkward
+    /// one: `state` is written by PostHog's state machine when a check runs, and
+    /// a snoozed alert is not checked — so a snooze that expired ten minutes ago
+    /// can still be reported as `Snoozed` until the next evaluation. Reading the
+    /// date is the only way a screen can offer "Unsnooze" for an alert that has
+    /// in fact already woken up, and not offer it for one that has not.
+    ///
+    /// **Source-derived**: read from the serializer's `update`, never observed —
+    /// this project has no alerts to watch a snooze expire on.
+    public func isSnoozed(now: Date = Date()) -> Bool {
+        guard let snoozedUntil else { return false }
+        return snoozedUntil > now
+    }
+
+    /// Who PostHog tells, said in full or admitted to be nobody.
+    ///
+    /// Never "0 subscribers": an alert nobody is subscribed to and that has no
+    /// destination is one PostHog evaluates into silence, which is a finding
+    /// rather than a count.
+    public var deliverySummary: String {
+        switch subscribedUsers.count {
+        case 0:
+            // Deliberately hedged. This app reads `subscribed_users` and cannot
+            // see the alert's Slack/webhook destinations at all — those live on
+            // separate CDP function rows this client does not fetch — so an empty
+            // list means "no e-mail recipient", not "nobody is told".
+            return "No e-mail recipient. PostHog may still post this to a destination GetHog can't see."
+        case 1:
+            return "E-mails \(subscribedUsers[0])"
+        default:
+            return "E-mails \(subscribedUsers.count) people: \(subscribedUsers.joined(separator: ", "))"
+        }
     }
 
     /// Turns `{"type": "absolute", "bounds": {"lower": 100}}` into "Below 100".

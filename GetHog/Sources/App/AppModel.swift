@@ -492,7 +492,14 @@ final class AppModel {
     /// `dashboardID` is threaded through rather than looked up: this is only
     /// ever called while iterating one dashboard's tiles, so the answer is
     /// already in hand and costs neither a request nor a guess.
-    private static func metric(from tile: Tile, on dashboardID: Int) -> SharedSnapshot.Metric? {
+    ///
+    /// Internal rather than private so `AppModelTests` can pin it. It was
+    /// `private static` and untested, and that is precisely how the funnel
+    /// branch below shipped a permanent false decline to the Lock Screen:
+    /// `SharedSnapshotTests` pins how `previous` is *derived* into a delta, so
+    /// the arithmetic was covered and the only uncovered thing was what gets
+    /// put in. Every branch here now has a test.
+    static func metric(from tile: Tile, on dashboardID: Int) -> SharedSnapshot.Metric? {
         guard let insight = tile.insight else { return nil }
 
         switch tile.renderModel {
@@ -513,9 +520,42 @@ final class AppModel {
                          dashboardID: dashboardID)
         case .funnel(let groups):
             guard let group = groups.first, let last = group.steps.last else { return nil }
+            // `previous` and `sparkline` are both deliberately empty, and both
+            // used to be filled from the funnel's *steps*. That was a category
+            // error in two fields at once: a funnel's step axis is not a time
+            // axis, and neither field's contract admits anything else.
+            //
+            // `previous` documents nil as "the comparison-period value; nil
+            // means not known". It was `group.steps.first?.count` — step 1.
+            // A funnel is monotonically non-increasing and PostHog returns its
+            // steps step-1-first (`Insight.swift` maps the array positionally
+            // and never re-sorts), so `last.count <= first.count` *always*.
+            // The derived delta was therefore negative with a guaranteed sign
+            // and a large magnitude, on every funnel tile, forever — a
+            // 5,000 → 750 funnel reported a permanent −85% that no measurement
+            // supports. Downstream it reached the widget's change label, the
+            // VoiceOver phrase "down 85%", Smart Stack ranking (where
+            // `moveBonus` is `abs(deltaFraction)`, so the fake movement
+            // actively *promoted* funnel tiles over metrics that genuinely
+            // moved), and a **local notification** on the Lock Screen reading
+            // "… is 750, down 85% from 5,000."
+            //
+            // `MetricWatch.verdict` carries a comment refusing to invent a
+            // baseline for exactly this reason. It was being handed one from
+            // here, one layer up — the guard was sound and the input was not.
+            //
+            // `sparkline` documents "oldest to newest". It was the step
+            // profile, which `MetricWidget.legend` then labels "low"/"high"
+            // beside a legend item literally named `prev`, as though the
+            // descending step counts were time-series extremes.
+            //
+            // `.bigNumber` and `.barValue` already pass `previous: nil`; this
+            // now matches them. A funnel's honest headline is its conversion
+            // rate with no comparison, which would need `unit` to say so — a
+            // feature, not a bug fix, and deliberately not smuggled in here.
             return .init(id: String(insight.id), title: tile.title, value: last.count,
-                         unit: nil, previous: group.steps.first?.count,
-                         sparkline: group.steps.map(\.count), dashboardID: dashboardID)
+                         unit: nil, previous: nil,
+                         sparkline: [], dashboardID: dashboardID)
         default:
             // Retention grids, paths and stickiness have no single headline
             // figure, so they are simply not offered as widget metrics.

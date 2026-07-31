@@ -506,6 +506,23 @@ struct TimelineRowView: View {
         }
     }
 
+    /// Measured at **16.0 × 16.0pt** through XCUITest on iPhone 17, against a
+    /// 44 × 44 floor — and it is the worst kind of undersized control, because
+    /// the 28pt of row around it is not dead space but the *toggle*. Missing the
+    /// glyph does not do nothing; it expands the row instead, which reads as the
+    /// seek having been ignored. `ReplayConsoleRow` and `ReplayNetworkRow` are
+    /// the same button in the same kind of row and already carry the modifier;
+    /// these two were the pair that did not.
+    ///
+    /// Inside the label closure, for the reason `HitTargetTests` records: under
+    /// `.plain` the tap region is the label's bounds and nothing else, so the
+    /// same modifier applied to the `Button` moves nothing.
+    ///
+    /// The guide is the other half of it. An `Image` baseline-aligns on its
+    /// *bottom* edge, so a 44pt box in a `.firstTextBaseline` row would hang its
+    /// whole height above the title's baseline and the glyph would rise 22pt out
+    /// of the row. Centring the box on the baseline puts the glyph on the line it
+    /// belongs to and grows the row symmetrically.
     @ViewBuilder
     private var seekButton: some View {
         if canSeek {
@@ -513,8 +530,10 @@ struct TimelineRowView: View {
                 Image(systemName: "play.circle")
                     .font(.body)
                     .foregroundStyle(Theme.accent)
+                    .minimumHitTarget()
             }
             .buttonStyle(.plain)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
             .accessibilityLabel("Play the replay from \(SessionClock.spoken(entry.offset))")
         }
     }

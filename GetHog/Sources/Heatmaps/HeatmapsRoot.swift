@@ -264,7 +264,37 @@ struct HeatmapsRoot: View {
                 // were empty. The renders half may not have been, and this state
                 // replaces the whole screen including the note that would
                 // otherwise have said so, so it has to carry the caveat itself.
-                message: "PostHog captured no clicks in the \(window.spokenTitle.lowercased()). Heatmap data needs autocapture enabled in your web SDK."
+                //
+                // It used to continue: "Heatmap data needs autocapture enabled
+                // in your web SDK." Removed as an unknowable diagnosis, the twin
+                // of the one in `WebAnalyticsRoot.outboundSection` — same shape,
+                // caught later. The app reads no capture setting anywhere
+                // (measured 2026-07-31: every "autocapture" in this repo's
+                // sources is an event name or prose, never a settings read).
+                //
+                // It was also wrong on its own terms, which is why softening it
+                // is not enough. This screen is fed by *two* endpoints gated by
+                // *two* different project switches — `GET /api/projects/:id/`,
+                // read live the same day, carries `heatmaps_opt_in` and
+                // `autocapture_opt_out` as separate fields. Heatmap depth data
+                // hangs off the first; `/elements/stats/` click rows hang off
+                // the second. One sentence naming one switch could not be true
+                // of both halves at once, so a reader who acted on it might
+                // change a setting that had nothing to do with the emptiness.
+                //
+                // Establishing the real cause is possible but not free: one
+                // `.crud` request per visit to a screen that already makes two.
+                // And it would not settle it, which is the part worth recording
+                // because it was measured rather than assumed. On the live
+                // project, `autocapture_opt_out` reads `null` — *not* opted out
+                // — while `read-data-schema` lists no `$autocapture` event in
+                // the project at all (it has `$pageview`, `$dead_click` and
+                // `$rageclick`, but not the one `ElementStats.requestableTypes`
+                // asks for first). So a screen that had fetched the setting
+                // would have concluded "autocapture is on" and still drawn
+                // nothing. The field states an opt-out, not whether any data
+                // exists. Stating the absence costs nothing and is true.
+                message: "PostHog captured no clicks in the \(window.spokenTitle.lowercased())."
                     + (store.renderLookupFailure.map {
                         " This app also couldn't check whether the project has a saved page render: \(Self.sentence($0))"
                     } ?? "")

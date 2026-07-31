@@ -199,10 +199,26 @@ final class ErrorTriageController {
                 // A read-scoped key passes every preflight probe — error tracking
                 // is gated on `query:read`, which it has — and only fails here.
                 // This is the first moment the user can learn what to tick.
-                text = """
-                    Couldn't \(action) \(issue.name): your personal API key is missing the \
-                    \(requiredWriteScope) scope. Add it to the key in PostHog, then try again.
-                    """
+                //
+                // This branch used to hand-roll the same sentence `WriteFailure`
+                // did, binding nothing and asserting `requiredWriteScope` for
+                // every 403. Both were wrong the same way and were found
+                // together; the classification now defers to the shared helper
+                // so the two cannot drift again.
+                //
+                // Only the text is taken. `ErrorTriageMessage` is a *separate*
+                // struct from `WriteOutcomeMessage` — deliberately, per the note
+                // on `WriteOutcomeMessage`: error-tracking writes do not pass
+                // through PostHog's approval gate, so this type has no `.filed`
+                // case and must not gain one. `WriteFailure.message` cannot
+                // return `.filed` for a `.forbidden` input, so the two `Kind`s
+                // agree on every value that can reach here.
+                text = WriteFailure.message(
+                    for: posthogError,
+                    object: issue.name,
+                    action: action,
+                    writeScope: requiredWriteScope
+                ).text
             case .unauthorized:
                 text = "Couldn't \(action) \(issue.name): your API key was rejected. Reconnect in Settings."
             default:
