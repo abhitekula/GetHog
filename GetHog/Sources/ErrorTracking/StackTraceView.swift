@@ -235,11 +235,19 @@ struct ExceptionEntryView: View {
 
     /// The distinct reasons symbolication failed.
     ///
-    /// Deduplicated because in practice they are one reason repeated: all 22
-    /// unresolved frames in the live capture shared a single 407 on the same
-    /// bundle. This sentence used to sit on every row, and rendered against that
-    /// payload it filled the card — the same 14 words, 22 times, between the
-    /// frames somebody was trying to read.
+    /// Deduplicated because in practice a handful of reasons are repeated across
+    /// every frame. Counted in the live capture the demo now serves
+    /// (`exception_unresolved_frames.json`): 22 unresolved frames carrying **3**
+    /// distinct strings — the same 407 Proxy Authentication Required against
+    /// three different bundles, 15 frames on one and 5 and 2 on the others. This
+    /// sentence used to sit on every row, and rendered against that payload it
+    /// filled the card: the same fourteen words, 22 times, between the frames
+    /// somebody was trying to read.
+    ///
+    /// The count is also why the disclosure's label is plural-aware. Rendered on
+    /// screen against this capture it reads "Why PostHog couldn't resolve them
+    /// (3 reasons)"; a fixture where the reasons collapsed to one would have left
+    /// that branch of the copy unseen.
     private var resolveFailures: [String] {
         var seen = Set<String>()
         return minified.compactMap { frame -> String? in

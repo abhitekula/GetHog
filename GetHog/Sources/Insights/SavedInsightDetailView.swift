@@ -277,24 +277,78 @@ struct SavedInsightDetailView: View {
 
     /// Where else this insight appears.
     ///
-    /// Worth a row because it is the answer to "why am I seeing this number in
-    /// two places", and because the dashboard is where the insight sits beside
-    /// its context. Ids only — the names would cost one request per dashboard,
-    /// and `DashboardDetailView` fetches its own title anyway.
+    /// Worth a section because it is the answer to "why am I seeing this number
+    /// in two places", and because the dashboard is where the insight sits
+    /// beside its context.
+    ///
+    /// **The name is not available here, and this screen does not buy it.**
+    /// Measured, because the row used to render `Dashboard [REMOVED PRIVATE DATA]` in the slot
+    /// a name belongs in and it was worth knowing whether that was laziness:
+    ///
+    /// - `Insight.dashboards` is `[Int]`, ids only.
+    /// - The raw payload has nothing more. `GET /insights/:id/` also returns
+    ///   `dashboard_tiles`, and each entry is `{id, dashboard_id, deleted}` —
+    ///   the tile's id and the dashboard's, no title on either.
+    /// - Nothing in the process holds a resolved list. `DashboardsStore` is
+    ///   `@State` inside `DashboardsRoot`, so it does not outlive that screen and
+    ///   is unreachable from this one; `AppModel` keeps no dashboard list;
+    ///   `PostHogClient` has no read-through cache that a call site could consult
+    ///   without also being willing to make the request.
+    ///
+    /// So the only way to print a name is `GET /api/projects/:id/dashboards/`,
+    /// and **that request is not made**. The reasoning, since either choice is
+    /// defensible:
+    ///
+    /// 1. It buys a *label*, not a capability. The destination is one tap away
+    ///    and `DashboardDetailView` fetches and shows the real name on arrival,
+    ///    so nothing here is unreachable without it — it would only be prettier
+    ///    sooner.
+    /// 2. It is not one small request. Per-id `GET /dashboards/:id/` returns the
+    ///    dashboard *with its tiles*, so N ids is N multi-kilobyte responses to
+    ///    extract N strings; the collection endpoint is one request but returns
+    ///    up to 50 full summaries, and would still miss any dashboard past the
+    ///    page. Either way the spend is out of proportion to a caption.
+    /// 3. The budget is organisation-wide and shared with whatever else the user
+    ///    has integrated. This screen already costs a resolve, a results
+    ///    computation and a comment thread; a fourth request that no on-screen
+    ///    decision depends on is the kind this app is supposed to decline.
+    ///
+    /// What is fixed instead is the *presentation*, which is where the actual
+    /// defect was. A bare number in the title slot reads as a name that happens
+    /// to be numeric; `#` marks it as an identifier, and the section says once,
+    /// underneath, why there is a number there at all. The per-row subtitle that
+    /// used to carry that explanation is gone — it was clipped to
+    /// "Opens the dashboard this insight is a til…", which is a sentence that
+    /// stops before it says anything, repeated on every row.
     private func dashboardLinks(for insight: Insight) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: "On dashboards", systemImage: "square.grid.2x2")
             ForEach(insight.dashboards, id: \.self) { id in
                 NavigationLink(value: DashboardReference(id: id)) {
-                    DataRow(
-                        glyph: "square.grid.2x2",
-                        title: "Dashboard \(id)",
-                        subtitle: "Opens the dashboard this insight is a tile on"
-                    )
+                    // `DataRow.title` is a plain `String`, so this is ordinary
+                    // string interpolation and the id is printed digit for digit.
+                    // Worth keeping it that way: an id put through any number
+                    // formatter is an id that no longer matches the URL it came
+                    // from and cannot be pasted anywhere.
+                    DataRow(glyph: "square.grid.2x2", title: "Dashboard #\(id)")
                 }
                 .buttonStyle(.plain)
             }
+            Text(dashboardIDExplanation(count: insight.dashboards.count))
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Ink.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Said once under the rows rather than on each of them, for the same reason
+    /// `StackTraceView` states the minified caveat once above its frames: it is
+    /// one fact about the whole section, and repeating it per row is what made
+    /// the previous wording too long to finish.
+    private func dashboardIDExplanation(count: Int) -> String {
+        count == 1
+            ? "This insight is a tile on it. The insight carries the dashboard's id and not its name, so open it to see what it's called."
+            : "This insight is a tile on each. The insight carries the dashboards' ids and not their names, so open one to see what it's called."
     }
 
     /// A type of this screen's own, rather than reusing `PostHogLink.dashboard`.

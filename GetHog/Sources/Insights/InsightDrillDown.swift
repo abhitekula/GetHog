@@ -115,6 +115,68 @@ private struct InsightPeoplePresentation: ViewModifier {
     }
 }
 
+// MARK: - Naming a drill so two of them can be told apart
+
+/// `InsightDrill.title` is what the reader *tapped* — a day, a series, a
+/// breakdown value, a funnel step's name — and on every axis but one that is
+/// enough to identify the drill on its own.
+///
+/// A funnel step is the exception, and it is the sharpest case in the app rather
+/// than a cosmetic one. Tapping step 2 of a funnel offers **two** drills, and
+/// both are titled with the step's name, so the picker read
+///
+///     Second page view · 45
+///     Second page view · 92
+///
+/// — two entries spelled identically, distinguished only by numbers the reader
+/// has no way to interpret. They are converted and dropped-off for the same
+/// step, and they are complements: 92 = 137 − 45. Whichever was chosen, the
+/// sheet's title then said "Second page view" too, so having chosen, you could
+/// not tell which of the two you were looking at. On a screen whose entire
+/// purpose is answering "who dropped out", that is the one question it must
+/// never leave open.
+///
+/// `FunnelDrillOutcome` already carries the distinction; nothing was reading it.
+extension InsightDrill {
+
+    /// The outcome in two or three words, or `nil` on an axis where the drill's
+    /// own title is already unique.
+    ///
+    /// Shorter than `FunnelDrillOutcome.title` ("Completed this step" /
+    /// "Dropped off here") because it has to sit *alongside* the step name in a
+    /// title bar that also holds two buttons, and the same wording is used in
+    /// both places so the entry a reader picks and the screen they land on say
+    /// the same word.
+    var outcomeLabel: String? {
+        guard case .funnelStep(_, let outcome) = kind else { return nil }
+        switch outcome {
+        case .converted: return "Completed"
+        case .droppedOff: return "Dropped off"
+        }
+    }
+
+    /// The row in the sibling picker.
+    ///
+    /// The step name is dropped here rather than added to: every entry in this
+    /// picker belongs to the *same* step, so repeating it is the part that
+    /// carries no information, and the picker is already labelled "Outcome". The
+    /// step is named on the sheet the menu hangs off, which is where the reader
+    /// came from and where they land.
+    var pickerTitle: String { outcomeLabel ?? title }
+
+    /// The sheet's navigation title.
+    ///
+    /// Outcome first, and for a reason beyond matching the picker: an inline
+    /// title truncates from the tail, and it shares a 44pt bar with a filter
+    /// button and a Done button. Leading with the step name would put the one
+    /// word that distinguishes the two drills in exactly the position that gets
+    /// cut — which is the same failure, one screen further on.
+    var screenTitle: String {
+        guard let outcomeLabel else { return title }
+        return "\(outcomeLabel) · \(title)"
+    }
+}
+
 // MARK: - Loading
 
 @MainActor
@@ -233,7 +295,7 @@ struct InsightPeopleSheet: View {
         NavigationStack {
             content
                 .pageSurface()
-                .navigationTitle(drill.title)
+                .navigationTitle(drill.screenTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(for: PersonSummary.self) { person in
                     PersonDetailView(person: person)
@@ -258,7 +320,7 @@ struct InsightPeopleSheet: View {
         Menu {
             Picker(request.axisLabel, selection: $drill) {
                 ForEach(request.siblings) { sibling in
-                    Text("\(sibling.title) · \(Int(sibling.expectedCount))")
+                    Text("\(sibling.pickerTitle) · \(Int(sibling.expectedCount))")
                         .tag(sibling)
                 }
             }
@@ -443,6 +505,13 @@ struct InsightActorRow: View {
                         .foregroundStyle(Theme.Ink.tertiary)
                 }
             }
+            // Nothing here is prose. A person is identified by an email or a
+            // distinct id, and SwiftUI's default typesetting language inherits
+            // the app locale — whose English hyphenation dictionary rendered
+            // `nina.castellano@example.-com` at accessibility sizes. A hyphen
+            // inside an address changes what the address *is*, so this is a
+            // wrong string rather than an ugly one.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
             Spacer(minLength: 0)
         }
         .frame(minHeight: 44)
