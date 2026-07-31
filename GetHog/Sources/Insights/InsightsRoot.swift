@@ -269,8 +269,11 @@ struct InsightsRoot: View {
             }
             .pickerStyle(.menu)
             .tint(Theme.accent)
-
-            Spacer(minLength: 0)
+            // Pushes the toggle to the trailing edge in a row, and takes the
+            // whole line when `GlassFilterBar` stacks. A `Spacer` between the two
+            // did the first and, once the bar stacked, became a *vertical* gap
+            // between two rows that were already spaced.
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Toggle(isOn: $favouritesOnly) {
                 favouritesLabel

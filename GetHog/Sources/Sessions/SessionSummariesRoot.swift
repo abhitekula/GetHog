@@ -113,6 +113,18 @@ struct SessionSummariesRoot: View {
                     .listRowBackground(cardRowBackground)
                     .listRowSeparator(.hidden)
                 }
+            } header: {
+                // Attribution, and it is not decoration.
+                //
+                // Every row on this screen leads with a verdict and three lines
+                // of prose that a model wrote, and nothing on the screen said so:
+                // not the title ("Summaries"), not the banner, not the rows. Read
+                // cold, the list is indistinguishable from a list of measurements
+                // PostHog returned. This is the header that makes the whole
+                // section's provenance visible; the per-row spoken label carries
+                // the same word, because VoiceOver reaches a row long after a
+                // header has been read and forgotten.
+                SectionLabel(text: "AI summaries", systemImage: "text.append")
             } footer: {
                 Text(footerNote)
             }
@@ -241,7 +253,10 @@ struct SessionSummaryRowView: View {
     }
 
     private var spoken: String {
-        var parts = [SessionOutcomeStyle.title(row.outcome)]
+        // Leads with the provenance, for the reason the section header exists:
+        // the title and the subtitle are both a model's words, and a row read on
+        // its own has no header above it to say so.
+        var parts = ["AI summary", SessionOutcomeStyle.title(row.outcome)]
         if let narrative = row.outcome?.detail { parts.append(narrative) }
         if let duration = row.durationText { parts.append("duration \(duration)") }
         if row.hasExceptions { parts.append("has exceptions") }
@@ -254,8 +269,9 @@ struct SessionSummaryRowView: View {
 /// One summary, read on its own.
 ///
 /// **One request.** The list row already carries the headline outcome, so this
-/// screen shows it immediately and then fetches the chapters — which is the
-/// second request, made on open, exactly once.
+/// screen shows it immediately — as `SessionSummaryCard`'s `seed`, under that
+/// card's own label — and then fetches the chapters, which is the second
+/// request, made on open, exactly once.
 ///
 /// Chapters here are read rather than played: there is no replay on this screen
 /// to seek. "Watch this session" pushes the session screen, where the same card
@@ -264,26 +280,50 @@ struct SessionSummaryDetailView: View {
     let row: SessionSummaryRow
 
     @Environment(AppModel.self) private var model
+    /// Read because the facts card changes shape rather than shrinking; see
+    /// `factsCard`.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = SessionSummaryStore()
 
     private var replayWebURL: URL? {
         model.webURL(path: "replay/\(row.id)")
     }
 
+    /// **The generated card comes first, and there is only one of it.**
+    ///
+    /// This screen used to open with an unlabelled card carrying the model's
+    /// verdict and its whole paragraph, and then repeat both verbatim further
+    /// down under "AI summary · gemini-3-flash-preview". The duplication was the
+    /// visible symptom; the defect was which copy came first. A reader meeting
+    /// "Did not finish" and four sentences of narrative at the top of a screen,
+    /// in the slot a summary of PostHog's own data would occupy, has no way to
+    /// know a model wrote it — and this app's rule is that generated text is
+    /// always visibly generated.
+    ///
+    /// So the prose lives in exactly one place, the one that names its author,
+    /// and that card is moved to the top because it is what the screen is *for*.
+    /// `seed:` is what stops the move costing anything: the row already carries
+    /// the outcome, so the headline still renders before the second request
+    /// answers — it simply renders under the label now.
+    ///
+    /// What is left in `factsCard` is the session's own record — when it
+    /// started, how long it ran, who, which id, and when it was summarised —
+    /// none of which a model wrote.
     var body: some View {
         PageScaffold {
-            headerCard
-            watchCard
-
             SessionSummaryCard(
                 store: store,
                 // No player on this screen, so offsets stay measured from
                 // `session_start_time` — which is what they are recorded
                 // against, and the honest reading when nothing is playing.
                 origin: nil,
+                seed: row.outcome,
                 canSeek: false,
                 onRetry: { Task { await load() } }
             )
+
+            watchCard
+            factsCard
 
             FreshnessLabel(date: store.loadedAt)
         }
@@ -303,51 +343,108 @@ struct SessionSummaryDetailView: View {
         .refreshable { await load() }
     }
 
-    private var headerCard: some View {
+    /// The session's own record: when, how long, who, which id, and when it was
+    /// summarised.
+    ///
+    /// Deliberately holds nothing a model wrote. The verdict and the narrative
+    /// that used to head this card are in `SessionSummaryCard` above, once, under
+    /// the label naming the model that produced them — see `body`. The exception
+    /// count stays, because `exception_count` is a number PostHog counted rather
+    /// than a reading of the session, and it is the one fact here that changes
+    /// how urgently the rest is read.
+    ///
+    /// **The heading and the badge stop sharing a row at accessibility sizes.**
+    /// Measured at AX5 on an iPhone 17 Pro: `2 exceptions` in a `StatusPill` is
+    /// around 350pt of a 393pt window, and beside a glyph and a spacer it left the
+    /// heading a column narrower than a single character — it rendered as
+    /// *nothing*, while still claiming one line's height per character it could
+    /// not draw, and the card came out roughly 1450pt tall holding a glyph and a
+    /// pill in a field of white. `StatusPill` no longer refuses to compress at
+    /// these sizes, which is the half of the fix every screen gets; this is the
+    /// other half, and it is the same reflow `FunnelStepRow` and `InsightLegend`
+    /// make — the elastic thing gets the whole width, and what was beside it takes
+    /// its own line.
+    private var factsCard: some View {
         Card {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
-                HStack(spacing: Theme.Space.s) {
-                    Image(systemName: SessionOutcomeStyle.systemImage(row.outcome))
-                        .font(.title3)
-                        .foregroundStyle(SessionOutcomeStyle.tint(row.outcome))
-                        .accessibilityHidden(true)
-                    Text(SessionOutcomeStyle.title(row.outcome))
-                        .font(.headline)
-                    Spacer()
-                    if row.hasExceptions, let count = row.exceptionCount, count > 0 {
-                        StatusPill(
-                            text: count == 1 ? "1 exception" : "\(count) exceptions",
-                            tint: Theme.Status.critical
-                        )
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        SectionLabel(text: "Session", systemImage: "clock")
+                        exceptionPill
+                    }
+                } else {
+                    HStack(spacing: Theme.Space.s) {
+                        SectionLabel(text: "Session", systemImage: "clock")
+                        Spacer()
+                        exceptionPill
                     }
                 }
 
-                if let narrative = row.outcome?.detail, !narrative.isEmpty {
-                    Text(narrative)
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Divider()
-
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
                     ForEach(facts, id: \.label) { fact in
-                        HStack(alignment: .top, spacing: Theme.Space.s) {
-                            Text(fact.label)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: Theme.Space.s)
-                            Text(fact.value)
-                                .font(.caption)
-                                .multilineTextAlignment(.trailing)
-                                .textSelection(.enabled)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(fact.label), \(fact.value)")
+                        factRow(fact)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(fact.label), \(fact.value)")
                     }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var exceptionPill: some View {
+        if row.hasExceptions, let count = row.exceptionCount, count > 0 {
+            StatusPill(
+                text: count == 1 ? "1 exception" : "\(count) exceptions",
+                tint: Theme.Status.critical
+            )
+        }
+    }
+
+    /// Label and value, in a row until the value stops fitting one.
+    ///
+    /// Two of these five values are identifiers rather than prose — a distinct ID
+    /// and a 36-character session UUID — and a right-aligned column half a phone
+    /// wide is where a `zxx`-less token would be hyphenated. At AX5 the label side
+    /// alone takes most of the width, so past that threshold the value gets its
+    /// own line rather than a two-character gutter.
+    @ViewBuilder
+    private func factRow(_ fact: (label: String, value: String)) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                factLabel(fact.label)
+                factValue(fact.value, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .top, spacing: Theme.Space.s) {
+                factLabel(fact.label)
+                Spacer(minLength: Theme.Space.s)
+                factValue(fact.value, alignment: .trailing)
+            }
+        }
+    }
+
+    private func factLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            // The same measured reason every other supporting line in the app is
+            // on `Theme.Ink`: `.secondary` is an alpha composite and lands at
+            // 3.44:1 on a white card.
+            .foregroundStyle(Theme.Ink.secondary)
+    }
+
+    private func factValue(_ text: String, alignment: TextAlignment) -> some View {
+        Text(text)
+            .font(.caption)
+            // `Person` and `Session` are opaque identifiers, and this is the
+            // same idiom `DataRow` applies to every token it draws: `zxx` is the
+            // ISO code for "no linguistic content", so no hyphenation dictionary
+            // applies and a hyphen this app invented cannot be mistaken for one
+            // the id contains.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+            .multilineTextAlignment(alignment)
+            .textSelection(.enabled)
     }
 
     private var facts: [(label: String, value: String)] {
@@ -385,15 +482,18 @@ struct SessionSummaryDetailView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Watch this session")
                             .font(.subheadline.weight(.semibold))
-                        Text("Chapters below become a table of contents for the player")
+                        // "Above", because the summary card now leads the screen.
+                        Text("The chapters above become a table of contents for the player")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: Theme.Space.xs)
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        // A disclosure indicator is a control, not decoration, so
+                        // it owes 3:1; `.tertiary` gave it 1.73:1 on this card.
+                        .foregroundStyle(Theme.Ink.tertiary)
                         .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

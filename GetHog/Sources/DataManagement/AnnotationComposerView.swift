@@ -114,6 +114,13 @@ struct AnnotationComposerView: View {
                     Text(scope.detail(projectName: projectName))
                 }
             }
+            // The app's ground, for the same measured reason the twelve roots
+            // needed it: a `Form` paints its own background over anything behind
+            // it, so without this the sheet came up on the system's grouped grey
+            // — sampled `#EFEFF0` in light and `#3E3E42` in dark against the
+            // app's `#F2EFE9` / `#151413`. The survey sheet beside it already
+            // carries this, which is why the two read as different apps.
+            .pageSurface()
             .navigationTitle("New annotation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

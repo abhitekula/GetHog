@@ -385,10 +385,21 @@ struct DashboardTemplateDetailView: View {
             // Absence, not zero: the list response does not always serialise
             // tiles, and claiming "no insights" for a template that builds
             // twenty would be a lie the reader cannot check.
-            SectionEmptyState(
-                text: "PostHog didn't return this template's tile list, so what it builds can't be shown here.",
-                systemImage: "square.grid.2x2"
-            )
+            //
+            // In a `Card`, because the populated branch above is a stack of
+            // cards and this branch is what a reader of *this* template
+            // actually sees. Bare on the ground it was a sentence with no
+            // surface under it, floating under a section header with the rest
+            // of the window empty beneath — measured on `template-detail`,
+            // where it read as a layout that had failed rather than as the
+            // section's answer. Every other "we don't have this" state in the
+            // app is a deliberate surface; this was the one that wasn't.
+            Card {
+                SectionEmptyState(
+                    text: "PostHog didn't return this template's tile list, so what it builds can't be shown here.",
+                    systemImage: "square.grid.2x2"
+                )
+            }
         }
     }
 

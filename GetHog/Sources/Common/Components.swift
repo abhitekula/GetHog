@@ -93,6 +93,13 @@ struct LockedCapabilityView: View {
                     Text("Your PostHog API key is missing a scope.")
                     Text(scope)
                         .font(.footnote.monospaced())
+                        // A scope string, not prose. Without this a token
+                        // acquires a real hyphen where the typesetter decides to
+                        // break it — measured at AX5, `UnhandledRejection` set as
+                        // `Unhandled-` / `Rejection` — and a reader copying the
+                        // scope out cannot tell that hyphen from a real one.
+                        // `zxx` is the ISO code for "no linguistic content".
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(.quaternary, in: .rect(cornerRadius: 6))
@@ -212,6 +219,12 @@ struct FailureDetail: View {
             Text(text)
                 .font(.caption.monospaced())
                 .foregroundStyle(Theme.Ink.secondary)
+                // This is a machine fault quoted verbatim so it can be pasted
+                // into a report, which is exactly the string a typesetter's
+                // hyphen would corrupt. `zxx` is the ISO code for "no linguistic
+                // content", so nothing here is broken with a mark it does not
+                // contain.
+                .typesettingLanguage(Locale.Language(identifier: "zxx"))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, Theme.Space.xs)
@@ -440,23 +453,42 @@ struct CardHeader: View {
     var systemImage: String?
     var subtitle: String?
 
+    /// The glyph's column, which has to grow with the glyph in it.
+    ///
+    /// It was a bare `18`, and the symbol beside it is set in `.footnote` — which
+    /// scales. At AX5 that is roughly a 45pt glyph in an 18pt box, and a `frame`
+    /// narrower than its content does not clip, it *centres*: the symbol paints
+    /// past both sides of its column and the title, laid out from the column's
+    /// trailing edge, is drawn straight over it. Caught on `render-detail`, where
+    /// the "Video" header's `V` sat on top of the play glyph. Scaled against the
+    /// same text style the symbol uses, so the column tracks it at every size.
+    @ScaledMetric(relativeTo: .footnote) private var glyphWidth: CGFloat = 18
+
+    /// Read because the line caps below are lifted past the accessibility sizes.
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Theme.accent)
-                    .frame(width: 18)
+                    .frame(width: glyphWidth)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
+                    // Uncapped at accessibility sizes, the same trade `DataRow`
+                    // makes: the caps keep a column of cards an even height,
+                    // which is a scanning concern, and two lines of `.subheadline`
+                    // at AX5 is three or four words — so the cap that tidies the
+                    // page is the thing deleting the card's name from it.
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(Theme.Ink.secondary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                 }
             }
             Spacer(minLength: 0)
@@ -617,9 +649,31 @@ struct DeltaOrAbsence: View {
 /// narrow strip: a five-letter "Error" was set as `Er-` / `ror`, which is a
 /// state control that no longer states anything. Every caller in the app gets
 /// the fix from here.
+///
+/// **The pill holds its width in a row, and gives it up in a column.** `fixedSize`
+/// is a demand on the layout, not a local preference: an `HStack` honours it
+/// before it gives anything to a flexible sibling, so a pill that will not
+/// compress *takes* its ideal width from whatever shares the row. At AX5
+/// `2 exceptions` is around 350pt of a 393pt phone, and the session summary's
+/// header card — a title, a spacer and this pill — was measured with its
+/// `Did not finish` heading squeezed to a column narrower than one character:
+/// the text rendered as nothing at all while still claiming a line's height per
+/// character, so the card came out ~1450pt tall containing a glyph and a pill in
+/// a field of white, and the summary paragraph below it was pushed off-screen.
+/// The heading was not truncated, it was *absent*, which reads as missing data
+/// rather than as a layout fault.
+///
+/// So at accessibility sizes the pill wraps instead. That keeps the promise the
+/// original made — the word is never cut to `Er…` and never hyphenated into
+/// `Er-`/`ror` — while letting a sibling have the width it needs. Below those
+/// sizes nothing changes: the pill is a few characters, it fits, and refusing
+/// compression is what stops a crowded row shortening it.
 struct StatusPill: View {
     let text: String
     let tint: Color
+
+    /// Read because the pill's compressibility changes with it; see the note above.
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Text(text)
@@ -628,10 +682,15 @@ struct StatusPill: View {
             // "no linguistic content", so no hyphenation dictionary applies and
             // the soft hyphen that split "Error" cannot be inserted.
             .typesettingLanguage(Locale.Language(identifier: "zxx"))
-            .lineLimit(1)
+            // Uncapped at accessibility sizes for the same reason `DataRow`'s
+            // title is: one line of type that large is a word or two, and the cap
+            // exists to keep a pill pill-shaped, which stops being worth a lost
+            // word.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
             // Refuses compression outright rather than truncating to `Er…`,
-            // which would be the same defect spelled differently.
-            .fixedSize()
+            // which would be the same defect spelled differently — but only
+            // where refusing costs a sibling nothing.
+            .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: true)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(tint.opacity(0.15), in: .capsule)

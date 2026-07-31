@@ -237,6 +237,10 @@ struct DataRow: View {
     /// sizes; see `layout`.
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    /// The row's own width, because the same reshape is owed to a narrow column
+    /// as to a large type size; see `isStacked`.
+    @State private var width: CGFloat = .greatestFiniteMagnitude
+
     let glyph: String
     var tint: Color = Theme.accent
     let title: String
@@ -287,9 +291,44 @@ struct DataRow: View {
             .typesettingLanguage(Locale.Language(identifier: "zxx"))
             .padding(.vertical, Theme.Space.xs)
             .contentShape(.rect)
+            // Measured rather than inferred. There is no trait that separates
+            // the two regular-width columns this row lives in — an iPad
+            // split-view sidebar and the detail beside it are both `.regular`,
+            // and the sidebar is a third of the width. The row's own geometry is
+            // the only thing that knows.
+            //
+            // Stable, not a feedback loop: the stacked layout claims the width
+            // it was offered rather than asking for a different one, so reading
+            // the width cannot change it.
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
-    /// Text beside the glyph normally, stacked beneath it at accessibility sizes.
+    /// Whether the row gives up on fitting its parts side by side.
+    ///
+    /// Two independent ways a row runs out of room, and the answer to both is
+    /// the same reshape.
+    ///
+    /// Type size was the one already handled. Width is the one the iPad sweep
+    /// found: in portrait a split-view sidebar takes its declared *minimum*
+    /// width, which left `DataRow` ~253pt to hold a 32pt glyph, a ~95pt status
+    /// pill and the string that identifies the row. The string lost. Measured on
+    /// `build/Screenshots/iPad Pro 11-inch (M5)/light/`:
+    ///
+    /// | screen | sidebar row | same string in the detail column |
+    /// |---|---|---|
+    /// | `flags` | `dashboard-b…` | `dashboard-badge` |
+    /// | `people` | `nina.drill.072` / `9@example…` | `nina.drill.0729@example.com` |
+    /// | `cohorts-list` | `People who ar…` | `People who are internal team members…` |
+    ///
+    /// The sidebar is where a row is *chosen*, so it is the one column where the
+    /// identifier has to survive — and it was the only column where it did not.
+    /// Stacked, the accessory takes its own line and the text gets the row.
+    private var isStacked: Bool {
+        typeSize.isAccessibilitySize || width < Theme.Measure.stackedRow
+    }
+
+    /// Text beside the glyph normally, stacked beneath it when the row is short
+    /// of room — at accessibility sizes, or in a narrow column.
     ///
     /// The glyph and the accessory are fixed furniture: they hold their width
     /// whatever the type size, so what they leave over is all the text ever gets.
@@ -299,7 +338,7 @@ struct DataRow: View {
     /// colour. Stacked, every line gets the whole row to break in.
     @ViewBuilder
     private var layout: some View {
-        if typeSize.isAccessibilitySize {
+        if isStacked {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 HStack(alignment: .top, spacing: Theme.Space.m) {
                     RowGlyph(systemName: glyph, tint: tint)
@@ -490,10 +529,30 @@ struct EmptyStateView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label(title, systemImage: systemImage)
+            Label {
+                // The headline states the only thing on the screen. It has to be
+                // allowed to take the lines it needs, and the caps that would
+                // stop it are not this view's to see: `ContentUnavailableView`
+                // draws its own title style, and the sweep reported an `inbox`
+                // headline set as `Nothing to tr…` on one line at AX5. **Not
+                // reproduced here** — in demo mode the Inbox reaches its error
+                // branch instead (there is no `/tasks/` fixture), and rendered
+                // on its own at AX5 in a 393pt window this title wraps to two
+                // lines correctly. So this is a guard, not an observed cure: it
+                // says explicitly what was being relied on implicitly, and an
+                // inner `lineLimit` outranks anything the style sets outside it.
+                Text(title)
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: systemImage)
+            }
         } description: {
             if let message {
                 Text(message)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } actions: {
             if let actionTitle, let action {
@@ -512,16 +571,113 @@ struct EmptyStateView: View {
 /// Filters belong in one row above the content, in a surface that reads as
 /// chrome rather than as another card — otherwise a segmented control sitting
 /// loose on the ground looks like a tile that failed to load.
+///
+/// **One row, until a row is the wrong shape.** The controls in this bar are
+/// text — a menu label, a toggle's word, a segment's title — and they are the
+/// only elastic things in it, so a row divides one phone width between two or
+/// three of them and each gets a column narrower than its own label. Measured at
+/// AX5 on an iPhone 17 Pro (393pt), all three on screens this bar serves:
+///
+/// | screen    | at AX5, side by side                                          |
+/// | --------- | ------------------------------------------------------------- |
+/// | Insights  | `All kinds` set over three lines with the chevron stranded mid-line, beside a `Favourites` toggle wrapped one or two characters per line into a ~700pt-tall capsule — the bar alone filled 40% of the window |
+/// | Logs      | the severity toggle's word pushed out of the bar entirely, leaving a bare `!` glyph ~5px from the trailing edge |
+/// | Ingestion | a segmented `48h / 7d / 30d` that did not scale at all while every neighbour did |
+///
+/// So past the accessibility threshold the bar stacks, which is the same reflow
+/// `FunnelStepRow` and `InsightLegend` make and for the same reason: on a narrow
+/// column a shared row leaves each control a couple of characters, and every
+/// control here gets the whole width to break in instead.
+///
+/// A caller that wants its first control to push the rest to the trailing edge
+/// should say so with `.frame(maxWidth: .infinity, alignment: .leading)` on that
+/// control rather than with a `Spacer` between them — a `Spacer` means something
+/// different in each of these two layouts, and this one has both.
 struct GlassFilterBar<Content: View>: View {
+    /// Read because the bar changes shape rather than shrinking; see `layout`.
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     @ViewBuilder var content: Content
 
     var body: some View {
-        HStack(spacing: Theme.Space.m) {
-            content
-        }
-        .padding(.horizontal, Theme.Space.m)
-        .padding(.vertical, Theme.Space.s)
-        .warmGlass(in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-        .padding(.horizontal, Theme.Space.l)
+        layout
+            .padding(.horizontal, Theme.Space.m)
+            .padding(.vertical, Theme.Space.s)
+            .warmGlass(in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+            // Capped, because every caller in this app tells its first control
+            // to claim the bar — `.frame(maxWidth: .infinity, alignment:
+            // .leading)`, which is the documented way to ask for it, and which
+            // the paragraph above recommends. On a phone that is right: the
+            // control fills a 361pt bar and starts at the same margin as the
+            // list below it. On an iPad the same instruction produced a 770pt
+            // slab of glass holding one menu — measured on `renders`
+            // (`All (5)`, ~85% empty) and `automation` (`Workflows`, the same) —
+            // and in landscape a 1178pt one.
+            //
+            // 420pt is `DashboardDetailView`'s existing number for exactly this,
+            // arrived at there for a segmented control and reused here so the
+            // bar and the pickers inside it stop at the same place. Below it
+            // nothing changes, so no phone layout moves.
+            .frame(maxWidth: Theme.Measure.control)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Space.l)
     }
+
+    @ViewBuilder
+    private var layout: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                content
+            }
+            // Without this the stacked bar hugs its widest control and the glass
+            // becomes a pill floating in the middle of the screen — the same
+            // collapse `RendersRoot` already had to correct on its single menu.
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: Theme.Space.m) {
+                content
+            }
+        }
+    }
+}
+
+/// A segmented picker below the accessibility sizes, a menu at and above them.
+///
+/// Segmented controls divide their width by their segment count and shrink the
+/// labels to fit, so they are the one picker style that gets *less* legible as
+/// the type grows — at AX5 Ingestion's `48h / 7d / 30d` was drawn at the same
+/// size as at default while everything around it had tripled.
+///
+/// The adaptation itself is not new: five screens had each grown a private
+/// `adaptivelyStyled` doing exactly this, and a sixth — Ingestion — had not, which
+/// is the defect. This is that function, named once. `TaxonomyRoot`,
+/// `SessionFilterSheet` and `IngestionWarningsRoot` are on it; `PeopleRoot`,
+/// `DashboardDetailView` and `LLMAnalyticsRoot` still carry their own copies and
+/// should move here when they are next touched.
+///
+/// A `ViewModifier` rather than a `View` extension taking the size, so the
+/// environment is read where the picker is rather than at each call site: a call
+/// site that forgot the `@Environment` property would compile and silently pin
+/// the style to whatever it passed.
+///
+/// Two branches rather than a ternary on the style, because
+/// `SegmentedPickerStyle` and `MenuPickerStyle` are different concrete types and
+/// cannot share an expression — the same shape `InsightsRoot` documents on its
+/// label styles.
+private struct AdaptivePickerStyle: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if typeSize.isAccessibilitySize {
+            content.pickerStyle(.menu)
+        } else {
+            content.pickerStyle(.segmented)
+        }
+    }
+}
+
+extension View {
+    /// See `AdaptivePickerStyle`.
+    func adaptivePickerStyle() -> some View { modifier(AdaptivePickerStyle()) }
 }

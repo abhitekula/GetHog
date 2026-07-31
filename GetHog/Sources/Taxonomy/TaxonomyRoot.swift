@@ -146,7 +146,6 @@ final class TaxonomyStore {
 struct TaxonomyRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store = TaxonomyStore()
     @State private var search = ""
 
@@ -198,13 +197,12 @@ struct TaxonomyRoot: View {
     var body: some View {
         VStack(spacing: 0) {
             GlassFilterBar {
-                adaptivelyStyled(
-                    Picker("View", selection: $scope) {
-                        ForEach(TaxonomyScope.allCases) { choice in
-                            Text(choice.title).tag(choice)
-                        }
+                Picker("View", selection: $scope) {
+                    ForEach(TaxonomyScope.allCases) { choice in
+                        Text(choice.title).tag(choice)
                     }
-                )
+                }
+                .adaptivePickerStyle()
             }
             .padding(.vertical, Theme.Space.s)
 
@@ -239,15 +237,6 @@ struct TaxonomyRoot: View {
         switch scope {
         case .events: content
         case .properties: propertiesContent
-        }
-    }
-
-    @ViewBuilder
-    private func adaptivelyStyled(_ picker: some View) -> some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            picker.pickerStyle(.menu)
-        } else {
-            picker.pickerStyle(.segmented)
         }
     }
 
@@ -384,6 +373,11 @@ struct TaxonomyRoot: View {
                         Text(event.name)
                             .font(.subheadline.monospaced())
                             .foregroundStyle(.secondary)
+                            // PostHog's own well-known event names — tokens, and
+                            // the ones most likely to be broken here are the long
+                            // camel-cased ones. `zxx` is the ISO code for "no
+                            // linguistic content".
+                            .typesettingLanguage(Locale.Language(identifier: "zxx"))
                     }
                 }
             } header: {

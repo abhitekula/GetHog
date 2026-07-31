@@ -198,6 +198,14 @@ struct FlagsRoot: View {
             // seen it still gets it at a text size where it fits.
             if !dynamicTypeSize.isAccessibilitySize {
                 TipView(FlagWidgetTip())
+                    // TipKit's own surface is `secondarySystemGroupedBackground`
+                    // — sampled `#F2F2F7` here, the stock cool grey-blue, on a
+                    // cream `#F2EFE9` ground and directly above flag rows that
+                    // are `Theme.cardBackground`. It was the one card on the
+                    // screen not wearing the app's palette. The tint is left
+                    // alone: `.tint(Theme.accent)` in `GetHogApp` already
+                    // reaches the glyph and the dismiss control.
+                    .tipBackground(Theme.cardBackground)
                     .listRowBackground(Color.clear)
             }
             ForEach(FlagStatusGroup.allCases) { group in

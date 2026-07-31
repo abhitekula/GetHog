@@ -138,6 +138,9 @@ struct RenderDetailView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Read because the header and the details rows change shape rather than
+    /// shrinking; see `header` and `detailRow`.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var controller = RenderPlaybackController()
 
     private var state: RecordingExportState { export.state(asOf: asOf) }
@@ -174,17 +177,28 @@ struct RenderDetailView: View {
 
     // MARK: Header
 
+    /// **The format and the status stop sharing a row at accessibility sizes.**
+    /// A `StatusPill` used to refuse compression outright, so at AX5 `Ready` took
+    /// what it needed and the two words beside it were set `MP4` / `vide` / `o` in
+    /// roughly half the card — a format name broken mid-syllable to make room for
+    /// a badge. The pill now gives way at those sizes, and this stacks as well,
+    /// which is the reflow `FunnelStepRow` and `InsightLegend` already make: on a
+    /// narrow column the label gets the whole width and the badge takes its own
+    /// line.
     private var header: some View {
         Card(accent: state.tint) {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
-                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                    // The format's own glyph, not the state's: the state has a
-                    // glyph of its own on the card below, and an icon saying
-                    // "failed" beside the words "MP4 video" reads as neither.
-                    Label(export.format.title, systemImage: "film")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer(minLength: Theme.Space.s)
-                    StatusPill(text: export.statusText(asOf: asOf), tint: state.tint)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        formatLabel
+                        StatusPill(text: export.statusText(asOf: asOf), tint: state.tint)
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                        formatLabel
+                        Spacer(minLength: Theme.Space.s)
+                        StatusPill(text: export.statusText(asOf: asOf), tint: state.tint)
+                    }
                 }
 
                 Text(export.summary)
@@ -202,6 +216,19 @@ struct RenderDetailView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// The format's own glyph, not the state's: the state has a glyph of its own
+    /// on the card below, and an icon saying "failed" beside the words "MP4 video"
+    /// reads as neither.
+    private var formatLabel: some View {
+        Label(export.format.title, systemImage: "film")
+            .font(.subheadline.weight(.semibold))
+            // "MP4 video" is a format name, not a sentence, and this card is where
+            // it was measured broken into `MP4` / `vide` / `o`. `zxx` is the ISO
+            // code for "no linguistic content", so nothing hyphenates it; the
+            // stacked layout above is what gives it the room to stay whole.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
     }
 
     // MARK: Ready
@@ -333,6 +360,10 @@ struct RenderDetailView: View {
 
                 Text(reason)
                     .font(.footnote.monospaced())
+                    // Quoted verbatim so it can be pasted into a report, which
+                    // is the string a typesetter's hyphen would corrupt. `zxx`
+                    // is the ISO code for "no linguistic content".
+                    .typesettingLanguage(Locale.Language(identifier: "zxx"))
                     .textSelection(.enabled)
                     .padding(Theme.Space.s)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -462,22 +493,55 @@ struct RenderDetailView: View {
                 CardHeader(title: "Render", systemImage: "info.circle")
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
                     ForEach(detailRows, id: \.label) { row in
-                        HStack(alignment: .top, spacing: Theme.Space.s) {
-                            Text(row.label)
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.Ink.secondary)
-                            Spacer(minLength: Theme.Space.s)
-                            Text(row.value)
-                                .font(Theme.Typography.caption)
-                                .multilineTextAlignment(.trailing)
-                                .lineLimit(2)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(row.label), \(row.value)")
+                        detailRow(row)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(row.label), \(row.value)")
                     }
                 }
             }
         }
+    }
+
+    /// Label and value, in a row until the value stops fitting one.
+    ///
+    /// At AX5 the label side takes most of a phone's width on its own, which
+    /// leaves the value a two-word gutter and a two-line cap it cannot keep to —
+    /// `PostHog cut this render short` is the longest of them. Past that
+    /// threshold the value takes its own line and the cap comes off, the same
+    /// trade `DataRow` makes with its subtitle.
+    @ViewBuilder
+    private func detailRow(_ row: DetailRow) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                detailLabel(row.label)
+                detailValue(row.value, alignment: .leading, lineLimit: nil)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .top, spacing: Theme.Space.s) {
+                detailLabel(row.label)
+                Spacer(minLength: Theme.Space.s)
+                detailValue(row.value, alignment: .trailing, lineLimit: 2)
+            }
+        }
+    }
+
+    private func detailLabel(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Ink.secondary)
+    }
+
+    private func detailValue(_ text: String, alignment: TextAlignment, lineLimit: Int?) -> some View {
+        Text(text)
+            .font(Theme.Typography.caption)
+            // `Export ID` is a bare number and the rest are figures and dates —
+            // tokens, not prose, and the same idiom `DataRow` applies to every
+            // one it draws. `zxx` is the ISO code for "no linguistic content", so
+            // nothing here can acquire a hyphen this app invented.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+            .multilineTextAlignment(alignment)
+            .lineLimit(lineLimit)
     }
 
     private struct DetailRow {

@@ -182,8 +182,15 @@ struct IngestionWarningsRoot: View {
                         .tag(window)
                 }
             }
-            .pickerStyle(.segmented)
+            // Segmented below the accessibility sizes, a menu at and above them:
+            // a segmented control divides its width by its segment count and
+            // shrinks the labels to fit, so at AX5 this one was still drawn at
+            // its default size while every neighbour on the screen had tripled.
+            .adaptivePickerStyle()
             .onChange(of: store.window) { _, _ in Task { await load() } }
+            // Takes the row's slack so the category menu sits at the trailing
+            // edge, and the whole line once `GlassFilterBar` stacks.
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Menu {
                 Picker("Category", selection: categoryBinding) {

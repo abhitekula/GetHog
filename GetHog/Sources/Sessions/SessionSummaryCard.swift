@@ -72,9 +72,29 @@ struct SessionSummaryCard: View {
     /// snapshot when one is loaded, so a seek lands on the right frame. See
     /// `SessionSummaryChapter.startOffset(from:)`.
     var origin: Date?
+    /// The verdict and narrative a caller already has, drawn under this card's
+    /// own label while the full detail is in flight.
+    ///
+    /// **This is what keeps the prose attributed.** The summaries list carries
+    /// the outcome on every row, so the detail screen used to print it in a card
+    /// of its own the instant it opened — unlabelled, above the fetch — and then
+    /// print it again verbatim here once the fetch landed, under "AI summary".
+    /// Two copies of one paragraph, and the copy a reader saw first was the one
+    /// with no provenance on it: exactly the reading this app is not allowed to
+    /// permit, since nothing distinguished a model's account of a session from a
+    /// figure PostHog measured.
+    ///
+    /// Handing the seed *here* keeps what that card bought — the headline is on
+    /// screen before the second request answers — while making it impossible for
+    /// the words to appear anywhere but under the label.
+    var seed: SessionOutcome?
     var canSeek = false
     var onSeek: ((TimeInterval) -> Void)?
     var onRetry: (() -> Void)?
+
+    /// Read because the provenance line changes shape rather than shrinking;
+    /// see `header`.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var expanded: Set<String> = []
 
@@ -103,37 +123,93 @@ struct SessionSummaryCard: View {
         }
     }
 
+    /// The label and the model that wrote it, side by side until they cannot be.
+    ///
+    /// Both halves are text and both are elastic, so a row divides one phone
+    /// between them: photographed at AX5 with this card at the top of the summary
+    /// screen, `AI SUMMARY` was set as `AI` / `SUM` / `MAR` / `Y` beside a model
+    /// name truncated to `gemini-3…`. That is the label naming what the card is
+    /// and the stamp saying a model wrote it, and neither survived. Past the
+    /// accessibility threshold they take a line each — the same reflow
+    /// `FunnelStepRow` and `InsightLegend` make, and the one `factsCard` on the
+    /// same screen makes for its own heading and badge.
+    ///
+    /// The line cap goes with it. `gemini-3-flash-preview` on one line is what
+    /// keeps the stamp from taking three lines of a card it is only annotating;
+    /// on a line of its own at these sizes, truncating it to `gemini-3…` names no
+    /// model at all.
+    @ViewBuilder
     private var header: some View {
-        HStack {
-            SectionLabel(text: "AI summary", systemImage: "text.append")
-            Spacer()
-            if store.isLoading {
-                ProgressView().controlSize(.small)
-            } else if let model = store.detail?.modelUsed {
-                // Provenance. This is a model's reading of the session, not a
-                // measurement, and the screen should never let that be forgotten.
-                Text(model)
-                    .font(.caption2)
-                    // Measured 1.72:1 on `.tertiary` against this white card. A
-                    // provenance stamp nobody can read is the same as no stamp,
-                    // and this is the line that stops a model's reading of the
-                    // session being mistaken for a measurement of it.
-                    .foregroundStyle(Theme.Ink.secondary)
-                    .lineLimit(1)
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                SectionLabel(text: "AI summary", systemImage: "text.append")
+                provenance
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack {
+                SectionLabel(text: "AI summary", systemImage: "text.append")
+                Spacer()
+                provenance
             }
         }
     }
 
-    private var loading: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text("The user completed the checkout flow after two attempts.")
-                .font(.subheadline)
-            Text("Chapter one of four")
-                .font(.caption)
+    @ViewBuilder
+    private var provenance: some View {
+        if store.isLoading {
+            ProgressView().controlSize(.small)
+        } else if let model = store.detail?.modelUsed {
+            // Provenance. This is a model's reading of the session, not a
+            // measurement, and the screen should never let that be forgotten.
+            Text(model)
+                .font(.caption2)
+                // A model identifier, not prose — the same idiom `DataRow`
+                // applies to every token it draws. `zxx` is the ISO code for "no
+                // linguistic content", so the name cannot acquire a hyphen it
+                // does not contain.
+                .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                // Measured 1.72:1 on `.tertiary` against this white card. A
+                // provenance stamp nobody can read is the same as no stamp,
+                // and this is the line that stops a model's reading of the
+                // session being mistaken for a measurement of it.
                 .foregroundStyle(Theme.Ink.secondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .redacted(reason: .placeholder)
+    }
+
+    /// What the card shows before the detail request answers.
+    ///
+    /// Two shapes, and the difference is whether the caller could already say
+    /// something true. With a `seed` the real verdict and narrative are drawn —
+    /// they are the same fields the detail will carry, from the same generation,
+    /// and they are now under this card's "AI summary" label instead of in a
+    /// second unlabelled card. Only the chapters, which no list row carries, are
+    /// still a placeholder.
+    ///
+    /// Without one it stays a redacted skeleton, which is the honest shape for a
+    /// screen that has nothing yet: invented prose at full contrast would be
+    /// read as a summary.
+    @ViewBuilder
+    private var loading: some View {
+        if let seed {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                outcomeBlock(seed)
+                Text("Reading the chapters…")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                Text("The user completed the checkout flow after two attempts.")
+                    .font(.subheadline)
+                Text("Chapter one of four")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .redacted(reason: .placeholder)
+        }
     }
 
     /// Not an error, and it must not look like one.

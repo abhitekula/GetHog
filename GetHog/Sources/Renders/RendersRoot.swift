@@ -363,6 +363,9 @@ struct RendersLockedView: View {
                 if case .denied(let resource) = state {
                     Text(resource)
                         .font(.footnote.monospaced())
+                        // The scope PostHog named, not prose — same idiom and
+                        // same measurement as the identical chip on Logs.
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .padding(.horizontal, Theme.Space.s)
                         .padding(.vertical, Theme.Space.xs)
                         .background(.quaternary, in: .rect(cornerRadius: 6))

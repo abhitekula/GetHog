@@ -209,6 +209,10 @@ struct TaxonomyPropertyDetailView: View {
             LabeledContent("Key") {
                 Text(key)
                     .font(.caption.monospaced())
+                    // A property key, not prose — the same idiom this file
+                    // already applies to its value rows further down. `zxx` is
+                    // the ISO code for "no linguistic content".
+                    .typesettingLanguage(Locale.Language(identifier: "zxx"))
                     .textSelection(.enabled)
             }
             if let description = definition?.description {
@@ -345,6 +349,9 @@ struct TaxonomyPropertyDetailView: View {
                 ForEach(Array(sample.sampleValues.enumerated()), id: \.offset) { _, value in
                     Text(value)
                         .font(.subheadline.monospaced())
+                        // Recorded property values — URLs, ids, device strings.
+                        // Same idiom as the key above and the rows below.
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .textSelection(.enabled)
                 }
             } else {

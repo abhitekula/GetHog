@@ -48,7 +48,6 @@ import SwiftUI
 struct SessionFilterSheet: View {
     @Binding var filter: SessionRecordingFilter
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsMore = false
 
     var body: some View {
@@ -64,9 +63,21 @@ struct SessionFilterSheet: View {
             .navigationTitle("Filter sessions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Absent rather than disabled when nothing is narrowed.
+                //
+                // Measured on the rendered sheet: a disabled toolbar button
+                // draws in the system's disabled ink, `#A4A4A7` on `#EBEBEF`
+                // for **2.09:1** in light and `#656567` on `#1E1E20` for
+                // **2.86:1** in dark, against a 4.5:1 floor. WCAG exempts an
+                // inactive control from that floor, so this was not strictly a
+                // violation — it was a word nobody could read, occupying the
+                // leading slot of a sheet, describing an action with nothing to
+                // act on. `filter.isNarrowed` is exactly "there is something to
+                // clear", so the honest rendering of `false` is no button.
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Clear", role: .destructive) { filter.clear() }
-                        .disabled(!filter.isNarrowed)
+                    if filter.isNarrowed {
+                        Button("Clear", role: .destructive) { filter.clear() }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
@@ -128,15 +139,15 @@ struct SessionFilterSheet: View {
 
             // Segmented controls shrink their labels to slivers at accessibility
             // text sizes, so past that threshold the same choice becomes a menu
-            // — the adaptation `PeopleRoot` documents and uses. "Total length"
-            // and "Active time" are the two longest labels on this sheet.
-            adaptivelyStyled(
-                Picker("Measured as", selection: $filter.durationMetric) {
-                    ForEach(SessionRecordingFilter.DurationMetric.allCases, id: \.self) { metric in
-                        Text(metric.title).tag(metric)
-                    }
+            // — `adaptivePickerStyle`, which is the adaptation `PeopleRoot`
+            // documents, named once in `DesignKit`. "Total length" and "Active
+            // time" are the two longest labels on this sheet.
+            Picker("Measured as", selection: $filter.durationMetric) {
+                ForEach(SessionRecordingFilter.DurationMetric.allCases, id: \.self) { metric in
+                    Text(metric.title).tag(metric)
                 }
-            )
+            }
+            .adaptivePickerStyle()
             .disabled((filter.minimumDuration ?? 0) <= 0)
         } header: {
             Text("How long")
@@ -145,15 +156,6 @@ struct SessionFilterSheet: View {
             // 34-minute recording in this project holds 40 seconds of activity.
             // The old picker filtered on wall-clock time without saying so.
             Text("Total length is wall-clock time from first event to last. Active time counts only the parts somebody was interacting — they are often minutes apart.")
-        }
-    }
-
-    @ViewBuilder
-    private func adaptivelyStyled(_ picker: some View) -> some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            picker.pickerStyle(.menu)
-        } else {
-            picker.pickerStyle(.segmented)
         }
     }
 
@@ -232,6 +234,11 @@ struct SessionFilterSheet: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(clause.key)
                             .font(.footnote.monospaced())
+                            // A property key re-sent verbatim to PostHog, so a
+                            // hyphen invented here would misstate what the query
+                            // is actually asking for. `zxx` is the ISO code for
+                            // "no linguistic content".
+                            .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         Text("from a saved filter · \(clause.op ?? "exact")")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Ink.secondary)

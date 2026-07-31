@@ -134,6 +134,9 @@ final class TracingStore {
 struct TracingRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
+    /// Read because the filter bar changes shape rather than scrolling at
+    /// accessibility sizes; see `filterBar`.
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var store = TracingStore()
 
     /// The open trace, held in `OpenDetails` rather than pushed as a value onto
@@ -239,41 +242,89 @@ struct TracingRoot: View {
         return sentence + " A span is one timed step inside a request — a handler, a query, an outbound call — and they arrive once a service exports OpenTelemetry traces to PostHog."
     }
 
-    /// The glass bar rides a horizontal scroll view because three controls plus
-    /// Dynamic Type outgrow the width, and a clipped filter is an unusable one.
+    /// Three controls that do not fit a phone's width, and two different answers
+    /// to that depending on the type size.
+    ///
+    /// **The horizontal scroll view moved inside the glass, and that is the
+    /// fix.** It used to wrap the whole `GlassFilterBar`, which put the glass
+    /// rectangle in the scroll *content*: wider than the viewport, so the bar was
+    /// drawn with its rounded leading corner in place and then sliced flat at the
+    /// last pixel column of the screen, with "All services" and "Errors only"
+    /// sheared through. Measured on iPhone 17 Pro in light, dark and AX5.
+    /// `GlassFilterBar`'s own trailing 16pt inset was off-screen too, so nothing
+    /// signalled that the row scrolls at all — it simply looked broken. With the
+    /// scroll view as the bar's *content*, the glass is a viewport-width chrome
+    /// surface that keeps both rounded ends and the controls scroll within it.
+    ///
+    /// **And only below the accessibility threshold.** `GlassFilterBar` stacks
+    /// its controls into a column at accessibility sizes, which is the right
+    /// answer there — a row divides one phone width between three labels and each
+    /// gets a column narrower than its own word. A scroll view handed to it as a
+    /// single child would defeat that, because one child is nothing to stack:
+    /// measured at AX5, the bar came back as one row with the "Errors only"
+    /// toggle clipped at the glass edge. So past the threshold the controls go to
+    /// the bar bare and it does its own reflow; below it, they scroll.
+    ///
+    /// Logs' bar is unaffected either way: it carries two controls and has never
+    /// overflowed, which is why this was Tracing's defect alone.
     private var filterBar: some View {
+        GlassFilterBar {
+            if typeSize.isAccessibilitySize {
+                filterControls
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: Theme.Space.m) { filterControls }
+                }
+                .scrollIndicators(.hidden)
+                // Nothing to scroll when the controls fit, which is the common
+                // case with two of them — without this the bar rubber-bands
+                // under a finger that was trying to scroll the list.
+                .scrollBounceBehavior(.basedOnSize)
+            }
+        }
+        .padding(.vertical, Theme.Space.s)
+        .background(Theme.pageBackground)
+    }
+
+    @ViewBuilder
+    private var filterControls: some View {
         @Bindable var store = store
 
-        return ScrollView(.horizontal) {
-            GlassFilterBar {
-                Picker("Time range", selection: $store.window) {
-                    ForEach(TracingWindow.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: store.window) { Task { await load() } }
-
-                Picker("Service", selection: $store.service) {
-                    Text("All services").tag(String?.none)
-                    ForEach(store.services, id: \.self) { Text($0).tag(String?.some($0)) }
-                }
-                .pickerStyle(.menu)
-                .disabled(store.services.isEmpty)
-                .onChange(of: store.service) { Task { await load() } }
-
-                Toggle(isOn: $store.errorsOnly) {
-                    Label("Errors only", systemImage: "exclamationmark.octagon")
-                }
-                .toggleStyle(.button)
-                .font(.footnote)
-                // Measured 84.3×14.3pt, the same control and the same shortfall
-                // as the Logs filter bar's; see `LogsRoot.filterBar`.
-                .minimumHitTarget()
-                .onChange(of: store.errorsOnly) { Task { await load() } }
-            }
-            .padding(.vertical, Theme.Space.s)
+        Picker("Time range", selection: $store.window) {
+            ForEach(TracingWindow.allCases) { Text($0.title).tag($0) }
         }
-        .scrollIndicators(.hidden)
-        .background(Theme.pageBackground)
+        .pickerStyle(.menu)
+        .onChange(of: store.window) { Task { await load() } }
+
+        // Absent rather than disabled when nothing has been seen yet.
+        //
+        // A disabled `.menu` picker draws its value in the system's disabled ink,
+        // which measured **2.47:1** in dark and **1.72:1** in light against a
+        // 4.5:1 floor — and the value it was drawing, "All services", is the
+        // *only* option a picker with no facet has. WCAG exempts inactive
+        // controls from the contrast floor, so nothing here was strictly a
+        // violation; what it was, was an unreadable control that could not be
+        // operated and had nothing to offer. The facet may only widen (see
+        // `updateServiceFacet`), so a service can never be selected and then
+        // stranded behind a picker that has since disappeared.
+        if !store.services.isEmpty {
+            Picker("Service", selection: $store.service) {
+                Text("All services").tag(String?.none)
+                ForEach(store.services, id: \.self) { Text($0).tag(String?.some($0)) }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: store.service) { Task { await load() } }
+        }
+
+        Toggle(isOn: $store.errorsOnly) {
+            Label("Errors only", systemImage: "exclamationmark.octagon")
+        }
+        .toggleStyle(.button)
+        .font(.footnote)
+        // Measured 84.3×14.3pt, the same control and the same shortfall as the
+        // Logs filter bar's; see `LogsRoot.filterBar`.
+        .minimumHitTarget()
+        .onChange(of: store.errorsOnly) { Task { await load() } }
     }
 
     /// Selection-driven: the binding on the `List` makes a row tap set
@@ -342,6 +393,11 @@ struct TracingLockedView: View {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    // White on `Theme.accent` measures 2.08:1 in dark; the
+                    // label takes the app's ground instead. Same measurement
+                    // and same reasoning as onboarding's "Get started" — see
+                    // `OnboardingView.welcome`.
+                    .foregroundStyle(Theme.pageBackground)
             }
         }
     }
@@ -467,6 +523,9 @@ struct TraceDetailView: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle(trace.name)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -615,6 +674,9 @@ struct SpanDetailView: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle(span.name)
         .navigationBarTitleDisplayMode(.inline)
     }

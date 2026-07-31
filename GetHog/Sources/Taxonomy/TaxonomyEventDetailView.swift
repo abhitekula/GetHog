@@ -86,6 +86,14 @@ struct TaxonomyEventDetailView: View {
                 LabeledContent("Name") {
                     Text(event.name)
                         .font(.caption.monospaced())
+                        // An event name, not prose — `$autocapture`,
+                        // `[REMOVED PRIVATE DATA]`. A `LabeledContent` value sits
+                        // in a right-hand column, so at accessibility sizes it is
+                        // the narrowest text on the screen and the likeliest to
+                        // be broken; `zxx` is the ISO code for "no linguistic
+                        // content", so it cannot be broken with a hyphen the name
+                        // does not contain.
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .textSelection(.enabled)
                 }
                 if let description = event.description {
@@ -132,6 +140,9 @@ struct TaxonomyEventDetailView: View {
                 .listRowBackground(Color.clear)
         }
         .pageSurface()
+        // Every label/value pair below stops at a readable measure instead of
+        // spanning the window. See `Theme.Measure.pair`.
+        .measuredPairs()
         .navigationTitle(event.name)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Search properties")

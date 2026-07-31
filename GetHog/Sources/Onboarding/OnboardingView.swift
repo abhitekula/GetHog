@@ -94,9 +94,16 @@ struct OnboardingView: View {
                 VStack(spacing: 10) {
                     Text("GetHog")
                         .font(.largeTitle.bold())
+                    // On `Theme.Ink`, not SwiftUI's ramp, and for the measured
+                    // reason `Theme.Ink` records: the system's `.secondary` is
+                    // an alpha composite, so on this screen's `#F2EFE9` ground
+                    // it lands at 3.26:1 and on a card at 3.44:1 — both under
+                    // the 4.5:1 floor. Every supporting line on this flow is on
+                    // one of those two surfaces, and this is the first screen
+                    // anybody sees.
                     Text("Your PostHog dashboards, events, sessions, and feature flags — native on iPhone and iPad.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
                 }
@@ -116,7 +123,7 @@ struct OnboardingView: View {
                             Text(item.title).font(.subheadline.weight(.semibold))
                             Text(item.detail)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 0)
@@ -158,10 +165,19 @@ struct OnboardingView: View {
             Spacer(minLength: 24)
 
             VStack(spacing: 14) {
-                // Trademark distance, stated up front rather than buried.
+                // Trademark distance, stated up front rather than buried — and
+                // therefore the one line on this screen that has to be readable
+                // whether or not anybody wants to read it.
+                //
+                // It was the least readable text in the app. Measured on the
+                // rendered screen: `.tertiary` composites to `#BCBAB8` on the
+                // `#F2EFE9` ground for **1.69:1**, against a 4.5:1 floor.
+                // `Ink.secondary` rather than `Ink.tertiary`, because a
+                // disclaimer is not supporting detail — nothing about it should
+                // recede.
                 Text("GetHog is a third-party app and operates independently from PostHog.")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .multilineTextAlignment(.center)
 
                 Button {
@@ -171,6 +187,23 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                // **The label, not the tint.** `.borderedProminent` draws a
+                // white label over the app tint, and the app tint is a colour
+                // chosen for *ink on the ground* rather than for a slab: in
+                // dark, `Theme.accent` is `#3EC5CE`, and white on it measured
+                // **2.08:1** on the rendered screen — under half the 4.5:1 AA
+                // floor, on the only button first launch has. Light was fine at
+                // 6.00:1, which is why this survived a light-only reading.
+                //
+                // Darkening the tint is the wrong lever: `Theme.accent` is the
+                // one colour the whole app is keyed to, including the widget
+                // target, and it would be moved here to settle an argument about
+                // a label. Punching the label out in the app's ground instead
+                // costs nothing elsewhere and clears AA in both appearances —
+                // 5.22:1 light (`#F2EFE9` on `#0B6E75`) and 8.84:1 dark
+                // (`#151413` on `#3EC5CE`). No literal: it is the same token the
+                // screen behind the button is painted with.
+                .foregroundStyle(Theme.pageBackground)
             }
         }
     }
@@ -205,7 +238,7 @@ struct OnboardingView: View {
                         .keyboardType(.URL)
                     Text("Personal API keys are the only way to reach a self-hosted instance.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
                 .padding()
                 .background(Theme.cardBackground, in: .rect(cornerRadius: 12))
@@ -222,6 +255,8 @@ struct OnboardingView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .frame(maxWidth: .infinity)
+            // Same 2.08:1 measurement as "Get started"; see there.
+            .foregroundStyle(Theme.pageBackground)
             .disabled(!selfHostedURL.isEmpty && normalizedSelfHostedURL() == nil)
         }
     }
@@ -234,7 +269,7 @@ struct OnboardingView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option.displayName).font(.headline)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    Text(subtitle).font(.caption).foregroundStyle(Theme.Ink.secondary)
                 }
                 Spacer()
                 if region == option && selfHostedURL.isEmpty {
@@ -267,7 +302,7 @@ struct OnboardingView: View {
 
             Text("GetHog stores your key in the Keychain on this device only. It's never uploaded anywhere.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
 
             SecureField("phx_…", text: $apiKey)
                 .textFieldStyle(.roundedBorder)
@@ -299,6 +334,8 @@ struct OnboardingView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            // Same 2.08:1 measurement as "Get started"; see there.
+            .foregroundStyle(Theme.pageBackground)
             .disabled(apiKey.isEmpty || isConnecting)
 
             Spacer(minLength: 0)
@@ -313,8 +350,11 @@ struct OnboardingView: View {
 
             ForEach(Self.requiredScopes, id: \.self) { scope in
                 HStack(spacing: 8) {
+                    // A tick beside a scope the user has to find and switch on is
+                    // a meaningful graphic, so it owes WCAG's 3:1 for non-text;
+                    // `.tertiary` gave it 1.73:1 on this card.
                     Image(systemName: "checkmark.circle")
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                     Text(scope)
                         .font(.footnote.monospaced())
                     Spacer()

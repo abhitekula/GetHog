@@ -62,6 +62,12 @@ struct ReplayConsoleCard: View {
                     }
                 }
             }
+            // Same measure as the network pane below it, and for the same
+            // reason: a console line's seek button was pinned to the trailing
+            // edge of an 770pt card while the message it belongs to ended a
+            // third of the way across. The two panes are read together, so they
+            // are capped together rather than each finding its own width.
+            .readableMeasure(Theme.Measure.pane)
         }
     }
 

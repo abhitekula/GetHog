@@ -78,6 +78,18 @@ struct ReplayNetworkCard: View {
                     }
                 }
             }
+            // The whole pane, not the rows one at a time, so the header, the
+            // chips, the bars and the axis under them all end at the same
+            // place — a waterfall whose bars stop 130pt short of its own time
+            // axis would be lying about when things happened.
+            //
+            // Measured on `iPad Pro 11-inch (M5)` portrait: a request row put
+            // `/_next/static/media/22a5144ee8d83bca-s.p.woff2` at the leading
+            // edge and its `200` and `<1 ms` ~1090pt away at the trailing one,
+            // with the status column so far from the path that the pair had to
+            // be read twice. `pane` rather than `pair` because this row is not a
+            // pair: the bar beneath it is a timeline and wants the span.
+            .readableMeasure(Theme.Measure.pane)
         }
     }
 
