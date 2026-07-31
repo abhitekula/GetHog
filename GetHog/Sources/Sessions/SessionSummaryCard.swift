@@ -247,19 +247,23 @@ struct SentimentRow: View {
     @ScaledMetric(relativeTo: .caption) private var meterWidth: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var meterHeight: CGFloat = 4
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(spacing: Theme.Space.s) {
-                if let outcome = sentiment.outcome {
-                    StatusPill(
-                        text: outcome.title,
-                        tint: outcome.describesStruggle ? Theme.accentWarm : Theme.Status.good
-                    )
+            // Three things that each refuse to be squeezed: a `StatusPill` is
+            // `.fixedSize()` on purpose, the score is a figure, and the meter is
+            // a `@ScaledMetric` track — 44pt by default and 145pt at AX5. Side by
+            // side at that size they asked for more width than the phone has, and
+            // this card sets the width of every other card on the screen.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) { verdict }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: Theme.Space.s) {
+                    verdict
+                    Spacer(minLength: 0)
                 }
-                if let score = sentiment.frustrationScore {
-                    frustration(score)
-                }
-                Spacer(minLength: 0)
             }
             if !sentiment.signals.isEmpty {
                 Text(signalSummary)
@@ -272,10 +276,33 @@ struct SentimentRow: View {
         .accessibilityLabel(spoken)
     }
 
+    @ViewBuilder
+    private var verdict: some View {
+        if let outcome = sentiment.outcome {
+            StatusPill(
+                text: outcome.title,
+                tint: outcome.describesStruggle ? Theme.accentWarm : Theme.Status.good
+            )
+        }
+        if let score = sentiment.frustrationScore {
+            frustration(score)
+        }
+    }
+
     /// The band, the number and a meter — in that order, so the reading survives
     /// without the bar and the bar never has to carry the meaning alone.
+    @ViewBuilder
     private func frustration(_ score: Double) -> some View {
-        HStack(spacing: Theme.Space.xs) {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) { frustrationParts(score) }
+        } else {
+            HStack(spacing: Theme.Space.xs) { frustrationParts(score) }
+        }
+    }
+
+    @ViewBuilder
+    private func frustrationParts(_ score: Double) -> some View {
+        Group {
             Text("Frustration \(FrustrationBand.title(score).lowercased())")
                 .font(.caption)
                 .foregroundStyle(Theme.Ink.secondary)
@@ -358,42 +385,83 @@ struct SessionChapterRow: View {
 
     private var tint: Color { SessionOutcomeStyle.tint(chapter.outcome) }
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// A gutter, a numbered rail and the chapter — until the gutter costs more
+    /// than the chapter is worth.
+    ///
+    /// The same measurement as `TimelineRowView`, which this row is deliberately
+    /// shaped like: `offsetWidth` is 54pt at the default size and **206pt at
+    /// AX5**, and with the rail beside it the chapter title was left a column
+    /// narrower than its own longest word. The row then reported a width past
+    /// the phone, and because every card on the session screen shares one stack,
+    /// the whole page went with it — measured at 447pt in a 393pt window, which
+    /// is why this was the only screen whose background went white at AX5.
+    ///
+    /// Stacked, the badge and the time share one short line and the chapter gets
+    /// the card's full width. The connecting line goes with the stack: it drew a
+    /// rail between rows that are no longer in a column.
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.s) {
-            Group {
-                if let offset {
-                    Text(SessionClock.offset(offset))
-                } else {
-                    // No key action pinned this chapter to a time, so there is
-                    // nothing honest to put in the gutter and nothing to seek to.
-                    Text("—")
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    HStack(spacing: Theme.Space.s) {
+                        numberBadge
+                        offsetLabel
+                    }
+                    summary
+                    if isExpanded { detail }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, isLast ? 0 : Theme.Space.m)
+            } else {
+                HStack(alignment: .top, spacing: Theme.Space.s) {
+                    offsetLabel
+                        .frame(width: offsetWidth, alignment: .trailing)
+                        .padding(.top, 3)
+
+                    rail
+
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        summary
+                        if isExpanded { detail }
+                    }
+                    .padding(.bottom, isLast ? 0 : Theme.Space.m)
                 }
             }
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(Theme.Ink.secondary)
-            .frame(width: offsetWidth, alignment: .trailing)
-            .padding(.top, 3)
-
-            rail
-
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                summary
-                if isExpanded { detail }
-            }
-            .padding(.bottom, isLast ? 0 : Theme.Space.m)
         }
         .contentShape(.rect)
         .onTapGesture(perform: onToggle)
         .accessibilityElement(children: .contain)
     }
 
+    @ViewBuilder
+    private var offsetLabel: some View {
+        Group {
+            if let offset {
+                Text(SessionClock.offset(offset))
+            } else {
+                // No key action pinned this chapter to a time, so there is
+                // nothing honest to put in the gutter and nothing to seek to.
+                Text("—")
+            }
+        }
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(Theme.Ink.secondary)
+    }
+
+    private var numberBadge: some View {
+        Text("\(number)")
+            .font(.caption2.weight(.bold).monospacedDigit())
+            .foregroundStyle(tint)
+            .frame(width: railSize, height: railSize)
+            .background(tint.opacity(0.15), in: .circle)
+            .accessibilityHidden(true)
+    }
+
     private var rail: some View {
         VStack(spacing: 0) {
-            Text("\(number)")
-                .font(.caption2.weight(.bold).monospacedDigit())
-                .foregroundStyle(tint)
-                .frame(width: railSize, height: railSize)
-                .background(tint.opacity(0.15), in: .circle)
+            numberBadge
             if !isLast {
                 Rectangle()
                     .fill(Color.secondary.opacity(0.25))
@@ -405,47 +473,71 @@ struct SessionChapterRow: View {
         .accessibilityHidden(true)
     }
 
+    @ViewBuilder
     private var summary: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(chapter.title)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(2)
-                if let stats { Text(stats).font(.caption).foregroundStyle(Theme.Ink.secondary) }
-                if let outcomeWord = chapter.outcome?.title {
-                    HStack(spacing: Theme.Space.xs) {
-                        Image(systemName: SessionOutcomeStyle.systemImage(chapter.outcome))
-                            .font(.caption2)
-                            .accessibilityHidden(true)
-                        Text(outcomeWord).font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(tint)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // The chevron goes, for the reason `RowCard` drops its own when
+                // it stacks: it is decorative and hidden from VoiceOver, so on a
+                // line of its own it is a large grey arrow pointing at nothing.
+                // The seek button is content and keeps its line.
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    titleBlock
+                    seekButton
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                    titleBlock
+
+                    Spacer(minLength: Theme.Space.xs)
+
+                    seekButton
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        // A disclosure indicator is a control, not decoration, so
+                        // it owes 3:1; `.tertiary` gave it 1.73:1 on this card.
+                        .foregroundStyle(Theme.Ink.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
                 }
             }
-
-            Spacer(minLength: Theme.Space.xs)
-
-            if canSeek, let offset, let onSeek {
-                Button { onSeek(offset) } label: {
-                    Image(systemName: "play.circle")
-                        .font(.body)
-                        .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Play the replay from \(SessionClock.spoken(offset))")
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
-                // A disclosure indicator is a control, not decoration, so it owes
-                // 3:1; `.tertiary` gave it 1.73:1 against this card.
-                .foregroundStyle(Theme.Ink.tertiary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spoken)
         .accessibilityHint(isExpanded ? "Collapses this chapter" : "Expands this chapter")
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(chapter.title)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+            if let stats { Text(stats).font(.caption).foregroundStyle(Theme.Ink.secondary) }
+            if let outcomeWord = chapter.outcome?.title {
+                HStack(spacing: Theme.Space.xs) {
+                    Image(systemName: SessionOutcomeStyle.systemImage(chapter.outcome))
+                        .font(.caption2)
+                        .accessibilityHidden(true)
+                    Text(outcomeWord).font(.caption.weight(.medium))
+                }
+                .foregroundStyle(tint)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var seekButton: some View {
+        if canSeek, let offset, let onSeek {
+            Button { onSeek(offset) } label: {
+                Image(systemName: "play.circle")
+                    .font(.body)
+                    .foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Play the replay from \(SessionClock.spoken(offset))")
+        }
     }
 
     /// Duration, share of the session, and whatever the model actually counted.

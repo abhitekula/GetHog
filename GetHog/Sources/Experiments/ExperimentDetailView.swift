@@ -125,9 +125,14 @@ struct ExperimentDetailSheet: View {
     @ViewBuilder
     private var exposureSection: some View {
         Section {
+            // `isLoading` is passed rather than left to the `.skeleton`
+            // modifier alone: the skeleton covers the section's content but does
+            // not replace it, so without this the couldn't-be-loaded warning
+            // was underneath it and read through the crossfade.
             ExperimentExposureSection(
                 exposures: store.exposures,
-                isUnavailable: store.exposuresUnavailable
+                isUnavailable: store.exposuresUnavailable,
+                isLoading: store.isLoading
             )
             .skeleton(store.isLoading && store.exposures == nil && !store.exposuresUnavailable)
         } header: {

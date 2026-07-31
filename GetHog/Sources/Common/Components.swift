@@ -110,6 +110,10 @@ struct LockedCapabilityView: View {
                     .buttonStyle(.borderedProminent)
             }
         }
+        // The app's ground, for the reason `EmptyStateView` gives: this is the
+        // other view that replaces a whole screen — or a whole split-view detail
+        // column, which has no chrome to inherit a ground from.
+        .appGround()
     }
 }
 
@@ -305,6 +309,11 @@ struct LoadFailureState: View {
                     .padding(.horizontal, Theme.Space.l)
             }
         }
+        // The inner `EmptyStateView` grounds itself, but the verbatim fault
+        // beneath it is outside that view's bounds — so the whole stack claims
+        // the ground rather than leaving a strip of system background under the
+        // one piece of text somebody reading a failure came for.
+        .appGround()
     }
 }
 
@@ -400,6 +409,15 @@ struct SectionLabel: View {
             }
             Text(text.uppercased())
                 .font(.caption2.weight(.semibold))
+                // A section header is one or two words of chrome naming what is
+                // under it — never prose, and never something to be broken with
+                // a hyphen it does not contain. Measured at AX5 on Taxonomy's
+                // stat tile, where a narrow column set `DEFINED` as `DE-` /
+                // `FINED`. `zxx` is the ISO code for "no linguistic content", so
+                // no hyphenation dictionary applies; the same fix `StatusPill`
+                // below already makes, and every one of the ~30 screens using
+                // this header gets it from here.
+                .typesettingLanguage(Locale.Language(identifier: "zxx"))
                 .tracking(0.6)
         }
         // Uppercase caption2 with letter-spacing is the hardest thing to read the

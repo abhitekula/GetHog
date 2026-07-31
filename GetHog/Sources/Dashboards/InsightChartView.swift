@@ -1264,9 +1264,17 @@ struct FunnelChart: View {
         VStack(alignment: .leading, spacing: 10) {
             if let primary {
                 if let breakdown = primary.breakdownValue, groups.count > 1 {
+                    // Names *which* breakdown the steps below belong to, so it
+                    // is on `Ink.secondary` for the same reason the notice at
+                    // the foot of this stack is on `Ink.tertiary`: the system
+                    // ramp measures 3.26:1 against the page ground, and these
+                    // three lines have to stay in the order they were written
+                    // in. `.secondary` here would have come out *lighter* than
+                    // the "+N more breakdowns" beneath it once that line was
+                    // fixed, which is the same inversion one row up.
                     Text(breakdown)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
 
                 ForEach(Array(primary.steps.enumerated()), id: \.offset) { index, step in
@@ -1283,9 +1291,26 @@ struct FunnelChart: View {
                 }
 
                 if groups.count > 1 {
+                    // `.tertiary` is a *disabled-control* weight, and that is
+                    // what this line read as. On the funnel detail it sampled
+                    // lighter than the `FreshnessLabel` directly beneath it, so
+                    // the one sentence saying the chart is showing 1 of 8
+                    // breakdowns looked switched off while "Updated yesterday"
+                    // looked live — a hierarchy exactly inverted against what
+                    // the two lines are worth. It is not decoration: it is the
+                    // only notice that seven breakdowns are missing from what is
+                    // on screen, and a reader who does not see it reads a
+                    // one-browser funnel as the whole funnel.
+                    //
+                    // `Ink.secondary` rather than `Ink.tertiary`, for the reason
+                    // `FreshnessLabel` gives: `.caption2` is the smallest type
+                    // the app sets and small type needs the *most* contrast.
+                    // Levelling with the timestamp is the point — the inversion
+                    // is the defect, and a third step here would only make it
+                    // smaller. 6.95:1 on the page, 7.98:1 on a card.
                     Text("+\(groups.count - 1) more breakdown\(groups.count == 2 ? "" : "s")")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         }
@@ -1414,7 +1439,11 @@ struct FunnelStepRow: View {
             .font(.caption.weight(.semibold).monospacedDigit())
         Text(fraction, format: .percent.precision(.fractionLength(0)))
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
+            // The step's share of the first step — a number the column exists
+            // to be scanned down, at the smallest size the app sets, and the
+            // one thing on the row that says whether a step is a cliff. Off the
+            // system ramp for the reason `Theme.Ink` documents.
+            .foregroundStyle(Theme.Ink.secondary)
     }
 }
 

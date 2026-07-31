@@ -80,16 +80,30 @@ struct SettingsRoot: View {
 
     private var accountSection: some View {
         Section {
-            LabeledContent("Name", value: model.me?.displayName ?? "—")
-            if let email = model.me?.email {
-                LabeledContent("Email", value: email)
+            // Not one word in these rows is prose. Every value is a name, an
+            // address, an organisation or a region — and a `LabeledContent`
+            // stacks its value under its label at accessibility sizes, so at AX5
+            // the value wraps and the hyphenation dictionary gets its chance.
+            // Measured here: person@example.com`, which is not this user's
+            // address. A reader cannot tell an invented hyphen from one that was
+            // always there, and an address is the field where that distinction
+            // decides whether the string is true. `zxx` is the ISO code for "no
+            // linguistic content", so no dictionary applies and a line breaks
+            // only where the string already allows it — the same fix, for the
+            // same reason, as `RowCard`'s.
+            Group {
+                LabeledContent("Name", value: model.me?.displayName ?? "—")
+                if let email = model.me?.email {
+                    LabeledContent("Email", value: email)
+                }
+                if let organization = model.me?.organization?.name {
+                    LabeledContent("Organization", value: organization)
+                }
+                if let region = model.client?.region {
+                    LabeledContent("Region", value: region.displayName)
+                }
             }
-            if let organization = model.me?.organization?.name {
-                LabeledContent("Organization", value: organization)
-            }
-            if let region = model.client?.region {
-                LabeledContent("Region", value: region.displayName)
-            }
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
         } header: {
             SectionLabel(text: "Account", systemImage: "person.crop.circle")
         }

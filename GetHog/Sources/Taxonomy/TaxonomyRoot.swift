@@ -262,23 +262,12 @@ struct TaxonomySummaryCard: View {
     let activeCount: Int
     let definedCount: Int?
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 20) {
-                    stat(
-                        value: String(activeCount),
-                        label: "Active",
-                        detail: "last 30 days"
-                    )
-                    // Absent rather than zero when the definitions call failed:
-                    // "0 defined" would be a claim the API never made.
-                    stat(
-                        value: definedCount.map(String.init) ?? "—",
-                        label: "Defined",
-                        detail: definedCount == nil ? "not loaded" : "all time"
-                    )
-                }
+                stats
 
                 Text("These count different things: one is what arrived recently, the other is every event name this project has ever registered.")
                     .font(.caption)
@@ -287,6 +276,43 @@ struct TaxonomySummaryCard: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary)
+    }
+
+    /// Side by side normally, one above the other at accessibility sizes.
+    ///
+    /// The same reflow as `FunnelStepRow` and `InsightLegend`, measured here at
+    /// AX5: two columns of half a phone left each tile a strip a few characters
+    /// wide, so `DEFINED` was set as `DE-` / `FINED` and the window under
+    /// `ACTIVE` read `last 30` / `days`. A stat whose own label has to be
+    /// reassembled by the reader is not a stat. `SectionLabel` no longer lets
+    /// the hyphen in; this is the other half, and it is the half that gives
+    /// each figure a line wide enough to be read as one.
+    @ViewBuilder
+    private var stats: some View {
+        let active = stat(
+            value: String(activeCount),
+            label: "Active",
+            detail: "last 30 days"
+        )
+        // Absent rather than zero when the definitions call failed: "0 defined"
+        // would be a claim the API never made.
+        let defined = stat(
+            value: definedCount.map(String.init) ?? "—",
+            label: "Defined",
+            detail: definedCount == nil ? "not loaded" : "all time"
+        )
+
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 12) {
+                active
+                defined
+            }
+        } else {
+            HStack(alignment: .top, spacing: 20) {
+                active
+                defined
+            }
+        }
     }
 
     private func stat(value: String, label: String, detail: String) -> some View {

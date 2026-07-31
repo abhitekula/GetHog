@@ -329,31 +329,63 @@ struct TimelineRowView: View {
     /// width truncated the hour off exactly the sessions long enough to need it.
     @ScaledMetric(relativeTo: .caption2) private var offsetWidth: CGFloat = 54
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var tint: Color {
         if entry.isError { return Theme.Status.critical }
         if entry.isCustom { return Theme.accent }
         return Color.secondary
     }
 
+    /// A gutter, a rail and the event — until the gutter costs more than the
+    /// event is worth.
+    ///
+    /// `offsetWidth` scales with the type, which is right and is also the whole
+    /// problem: 54pt at the default size is **206pt at AX5**, and with the rail
+    /// beside it two thirds of a phone's width were spent on a timestamp before
+    /// the event got a character. What the event had left could not hold its own
+    /// longest word, so the row reported a width past the viewport — and because
+    /// every card on this screen shares one stack, the *page* was that wide.
+    /// Measured in a 393pt window: the timeline alone asked for 413pt, and the
+    /// summary card next door for 447pt.
+    ///
+    /// Stacked, the timestamp is a line of its own and everything below it gets
+    /// the full width. Same reflow as `FunnelStepRow` and `InsightLegend`.
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(SessionClock.offset(entry.offset))
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: offsetWidth, alignment: .trailing)
-                .padding(.top, 2)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    offsetLabel
+                    summary
+                    if isExpanded { properties }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, isLast ? 0 : 14)
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    offsetLabel
+                        .frame(width: offsetWidth, alignment: .trailing)
+                        .padding(.top, 2)
 
-            rail
+                    rail
 
-            VStack(alignment: .leading, spacing: 6) {
-                summary
-                if isExpanded { properties }
+                    VStack(alignment: .leading, spacing: 6) {
+                        summary
+                        if isExpanded { properties }
+                    }
+                    .padding(.bottom, isLast ? 0 : 14)
+                }
             }
-            .padding(.bottom, isLast ? 0 : 14)
         }
         .contentShape(.rect)
         .onTapGesture(perform: onToggle)
         .accessibilityElement(children: .contain)
+    }
+
+    private var offsetLabel: some View {
+        Text(SessionClock.offset(entry.offset))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
     }
 
     private var rail: some View {
@@ -373,51 +405,88 @@ struct TimelineRowView: View {
         .accessibilityHidden(true)
     }
 
+    @ViewBuilder
     private var summary: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    // Two lines: custom events fall through to their raw name,
-                    // and `checkout_payment_method_selected` clipped to one line
-                    // reads the same as its neighbours — the tail is the part
-                    // someone is scanning this timeline for.
-                    Text(entry.title)
-                        .font(.subheadline.weight(entry.isCustom ? .semibold : .regular))
-                        .foregroundStyle(entry.isError ? Theme.Status.criticalInk : .primary)
-                        .lineLimit(2)
-                    if entry.isError {
-                        StatusPill(text: "Error", tint: Theme.Status.critical)
-                    }
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // The chevron is dropped for the reason `RowCard` drops its own
+                // when it stacks: it is decorative, hidden from VoiceOver, and on
+                // its own line it is a large grey arrow pointing at nothing. The
+                // seek button is content and keeps its place.
+                VStack(alignment: .leading, spacing: 6) {
+                    titleBlock
+                    seekButton
                 }
-                if let subtitle = entry.subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    titleBlock
+
+                    Spacer(minLength: 4)
+
+                    seekButton
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
                 }
             }
-
-            Spacer(minLength: 4)
-
-            if canSeek {
-                Button(action: onSeek) {
-                    Image(systemName: "play.circle")
-                        .font(.body)
-                        .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Play the replay from \(SessionClock.spoken(entry.offset))")
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityHint(isExpanded ? "Collapses properties" : "Expands properties")
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            // The pill refuses compression by design, so beside a title it is a
+            // second column that cannot yield — at accessibility sizes the two
+            // do not share a line.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) { nameAndErrorPill }
+            } else {
+                HStack(spacing: 6) { nameAndErrorPill }
+            }
+            if let subtitle = entry.subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var nameAndErrorPill: some View {
+        // Two lines: custom events fall through to their raw name, and
+        // `checkout_payment_method_selected` clipped to one line reads the same
+        // as its neighbours — the tail is the part someone is scanning this
+        // timeline for.
+        Text(entry.title)
+            .font(.subheadline.weight(entry.isCustom ? .semibold : .regular))
+            .foregroundStyle(entry.isError ? Theme.Status.criticalInk : .primary)
+            // An event name is an identifier, never prose.
+            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+        if entry.isError {
+            StatusPill(text: "Error", tint: Theme.Status.critical)
+        }
+    }
+
+    @ViewBuilder
+    private var seekButton: some View {
+        if canSeek {
+            Button(action: onSeek) {
+                Image(systemName: "play.circle")
+                    .font(.body)
+                    .foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Play the replay from \(SessionClock.spoken(entry.offset))")
+        }
     }
 
     @ViewBuilder

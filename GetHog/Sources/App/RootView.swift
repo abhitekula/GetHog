@@ -940,20 +940,7 @@ struct ProjectSwitcher: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Menu {
-                Picker("Project", selection: Binding(
-                    get: { model.selectedProject?.id ?? -1 },
-                    set: { id in
-                        model.selectedProject = model.projects.first { $0.id == id }
-                    }
-                )) {
-                    ForEach(model.projects) { project in
-                        Text(project.name).tag(project.id)
-                    }
-                }
-                if let org = model.me?.organization?.name {
-                    Divider()
-                    Text(org)
-                }
+                projectList
             } label: {
                 // A glyph, not the project name. The name is permanently
                 // visible as the navigation subtitle, and repeating it here
@@ -970,6 +957,53 @@ struct ProjectSwitcher: ToolbarContent {
             // Voice Control and a keyboard do not have.
             .accessibilityLabel("Current project: \(model.selectedProject?.name ?? "none")")
             .accessibilityHint("Switches to a different project")
+        }
+    }
+
+    /// Every project the key can reach, under the organisation that owns them.
+    ///
+    /// The organisation is the *heading over* the projects, not an entry beneath
+    /// them.
+    ///
+    /// It used to be a plain `Text` after a `Divider`, which is the shape a menu
+    /// uses for a second group of *commands* — same size, same weight, same
+    /// leading inset as the project row above it, with only a missing checkmark
+    /// to say it was not selectable. Captured on a phone, the menu read
+    /// "✓ Default project / ——— / Example Org", which is a menu offering two
+    /// projects. This app treats showing the wrong project's numbers as a
+    /// correctness bug, so a switcher that appears to offer a project that does
+    /// not exist is the one place that misreading is expensive.
+    ///
+    /// A titled `Section` is the system's own vocabulary for "these items belong
+    /// to this": drawn smaller and grey, above the selectable run rather than
+    /// inside it, with no divider implying a second group of choices.
+    ///
+    /// Buttons rather than the `Picker` this used to be, and that is not a
+    /// preference — it is what makes the heading appear at all. Both arrangements
+    /// were built and photographed: with a `Picker` inside it, the section's title
+    /// is dropped and the organisation vanishes from the menu entirely, and
+    /// `.pickerStyle(.inline)` with the organisation as the picker's own label
+    /// does the same. Either would have traded a misreading for a blank. A menu
+    /// of buttons with a checkmark on the current one is what a `Picker` compiles
+    /// to anyway; writing it out is what keeps the title.
+    private var projectList: some View {
+        Section(model.me?.organization?.name ?? "") {
+            ForEach(model.projects) { project in
+                let isCurrent = project.id == model.selectedProject?.id
+                Button {
+                    model.selectedProject = project
+                } label: {
+                    if isCurrent {
+                        Label(project.name, systemImage: "checkmark")
+                    } else {
+                        Text(project.name)
+                    }
+                }
+                // The checkmark is the only thing distinguishing the current
+                // project, and a glyph inside a menu item is not announced — so
+                // written out, the way `Picker` announced "selected" before.
+                .accessibilityLabel(isCurrent ? "\(project.name), current project" : project.name)
+            }
         }
     }
 }

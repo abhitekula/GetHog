@@ -219,6 +219,8 @@ struct SessionHeaderCard: View {
     let recording: SessionRecording
     let environment: SessionEnvironment
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 14) {
@@ -233,49 +235,116 @@ struct SessionHeaderCard: View {
         }
     }
 
+    /// Beside the avatar normally, stacked without it at accessibility sizes.
+    ///
+    /// The same reflow as `FunnelStepRow` and `InsightLegend`, and the same
+    /// measured reason. At AX5 this card was the only thing on the screen wider
+    /// than the phone: the avatar is a fixed 44pt that does not scale, the
+    /// status pills are `.fixedSize()` and refuse to compress at all, and the
+    /// duration and the start time each demanded a line of their own — so the
+    /// row's minimum width came out past the viewport and took the whole card,
+    /// and the page background behind it, with it. The avatar went off the
+    /// leading edge; every value ran off the trailing one.
+    @ViewBuilder
     private var identity: some View {
-        HStack(spacing: 12) {
-            Text(recording.person?.initials ?? "?")
-                .font(.headline)
-                .frame(width: 44, height: 44)
-                .background(Theme.accent.opacity(0.15), in: .circle)
-                .foregroundStyle(Theme.accent)
-                .accessibilityHidden(true)
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                nameAndTime
+                // Stacked rather than in a row: a pill refuses compression by
+                // design — the word is its only non-colour encoding — so three
+                // of them side by side at this size cannot fit and do not try.
+                statusPills
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        } else {
+            HStack(spacing: 12) {
+                avatar
+                nameAndTime
+                Spacer()
+                statusPills
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(recording.personDisplayName)
-                    .font(.headline)
-                    .lineLimit(1)
-                HStack(spacing: 8) {
-                    Text(recording.durationText)
-                        .monospacedDigit()
-                    if let start = recording.startTime {
-                        Text(start, format: .dateTime.month().day().hour().minute())
-                    }
-                }
+    /// Dropped at accessibility sizes, for the reason `InsightActorRow` drops
+    /// its own: it is `.accessibilityHidden`, it only ever repeats the initials
+    /// of the name printed beside it, and at 44 fixed points it is a quarter of
+    /// the row taken from the only part that carries information.
+    private var avatar: some View {
+        Text(recording.person?.initials ?? "?")
+            .font(.headline)
+            .frame(width: 44, height: 44)
+            .background(Theme.accent.opacity(0.15), in: .circle)
+            .foregroundStyle(Theme.accent)
+            .accessibilityHidden(true)
+    }
+
+    private var nameAndTime: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(recording.personDisplayName)
+                .font(.headline)
+                // A person's display name here is an email or a distinct id, not
+                // prose — see `RowCard`. `zxx` is the ISO code for "no
+                // linguistic content", so no hyphenation dictionary applies and
+                // the address cannot be given a hyphen it never had.
+                .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                // Uncapped at accessibility sizes: one line of type that large
+                // is a few characters, and `nina.drill.0729…` names nobody.
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+
+            timings
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            }
+        }
+    }
 
-            Spacer()
-
-            if recording.hasErrors {
-                // The stat strip below states this number plainly, and
-                // `MetricTile` is deliberately untinted — so the alarm the red
-                // counter used to raise is carried here as a word instead.
-                StatusPill(
-                    text: "\(recording.consoleErrorCount) errors",
-                    tint: Theme.Status.critical
-                )
+    @ViewBuilder
+    private var timings: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(recording.durationText).monospacedDigit()
+                if let start = recording.startTime {
+                    Text(start, format: .dateTime.month().day().hour().minute())
+                }
             }
-            if !recording.isReplayable {
-                StatusPill(text: "Mobile", tint: .secondary)
-            }
-            if recording.ongoing {
-                StatusPill(text: "Live", tint: Theme.Status.good)
+        } else {
+            HStack(spacing: 8) {
+                Text(recording.durationText).monospacedDigit()
+                if let start = recording.startTime {
+                    Text(start, format: .dateTime.month().day().hour().minute())
+                }
             }
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var statusPills: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) { pillContent }
+        } else {
+            HStack(spacing: Theme.Space.s) { pillContent }
+        }
+    }
+
+    @ViewBuilder
+    private var pillContent: some View {
+        if recording.hasErrors {
+            // The stat strip below states this number plainly, and `MetricTile`
+            // is deliberately untinted — so the alarm the red counter used to
+            // raise is carried here as a word instead.
+            StatusPill(
+                text: "\(recording.consoleErrorCount) errors",
+                tint: Theme.Status.critical
+            )
+        }
+        if !recording.isReplayable {
+            StatusPill(text: "Mobile", tint: .secondary)
+        }
+        if recording.ongoing {
+            StatusPill(text: "Live", tint: Theme.Status.good)
+        }
     }
 
     private struct DetailRow {
@@ -299,7 +368,40 @@ struct SessionHeaderCard: View {
         ].filter { $0.value != nil }
     }
 
+    /// Label and value share a line normally, and stack at accessibility sizes.
+    ///
+    /// Two columns is what put this card off both edges of the phone. The label
+    /// column and the value column each have a minimum width — the widest word
+    /// neither can break — and at AX5 `Start URL` beside a URL, or `Device`
+    /// beside `Desktop · Mac OS X 10.15.7 · Chrome 150`, add up to more than the
+    /// card is allowed to be. Stacked, each line gets the card's whole width to
+    /// break in, which is what `FunnelStepRow` and `InsightLegend` already do.
+    @ViewBuilder
     private func detailRow(_ row: DetailRow) -> some View {
+        let content = Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    detailLabel(row)
+                    detailValue(row)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    detailLabel(row)
+                    Spacer(minLength: 8)
+                    detailValue(row)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+        }
+
+        content
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(row.label), \(row.value ?? "unknown")")
+    }
+
+    private func detailLabel(_ row: DetailRow) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: row.icon)
                 .font(.caption)
@@ -308,22 +410,30 @@ struct SessionHeaderCard: View {
             Text(row.label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            // `.enabled` and `.disabled` are distinct types, so this cannot be a
-            // ternary — the modifier has to be applied conditionally instead.
-            Group {
-                if row.selectable {
-                    Text(row.value ?? "—").textSelection(.enabled)
-                } else {
-                    Text(row.value ?? "—")
-                }
-            }
-            .font(.caption)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(3)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(row.label), \(row.value ?? "unknown")")
+    }
+
+    @ViewBuilder
+    private func detailValue(_ row: DetailRow) -> some View {
+        // `.enabled` and `.disabled` are distinct types, so this cannot be a
+        // ternary — the modifier has to be applied conditionally instead.
+        Group {
+            if row.selectable {
+                Text(row.value ?? "—").textSelection(.enabled)
+            } else {
+                Text(row.value ?? "—")
+            }
+        }
+        .font(.caption)
+        // None of these values is prose: a URL, a formatted timestamp, and a
+        // browser/OS string. `zxx` is the ISO code for "no linguistic content",
+        // so no hyphenation dictionary applies and a line breaks only where the
+        // string already allows it — a hyphen invented inside a host name is a
+        // different host name.
+        .typesettingLanguage(Locale.Language(identifier: "zxx"))
+        // Uncapped at accessibility sizes: three lines of type that large is
+        // most of a URL, and the tail is the part that says which page.
+        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
     }
 }
 

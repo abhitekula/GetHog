@@ -284,10 +284,25 @@ struct ExperimentComparisonRow: View {
 struct ExperimentExposureSection: View {
     let exposures: ExperimentExposures?
     let isUnavailable: Bool
+    /// Whether the fetch is still in flight.
+    ///
+    /// Needed because "not here yet" and "not coming" are different facts that
+    /// both present as `exposures == nil`. Without it this view drew the
+    /// couldn't-be-loaded warning during the load: the caller's `.skeleton`
+    /// covers that text but does not replace it, so it read through the
+    /// crossfade as the real data landed — the loading state briefly asserting
+    /// a failure that had not happened, on the one section whose whole job is
+    /// to say whether the traffic split can be trusted.
+    var isLoading = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            if isUnavailable || exposures == nil {
+            if isLoading && exposures == nil && !isUnavailable {
+                // Deliberately shaped like the row it will become rather than
+                // empty, so the skeleton has something to mask and the section
+                // does not resize under the reader when the counts arrive.
+                exposurePlaceholder
+            } else if isUnavailable || exposures == nil {
                 // Silence here would read as "the split is fine". It is not the
                 // same fact.
                 Label(
@@ -318,6 +333,28 @@ struct ExperimentExposureSection: View {
             }
         }
         .padding(.vertical, Theme.Space.xs)
+    }
+
+    /// Two neutral rows and a total, claiming nothing.
+    ///
+    /// Two because every experiment has at least a control and one test arm, so
+    /// this is the floor rather than a guess at the real count.
+    private var exposurePlaceholder: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            ForEach(0..<2, id: \.self) { _ in
+                HStack(alignment: .firstTextBaseline) {
+                    Text("control").font(.subheadline.monospaced())
+                    Spacer(minLength: Theme.Space.s)
+                    Text("0000").font(.subheadline.monospacedDigit())
+                }
+            }
+            Text("0000 exposed in total").font(.caption)
+        }
+        // The reader must never be told this, by VoiceOver or by a frame caught
+        // mid-crossfade. The section's real state is announced once the fetch
+        // resolves into one of the two branches below.
+        .redacted(reason: .placeholder)
+        .accessibilityHidden(true)
     }
 
     private func sortedVariants(_ exposures: ExperimentExposures) -> [String] {

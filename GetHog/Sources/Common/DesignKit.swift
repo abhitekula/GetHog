@@ -33,6 +33,25 @@ extension View {
             .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
+    /// The app's ground behind something that fills a screen without scrolling.
+    ///
+    /// `pageSurface()` is the scrolling counterpart and cannot stand in here: its
+    /// first job is to stop a `List` painting over the ground, and a state view
+    /// has no scroll view to quieten. What it needs instead is to *claim* the
+    /// space — `ContentUnavailableView` centres itself in whatever it is offered,
+    /// so a `.background` alone paints only as far as the layout happened to
+    /// stretch.
+    ///
+    /// This is the piece that was missing when twelve roots sampled `#FFFFFF` in
+    /// light and `#000000` in dark: every one of them applied `pageSurface()` to
+    /// its `list` branch only, so the branch that renders when the list is empty
+    /// — which is the branch a real project shows most often — fell through to
+    /// the system background. See `EmptyStateView`.
+    func appGround() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.pageBackground)
+    }
+
     /// Liquid Glass in the app's shape language.
     ///
     /// Wrapped rather than called directly so one rule is applied everywhere:
@@ -78,17 +97,35 @@ extension View {
 /// title *and* subtitle while inline. The tab bar was never the fallback the
 /// comment here assumed it was — it pages, and on Clickmap it was showing
 /// `Dashboards · Events · Sessions · Flags` while Clickmap was on screen.
+///
+/// It also lays the app's ground under the whole screen, and that is load-bearing
+/// rather than belt-and-braces. `pageSurface()` is applied to a *branch* — the
+/// one holding the `List` — so a root that renders an empty state, a locked
+/// capability or a load failure instead was on the system background: measured at
+/// `#FFFFFF` in light and `#000000` in dark on twelve of thirty-five roots, in
+/// both appearances and on both devices. Fixing those twelve call sites would
+/// have left the hole open for the thirteenth, because the thing a screen author
+/// forgets is a modifier on a branch they did not write yet.
+///
+/// Here it cannot be forgotten: this modifier is applied once, to the whole body,
+/// by every root that names its project — which is every root, since a screen
+/// that does not say which project's numbers it is showing is a correctness bug
+/// in this app. The ground therefore arrives before the branching does, and a new
+/// branch inherits it. `pageSurface()` still paints the same colour under a list
+/// and still has to, because a `List` draws over anything behind it.
 private struct ScreenChrome: ViewModifier {
     @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
         content
+            .background(Theme.pageBackground)
             .navigationSubtitle(model.selectedProject?.name ?? "")
     }
 }
 
 extension View {
-    /// Shows the current project under the title. Pair with `ProjectSwitcher`.
+    /// Shows the current project under the title, on the app's ground.
+    /// Pair with `ProjectSwitcher`.
     func projectSubtitle() -> some View {
         modifier(ScreenChrome())
     }
@@ -409,6 +446,14 @@ struct StatStrip<Content: View>: View {
 /// decided once. Most of these screens are legitimately empty against a real
 /// project, so an empty state here is a normal outcome and should look
 /// deliberate rather than broken.
+///
+/// Which is why it carries `appGround()` itself rather than trusting its host.
+/// `ScreenChrome` covers every root, but this view is also the *detail column* of
+/// the three split-view screens, and a detail column has no chrome of its own:
+/// on iPad the "Pick an insight" placeholder sampled `#F7F7F7` — half the screen,
+/// a cool grey, beside a cream sidebar. Two grounds of the same colour cost
+/// nothing; a state view that only looks right in one of its two homes costs the
+/// larger half of an iPad.
 struct EmptyStateView: View {
     let title: String
     let systemImage: String
@@ -429,6 +474,7 @@ struct EmptyStateView: View {
                     .buttonStyle(.glassProminent)
             }
         }
+        .appGround()
     }
 }
 

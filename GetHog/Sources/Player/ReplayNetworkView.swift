@@ -119,32 +119,31 @@ struct ReplayNetworkCard: View {
     }
 
     private var filterChips: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(ReplayNetworkFilter.allCases) { option in
-                    let count = diagnostics.network.count(where: option.matches)
-                    Button {
-                        filter = option
-                        showingAll = false
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(option.rawValue)
-                            Text("\(count)").monospacedDigit().opacity(0.7)
-                        }
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
-                        .warmGlass(active: filter == option)
+        ReplayChipStrip {
+            ForEach(ReplayNetworkFilter.allCases) { option in
+                let count = diagnostics.network.count(where: option.matches)
+                Button {
+                    filter = option
+                    showingAll = false
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(option.rawValue)
+                        Text("\(count)").monospacedDigit().opacity(0.7)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(option.rawValue), \(count) requests")
-                    .accessibilityAddTraits(filter == option ? [.isSelected] : [])
+                    .font(.caption.weight(.medium))
+                    // A filter's name is a label, not a sentence: "Documents"
+                    // broken as `Docu-` / `ments` names no filter.
+                    .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
+                    .warmGlass(active: filter == option)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(option.rawValue), \(count) requests")
+                .accessibilityAddTraits(filter == option ? [.isSelected] : [])
             }
-            .padding(.vertical, 1)
         }
-        .scrollIndicators(.hidden)
     }
 
     private var waterfall: some View {
