@@ -1,5 +1,7 @@
+import Combine
 import SwiftUI
 import Testing
+import UIKit
 @testable import GetHog
 
 @Suite("Brand motion")
@@ -85,12 +87,97 @@ struct BrandMotionTests {
         #expect(!lifecycle.active)
     }
 
-    @Test("Confirmation modifier renders around real summary content")
-    func confirmationModifierRendersContent() {
-        let renderer = ImageRenderer(
-            content: Text("Summary").signalConfirmation(trigger: 0)
-        )
+    @Test("Confirmation modifier settles once and cancels stale visual state")
+    func confirmationModifierLifecycleRenders() async throws {
+        let animationsWereEnabled = UIView.areAnimationsEnabled
+        UIView.setAnimationsEnabled(false)
+        defer { UIView.setAnimationsEnabled(animationsWereEnabled) }
 
-        #expect(renderer.uiImage != nil)
+        let model = SignalConfirmationHarnessModel()
+        let host = UIHostingController(rootView: SignalConfirmationHarness(model: model))
+        let scene = try #require(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        )
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 240, height: 120)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+
+        await waitForRendering()
+        let baseline = try #require(snapshot(of: host.view))
+
+        model.trigger += 1
+        await waitForRendering()
+        #expect(try #require(snapshot(of: host.view)) != baseline)
+
+        model.reduceMotion = true
+        await waitForRendering()
+        #expect(try #require(snapshot(of: host.view)) == baseline)
+        model.reduceMotion = false
+        await waitForRendering(for: 0.27)
+        #expect(try #require(snapshot(of: host.view)) == baseline)
+
+        model.trigger += 1
+        await waitForRendering()
+        #expect(try #require(snapshot(of: host.view)) != baseline)
+        await waitForRendering(for: 0.27)
+        #expect(try #require(snapshot(of: host.view)) == baseline)
+        await waitForRendering(for: 0.04)
+        #expect(try #require(snapshot(of: host.view)) == baseline)
+
+        model.trigger += 1
+        await waitForRendering()
+        await waitForRendering(for: 0.12)
+        model.trigger += 1
+        await waitForRendering()
+        await waitForRendering(for: 0.13)
+        #expect(try #require(snapshot(of: host.view)) != baseline)
+        await waitForRendering(for: 0.14)
+        #expect(try #require(snapshot(of: host.view)) == baseline)
+    }
+
+    private func waitForRendering(for interval: TimeInterval = 0.03) async {
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(Int(interval * 1_000)))
+        await Task.yield()
+    }
+
+    private func snapshot(of view: UIView) -> Data? {
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+        return renderer.pngData { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+        }
+    }
+
+}
+
+@MainActor
+private final class SignalConfirmationHarnessModel: ObservableObject {
+    @Published var trigger = 0
+    @Published var reduceMotion = false
+}
+
+private struct SignalConfirmationHarness: View {
+    @ObservedObject var model: SignalConfirmationHarnessModel
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.pageBackground)
+            Text("Summary")
+                .font(.headline)
+                .foregroundStyle(Theme.Ink.secondary)
+        }
+        .frame(width: 240, height: 120)
+        .signalConfirmation(trigger: model.trigger)
+        .environment(\.signalConfirmationReduceMotionOverride, model.reduceMotion)
     }
 }

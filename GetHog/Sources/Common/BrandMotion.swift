@@ -47,15 +47,28 @@ struct SignalConfirmationLifecycle: Equatable {
     }
 }
 
+private struct SignalConfirmationReduceMotionOverrideKey: EnvironmentKey {
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    var signalConfirmationReduceMotionOverride: Bool? {
+        get { self[SignalConfirmationReduceMotionOverrideKey.self] }
+        set { self[SignalConfirmationReduceMotionOverrideKey.self] = newValue }
+    }
+}
+
 private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
     let trigger: Trigger
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.signalConfirmationReduceMotionOverride) private var reduceMotionOverride
     @State private var lifecycle = SignalConfirmationLifecycle()
     @State private var resetTask: Task<Void, Never>?
 
     func body(content: Content) -> some View {
+        let reduceMotionEnabled = reduceMotionOverride ?? reduceMotion
         let values = BrandMotionValues.confirmation(
-            reduceMotion: reduceMotion,
+            reduceMotion: reduceMotionEnabled,
             active: lifecycle.active
         )
         content.overlay(alignment: .topTrailing) {
@@ -68,7 +81,7 @@ private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
         }
         .onChange(of: trigger) { _, _ in
             resetTask?.cancel()
-            guard !reduceMotion else {
+            guard !reduceMotionEnabled else {
                 lifecycle.settleImmediately()
                 return
             }
@@ -83,7 +96,7 @@ private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
                 lifecycle.settle(generation: generation)
             }
         }
-        .onChange(of: reduceMotion) { _, enabled in
+        .onChange(of: reduceMotionEnabled) { _, enabled in
             guard enabled else { return }
             resetTask?.cancel()
             lifecycle.settleImmediately()
