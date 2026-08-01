@@ -9,6 +9,7 @@ struct DashboardOverviewFacts {
 
     init(dashboards: [DashboardSummary]) {
         dashboardCount = dashboards.count
+        computedCount = dashboards.filter { $0.lastRefresh != nil }.count
         generatedCount = dashboards.filter { $0.creationMode == .template }.count
         pinned = dashboards.first(where: \.pinned)
         recentlyComputed = dashboards
@@ -16,7 +17,6 @@ struct DashboardOverviewFacts {
             .sorted { $0.1 > $1.1 }
             .prefix(5)
             .map(\.0)
-        computedCount = recentlyComputed.count
     }
 }
 

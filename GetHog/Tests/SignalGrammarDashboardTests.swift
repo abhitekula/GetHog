@@ -25,6 +25,26 @@ struct SignalGrammarDashboardTests {
         #expect(facts.recentlyComputed.map(\.title) == ["Product health", "Activation"])
     }
 
+    @Test("Computed total is not limited by the recent preview")
+    func computedTotalBeyondPreviewLimit() throws {
+        let data = Data(#"""
+        {"results":[
+          {"id":1,"name":"One","pinned":false,"last_refresh":"2026-07-31T12:00:00Z"},
+          {"id":2,"name":"Two","pinned":false,"last_refresh":"2026-07-30T12:00:00Z"},
+          {"id":3,"name":"Three","pinned":false,"last_refresh":"2026-07-29T12:00:00Z"},
+          {"id":4,"name":"Four","pinned":false,"last_refresh":"2026-07-28T12:00:00Z"},
+          {"id":5,"name":"Five","pinned":false,"last_refresh":"2026-07-27T12:00:00Z"},
+          {"id":6,"name":"Six","pinned":false,"last_refresh":"2026-07-26T12:00:00Z"},
+          {"id":7,"name":"Never computed","pinned":false}
+        ]}
+        """#.utf8)
+        let page = try JSONDecoder().decode(Page<DashboardSummary>.self, from: data)
+        let facts = DashboardOverviewFacts(dashboards: page.results)
+
+        #expect(facts.computedCount == 6)
+        #expect(facts.recentlyComputed.count == 5)
+    }
+
     @Test("Dashboard provenance maps to stable branded glyphs")
     func provenanceGlyphs() {
         #expect(DashboardBrandAppearance.glyph(for: .default) == .dashboard)
