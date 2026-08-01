@@ -223,6 +223,7 @@ struct SessionsRoot: View {
                 EmptyStateView(
                     title: "No sessions",
                     systemImage: "rectangle.stack",
+                    illustration: .sessions,
                     message: "No session recordings in this project yet."
                 )
             }

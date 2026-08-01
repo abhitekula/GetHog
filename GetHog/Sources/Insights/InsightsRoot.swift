@@ -210,6 +210,7 @@ struct InsightsRoot: View {
             EmptyStateView(
                 title: "No saved insights",
                 systemImage: "chart.xyaxis.line",
+                illustration: .insights,
                 message: "Nothing has been saved as an insight in this project yet."
             )
         }

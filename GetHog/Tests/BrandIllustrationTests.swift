@@ -1,5 +1,6 @@
 import CoreGraphics
 import ImageIO
+import SwiftUI
 import Testing
 import UIKit
 
@@ -32,6 +33,25 @@ struct BrandIllustrationTests {
             #expect(image.size.width > 0)
             #expect(image.size.height > 0)
         }
+    }
+
+    @Test("The shared empty state renders with branded art and with its symbol fallback")
+    func emptyStateSupportsBothDecorations() throws {
+        let branded = ImageRenderer(content:
+            EmptyStateView(
+                title: "No dashboards",
+                systemImage: "square.grid.2x2",
+                illustration: .dashboard,
+                message: "Synthetic empty state."
+            )
+            .frame(width: 393, height: 600)
+        )
+        let fallback = ImageRenderer(content:
+            EmptyStateView(title: "No matches", systemImage: "magnifyingglass")
+                .frame(width: 393, height: 600)
+        )
+        #expect(branded.uiImage != nil)
+        #expect(fallback.uiImage != nil)
     }
 
     @Test("Every source image set contains clean Retina alpha PNGs")

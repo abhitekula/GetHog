@@ -75,6 +75,7 @@ struct DashboardsRoot: View {
                 EmptyStateView(
                     title: "No dashboards",
                     systemImage: "square.grid.2x2",
+                    illustration: .dashboard,
                     message: "This project doesn't have any dashboards yet."
                 )
             } else {
@@ -122,10 +123,11 @@ struct DashboardsRoot: View {
                 Button("Try again") { Task { await load() } }
             }
         } else if store.dashboards.isEmpty && !store.isLoading {
-            ContentUnavailableView(
-                "No dashboards",
+            EmptyStateView(
+                title: "No dashboards",
                 systemImage: "square.grid.2x2",
-                description: Text("This project doesn't have any dashboards yet.")
+                illustration: .dashboard,
+                message: "This project doesn't have any dashboards yet."
             )
         } else {
             list

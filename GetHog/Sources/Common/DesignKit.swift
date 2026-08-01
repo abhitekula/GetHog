@@ -523,9 +523,12 @@ struct StatStrip<Content: View>: View {
 struct EmptyStateView: View {
     let title: String
     let systemImage: String
+    var illustration: BrandIllustration? = nil
     var message: String?
     var actionTitle: String?
     var action: (() -> Void)?
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         ContentUnavailableView {
@@ -546,7 +549,14 @@ struct EmptyStateView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {
-                Image(systemName: systemImage)
+                if let illustration {
+                    BrandIllustrationView(
+                        illustration: illustration,
+                        size: dynamicTypeSize.isAccessibilitySize ? 112 : 152
+                    )
+                } else {
+                    Image(systemName: systemImage)
+                }
             }
         } description: {
             if let message {
