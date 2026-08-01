@@ -6,19 +6,19 @@ import Testing
 /// The CSV encoder against the deterministic fictional dashboard fixture.
 ///
 /// Its own suite is entirely synthetic, which is right for the RFC 4180 rules but
-/// leaves the shapes that actually surprised us untested end to end: a bar-value
+/// leaves uncommon API shapes untested end to end: a bar-value
 /// insight whose `data` is empty and whose figure hides in `aggregated_value`, a
 /// funnel arriving as nested arrays, a lifecycle whose dormant counts are
 /// negative. Those are decoding facts the encoder inherits, so this walks the
-/// real dashboard and checks every tile exports something faithful.
-@Suite("Insight CSV over real dashboard data")
-struct InsightCSVRealDataTests {
+/// synthetic dashboard fixture and checks every tile exports something faithful.
+@Suite("Insight CSV over synthetic dashboard data")
+struct InsightCSVSyntheticDataTests {
 
     private func tiles() throws -> [Tile] {
         try Dashboard.decode(from: Fixture.data("dashboard_detail_raw.json")).tiles
     }
 
-    @Test("every drawable tile on the real dashboard exports rows")
+    @Test("every drawable tile in the synthetic dashboard exports rows")
     func everyDrawableTileExports() throws {
         let drawable = try tiles().filter {
             if case .unsupported = $0.renderModel { return false }
@@ -99,7 +99,7 @@ struct InsightCSVRealDataTests {
             else { continue }
 
             #expect(csv.hasPrefix("\u{FEFF}"))
-            // Real breakdown labels include URLs with query strings, so any
+            // Synthetic breakdown labels include URLs with query strings, so any
             // unquoted comma here would split a record on the way into Excel.
             let firstLine = try #require(
                 csv.dropFirst().split(separator: "\r\n", maxSplits: 1).first

@@ -11,7 +11,7 @@ struct InsightDecodingTests {
         let dashboard = try Dashboard.decode(from: Fixture.data("dashboard_detail_raw.json"))
         #expect(dashboard.tiles.count == 7)
 
-        // Tile 0 on the real dashboard is "Daily active users (DAUs)",
+        // Tile 0 in the synthetic dashboard fixture is "Daily active users (DAUs)",
         // a TrendsQuery rendered as ActionsLineGraph.
         guard case .timeSeries(let series, let style) = dashboard.tiles[0].renderModel else {
             Issue.record("expected .timeSeries, got \(dashboard.tiles[0].renderModel)")

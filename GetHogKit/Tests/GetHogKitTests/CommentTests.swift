@@ -24,7 +24,7 @@ struct CommentTests {
 
     // MARK: - Envelope
 
-    /// A decoder that required `count` would throw on every real response.
+    /// A decoder that required `count` would throw on API responses without it.
     /// `Page.count` is optional for exactly this reason and this pins it.
     @Test("decodes a cursor page that carries no count at all")
     func cursorPageWithoutCount() throws {

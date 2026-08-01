@@ -410,7 +410,7 @@ struct EarlyAccessFeatureTests {
     func stages() throws {
         // The model's Stage choices are draft, concept, alpha, beta,
         // general-availability and archived. `draft` is easy to miss and would
-        // otherwise fall through to unknown on a real project's newest feature.
+        // otherwise fall through to unknown when the API adds a newer feature.
         #expect(EarlyAccessStage(rawValue: "draft") == .draft)
         #expect(EarlyAccessStage(rawValue: "concept") == .concept)
         #expect(EarlyAccessStage(rawValue: "alpha") == .alpha)

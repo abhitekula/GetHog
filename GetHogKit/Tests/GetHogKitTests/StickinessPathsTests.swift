@@ -4,7 +4,7 @@ import Testing
 @testable import GetHogKit
 
 /// Wraps a captured `/query/` result array in an insight envelope, so these
-/// tests exercise the same decode path a real dashboard tile takes.
+/// tests exercise the same decode path as a dashboard tile.
 private func insight(kind: String, resultsFrom fixture: String) throws -> Insight {
     let response = try JSONSerialization.jsonObject(
         with: Fixture.data(fixture)
