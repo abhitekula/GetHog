@@ -958,7 +958,7 @@ struct ProjectSwitcher: ToolbarContent {
                 // made the item wide enough that it could not share the bar
                 // with a back button — costing a whole row of chrome on every
                 // pushed screen.
-                Image(systemName: "building.2")
+                BrandProductMarkView(mark: .projectStamp, size: 18)
             }
             // The label names the thing; the hint says what happens to it.
             //
