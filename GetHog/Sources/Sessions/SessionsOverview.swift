@@ -42,6 +42,7 @@ struct SessionsOverview: View {
             summaryLayout
         }
         .accessibilityIdentifier("gethog.signal-summary.sessions")
+        .signalConfirmation(trigger: loadedAt)
     }
 
     @ViewBuilder

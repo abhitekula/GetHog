@@ -24,4 +24,19 @@ struct BrandMotionTests {
         #expect(final.y == 0)
         #expect(final.scale == 1)
     }
+
+    @Test("Reduced motion never exposes a confirmation transition")
+    func reducedConfirmationSettles() {
+        #expect(BrandMotionValues.confirmation(reduceMotion: true, active: true) == .settled)
+        #expect(BrandMotionValues.confirmation(reduceMotion: true, active: false) == .settled)
+    }
+
+    @Test("Standard confirmation changes only opacity, offset, and scale")
+    func standardConfirmationIsBounded() {
+        let active = BrandMotionValues.confirmation(reduceMotion: false, active: true)
+        #expect(active.opacity == 1)
+        #expect(active.y == -2)
+        #expect(active.scale == 1.04)
+        #expect(BrandMotionValues.confirmation(reduceMotion: false, active: false) == .settled)
+    }
 }

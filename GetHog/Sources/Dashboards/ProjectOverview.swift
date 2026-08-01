@@ -1,6 +1,12 @@
 import GetHogKit
 import SwiftUI
 
+private struct DashboardSummaryTrigger: Equatable {
+    let projectID: Int?
+    let dashboardCount: Int
+    let pinnedID: Int?
+}
+
 /// What the iPad detail pane shows before a dashboard is chosen.
 ///
 /// It previously showed `ContentUnavailableView("Select a dashboard")` across
@@ -22,6 +28,14 @@ struct ProjectOverview: View {
 
     private var facts: DashboardOverviewFacts {
         DashboardOverviewFacts(dashboards: dashboards)
+    }
+
+    private var summaryTrigger: DashboardSummaryTrigger {
+        DashboardSummaryTrigger(
+            projectID: model.projectID,
+            dashboardCount: facts.dashboardCount,
+            pinnedID: facts.pinned?.id
+        )
     }
 
     var body: some View {
@@ -68,6 +82,7 @@ struct ProjectOverview: View {
                 .accessibilityHidden(true)
         }
         .accessibilityIdentifier("gethog.signal-summary.dashboard")
+        .signalConfirmation(trigger: summaryTrigger)
     }
 
     private var projectSummary: some View {

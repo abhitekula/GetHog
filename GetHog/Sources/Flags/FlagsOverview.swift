@@ -48,6 +48,7 @@ struct FlagsOverview: View {
             }
         }
         .accessibilityIdentifier("gethog.signal-summary.flags")
+        .signalConfirmation(trigger: store.loadedAt)
     }
 
     private var flagIdentity: some View {

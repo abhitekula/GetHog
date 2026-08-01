@@ -5,12 +5,58 @@ struct BrandMotionValues: Equatable {
     let y: CGFloat
     let scale: CGFloat
 
+    static let settled = BrandMotionValues(opacity: 0, y: 0, scale: 1)
+
+    static func confirmation(reduceMotion: Bool, active: Bool) -> BrandMotionValues {
+        guard !reduceMotion, active else { return .settled }
+        return BrandMotionValues(opacity: 1, y: -2, scale: 1.04)
+    }
+
     static func illustration(reduceMotion: Bool, appeared: Bool) -> BrandMotionValues {
         if reduceMotion || appeared {
             BrandMotionValues(opacity: 1, y: 0, scale: 1)
         } else {
             BrandMotionValues(opacity: 0, y: 8, scale: 0.98)
         }
+    }
+}
+
+private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
+    let trigger: Trigger
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var active = false
+    @State private var resetTask: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        let values = BrandMotionValues.confirmation(
+            reduceMotion: reduceMotion,
+            active: active
+        )
+        content.overlay(alignment: .topTrailing) {
+            BrandQuillStitch(size: 14)
+                .opacity(values.opacity)
+                .offset(y: values.y)
+                .scaleEffect(values.scale)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+        }
+        .onChange(of: trigger) { _, _ in
+            guard !reduceMotion else { return }
+            resetTask?.cancel()
+            withAnimation(.easeOut(duration: 0.18)) { active = true }
+            resetTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(220))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.18)) { active = false }
+            }
+        }
+        .onDisappear { resetTask?.cancel() }
+    }
+}
+
+extension View {
+    func signalConfirmation<Trigger: Equatable>(trigger: Trigger) -> some View {
+        modifier(SignalConfirmationModifier(trigger: trigger))
     }
 }
 

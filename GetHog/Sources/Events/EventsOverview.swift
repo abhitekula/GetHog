@@ -41,6 +41,7 @@ struct EventsOverview: View {
             summaryLayout
         }
         .accessibilityIdentifier("gethog.signal-summary.events")
+        .signalConfirmation(trigger: loadedAt)
     }
 
     @ViewBuilder
