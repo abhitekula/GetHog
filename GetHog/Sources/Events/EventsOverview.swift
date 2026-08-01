@@ -19,6 +19,7 @@ struct EventsOverview: View {
     let loadedAt: Date?
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var facts: EventOverviewFacts {
         EventOverviewFacts(events: events)
@@ -37,19 +38,43 @@ struct EventsOverview: View {
 
     private var summaryScene: some View {
         Card(accent: Theme.SignalChrome.coral) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: Theme.Space.xxl) {
-                    eventIdentity
-                    eventMetrics.frame(maxWidth: .infinity, alignment: .leading)
-                }
-                VStack(alignment: .leading, spacing: Theme.Space.l) {
-                    eventIdentity
-                    SignalRule(mark: .event)
-                    eventMetrics
-                }
-            }
+            summaryLayout
         }
         .accessibilityIdentifier("gethog.signal-summary.events")
+    }
+
+    @ViewBuilder
+    private var summaryLayout: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            compactSummary
+        } else {
+            ViewThatFits(in: .horizontal) {
+                regularSummary
+                compactSummary
+            }
+        }
+    }
+
+    private var regularSummary: some View {
+        HStack(alignment: .top, spacing: Theme.Space.l) {
+            // The iPad 11-inch detail card offers about 439pt after padding.
+            // Bound both regions so their truthful readable sizes plus spacing
+            // fit that proposal instead of contributing unbounded ideal widths.
+            eventIdentity
+                .frame(width: 200, alignment: .leading)
+            // `StatStrip` already scrolls instead of compressing its labels, so
+            // this is a viewport over all four real metrics, not truncation.
+            eventMetrics
+                .frame(width: 216, alignment: .leading)
+        }
+    }
+
+    private var compactSummary: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.l) {
+            eventIdentity
+            SignalRule(mark: .event)
+            eventMetrics
+        }
     }
 
     private var eventIdentity: some View {
