@@ -28,6 +28,11 @@ struct BrandIllustrationView: View {
     @State private var appeared = false
 
     var body: some View {
+        let motion = BrandMotionValues.illustration(
+            reduceMotion: reduceMotion,
+            appeared: appeared
+        )
+
         ZStack {
             UnevenRoundedRectangle(
                 topLeadingRadius: size * 0.32,
@@ -45,9 +50,9 @@ struct BrandIllustrationView: View {
                 .padding(size * 0.04)
         }
         .frame(width: size, height: size * 0.84)
-        .opacity(reduceMotion || appeared ? 1 : 0)
-        .offset(y: reduceMotion || appeared ? 0 : 8)
-        .scaleEffect(reduceMotion || appeared ? 1 : 0.98)
+        .opacity(motion.opacity)
+        .offset(y: motion.y)
+        .scaleEffect(motion.scale)
         .onAppear {
             guard !reduceMotion else {
                 appeared = true

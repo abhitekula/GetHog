@@ -75,7 +75,7 @@ struct OnboardingView: View {
                 // accessibility because the title directly beneath it already
                 // names the app; first launch should not announce a decorative
                 // image before it says “GetHog”.
-                BrandMarkView(size: 104)
+                BrandMarkView(size: 104, animatesEntrance: true)
 
                 VStack(spacing: 10) {
                     Text("GetHog")

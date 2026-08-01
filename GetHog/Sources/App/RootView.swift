@@ -491,8 +491,11 @@ struct RootView: View {
     var body: some View {
         switch model.phase {
         case .loading:
-            ProgressView("Connecting…")
-                .controlSize(.large)
+            VStack(spacing: Theme.Space.m) {
+                BrandConnectingAccent()
+                ProgressView("Connecting…")
+                    .controlSize(.large)
+            }
 
         case .onboarding:
             OnboardingView()
