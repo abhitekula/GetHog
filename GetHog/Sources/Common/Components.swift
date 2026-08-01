@@ -415,10 +415,14 @@ struct Card<Content: View>: View {
 struct SectionLabel: View {
     let text: String
     var systemImage: String?
+    var brandEmblem: BrandEmblem? = nil
 
     var body: some View {
         HStack(spacing: Theme.Space.xs) {
-            if let systemImage {
+            if let brandEmblem {
+                BrandEmblemView(emblem: brandEmblem)
+                    .accessibilityHidden(true)
+            } else if let systemImage {
                 // Same face as the text beside it. A fixed 10pt glyph stayed put
                 // while the label grew, so at accessibility sizes every one of
                 // the ~30 screens using this header showed a speck next to it.

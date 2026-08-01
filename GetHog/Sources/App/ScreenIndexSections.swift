@@ -40,7 +40,11 @@ struct ScreenIndexSections: View {
                 // Every screen header carries the same glyph, and every object
                 // header carries its own type's. That repetition is what tells a
                 // reader at a glance which half of the results they are in.
-                SectionLabel(text: "\(section.title) screens", systemImage: "macwindow")
+                SectionLabel(
+                    text: "\(section.title) screens",
+                    systemImage: nil,
+                    brandEmblem: BrandEmblem(sectionTitle: section.title)
+                )
             }
         }
 
