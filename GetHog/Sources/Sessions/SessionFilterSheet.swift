@@ -13,7 +13,9 @@ import SwiftUI
 ///
 /// So the sheet is ordered by what somebody reaches for while holding a phone:
 ///
-/// * **What went wrong** first. It is the reason a replay list gets opened away
+/// * **People** first, matching the console's project-configured exclusion for
+///   internal and test users without trying to reproduce those definitions here.
+/// * **What went wrong** next. It is the reason a replay list gets opened away
 ///   from a desk — a report came in and you want the sessions it happened in.
 /// * **When**, because every other filter is meaningless without a window, and
 ///   because a narrow window is also the cheapest query.
@@ -53,6 +55,7 @@ struct SessionFilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                peopleSection
                 signalSection
                 whenSection
                 durationSection
@@ -101,6 +104,19 @@ struct SessionFilterSheet: View {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
                 }
             }
+        }
+    }
+
+    // MARK: - People
+
+    private var peopleSection: some View {
+        Section {
+            Toggle("Filter out internal and test users", isOn: $filter.filterTestAccounts)
+        } header: {
+            Text("People").foregroundStyle(Theme.Ink.secondary)
+        } footer: {
+            Text("Uses the internal and test-user filters configured for this project in PostHog.")
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 

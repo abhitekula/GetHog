@@ -405,6 +405,7 @@ extension SessionRecordingFilter {
     /// short list, and it had become longer than the list.
     var summarySentence: String {
         var parts: [String] = []
+        if filterTestAccounts { parts.append("excluding test users") }
         if let signal { parts.append(signal.title.lowercased()) }
         if dateWindow != .allTime { parts.append(dateWindow.title.lowercased()) }
         if let minimum = minimumDuration, minimum > 0 {

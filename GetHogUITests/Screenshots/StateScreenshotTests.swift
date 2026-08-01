@@ -259,7 +259,11 @@ final class StateScreenshotTests: ScreenshotCase {
                     // has been narrowed.
                     guard self.tapFirst(startingWith: "Filter sessions", in: app)
                     else { return false }
-                    return self.waitUntil { app.navigationBars["Filter sessions"].exists }
+                    guard self.waitUntil({ app.navigationBars["Filter sessions"].exists })
+                    else { return false }
+                    return self.waitUntil {
+                        app.switches["Filter out internal and test users"].exists
+                    }
                 }
             ]
         )

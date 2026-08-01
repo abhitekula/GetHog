@@ -272,6 +272,10 @@ struct SessionsFilterScreenTests {
         var filter = SessionRecordingFilter()
         #expect(filter.summarySentence == "Showing all sessions.")
 
+        var testUsers = SessionRecordingFilter()
+        testUsers.filterTestAccounts = true
+        #expect(testUsers.summarySentence == "Showing excluding test users.")
+
         filter.signal = .rageClick
         filter.dateWindow = .last7Days
         filter.minimumDuration = 120
