@@ -148,6 +148,7 @@ public struct SessionRecordingPlaylist: Sendable, Decodable, Identifiable, Hasha
     public var recordingFilter: SessionRecordingFilter? {
         guard kind == .filters, let filters else { return nil }
         var out = SessionRecordingFilter()
+        out.filterTestAccounts = filters["filter_test_accounts"]?.stringValue == "true"
 
         if let raw = filters["date_from"]?.stringValue,
            let window = SessionRecordingFilter.DateWindow(relativeDate: raw) {

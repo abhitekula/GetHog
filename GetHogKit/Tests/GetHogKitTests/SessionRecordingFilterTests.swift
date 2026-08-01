@@ -401,6 +401,31 @@ struct SavedRecordingFilterTests {
         #expect(filter.signal == .rageClick)
     }
 
+    @Test("a saved filter preserves the console's test-account exclusion")
+    func translatesTestAccountExclusion() throws {
+        let saved = try JSONDecoder().decode(
+            SessionRecordingPlaylist.self,
+            from: Data(
+                #"{"id": 1, "short_id": "test-on", "name": "Synthetic", "type": "filters", "filters": {"filter_test_accounts": "true"}}"#.utf8
+            )
+        )
+        let filter = try #require(saved.recordingFilter)
+        #expect(filter.filterTestAccounts)
+        #expect(filter.queryItems.first { $0.name == "filter_test_accounts" }?.value == "true")
+    }
+
+    @Test("a saved filter that includes test accounts leaves exclusion disabled")
+    func translatesIncludedTestAccounts() throws {
+        let saved = try JSONDecoder().decode(
+            SessionRecordingPlaylist.self,
+            from: Data(
+                #"{"id": 2, "short_id": "test-off", "name": "Synthetic", "type": "filters", "filters": {"filter_test_accounts": "false"}}"#.utf8
+            )
+        )
+        let filter = try #require(saved.recordingFilter)
+        #expect(!filter.filterTestAccounts)
+    }
+
     // PostHog stores `"date_to": "null"` — the four-character string, not JSON
     // null. Passed through verbatim it is a 400.
     @Test("the literal string \"null\" that PostHog stores for an open end date is not a date")
