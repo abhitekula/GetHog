@@ -244,7 +244,7 @@ struct SessionTimelineView: View {
 
     private var header: some View {
         HStack {
-            SectionLabel(text: "Timeline", systemImage: "list.bullet.indent")
+            SectionLabel(text: "Timeline", productMark: .session)
             Spacer()
             Text("\(visible.count) of \(entries.count)")
                 .font(.caption.monospacedDigit())

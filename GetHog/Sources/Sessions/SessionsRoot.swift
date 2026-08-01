@@ -442,6 +442,10 @@ struct SessionRowView: View {
     var body: some View {
         DataRow(
             glyph: glyph,
+            brandGlyph: SessionBrandAppearance.glyph(
+                hasErrors: recording.hasErrors,
+                isReplayable: recording.isReplayable
+            ),
             tint: tint,
             title: recording.personDisplayName,
             subtitle: recording.pathComponent,

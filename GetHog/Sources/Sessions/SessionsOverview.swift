@@ -20,10 +20,15 @@ struct SessionsOverview: View {
     @Binding var selection: SessionRecording?
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var facts: SessionOverviewFacts {
+        SessionOverviewFacts(recordings: recordings)
+    }
 
     var body: some View {
         PageScaffold(spacing: Theme.Space.xl) {
-            header
+            summaryScene
             triageSection
             entrySection
             FreshnessLabel(date: loadedAt)
@@ -32,30 +37,66 @@ struct SessionsOverview: View {
 
     // MARK: - Sections
 
-    private var header: some View {
+    private var summaryScene: some View {
+        Card(accent: Theme.SignalChrome.clay) {
+            summaryLayout
+        }
+        .accessibilityIdentifier("gethog.signal-summary.sessions")
+    }
+
+    @ViewBuilder
+    private var summaryLayout: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            compactSummary
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Theme.Space.xxl) {
+                    replayIdentity
+                    replayMetrics.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                compactSummary
+            }
+        }
+    }
+
+    private var compactSummary: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.l) {
+            replayIdentity
+            SignalRule(mark: .session)
+            replayMetrics
+        }
+    }
+
+    private var replayIdentity: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            SectionLabel(text: "Session replay", systemImage: "rectangle.stack")
+            SectionLabel(text: "Replay signal", productMark: .session)
 
             Text(model.selectedProject?.name ?? "PostHog")
                 .font(.largeTitle.weight(.semibold))
 
-            StatStrip {
-                MetricTile(label: "Recordings", value: "\(recordings.count)", compact: true)
-                MetricTile(label: "With errors", value: "\(withErrors.count)", compact: true)
-                MetricTile(label: "Total time", value: totalDurationText, compact: true)
-                // Stated up front rather than discovered one failed load at a
-                // time: mobile-source recordings cannot be played by this app at
-                // all, and on a mobile-heavy project that is most of the list.
-                if notPlayable > 0 {
-                    MetricTile(label: "Not playable", value: "\(notPlayable)", compact: true)
-                }
-            }
-            .padding(.horizontal, -Theme.Space.l)
-
-            Text("Across the \(recordings.count) recordings loaded, not the whole project.")
+            Text("Across the \(facts.recordingCount) recordings loaded, not the whole project.")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
+    }
+
+    private var replayMetrics: some View {
+        StatStrip {
+            MetricTile(label: "Recordings", value: "\(facts.recordingCount)", compact: true)
+            MetricTile(label: "With errors", value: "\(facts.withErrorCount)", compact: true)
+            MetricTile(label: "Total time", value: facts.totalDurationText, compact: true)
+            // Stated up front rather than discovered one failed load at a
+            // time: mobile-source recordings cannot be played by this app at
+            // all, and on a mobile-heavy project that is most of the list.
+            if facts.notPlayableCount > 0 {
+                MetricTile(
+                    label: "Not playable",
+                    value: "\(facts.notPlayableCount)",
+                    compact: true
+                )
+            }
+        }
+        .padding(.horizontal, -Theme.Space.l)
     }
 
     @ViewBuilder
@@ -63,7 +104,7 @@ struct SessionsOverview: View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             SectionLabel(text: "Worth watching", systemImage: "exclamationmark.triangle.fill")
 
-            if withErrors.isEmpty {
+            if facts.withErrors.isEmpty {
                 // A clean page is the outcome everyone wants, so it is said as a
                 // fact rather than left as an empty gap the reader has to
                 // interpret as either "nothing wrong" or "nothing loaded".
@@ -81,7 +122,7 @@ struct SessionsOverview: View {
                     .foregroundStyle(.secondary)
 
                 VStack(spacing: Theme.Space.s) {
-                    ForEach(withErrors) { recording in
+                    ForEach(facts.withErrors) { recording in
                         recordingRow(recording)
                     }
                 }
@@ -91,15 +132,16 @@ struct SessionsOverview: View {
 
     @ViewBuilder
     private var entrySection: some View {
-        if !entryPaths.isEmpty {
+        if !facts.entryPaths.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 SectionLabel(text: "Where sessions start", systemImage: "arrow.right.to.line")
 
                 VStack(spacing: Theme.Space.s) {
-                    ForEach(entryPaths, id: \.path) { entry in
+                    ForEach(facts.entryPaths, id: \.path) { entry in
                         Card(padding: Theme.Space.m) {
                             DataRow(
                                 glyph: "link",
+                                brandGlyph: .session,
                                 title: entry.path,
                                 footnote: entry.count == 1
                                     ? "1 recording" : "\(entry.count) recordings",
@@ -121,6 +163,10 @@ struct SessionsOverview: View {
             Card(padding: Theme.Space.m) {
                 DataRow(
                     glyph: "exclamationmark.triangle.fill",
+                    brandGlyph: SessionBrandAppearance.glyph(
+                        hasErrors: recording.hasErrors,
+                        isReplayable: recording.isReplayable
+                    ),
                     tint: Theme.Status.critical,
                     title: recording.personDisplayName,
                     subtitle: recording.pathComponent,
@@ -155,39 +201,4 @@ struct SessionsOverview: View {
         return parts.joined(separator: ", ")
     }
 
-    // MARK: - Data
-
-    private var withErrors: [SessionRecording] {
-        Array(
-            recordings
-                .filter(\.hasErrors)
-                .sorted { $0.consoleErrorCount > $1.consoleErrorCount }
-                .prefix(5)
-        )
-    }
-
-    private var notPlayable: Int {
-        recordings.filter { !$0.isReplayable }.count
-    }
-
-    private var totalDurationText: String {
-        let total = Int(recordings.reduce(0) { $0 + ($1.recordingDuration ?? 0) })
-        let hours = total / 3600, minutes = (total % 3600) / 60
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
-    }
-
-    /// Entry paths by how many recordings began there.
-    ///
-    /// Recordings with no start URL are dropped rather than bucketed under "—":
-    /// a placeholder that tops the chart says nothing about where anyone landed.
-    private var entryPaths: [(path: String, count: Int)] {
-        var counts: [String: Int] = [:]
-        for recording in recordings where recording.startURL != nil {
-            counts[recording.pathComponent, default: 0] += 1
-        }
-        return counts
-            .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
-            .prefix(5)
-            .map { (path: $0.key, count: $0.value) }
-    }
 }
