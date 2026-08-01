@@ -25,12 +25,9 @@ struct AboutView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    // A generic SF Symbol, deliberately: no PostHog logo or
-                    // wordmark appears anywhere in this app.
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.largeTitle)
-                        .foregroundStyle(Theme.accent)
-                        .accessibilityHidden(true)
+                    // GetHog's original mark, not a PostHog logo. The app name
+                    // below already supplies the accessible identity.
+                    BrandMarkView(size: 64)
                     Text(Self.appName)
                         .font(.title2.bold())
                     Text("Version \(Self.version) (\(Self.build))")

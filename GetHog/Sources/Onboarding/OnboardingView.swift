@@ -71,25 +71,11 @@ struct OnboardingView: View {
             Spacer(minLength: 24)
 
             VStack(spacing: 20) {
-                // A generic SF Symbol, deliberately — no PostHog logo or
-                // wordmark appears anywhere in this app — and hidden, because
-                // the wordmark directly beneath it already names the app.
-                //
-                // Without the hiding this was the *first thing VoiceOver said on
-                // first launch*: "chart.xyaxis.line". `AboutView` draws the same
-                // glyph for the same reason and has always hidden it; this one
-                // was simply missed, and no test could have caught it, because
-                // every screen in the audit sweep is reached through demo mode
-                // and demo mode supplies a credential that puts the app straight
-                // past onboarding. `AccessibilityAuditTests.testOnboarding` is
-                // the case that closes that, and it has to launch without
-                // `-GetHogDemo` to do it.
-                Image(systemName: "chart.xyaxis.line")
-                    .font(.system(size: 52, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 104, height: 104)
-                    .background(Theme.accent.opacity(0.12), in: .rect(cornerRadius: 26))
-                    .accessibilityHidden(true)
+                // GetHog's original mark, not a PostHog logo. It is hidden from
+                // accessibility because the title directly beneath it already
+                // names the app; first launch should not announce a decorative
+                // image before it says “GetHog”.
+                BrandMarkView(size: 104)
 
                 VStack(spacing: 10) {
                     Text("GetHog")
