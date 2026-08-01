@@ -452,7 +452,7 @@ struct EventsRoot: View {
                             .listRowSeparator(.hidden)
                     }
                 } header: {
-                    SectionLabel(text: bucket.title, systemImage: "clock")
+                    SectionLabel(text: bucket.title, productMark: .event)
                 }
             }
 
@@ -562,6 +562,15 @@ enum EventAppearance {
         }
     }
 
+    static func brandGlyph(for name: String) -> BrandObjectGlyph {
+        switch name {
+        case "$pageview", "$screen": .screenEvent
+        case "$exception": .exceptionEvent
+        case "$feature_flag_called": .featureFlagEvent
+        default: .event
+        }
+    }
+
     /// Custom events take the warm secondary and PostHog's own autocapture
     /// recedes to the app accent, so a feed that is mostly `$autocapture` does
     /// not bury the handful of rows somebody deliberately instrumented.
@@ -577,6 +586,7 @@ struct EventRowView: View {
     var body: some View {
         DataRow(
             glyph: EventAppearance.glyph(for: event.event),
+            brandGlyph: EventAppearance.brandGlyph(for: event.event),
             tint: EventAppearance.tint(for: event.event),
             title: event.event,
             subtitle: subtitle,

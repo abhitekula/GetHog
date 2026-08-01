@@ -20,9 +20,13 @@ struct EventsOverview: View {
 
     @Environment(AppModel.self) private var model
 
+    private var facts: EventOverviewFacts {
+        EventOverviewFacts(events: events)
+    }
+
     var body: some View {
         PageScaffold(spacing: Theme.Space.xl) {
-            header
+            summaryScene
             frequencySection
             customSection
             FreshnessLabel(date: loadedAt)
@@ -31,27 +35,46 @@ struct EventsOverview: View {
 
     // MARK: - Sections
 
-    private var header: some View {
+    private var summaryScene: some View {
+        Card(accent: Theme.SignalChrome.coral) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Theme.Space.xxl) {
+                    eventIdentity
+                    eventMetrics.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                VStack(alignment: .leading, spacing: Theme.Space.l) {
+                    eventIdentity
+                    SignalRule(mark: .event)
+                    eventMetrics
+                }
+            }
+        }
+        .accessibilityIdentifier("gethog.signal-summary.events")
+    }
+
+    private var eventIdentity: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            SectionLabel(text: "Event feed", systemImage: "bolt")
+            SectionLabel(text: "Event signal", productMark: .event)
 
             Text(model.selectedProject?.name ?? "PostHog")
                 .font(.largeTitle.weight(.semibold))
 
-            StatStrip {
-                MetricTile(label: "Events", value: "\(events.count)", compact: true)
-                MetricTile(label: "Kinds", value: "\(counts.count)", compact: true)
-                MetricTile(label: "People", value: "\(peopleCount)", compact: true)
-                if let reach {
-                    MetricTile(label: "Reaching back", value: reach, compact: true)
-                }
-            }
-            .padding(.horizontal, -Theme.Space.l)
-
-            Text("The \(events.count) most recent events, not the project's history.")
+            Text("The \(facts.eventCount) most recent events, not the project's history.")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
+    }
+
+    private var eventMetrics: some View {
+        StatStrip {
+            MetricTile(label: "Events", value: "\(facts.eventCount)", compact: true)
+            MetricTile(label: "Kinds", value: "\(facts.kindCount)", compact: true)
+            MetricTile(label: "People", value: "\(facts.peopleCount)", compact: true)
+            if let reach = facts.reach {
+                MetricTile(label: "Reaching back", value: reach, compact: true)
+            }
+        }
+        .padding(.horizontal, -Theme.Space.l)
     }
 
     private var frequencySection: some View {
@@ -99,6 +122,7 @@ struct EventsOverview: View {
         Card(padding: Theme.Space.m) {
             DataRow(
                 glyph: EventAppearance.glyph(for: name),
+                brandGlyph: EventAppearance.brandGlyph(for: name),
                 tint: EventAppearance.tint(for: name),
                 title: name,
                 footnote: share(count),
@@ -117,43 +141,11 @@ struct EventsOverview: View {
 
     // MARK: - Data
 
-    private var counts: [String: Int] {
-        events.reduce(into: [:]) { totals, event in totals[event.event, default: 0] += 1 }
-    }
-
     private var topEvents: [(name: String, count: Int)] {
-        ranked(counts).prefix(6).map { $0 }
+        facts.ranked.prefix(6).map { $0 }
     }
 
     private var customEvents: [(name: String, count: Int)] {
-        ranked(counts.filter { EventAppearance.isCustom($0.key) }).prefix(5).map { $0 }
-    }
-
-    /// Ties break alphabetically so the order is stable between refreshes —
-    /// a list that reshuffles itself when two counts are equal reads as data
-    /// changing when nothing has.
-    private func ranked(_ counts: [String: Int]) -> [(name: String, count: Int)] {
-        counts
-            .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
-            .map { (name: $0.key, count: $0.value) }
-    }
-
-    private var peopleCount: Int {
-        Set(events.compactMap(\.distinctID)).count
-    }
-
-    /// How far back the loaded page reaches.
-    ///
-    /// The figure that stops every count above being misread as all-time: 50
-    /// events spanning four minutes and 50 spanning four days are the same
-    /// number describing very different projects.
-    private var reach: String? {
-        let stamps = events.compactMap(\.timestamp)
-        guard let oldest = stamps.min(), let newest = stamps.max() else { return nil }
-        let seconds = Int(newest.timeIntervalSince(oldest))
-        guard seconds > 0 else { return nil }
-        if seconds < 3600 { return "\(max(1, seconds / 60))m" }
-        if seconds < 86_400 { return "\(seconds / 3600)h" }
-        return "\(seconds / 86_400)d"
+        facts.custom.prefix(5).map { $0 }
     }
 }
