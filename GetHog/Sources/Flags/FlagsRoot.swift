@@ -152,6 +152,7 @@ struct FlagsRoot: View {
                 EmptyStateView(
                     title: "No feature flags",
                     systemImage: "flag",
+                    illustration: .experiment,
                     message: "This project doesn't have any feature flags yet."
                 )
             }
@@ -179,6 +180,7 @@ struct FlagsRoot: View {
             EmptyStateView(
                 title: "No feature flags",
                 systemImage: "flag",
+                illustration: .experiment,
                 message: "This project doesn't have any feature flags yet."
             )
         } else {

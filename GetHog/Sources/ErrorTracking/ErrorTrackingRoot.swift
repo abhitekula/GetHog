@@ -241,6 +241,7 @@ struct ErrorTrackingRoot: View {
                 EmptyStateView(
                     title: "No errors in this period",
                     systemImage: "checkmark.circle",
+                    illustration: .allClear,
                     message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
                 )
             }
@@ -317,6 +318,7 @@ struct ErrorTrackingRoot: View {
             EmptyStateView(
                 title: "No errors in this period",
                 systemImage: "checkmark.circle",
+                illustration: .allClear,
                 message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
             )
         } else {

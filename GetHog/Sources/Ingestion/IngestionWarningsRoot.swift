@@ -464,6 +464,7 @@ struct IngestionWarningsRoot: View {
             EmptyStateView(
                 title: "Ingestion looks clean",
                 systemImage: "checkmark.seal",
+                illustration: .allClear,
                 message: "PostHog flags events it had to alter or drop on the way in — "
                     + "payloads too large to store, timestamps in the future, "
                     + "and identify calls that could not merge two people. "

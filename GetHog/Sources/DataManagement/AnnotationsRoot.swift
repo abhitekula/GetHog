@@ -177,6 +177,7 @@ struct AnnotationsRoot: View {
             EmptyStateView(
                 title: "No annotations",
                 systemImage: "text.bubble",
+                illustration: .workspace,
                 message: "An annotation pins a note to a date — a release, an incident, the day a campaign started — so a spike on a chart has an explanation beside it. Nobody has written one for this project, and a project can run a long time without needing to.",
                 // This used to send people to the web console, because the app
                 // could only read. The empty state of the one screen whose

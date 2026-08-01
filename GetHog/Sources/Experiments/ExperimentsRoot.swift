@@ -113,6 +113,7 @@ struct ExperimentsRoot: View {
             EmptyStateView(
                 title: "No experiments",
                 systemImage: "flask",
+                illustration: .experiment,
                 message: "An experiment splits traffic behind a feature flag and measures one metric against a control. None have been created in this project; they are set up in PostHog and appear here once they exist."
             )
         } else {

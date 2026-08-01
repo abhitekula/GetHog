@@ -152,6 +152,7 @@ struct DashboardTemplatesRoot: View {
             EmptyStateView(
                 title: "No templates available",
                 systemImage: "rectangle.on.rectangle.angled",
+                illustration: .workspace,
                 message: "Templates are ready-made dashboards — a set of insights, "
                     + "already laid out, for a topic like product analytics or retention. "
                     + "PostHog ships a library of them and teams can save their own. "

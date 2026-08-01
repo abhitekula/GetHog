@@ -79,6 +79,7 @@ struct EarlyAccessRoot: View {
             EmptyStateView(
                 title: "No early access features",
                 systemImage: "sparkles",
+                illustration: .experiment,
                 message: "An early access feature lets people opt themselves into a beta from inside your product, backed by a feature flag. This project offers none — it is a surface teams add when they have something to invite users into, and many never do."
             )
         } else {

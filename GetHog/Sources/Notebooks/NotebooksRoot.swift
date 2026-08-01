@@ -88,6 +88,7 @@ struct NotebooksRoot: View {
             EmptyStateView(
                 title: "No notebooks",
                 systemImage: "book.closed",
+                illustration: .workspace,
                 message: "A notebook is a written document with charts and queries embedded in it, composed in the PostHog web console. Nobody has started one in this project — notebooks are a place to write up an investigation, not something a project accumulates on its own."
             )
         } else {

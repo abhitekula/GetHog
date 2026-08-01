@@ -120,6 +120,7 @@ struct SurveysRoot: View {
             EmptyStateView(
                 title: "No surveys",
                 systemImage: "text.bubble",
+                illustration: .experiment,
                 message: "This project doesn't have any surveys yet."
             )
         } else {

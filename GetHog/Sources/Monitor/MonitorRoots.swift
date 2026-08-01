@@ -275,6 +275,7 @@ struct HealthRoot: View {
             EmptyStateView(
                 title: "Nothing wrong",
                 systemImage: "checkmark.seal",
+                illustration: .allClear,
                 message: "PostHog hasn't flagged any problems with this project's instrumentation."
             )
         } else {
