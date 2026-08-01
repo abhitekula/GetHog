@@ -1,0 +1,478 @@
+{
+  "count": 13,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": -101,
+      "short_id": "example-reviewed-orbits",
+      "name": "Example reviewed orbit sessions",
+      "derived_name": null,
+      "description": "Fictional orbit sessions already reviewed by the demo operator.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": 4,
+          "has_more": false,
+          "watched_count": 4,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": -203,
+      "short_id": "example-noted-comets",
+      "name": "Example comet notes",
+      "derived_name": null,
+      "description": "Fictional comet sessions carrying sample review notes.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": null,
+          "has_more": false,
+          "watched_count": 0,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": -307,
+      "short_id": "example-shared-lenses",
+      "name": "Example shared lens sessions",
+      "derived_name": null,
+      "description": "Fictional lens sessions shared inside the observatory demo.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": null,
+          "has_more": false,
+          "watched_count": 0,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": -409,
+      "short_id": "example-exported-stars",
+      "name": "Example exported star sessions",
+      "derived_name": null,
+      "description": "Fictional star sessions with sample exports.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": 5,
+          "has_more": false,
+          "watched_count": 3,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": -521,
+      "short_id": "example-archived-orbits",
+      "name": "Example archived orbit sessions",
+      "derived_name": null,
+      "description": "Fictional orbit sessions used to demonstrate archive states.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": null,
+          "has_more": false,
+          "watched_count": 0,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": -607,
+      "short_id": "example-interaction-samples",
+      "name": "Example interaction samples",
+      "derived_name": null,
+      "description": "Fictional telescope sessions with sample interaction signals.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": 3,
+          "has_more": false,
+          "watched_count": 1,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": -719,
+      "short_id": "example-summary-samples",
+      "name": "Example orbit summaries",
+      "derived_name": null,
+      "description": "Fictional orbit sessions with generated sample summaries.",
+      "pinned": false,
+      "created_at": null,
+      "created_by": null,
+      "deleted": false,
+      "filters": {},
+      "last_modified_at": null,
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": {
+          "count": 6,
+          "has_more": false,
+          "watched_count": 2,
+          "increased": null,
+          "last_refreshed_at": null
+        }
+      },
+      "type": "collection",
+      "is_synthetic": true
+    },
+    {
+      "id": 700541,
+      "short_id": "example-long-orbit-sessions",
+      "name": "Example long orbit sessions",
+      "derived_name": null,
+      "description": "Fictional orbit sessions that cross the sample duration threshold.",
+      "pinned": false,
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": null,
+      "deleted": false,
+      "filters": {
+        "order": "start_time",
+        "date_to": "null",
+        "duration": [{ "key": "duration", "type": "recording", "value": 90, "operator": "gt" }],
+        "date_from": "-7d",
+        "filter_group": { "type": "AND", "values": [{ "type": "AND", "values": [] }] },
+        "filter_test_accounts": "false"
+      },
+      "last_modified_at": "2026-01-15T12:00:00.000Z",
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": { "count": null, "watched_count": 0 }
+      },
+      "type": "filters",
+      "is_synthetic": false
+    },
+    {
+      "id": 700553,
+      "short_id": "example-console-signal-sessions",
+      "name": "Example console signal sessions",
+      "derived_name": null,
+      "description": "Fictional observatory sessions containing sample console signals.",
+      "pinned": false,
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": null,
+      "deleted": false,
+      "filters": {
+        "order": "start_time",
+        "date_to": "null",
+        "duration": [{ "key": "active_seconds", "type": "recording", "value": 10, "operator": "gt" }],
+        "date_from": "-7d",
+        "filter_group": {
+          "type": "AND",
+          "values": [
+            {
+              "type": "AND",
+              "values": [
+                { "key": "level", "type": "log_entry", "value": ["error"], "operator": "exact" },
+                { "key": "message", "type": "log_entry", "value": "2", "operator": "gt" }
+              ]
+            }
+          ]
+        },
+        "filter_test_accounts": "false"
+      },
+      "last_modified_at": "2026-01-15T12:00:00.000Z",
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": { "count": null, "watched_count": 0 }
+      },
+      "type": "filters",
+      "is_synthetic": false
+    },
+    {
+      "id": 700567,
+      "short_id": "example-campaign-meteor-sessions",
+      "name": "Example meteor campaign sessions",
+      "derived_name": null,
+      "description": "Fictional sessions attributed to the meteor campaign example.",
+      "pinned": false,
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": null,
+      "deleted": false,
+      "filters": {
+        "order": "start_time",
+        "date_to": "null",
+        "duration": [{ "key": "active_seconds", "type": "recording", "value": 15, "operator": "gt" }],
+        "date_from": "-7d",
+        "filter_group": {
+          "type": "AND",
+          "values": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "$initial_utm_source",
+                  "type": "person",
+                  "value": ["example-campaign"],
+                  "operator": "exact"
+                }
+              ]
+            }
+          ]
+        },
+        "filter_test_accounts": "false"
+      },
+      "last_modified_at": "2026-01-15T12:00:00.000Z",
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": { "count": null, "watched_count": 0 }
+      },
+      "type": "filters",
+      "is_synthetic": false
+    },
+    {
+      "id": 700579,
+      "short_id": "example-rapid-click-sessions",
+      "name": "Example rapid-click sessions",
+      "derived_name": null,
+      "description": "Fictional telescope sessions containing rapid-click signals.",
+      "pinned": false,
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": null,
+      "deleted": false,
+      "filters": { "events": [{ "id": "$rageclick", "type": "events", "order": 0 }] },
+      "last_modified_at": "2026-01-15T12:00:00.000Z",
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": { "count": null, "watched_count": 0 }
+      },
+      "type": "filters",
+      "is_synthetic": false
+    },
+    {
+      "id": 700593,
+      "short_id": "example-mobile-orbit-sessions",
+      "name": "Example mobile orbit sessions",
+      "derived_name": null,
+      "description": "Fictional orbit sessions generated for a mobile viewport.",
+      "pinned": false,
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": null,
+      "deleted": false,
+      "filters": {
+        "order": "start_time",
+        "date_to": "null",
+        "duration": [{ "key": "active_seconds", "type": "recording", "value": 20, "operator": "gt" }],
+        "date_from": "-7d",
+        "filter_group": {
+          "type": "AND",
+          "values": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "snapshot_source",
+                  "type": "recording",
+                  "value": ["mobile"],
+                  "operator": "exact"
+                }
+              ]
+            }
+          ]
+        },
+        "filter_test_accounts": "false"
+      },
+      "last_modified_at": "2026-01-15T12:00:00.000Z",
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": { "count": null, "watched_count": 0 }
+      },
+      "type": "filters",
+      "is_synthetic": false
+    },
+    {
+      "id": 700607,
+      "short_id": "example-cohort-lab-sessions",
+      "name": "Example lab cohort sessions",
+      "derived_name": null,
+      "description": "Fictional sessions for the observatory lab cohort.",
+      "pinned": false,
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": null,
+      "deleted": false,
+      "filters": {
+        "order": "start_time",
+        "date_to": "null",
+        "duration": [{ "key": "active_seconds", "type": "recording", "value": 25, "operator": "gt" }],
+        "date_from": "-7d",
+        "filter_group": {
+          "type": "AND",
+          "values": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "$geoip_country_code",
+                  "type": "person",
+                  "value": ["XX"],
+                  "operator": "exact"
+                }
+              ]
+            }
+          ]
+        },
+        "filter_test_accounts": "false"
+      },
+      "last_modified_at": "2026-01-15T12:00:00.000Z",
+      "last_modified_by": null,
+      "recordings_counts": {
+        "saved_filters": {
+          "count": null,
+          "has_more": null,
+          "watched_count": null,
+          "increased": null,
+          "last_refreshed_at": null
+        },
+        "collection": { "count": null, "watched_count": 0 }
+      },
+      "type": "filters",
+      "is_synthetic": false
+    }
+  ]
+}

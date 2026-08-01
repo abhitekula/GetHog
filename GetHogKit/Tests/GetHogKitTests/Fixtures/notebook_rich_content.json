@@ -1,0 +1,629 @@
+{
+  "id": "notebook-example-observatory",
+  "short_id": "exampleOrbitLog42",
+  "title": "Synthetic observatory field log",
+  "version": 52,
+  "deleted": false,
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "created_by": {
+    "id": 730401,
+    "uuid": "user-example-notebook",
+    "distinct_id": "writer-example-42",
+    "first_name": "Notebook",
+    "last_name": "Author",
+    "email": "notebook.author@example.org",
+    "is_email_verified": true
+  },
+  "last_modified_at": "2026-01-28T00:00:00.000Z",
+  "last_modified_by": null,
+  "user_access_level": "editor",
+  "text_content": "Observatory field log. The fictional telescope team documented orbit-report results and next steps.",
+  "content": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "heading",
+        "attrs": {
+          "level": 2
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory field log "
+          },
+          {
+            "type": "text",
+            "text": "dossier"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Orbit Lab opened the "
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "telescope path"
+          },
+          {
+            "type": "text",
+            "text": " and reviewed the "
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "italic"
+              }
+            ],
+            "text": "orbit chart"
+          },
+          {
+            "type": "text",
+            "text": ". Open "
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "https://observatory.example.org/insights/orbit-review"
+                }
+              }
+            ],
+            "text": "the orbit report"
+          },
+          {
+            "type": "text",
+            "text": " before checking "
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "code"
+              }
+            ],
+            "text": "example_orbit_saved"
+          },
+          {
+            "type": "text",
+            "text": ". "
+          },
+          {
+            "type": "text",
+            "text": "Every retained value is synthetic."
+          }
+        ]
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "nodeId": "node-fictional-r3-saved-query",
+          "title": "Example orbit funnel",
+          "height": 727,
+          "query": {
+            "kind": "SavedInsightNode",
+            "shortId": "exampleOrbitFunnel42"
+          },
+          "isDefaultFilterApplied": false,
+          "showSettings": false,
+          "outputTab": "table"
+        }
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "level": 3
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Fictional follow-up "
+          },
+          {
+            "type": "text",
+            "text": "checklist"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "The telescope crew agreed on "
+          },
+          {
+            "type": "text",
+            "text": "four synthetic next steps."
+          }
+        ]
+      },
+      {
+        "type": "bulletList",
+        "content": [
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Confirm the fictional "
+                  },
+                  {
+                    "type": "text",
+                    "text": "observation labels"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": " for the demonstration."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Verify the example "
+                  },
+                  {
+                    "type": "text",
+                    "text": "orbit filters"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": " for the synthetic "
+                  },
+                  {
+                    "type": "text",
+                    "text": "review."
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Check compact layouts "
+                          },
+                          {
+                            "type": "text",
+                            "text": "on tablets"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Review fictional "
+                  },
+                  {
+                    "type": "text",
+                    "text": "keyboard paths"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "orderedList",
+        "attrs": {
+          "start": 4
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Publish the deterministic "
+                  },
+                  {
+                    "type": "text",
+                    "text": "demo fixture"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": " for the example release."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Review synthetic "
+                  },
+                  {
+                    "type": "text",
+                    "text": "accessibility labels"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": " for the fictional reader."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Archive the "
+                  },
+                  {
+                    "type": "text",
+                    "text": "example notes"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "taskList",
+        "content": [
+          {
+            "type": "taskItem",
+            "attrs": {
+              "checked": true
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Document the fictional "
+                  },
+                  {
+                    "type": "text",
+                    "text": "decision"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": " in the demo log."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskItem",
+            "attrs": {
+              "checked": false
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Compare the next "
+                  },
+                  {
+                    "type": "text",
+                    "text": "synthetic sample"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": " after the example refresh."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskItem",
+            "attrs": {
+              "checked": false
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Verify the "
+                  },
+                  {
+                    "type": "text",
+                    "text": "example empty state"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "blockquote",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The synthetic retry path "
+              },
+              {
+                "type": "text",
+                "text": "still needs an empty state "
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "before launch."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "codeBlock",
+        "attrs": {
+          "language": "sql"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "SELECT count() FROM events "
+          },
+          {
+            "type": "text",
+                    "text": "WHERE event = 'example_orbit_saved' /* fictional */"
+          }
+        ]
+      },
+      {
+        "type": "horizontalRule",
+        "attrs": {
+          "variant": "example-divider"
+        }
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "nodeId": "node-fictional-r3-11",
+          "title": "Example orbit trend",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "TrendsQuery",
+              "series": [
+                {
+                  "kind": "EventsNode",
+                  "event": "feature_used",
+                  "math": "total"
+                }
+              ],
+              "interval": "day",
+              "dateRange": {
+                "date_from": "-21d"
+              },
+              "trendsFilter": {
+                "display": "ActionsLineGraph"
+              },
+              "filterTestAccounts": true
+            }
+          },
+          "isDefaultFilterApplied": false,
+          "showSettings": false,
+          "outputTab": "chart"
+        }
+      },
+      {
+        "type": "ph-recording",
+        "attrs": {
+          "nodeId": "node-fictional-r3-12",
+          "id": "recording-example-42",
+          "noInspector": false,
+          "timestampMs": 84500
+        }
+      },
+      {
+        "type": "ph-recording-playlist",
+        "attrs": {
+          "nodeId": "node-fictional-r3-13",
+          "title": "Example orbit replays",
+          "universalFilters": {
+            "date_from": "-12d",
+            "filter_group": {
+              "type": "AND",
+              "values": []
+            }
+          },
+          "pinned": null
+        }
+      },
+      {
+        "type": "ph-feature-flag",
+        "attrs": {
+          "nodeId": "node-fictional-r3-14",
+          "id": 710301
+        }
+      },
+      {
+        "type": "ph-survey",
+        "attrs": {
+          "nodeId": "node-fictional-r3-15",
+          "id": "survey-demo-feedback-2026"
+        }
+      },
+      {
+        "type": "ph-person",
+        "attrs": {
+          "nodeId": "node-fictional-r3-16",
+          "id": "person-example-42",
+          "distinctId": "visitor-example-42"
+        }
+      },
+      {
+        "type": "ph-hogql-sql",
+        "attrs": {
+          "nodeId": "node-fictional-r3-17",
+          "code": "SELECT event, count() AS total FROM events WHERE event LIKE 'example_%' GROUP BY event ORDER BY total DESC",
+          "returnVariable": "exampleRows",
+          "hogqlExecution": null,
+          "showSettings": false
+        }
+      },
+      {
+        "type": "ph-image",
+        "attrs": {
+          "nodeId": "node-fictional-r3-18",
+          "src": "https://observatory.example.org/assets/orbit-report.png",
+          "file": null,
+          "title": "Example orbit diagram"
+        }
+      },
+      {
+        "type": "ph-latex",
+        "attrs": {
+          "nodeId": "node-fictional-r3-19",
+          "formula": "r = 0.42"
+        }
+      },
+      {
+        "type": "ph-zendesk-tickets",
+        "attrs": {
+          "nodeId": "node-fictional-r3-20",
+          "personId": "person-example-42",
+          "groupKey": null
+        }
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "A separate example note records the review window."
+          }
+        ]
+      },
+      {
+        "type": "ph-hypothetical-future-node",
+        "attrs": {
+          "nodeId": "node-fictional-r3-21",
+          "id": 730499
+        }
+      },
+      {
+        "type": "mermaid",
+        "attrs": {
+          "nodeId": "node-fictional-r3-22"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "graph LR; Draft-->Review; "
+          },
+          {
+            "type": "text",
+            "text": "Review-->Publish;"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "The fictional observation continues after the next demo cycle "
+          },
+          {
+            "type": "text",
+            "text": "with a fresh sample."
+          }
+        ]
+      }
+    ]
+  }
+}

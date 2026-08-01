@@ -1,0 +1,58 @@
+{
+  "kind": "ExperimentQuery",
+  "cache_key": "Example cache key 0289",
+  "is_cached": false,
+  "last_refresh": "2026-01-28T00:00:00.000Z",
+  "timezone": "UTC",
+  "error": null,
+  "warnings": [],
+  "stats_version": 11,
+  "is_precomputed": false,
+  "significant": true,
+  "p_value": 0.043800000000000006,
+  "probability": null,
+  "credible_intervals": null,
+  "metric": {
+    "kind": "ExperimentMetric",
+    "uuid": "018f9000-0000-7000-8000-000000000062",
+    "metric_type": "mean",
+    "name": "Unique observatories connected",
+    "source": {
+      "kind": "EventsNode",
+      "event": "feature_used",
+      "math": "total"
+    }
+  },
+  "baseline": {
+    "key": "baseline",
+    "number_of_samples": 8427,
+    "sum": 19742.7,
+    "sum_squares": 82460.7,
+    "validation_failures": []
+  },
+  "variant_results": [
+    {
+      "key": "streamlined",
+      "method": "frequentist",
+      "number_of_samples": 8383,
+      "sum": 18804.7,
+      "sum_squares": 78220.7,
+      "p_value": 0.043800000000000006,
+      "confidence_interval": [
+        -0.0758,
+        -0.014199999999999999
+      ],
+      "significant": true,
+      "validation_failures": []
+    },
+    {
+      "key": "synthetic-observer-7201",
+      "method": "frequentist",
+      "number_of_samples": 1,
+      "sum": 0,
+      "sum_squares": 0,
+      "significant": false,
+      "validation_failures": []
+    }
+  ]
+}

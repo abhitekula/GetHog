@@ -1,0 +1,73 @@
+[
+  {
+    "type": "quota_limited_wandering_hedgehog",
+    "category": "fixture_lab",
+    "severity": "catastrophic",
+    "count": 17,
+    "last_seen": "2026-05-18T14:32:11.000000Z",
+    "sparkline": [1, 0, 2, 1, 3, 2, 1, 0, 4, 1, 2, 0],
+    "samples": []
+  },
+  {
+    "type": "event_timestamp_in_future",
+    "category": "event",
+    "severity": "warning",
+    "count": 73,
+    "last_seen": "2026-05-18T13:07:42.000000Z",
+    "sparkline": [2, 4, 7, 3, 8, 5, 6, 9, 4, 10, 7, 8],
+    "samples": [
+      {
+        "details": {"eventUuid": "fixture-event-amber-001"},
+        "timestamp": "2026-05-18T12:58:01.000000Z"
+      },
+      {
+        "details": {"eventUuid": "fixture-event-cobalt-002"},
+        "timestamp": "2026-05-18T13:04:36.000000Z"
+      }
+    ]
+  },
+  {
+    "type": "person_property_update_too_large",
+    "category": "unknown",
+    "severity": "warning",
+    "count": 29,
+    "last_seen": "2026-05-17T19:44:20.000000Z",
+    "sparkline": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "samples": []
+  },
+  {
+    "type": "replay_timestamp_too_far",
+    "category": "recording",
+    "severity": "info",
+    "count": 11,
+    "last_seen": null,
+    "sparkline": [3, null, 1, null, 2, 0, 1, 4, 0, 2, 1, 0],
+    "samples": []
+  },
+  {
+    "type": "cannot_merge_already_identified",
+    "category": "merge",
+    "severity": "error",
+    "count": 418,
+    "last_seen": "2026-05-18T14:21:09.000000Z",
+    "sparkline": [34, 51, 89, 73, 112, 96, 145, 131, 178, 162, 207, 194],
+    "samples": [
+      {
+        "details": {
+          "sourcePersonDistinctId": "fixture-person-juniper",
+          "targetPersonDistinctId": "fixture-person-harbor"
+        },
+        "timestamp": "2026-05-18T14:18:22.000000Z"
+      }
+    ]
+  },
+  {
+    "type": "ignored_invalid_timestamp",
+    "category": "event",
+    "severity": "info",
+    "count": 5,
+    "last_seen": "2026-05-16T08:15:00.000000Z",
+    "sparkline": [],
+    "samples": []
+  }
+]

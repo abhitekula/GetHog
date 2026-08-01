@@ -1,0 +1,60 @@
+{
+  "cache_key": "fixture-endpoints-harbor-v3",
+  "cache_target_age": "2026-04-14T15:55:00.000Z",
+  "calculation_trigger": null,
+  "columns": [
+    "endpoint",
+    "requests",
+    "bytes_read",
+    "cpu_seconds",
+    "avg_query_duration_ms",
+    "error_rate"
+  ],
+  "error": null,
+  "hasMore": false,
+  "hogql": "SELECT endpoint, requests FROM synthetic_endpoint_usage WHERE 0 LIMIT 29",
+  "is_cached": false,
+  "last_refresh": "2026-04-14T15:36:00.000Z",
+  "limit": 29,
+  "modifiers": null,
+  "next_allowed_client_refresh": "2026-04-14T15:57:00.000Z",
+  "offset": 0,
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-04-14T15:36:00.000Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [],
+  "timezone": "UTC",
+  "timings": null,
+  "types": [
+    [
+      "endpoint",
+      "String"
+    ],
+    [
+      "requests",
+      "UInt64"
+    ],
+    [
+      "bytes_read",
+      "UInt64"
+    ],
+    [
+      "cpu_seconds",
+      "Float64"
+    ],
+    [
+      "avg_query_duration_ms",
+      "Float64"
+    ],
+    [
+      "error_rate",
+      "Float64"
+    ]
+  ],
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

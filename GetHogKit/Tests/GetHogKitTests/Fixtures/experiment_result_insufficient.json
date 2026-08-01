@@ -1,0 +1,62 @@
+{
+  "kind": "ExperimentQuery",
+  "cache_key": "Example cache key 0290",
+  "is_cached": false,
+  "last_refresh": "2026-01-28T00:00:00.000Z",
+  "timezone": "UTC",
+  "error": null,
+  "warnings": [],
+  "stats_version": 11,
+  "is_precomputed": false,
+  "significant": false,
+  "p_value": null,
+  "probability": null,
+  "credible_intervals": null,
+  "metric": {
+    "kind": "ExperimentMetric",
+    "uuid": "018f9000-0000-7000-8000-000000000028",
+    "metric_type": "retention",
+    "name": "Returned to the orbit lab",
+    "start_event": {
+      "kind": "EventsNode",
+      "event": "checkout_completed"
+    },
+    "completion_event": {
+      "kind": "EventsNode",
+      "event": "checkout_completed"
+    }
+  },
+  "baseline": {
+    "key": "baseline",
+    "number_of_samples": 89,
+    "sum": 12.7,
+    "sum_squares": 12.7,
+    "validation_failures": [
+      "not-enough-exposures"
+    ]
+  },
+  "variant_results": [
+    {
+      "key": "streamlined",
+      "method": "bayesian",
+      "number_of_samples": 83,
+      "sum": 18.7,
+      "sum_squares": 18.7,
+      "chance_to_win": null,
+      "credible_interval": null,
+      "significant": false,
+      "validation_failures": [
+        "not-enough-exposures"
+      ]
+    },
+    {
+      "key": "synthetic-observer-7201",
+      "method": "bayesian",
+      "number_of_samples": 1,
+      "sum": 0,
+      "sum_squares": 0,
+      "significant": false,
+      "validation_failures": []
+    }
+  ]
+}

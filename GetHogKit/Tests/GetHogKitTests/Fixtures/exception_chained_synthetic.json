@@ -1,0 +1,30 @@
+{
+  "_comment": "Entirely fictional Harbor cause chain for deterministic decoding coverage.",
+  "columns": [
+    "uuid",
+    "timestamp",
+    "exception_list",
+    "level",
+    "fingerprint",
+    "steps"
+  ],
+  "types": null,
+  "results": [
+    [
+      "018f3300-0000-7000-8000-000000000913",
+      "2026-01-18T12:00:00.000Z",
+      "[{\"id\":\"harbor-archive-root-a\",\"mechanism\":{\"handled\":true,\"synthetic\":false,\"type\":\"generic\"},\"stacktrace\":{\"frames\":[{\"column\":12,\"in_app\":true,\"lang\":\"python\",\"line\":64,\"mangled_name\":\"readHarborArchiveNode\",\"raw_id\":\"harbor-archive-root/0\",\"resolved\":true,\"resolved_name\":\"readHarborArchiveNode\",\"source\":\"quill_harbor/archive/node.py\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"ArchiveNodeFault\",\"value\":\"Archive node did not answer the demo read.\"},{\"id\":\"harbor-index-middle-a\",\"mechanism\":{\"handled\":true,\"source\":\"__cause__\",\"synthetic\":false,\"type\":\"chained\"},\"stacktrace\":{\"frames\":[{\"column\":7,\"in_app\":true,\"lang\":\"python\",\"line\":35,\"mangled_name\":\"lookupHarborIndex\",\"raw_id\":\"harbor-index-middle/0\",\"resolved\":true,\"resolved_name\":\"lookupHarborIndex\",\"source\":\"quill_harbor/archive/index.py\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"IndexLookupFault\",\"value\":\"Harbor index lookup could not continue.\"},{\"id\":\"harbor-workspace-thrown-a\",\"mechanism\":{\"handled\":false,\"source\":\"__cause__\",\"synthetic\":false,\"type\":\"chained\"},\"stacktrace\":{\"frames\":[{\"column\":5,\"in_app\":true,\"lang\":\"python\",\"line\":21,\"mangled_name\":\"openHarborWorkspace\",\"raw_id\":\"harbor-workspace-thrown/0\",\"resolved\":true,\"resolved_name\":\"openHarborWorkspace\",\"source\":\"quill_harbor/workspace/open.py\",\"suspicious\":false,\"synthetic\":false},{\"column\":3,\"in_app\":false,\"lang\":\"python\",\"line\":144,\"mangled_name\":\"dispatchHarborJob\",\"raw_id\":\"harbor-workspace-thrown/1\",\"resolved\":true,\"resolved_name\":\"dispatchHarborJob\",\"source\":\"site-packages/quill_demo/router.py\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"WorkspaceOpenFault\",\"value\":\"Fictional workspace could not open its archive.\"}]",
+      "error-synthetic-added",
+      "harbor-chain-fingerprint-a",
+      null
+    ],
+    [
+      "018f3300-0000-7000-8000-000000000913",
+      "2026-01-18T12:00:00.000Z",
+      "[{\"id\":\"harbor-archive-root-a\",\"mechanism\":{\"handled\":true,\"synthetic\":false,\"type\":\"generic\"},\"stacktrace\":{\"frames\":[{\"column\":12,\"in_app\":true,\"lang\":\"python\",\"line\":64,\"mangled_name\":\"readHarborArchiveNode\",\"raw_id\":\"harbor-archive-root/0\",\"resolved\":true,\"resolved_name\":\"readHarborArchiveNode\",\"source\":\"quill_harbor/archive/node.py\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"ArchiveNodeFault\",\"value\":\"Archive node did not answer the demo read.\"},{\"id\":\"harbor-index-middle-a\",\"mechanism\":{\"handled\":true,\"source\":\"__cause__\",\"synthetic\":false,\"type\":\"chained\"},\"stacktrace\":{\"frames\":[{\"column\":7,\"in_app\":true,\"lang\":\"python\",\"line\":35,\"mangled_name\":\"lookupHarborIndex\",\"raw_id\":\"harbor-index-middle/0\",\"resolved\":true,\"resolved_name\":\"lookupHarborIndex\",\"source\":\"quill_harbor/archive/index.py\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"IndexLookupFault\",\"value\":\"Harbor index lookup could not continue.\"},{\"id\":\"harbor-workspace-thrown-a\",\"mechanism\":{\"handled\":false,\"source\":\"__cause__\",\"synthetic\":false,\"type\":\"chained\"},\"stacktrace\":{\"frames\":[{\"column\":5,\"in_app\":true,\"lang\":\"python\",\"line\":21,\"mangled_name\":\"openHarborWorkspace\",\"raw_id\":\"harbor-workspace-thrown/0\",\"resolved\":true,\"resolved_name\":\"openHarborWorkspace\",\"source\":\"quill_harbor/workspace/open.py\",\"suspicious\":false,\"synthetic\":false},{\"column\":3,\"in_app\":false,\"lang\":\"python\",\"line\":144,\"mangled_name\":\"dispatchHarborJob\",\"raw_id\":\"harbor-workspace-thrown/1\",\"resolved\":true,\"resolved_name\":\"dispatchHarborJob\",\"source\":\"site-packages/quill_demo/router.py\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"WorkspaceOpenFault\",\"value\":\"Fictional workspace could not open its archive.\"}]",
+      "error-synthetic-added",
+      "harbor-chain-fingerprint-a",
+      null
+    ]
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "columns": [
+    "submission",
+    "timestamp",
+    "event",
+    "q0",
+    "q1",
+    "q2",
+    "q3",
+    "q4"
+  ],
+  "types": [
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "DateTime64"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ]
+  ],
+  "results": [
+    [
+      "feedback-sub-01",
+      "2026-01-03T09:15:00.000Z",
+      "survey dismissed",
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "feedback-sub-02",
+      "2026-01-05T17:40:00.000Z",
+      "survey abandoned",
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "feedback-sub-03",
+      "2026-01-08T11:25:00.000Z",
+      "survey dismissed",
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "feedback-sub-04",
+      "2026-01-10T12:00:00.000Z",
+      "survey abandoned",
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "feedback-sub-06",
+      "2026-01-15T18:30:00.000Z",
+      "survey sent",
+      "Account help",
+      "Email guide",
+      "The invite flow felt smooth.",
+      "5",
+      "Thanks for the walkthrough."
+    ],
+    [
+      "feedback-sub-05",
+      "2026-01-12T14:10:00.000Z",
+      "survey dismissed",
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      "feedback-sub-07",
+      "2026-01-18T10:05:00.000Z",
+      "survey sent",
+      "Data question",
+      null,
+      "A sample query would help.",
+      "4",
+      null
+    ],
+    [
+      "feedback-sub-08",
+      "2026-01-21T13:20:00.000Z",
+      "survey dismissed",
+      "Navigation issue",
+      null,
+      "The filter label was unclear.",
+      "3",
+      null
+    ],
+    [
+      "feedback-sub-09",
+      "2026-01-24T16:45:00.000Z",
+      "survey abandoned",
+      "Navigation issue",
+      null,
+      "Settings were hard to scan.",
+      "1",
+      null
+    ]
+  ]
+}

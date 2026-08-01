@@ -1,0 +1,279 @@
+import Foundation
+import Testing
+
+@testable import GetHogKit
+
+@Suite("Shared snapshot")
+struct SharedSnapshotTests {
+
+    /// Each test gets its own directory so a leftover file from one can never
+    /// make another pass.
+    private func makeStore() throws -> (SharedSnapshotStore, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SharedSnapshotTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return (SharedSnapshotStore(directory: dir), dir)
+    }
+
+    private func sample(capturedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)) -> SharedSnapshot {
+        SharedSnapshot(
+            projectID: 1_001,
+            projectName: "Default project",
+            metrics: [
+                .init(
+                    id: "42",
+                    title: "Weekly active users",
+                    value: 1234,
+                    unit: nil,
+                    previous: 1000,
+                    sparkline: [900, 950, 1000, 1100, 1234],
+                    dashboardID: 7
+                ),
+                .init(id: "43", title: "Bounce rate", value: 41.2, unit: "%", previous: nil,
+                      sparkline: [], dashboardID: nil),
+            ],
+            flags: [
+                .init(id: 1, key: "new-onboarding", active: true, quickToggleAllowed: true),
+                .init(id: 2, key: "risky-migration", active: false, quickToggleAllowed: false),
+            ],
+            capturedAt: capturedAt
+        )
+    }
+
+    @Test("round-trips every field the widgets read")
+    func roundTrip() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let written = sample()
+        try store.write(written)
+        let read = try #require(try store.read())
+
+        #expect(read.projectID == written.projectID)
+        #expect(read.projectName == written.projectName)
+        #expect(read.metrics.map(\.id) == ["42", "43"])
+        #expect(read.metrics[0].value == 1234)
+        #expect(read.metrics[0].previous == 1000)
+        #expect(read.metrics[0].sparkline == [900, 950, 1000, 1100, 1234])
+        // `nil` must survive as `nil`, not collapse to a default: a missing
+        // previous value means "no delta known", which the widget renders
+        // differently from a flat delta.
+        #expect(read.metrics[1].previous == nil)
+        #expect(read.metrics[1].unit == "%")
+        #expect(read.metrics[1].sparkline.isEmpty)
+        #expect(read.flags.map(\.key) == ["new-onboarding", "risky-migration"])
+        #expect(read.flags[0].quickToggleAllowed)
+        #expect(read.flags[1].quickToggleAllowed == false)
+        // Sub-second drift would make "Updated 0s ago" flicker between reads.
+        #expect(abs(read.capturedAt.timeIntervalSince(written.capturedAt)) < 0.001)
+    }
+
+    @Test("a second write replaces the first rather than appending")
+    func writeReplaces() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try store.write(sample())
+        let later = SharedSnapshot(
+            projectID: 1,
+            projectName: "Other",
+            metrics: [],
+            flags: [],
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try store.write(later)
+
+        let read = try #require(try store.read())
+        #expect(read.projectID == 1)
+        #expect(read.metrics.isEmpty)
+    }
+
+    @Test("a missing file reads as nil, not as an error")
+    func missingFile() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // A widget installed before the app has ever synced hits this path on
+        // every timeline reload; it must be an ordinary "no data yet" answer.
+        #expect(try store.read() == nil)
+        #expect(store.loadOrNil() == nil)
+    }
+
+    @Test("a corrupt file reads as nil so a bad write can't wedge the widget")
+    func corruptFile() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try Data("{ not json".utf8).write(to: store.fileURL)
+
+        #expect(throws: (any Error).self) { try store.read() }
+        #expect(store.loadOrNil() == nil)
+    }
+
+    @Test("staleness is the age of the capture")
+    func staleness() {
+        let captured = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = sample(capturedAt: captured)
+
+        #expect(snapshot.staleness(now: captured.addingTimeInterval(600)) == 600)
+        #expect(snapshot.isStale(now: captured.addingTimeInterval(600)) == false)
+        #expect(snapshot.isStale(now: captured.addingTimeInterval(3600)))
+        #expect(snapshot.isStale(now: captured.addingTimeInterval(120), tolerance: 60))
+    }
+
+    @Test("a capture stamped in the future reads as fresh, not as negative age")
+    func futureCaptureClamps() {
+        // Clocks drift and snapshots survive time-zone/NTP corrections. A
+        // negative age would format as "Updated in 5 minutes".
+        let captured = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = sample(capturedAt: captured)
+
+        #expect(snapshot.staleness(now: captured.addingTimeInterval(-300)) == 0)
+        #expect(snapshot.isStale(now: captured.addingTimeInterval(-300)) == false)
+    }
+
+    @Test("metric deltas are computed only when a previous value exists")
+    func deltas() throws {
+        let snapshot = sample()
+
+        let up = snapshot.metrics[0]
+        #expect(up.delta == 234)
+        #expect(try #require(up.deltaFraction) == 0.234)
+
+        #expect(up.direction == .up)
+
+        // No previous value: no arrow, no percentage, no invented zero.
+        let unknown = snapshot.metrics[1]
+        #expect(unknown.delta == nil)
+        #expect(unknown.deltaFraction == nil)
+        #expect(unknown.direction == .unknown)
+    }
+
+    @Test("a previous value of zero yields a delta but no percentage")
+    func zeroBaseline() {
+        let metric = SharedSnapshot.Metric(
+            id: "9", title: "Signups", value: 5, unit: nil, previous: 0, sparkline: [],
+            dashboardID: nil
+        )
+        #expect(metric.delta == 5)
+        // Dividing by zero would render "∞%".
+        #expect(metric.deltaFraction == nil)
+        #expect(metric.direction == .up)
+    }
+
+    @Test("carries the dashboard a metric was read from, so a widget tap lands on it")
+    func dashboardID() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try store.write(sample())
+        let read = try #require(try store.read())
+        #expect(read.metric(id: "42")?.dashboardID == 7)
+        // An insight can live on a dashboard the widget was never told about,
+        // and the tile the metric came from is the only honest answer. `nil`
+        // means "unknown", and must route to the dashboards home rather than
+        // to a guess.
+        #expect(read.metric(id: "43")?.dashboardID == nil)
+    }
+
+    @Test("a snapshot written before dashboards were recorded still decodes")
+    func dashboardIDIsBackwardsCompatible() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // The App Group file outlives the app that wrote it: after an update,
+        // the first read is of the *previous* build's snapshot. If a new field
+        // were required, that read would throw and every widget would blank
+        // until the next successful refresh — for a field that is advisory.
+        //
+        // Written to disk and read back through the store rather than decoded
+        // with a local `JSONDecoder`, because the store's decoder is
+        // `.iso8601`; a hand-rolled one would pass while the shipping path
+        // failed.
+        let old = """
+            {"projectID":1,"projectName":"P","flags":[],\
+            "capturedAt":"2026-01-20T00:00:00Z",\
+            "metrics":[{"id":"42","title":"WAU","value":5,"sparkline":[]}]}
+            """
+        try Data(old.utf8).write(to: store.fileURL)
+
+        let decoded = try #require(try store.read())
+        #expect(decoded.metrics.count == 1)
+        #expect(decoded.metrics[0].dashboardID == nil)
+    }
+
+    @Test("lookup by id is available to the widget configuration query")
+    func lookup() {
+        let snapshot = sample()
+        #expect(snapshot.metric(id: "43")?.title == "Bounce rate")
+        #expect(snapshot.metric(id: "nope") == nil)
+        #expect(snapshot.flag(id: 1)?.key == "new-onboarding")
+        // Only opted-in flags may reach Control Center or an interactive widget.
+        #expect(snapshot.quickToggleFlags.map(\.id) == [1])
+    }
+
+    @Test("falls back to a usable directory when the App Group is unavailable")
+    func appGroupFallback() throws {
+        // Previews and unsigned builds get nil back from the container lookup;
+        // the store must still be constructible and writable rather than
+        // trapping, so the widget can reach its no-data state.
+        let store = SharedSnapshotStore.resolve(appGroupIdentifier: "group.absent") { _ in nil }
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        #expect(store.isSharedContainer == false)
+        #expect(store.fileURL.lastPathComponent == "snapshot.json")
+        #expect(store.pendingFlagURL.lastPathComponent == "pending-flag.json")
+
+        try store.write(sample())
+        #expect(try store.read()?.projectID == 1_001)
+    }
+
+    @Test("uses the App Group container when one is available")
+    func appGroupContainer() throws {
+        #expect(SharedSnapshotStore.appGroupIdentifier == "group.app.gethog")
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("group-\(UUID().uuidString)", isDirectory: true)
+        let store = SharedSnapshotStore.resolve(appGroupIdentifier: "group.app.gethog") { _ in dir }
+
+        #expect(store.isSharedContainer)
+        #expect(store.directory == dir)
+    }
+
+    @Test("a pending flag write survives the hand-off to the app and is consumed once")
+    func pendingFlagWrite() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        #expect(store.pendingFlagWrite() == nil)
+
+        let request = PendingFlagWrite(
+            flagID: 1, key: "new-onboarding", desiredActive: false,
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        try store.enqueue(request)
+
+        let read = try #require(store.pendingFlagWrite())
+        #expect(read.flagID == 1)
+        #expect(read.desiredActive == false)
+
+        // The app consumes it; a relaunch must not re-apply a flag write.
+        store.clearPendingFlagWrite()
+        #expect(store.pendingFlagWrite() == nil)
+    }
+
+    @Test("a requested destination is separate from a requested flag write")
+    func pendingOpen() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try store.enqueue(PendingFlagWrite(flagID: 7, key: "k", desiredActive: true))
+        try store.enqueue(PendingOpen(metricID: "42"))
+
+        // Two different records in two different files: consuming one must not
+        // discard the other.
+        #expect(store.pendingOpen()?.metricID == "42")
+        store.clearPendingOpen()
+        #expect(store.pendingOpen() == nil)
+        #expect(store.pendingFlagWrite()?.flagID == 7)
+    }
+}

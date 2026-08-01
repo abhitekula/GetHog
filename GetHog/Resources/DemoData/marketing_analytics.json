@@ -1,0 +1,135 @@
+{
+  "cache_key": "fixture-marketing-harbor-v3",
+  "cache_target_age": "2026-04-14T15:50:00.000Z",
+  "calculation_trigger": null,
+  "columns": [
+    "ID",
+    "Campaign",
+    "Source",
+    "Cost",
+    "Clicks",
+    "Impressions",
+    "CPC",
+    "CTR",
+    "Reported Conversions",
+    "Reported Conversion Value",
+    "Reported ROAS",
+    "Cost per Reported Conversions"
+  ],
+  "error": null,
+  "hasMore": false,
+  "hogql": "SELECT campaign, source, cost FROM synthetic_ad_spend WHERE 0 LIMIT 37",
+  "is_cached": false,
+  "last_refresh": "2026-04-14T15:34:00.000Z",
+  "limit": 37,
+  "modifiers": {
+    "bounceRateDurationSeconds": null,
+    "bounceRatePageViewMode": "count_pageviews",
+    "convertToProjectTimezone": true,
+    "customChannelTypeRules": null,
+    "dataWarehouseEventsModifiers": null,
+    "debug": null,
+    "forceClickhouseDataSkippingIndexes": null,
+    "formatCsvAllowDoubleQuotes": null,
+    "inCohortVia": "auto",
+    "inlineCohortCalculation": "auto",
+    "materializationMode": "auto",
+    "materializedColumnsOptimizationMode": null,
+    "optimizeJoinedFilters": false,
+    "optimizeProjections": true,
+    "parserMode": null,
+    "personsArgMaxVersion": "v2",
+    "personsJoinMode": null,
+    "personsOnEventsMode": "person_id_override_properties_joined",
+    "propertyGroupsMode": "enabled",
+    "pushDownPredicates": null,
+    "s3TableUseInvalidColumns": null,
+    "sessionIdPushdown": false,
+    "sessionPropertyPreAggregation": false,
+    "sessionTableVersion": "v2",
+    "sessionsV2JoinMode": "string",
+    "timings": null,
+    "useMaterializedViews": true,
+    "usePreaggregatedIntermediateResults": null,
+    "usePreaggregatedTableTransforms": null,
+    "useWebAnalyticsPreAggregatedTables": null
+  },
+  "next_allowed_client_refresh": "2026-04-14T15:52:00.000Z",
+  "offset": 0,
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-04-14T15:34:00.000Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [],
+  "samplingRate": null,
+  "timezone": "UTC",
+  "timings": [
+    {
+      "k": "fixture_parse",
+      "t": 0.031
+    },
+    {
+      "k": "fixture_execute",
+      "t": 0.047
+    },
+    {
+      "k": "fixture_format",
+      "t": 0.019
+    }
+  ],
+  "types": [
+    [
+      "ID",
+      "String"
+    ],
+    [
+      "Campaign",
+      "String"
+    ],
+    [
+      "Source",
+      "String"
+    ],
+    [
+      "Cost",
+      "Float64"
+    ],
+    [
+      "Clicks",
+      "Float64"
+    ],
+    [
+      "Impressions",
+      "Float64"
+    ],
+    [
+      "CPC",
+      "Nullable(Float64)"
+    ],
+    [
+      "CTR",
+      "Nullable(Float64)"
+    ],
+    [
+      "Reported Conversions",
+      "Float64"
+    ],
+    [
+      "Reported Conversion Value",
+      "Float64"
+    ],
+    [
+      "Reported ROAS",
+      "Nullable(Float64)"
+    ],
+    [
+      "Cost per Reported Conversions",
+      "Nullable(Float64)"
+    ]
+  ],
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

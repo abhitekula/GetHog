@@ -1,0 +1,74 @@
+{
+  "id": "018f2000-0000-7000-8000-000000000001",
+  "short_id": "example-activation",
+  "title": "Example App activation notes",
+  "content": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "attrs": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "Example App activation notes"
+          },
+          {
+            "type": "text",
+            "text": "Example App activation notes"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8000
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Trial starts increased after the fictional onboarding copy test."
+          },
+          {
+            "type": "text",
+            "text": "Trial starts increased after the fictional onboarding copy test."
+          }
+        ],
+        "synthetic_fixture_ordinal": 8001
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "query": {
+            "kind": "TrendsQuery"
+          }
+        },
+        "synthetic_fixture_ordinal": 8002
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "query": {
+            "kind": "TrendsQuery"
+          }
+        },
+        "synthetic_fixture_ordinal": 8003
+      }
+    ]
+  },
+  "text_content": "Example App activation notes\n\nTrial starts increased after the fictional onboarding copy test.",
+  "version": 120,
+  "deleted": false,
+  "created_at": "2026-01-15T12:00:00.000Z",
+  "created_by": {
+    "id": 700001,
+    "uuid": "018f0000-0000-7000-8000-000000000101",
+    "distinct_id": "person-example-001",
+    "first_name": "Alex",
+    "last_name": "Example",
+    "email": "sample.analyst@example.com",
+    "is_email_verified": true
+  },
+  "last_modified_at": "2026-01-16T12:00:00.000Z",
+  "last_modified_by": null,
+  "user_access_level": "editor",
+  "parent_resource": null
+}

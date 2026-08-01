@@ -1,0 +1,114 @@
+{
+  "columns": [
+    "submission",
+    "timestamp",
+    "event",
+    "q0",
+    "q1",
+    "q2"
+  ],
+  "types": [
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "DateTime64"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "Array(String)"
+    ],
+    [
+      "Nullable",
+      "String"
+    ]
+  ],
+  "results": [
+    [
+      "orbit-sub-01",
+      "2026-01-11T08:30:00.000Z",
+      "example-survey-response-01",
+      "9",
+      [
+        "Star maps",
+        "Orbit examples"
+      ],
+      "More telescope shortcuts."
+    ],
+    [
+      "orbit-sub-02",
+      "2026-01-12T09:45:00.000Z",
+      "example-survey-response-02",
+      "10",
+      [
+        "Star maps"
+      ],
+      "A longer orbit-chart example."
+    ],
+    [
+      "orbit-sub-03",
+      "2026-01-13T11:00:00.000Z",
+      "example-survey-response-03",
+      "7",
+      [
+        "Telescope tips",
+        "Star maps"
+      ],
+      null
+    ],
+    [
+      "orbit-sub-04",
+      "2026-01-14T12:15:00.000Z",
+      "example-survey-response-04",
+      "8",
+      [],
+      null
+    ],
+    [
+      "orbit-sub-05",
+      "2026-01-15T13:30:00.000Z",
+      "example-survey-response-05",
+      "5",
+      [
+        "Telescope tips"
+      ],
+      "Explain saved observations."
+    ],
+    [
+      "orbit-sub-06",
+      "2026-01-16T14:45:00.000Z",
+      "example-survey-response-06",
+      "1",
+      [
+        "Orbit examples"
+      ],
+      null
+    ],
+    [
+      "orbit-sub-07",
+      "2026-01-17T16:00:00.000Z",
+      "example-survey-response-07",
+      null,
+      [],
+      null
+    ],
+    [
+      "orbit-sub-08",
+      "2026-01-18T17:15:00.000Z",
+      "example-survey-dismissed",
+      null,
+      [],
+      null
+    ]
+  ]
+}

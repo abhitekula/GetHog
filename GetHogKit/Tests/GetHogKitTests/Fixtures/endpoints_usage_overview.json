@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "key": "example_orbit_requests",
+      "value": 12,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_telescope_failures",
+      "value": 5,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_starlight_cache_hits",
+      "value": 2,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_constellation_rows",
+      "value": 0,
+      "previous": null,
+      "changeFromPreviousPct": null
+    }
+  ]
+}

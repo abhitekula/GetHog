@@ -1,0 +1,68 @@
+{
+  "count": 7,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "survey-demo-nps-2026",
+      "name": "Synthetic observatory tour survey",
+      "description": null,
+      "type": "popover",
+      "start_date": "2026-01-10T15:30:00.000Z",
+      "end_date": null,
+      "archived": false,
+      "questions": [
+        {
+          "id": "q-nps",
+          "type": "rating",
+          "scale": 10,
+          "display": "number",
+          "question": "How likely are you to recommend the observatory tour?",
+          "lowerBoundLabel": "Needs refinement",
+          "upperBoundLabel": "Exceptionally clear"
+        },
+        {
+          "id": "q-resources",
+          "type": "multiple_choice",
+          "choices": [
+            "Star maps",
+            "Telescope tips",
+            "Orbit examples",
+            "Observatory workshops"
+          ],
+          "question": "Which observatory resources helped?"
+        },
+        {
+          "id": "q-comment",
+          "type": "open",
+          "optional": true,
+          "question": "What should the telescope guide cover next?"
+        },
+        {
+          "id": "q-follow-up-topic",
+          "type": "open",
+          "optional": true,
+          "question": "Which fictional orbit topic should follow?"
+        }
+      ]
+    },
+    {
+      "id": "survey-demo-learning-pulse-2026",
+      "name": "Synthetic star-map pulse",
+      "description": "A deterministic companion definition for result paging.",
+      "type": "popover",
+      "start_date": "2026-01-20T14:00:00.000Z",
+      "end_date": null,
+      "archived": false,
+      "questions": [
+        {
+          "id": "q-learning-pulse",
+          "type": "rating",
+          "scale": 7,
+          "display": "number",
+          "question": "How useful was the sample star map?"
+        }
+      ]
+    }
+  ]
+}

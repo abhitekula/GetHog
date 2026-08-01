@@ -1,0 +1,103 @@
+{
+  "count": 5,
+  "next": "https://app.example.com/api/projects/1001/fictional/resource-0002/?limit=9",
+  "previous": null,
+  "results": [
+    {
+      "id": "018f0000-0000-7000-8000-000000003101",
+      "name": "cache_warmed",
+      "description": "A fictional automatic interaction event for fixture coverage.",
+      "tags": [],
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "last_seen_at": "2026-01-24T03:25:43.000Z",
+      "last_updated_at": "2026-01-24T03:25:43.000Z",
+      "verified": true,
+      "verified_at": "2026-01-16T10:17:09.000Z",
+      "verified_by": {
+        "id": 700034,
+        "first_name": "Alex Example",
+        "email": "alex+0017@example.com"
+      },
+      "hidden": false,
+      "enforcement_mode": null,
+      "is_action": false,
+      "post_to_slack": false,
+      "default_columns": null
+    },
+    {
+      "id": "018f0000-0000-7000-8000-000000003102",
+      "name": "setup_hint_viewed",
+      "description": "A fictional navigation event used by fixture tests.",
+      "tags": [],
+      "created_at": "2026-01-08T17:08:34.000Z",
+      "last_seen_at": "2026-01-20T06:51:26.000Z",
+      "last_updated_at": "2026-01-20T06:51:26.000Z",
+      "verified": true,
+      "verified_at": "2026-01-21T11:08:09.000Z",
+      "verified_by": {
+        "id": 700081,
+        "first_name": "Morgan Fixture",
+        "email": "morgan.taxonomy@example.net"
+      },
+      "hidden": false,
+      "enforcement_mode": null,
+      "is_action": false,
+      "post_to_slack": false,
+      "default_columns": null
+    },
+    {
+      "id": "018f0000-0000-7000-8000-000000003103",
+      "name": "feature_used",
+      "description": null,
+      "tags": [],
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "last_seen_at": "2026-01-28T00:00:00.000Z",
+      "last_updated_at": "2026-01-28T00:00:00.000Z",
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": true,
+      "enforcement_mode": null,
+      "is_action": false,
+      "post_to_slack": false,
+      "default_columns": null
+    },
+    {
+      "id": "018f0000-0000-7000-8000-000000003104",
+      "name": "$survey_response",
+      "description": "A fictional legacy event retained for tag coverage.",
+      "tags": [
+        "legacy",
+        "retired-fixture"
+      ],
+      "created_at": "2026-01-04T20:34:17.000Z",
+      "last_seen_at": "2026-01-12T13:42:51.000Z",
+      "last_updated_at": "2026-01-12T13:42:51.000Z",
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": false,
+      "enforcement_mode": null,
+      "is_action": false,
+      "post_to_slack": false,
+      "default_columns": null
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000022",
+      "name": "export_completed",
+      "description": "A fictional completed export kept for definition-only coverage.",
+      "tags": ["fixture-only"],
+      "created_at": "2026-01-07T09:20:00.000Z",
+      "last_seen_at": "2026-01-09T16:35:00.000Z",
+      "last_updated_at": "2026-01-10T08:10:00.000Z",
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": false,
+      "enforcement_mode": null,
+      "is_action": false,
+      "post_to_slack": false,
+      "default_columns": null
+    }
+  ]
+}

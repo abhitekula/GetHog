@@ -1,0 +1,74 @@
+{
+  "kind": "ExperimentExposureQuery",
+  "is_cached": true,
+  "timezone": "Pacific/Auckland",
+  "error": null,
+  "warnings": [],
+  "cache_key": "example-running-exposure-cache",
+  "last_refresh": "2026-01-31T16:27:00.000Z",
+  "date_range": {
+    "date_from": "2026-01-27T09:14:00.000Z",
+    "date_to": "2026-01-31T16:27:00.000Z"
+  },
+  "total_exposures": {
+    "reference-cache-71101": 12431,
+    "guided-cache-71101": 12587,
+    "synthetic-observer-71101": 1
+  },
+  "sample_ratio_mismatch": {
+    "expected": {
+      "reference-cache-71101": 0.47,
+      "guided-cache-71101": 0.53,
+      "synthetic-observer-71101": 0
+    },
+    "p_value": 0.7123
+  },
+  "bias_risk": {
+    "multiple_variant_percentage": 0.0187
+  },
+  "timeseries": [
+    {
+      "variant": "reference-cache-71101",
+      "days": [
+        "2026-01-28",
+        "2026-01-29",
+        "2026-01-30",
+        "2026-01-31"
+      ],
+      "exposure_counts": [
+        3077,
+        5614,
+        8992,
+        12431
+      ]
+    },
+    {
+      "variant": "guided-cache-71101",
+      "days": [
+        "2026-01-28",
+        "2026-01-29",
+        "2026-01-30",
+        "2026-01-31"
+      ],
+      "exposure_counts": [
+        3204,
+        5729,
+        9116,
+        12587
+      ]
+    },
+    {
+      "variant": "synthetic-observer-71101",
+      "days": [
+        "2026-01-28",
+        "2026-01-29",
+        "2026-01-30"
+      ],
+      "exposure_counts": [
+        0,
+        1,
+        1
+      ]
+    }
+  ]
+}

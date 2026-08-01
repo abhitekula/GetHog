@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "occurrences",
+    "total_occurrences",
+    "distinct_values"
+  ],
+  "results": [
+    ["FixtureFox", 310, 940, 9],
+    ["Mockwave", 225, 940, 9],
+    ["Testbird", 165, 940, 9],
+    ["ScriptShell", 105, 940, 9],
+    ["Automation Browser", 70, 940, 9]
+  ]
+}

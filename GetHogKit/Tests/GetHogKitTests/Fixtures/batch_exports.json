@@ -1,0 +1,127 @@
+{
+  "count": 6,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f2000-0000-7000-8000-000000000401",
+      "team_id": 1001,
+      "name": "Example events archive",
+      "model": "sessions",
+      "destination": {
+        "type": "S3",
+        "config": {
+          "bucket_name": "example-gethog-demo",
+          "prefix": "example-app/events"
+        }
+      },
+      "interval": "hour",
+      "paused": false,
+      "created_at": "2026-01-10T12:00:00.000Z",
+      "last_updated_at": "2026-01-16T12:00:00.000Z",
+      "last_paused_at": null,
+      "start_at": null,
+      "end_at": null,
+      "latest_runs": [
+        {
+          "id": "018f2000-0000-7000-8000-000000000411",
+          "status": "Completed",
+          "data_interval_start": "2026-01-16T09:00:00.000Z",
+          "data_interval_end": "2026-01-16T10:00:00.000Z",
+          "created_at": "2026-01-16T10:05:00.000Z",
+          "finished_at": "2026-01-16T10:06:00.000Z",
+          "latest_error": null,
+          "records_completed": 240
+        },
+        {
+          "id": "018f2000-0000-7000-8000-000000000412",
+          "status": "Completed",
+          "data_interval_start": "2026-01-16T08:00:00.000Z",
+          "data_interval_end": "2026-01-16T09:00:00.000Z",
+          "created_at": "2026-01-16T09:05:00.000Z",
+          "finished_at": "2026-01-16T09:06:00.000Z",
+          "latest_error": null,
+          "records_completed": 216
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000329",
+          "status": "Completed",
+          "latest_error": null,
+          "created_at": "2026-02-02T07:00:00.000Z",
+          "finished_at": "2026-02-02T07:05:00.000Z"
+        }
+      ],
+      "hogql_query": null,
+      "schema": null,
+      "filters": null,
+      "timezone": "UTC"
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000402",
+      "team_id": 1001,
+      "name": "Example people warehouse",
+      "model": "events",
+      "destination": {
+        "type": "BigQuery",
+        "config": {
+          "dataset_id": "example_app"
+        }
+      },
+      "interval": "day",
+      "paused": true,
+      "created_at": "2026-01-11T12:00:00.000Z",
+      "last_updated_at": "2026-01-16T11:00:00.000Z",
+      "last_paused_at": "2026-01-16T11:00:00.000Z",
+      "start_at": null,
+      "end_at": null,
+      "latest_runs": [
+        {
+          "id": "018f2000-0000-7000-8000-000000000413",
+          "status": "Failed",
+          "data_interval_start": "2026-01-15T00:00:00.000Z",
+          "data_interval_end": "2026-01-16T00:00:00.000Z",
+          "created_at": "2026-01-16T00:05:00.000Z",
+          "finished_at": "2026-01-16T00:06:00.000Z",
+          "latest_error": "Synthetic dataset example_app rejected the test write",
+          "records_completed": 8
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000330",
+          "status": "Failed",
+          "latest_error": "Synthetic sample archive rejected an older test write",
+          "created_at": "2026-02-03T08:00:00.000Z",
+          "finished_at": "2026-02-03T08:06:00.000Z"
+        }
+      ],
+      "hogql_query": null,
+      "schema": null,
+      "filters": null,
+      "timezone": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000331",
+      "team_id": 1001,
+      "name": "Example catalog archive",
+      "model": "logs",
+      "destination": {
+        "type": "S3",
+        "config": {
+          "bucket_name": "example-gethog-demo",
+          "prefix": "example-app/events"
+        }
+      },
+      "interval": "day",
+      "paused": false,
+      "created_at": "2026-02-26T10:00:00.000Z",
+      "last_updated_at": "2026-02-26T10:00:00.000Z",
+      "last_paused_at": null,
+      "start_at": null,
+      "end_at": null,
+      "latest_runs": [],
+      "hogql_query": null,
+      "schema": null,
+      "filters": null,
+      "timezone": "UTC"
+    }
+  ]
+}

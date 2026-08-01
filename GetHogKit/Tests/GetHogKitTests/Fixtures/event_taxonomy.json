@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "property": "$fixture_channel",
+      "sample_count": 41,
+      "sample_values": ["harbor", "juniper", "northstar", "cobalt"]
+    },
+    {
+      "property": "$fixture_device",
+      "sample_count": 26,
+      "sample_values": ["tablet", "desktop"]
+    },
+    {
+      "property": "harbor_plan",
+      "sample_count": 19,
+      "sample_values": ["starter", "team", "studio", "solo"]
+    },
+    {
+      "property": "harbor_region",
+      "sample_count": 13,
+      "sample_values": ["north", "south", "east", "west"]
+    },
+    {
+      "property": "harbor_mode",
+      "sample_count": 9,
+      "sample_values": ["focus", "explore"]
+    },
+    {
+      "property": "harbor_empty",
+      "sample_count": 0,
+      "sample_values": []
+    }
+  ],
+  "hasMore": false,
+  "limit": 37,
+  "offset": 0
+}

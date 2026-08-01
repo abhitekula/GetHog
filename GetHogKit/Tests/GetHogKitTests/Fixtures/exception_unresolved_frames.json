@@ -1,0 +1,54 @@
+{
+  "columns": [
+    "uuid",
+    "timestamp",
+    "exception_list",
+    "level",
+    "fingerprint",
+    "steps"
+  ],
+  "results": [
+    [
+      "018f3300-0000-7000-8000-000000000911",
+      "2026-01-18T11:00:00.000Z",
+      "[{\"id\":\"harbor-render-exception-a\",\"mechanism\":{\"handled\":true,\"synthetic\":false,\"type\":\"generic\"},\"stacktrace\":{\"frames\":[{\"column\":6,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":6,\"filename\":\"https://app.example.com/assets/harbor-card-a.js\",\"function\":\"?\",\"in_app\":true,\"lineno\":101,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":101,\"mangled_name\":\"?\",\"raw_id\":\"harbor-card-frame/00\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-a.js\",\"suspicious\":false,\"synthetic\":false},{\"column\":7,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":7,\"filename\":\"https://app.example.com/assets/harbor-card-b.js\",\"function\":\"renderHarborCard\",\"in_app\":true,\"lineno\":102,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":102,\"mangled_name\":\"renderHarborCard\",\"raw_id\":\"harbor-card-frame/01\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-b.js\",\"suspicious\":false,\"synthetic\":false},{\"column\":8,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":8,\"filename\":\"https://app.example.com/assets/harbor-card-c.js\",\"function\":\"renderHarborCard\",\"in_app\":true,\"lineno\":103,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":103,\"mangled_name\":\"renderHarborCard\",\"raw_id\":\"harbor-card-frame/02\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-c.js\",\"suspicious\":false,\"synthetic\":false},{\"column\":9,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":9,\"filename\":\"https://app.example.com/assets/harbor-card-d.js\",\"function\":\"renderHarborCard\",\"in_app\":true,\"lineno\":104,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":104,\"mangled_name\":\"renderHarborCard\",\"raw_id\":\"harbor-card-frame/03\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-d.js\",\"suspicious\":false,\"synthetic\":false},{\"in_app\":false,\"junk_drawer\":{\"raw_frame\":{\"filename\":\"<anonymous>\",\"function\":\"harborLibraryDispatch\",\"in_app\":false,\"synthetic\":false}},\"lang\":\"javascript\",\"mangled_name\":\"harborLibraryDispatch\",\"raw_id\":\"harbor-library-frame/00\",\"resolved\":true,\"resolved_name\":\"harborLibraryDispatch\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"HarborRenderFault\",\"value\":\"Harbor card state was unavailable.\"}]",
+      "error-synthetic-added",
+      "harbor-render-fingerprint-a",
+      null
+    ],
+    [
+      "018f3300-0000-7000-8000-000000000911",
+      "2026-01-18T11:00:00.000Z",
+      "[{\"id\":\"harbor-render-exception-a\",\"mechanism\":{\"handled\":true,\"synthetic\":false,\"type\":\"generic\"},\"stacktrace\":{\"frames\":[{\"column\":6,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":6,\"filename\":\"https://app.example.com/assets/harbor-card-a.js\",\"function\":\"?\",\"in_app\":true,\"lineno\":101,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":101,\"mangled_name\":\"?\",\"raw_id\":\"harbor-card-frame/00\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-a.js\",\"suspicious\":false,\"synthetic\":false},{\"column\":7,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":7,\"filename\":\"https://app.example.com/assets/harbor-card-b.js\",\"function\":\"renderHarborCard\",\"in_app\":true,\"lineno\":102,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":102,\"mangled_name\":\"renderHarborCard\",\"raw_id\":\"harbor-card-frame/01\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-b.js\",\"suspicious\":false,\"synthetic\":false},{\"column\":8,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":8,\"filename\":\"https://app.example.com/assets/harbor-card-c.js\",\"function\":\"renderHarborCard\",\"in_app\":true,\"lineno\":103,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":103,\"mangled_name\":\"renderHarborCard\",\"raw_id\":\"harbor-card-frame/02\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-c.js\",\"suspicious\":false,\"synthetic\":false},{\"column\":9,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"colno\":9,\"filename\":\"https://app.example.com/assets/harbor-card-d.js\",\"function\":\"renderHarborCard\",\"in_app\":true,\"lineno\":104,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":104,\"mangled_name\":\"renderHarborCard\",\"raw_id\":\"harbor-card-frame/03\",\"resolve_failure\":\"Synthetic source map was unavailable at the reserved demo host\",\"resolved\":false,\"source\":\"/assets/harbor-card-d.js\",\"suspicious\":false,\"synthetic\":false},{\"in_app\":false,\"junk_drawer\":{\"raw_frame\":{\"filename\":\"<anonymous>\",\"function\":\"harborLibraryDispatch\",\"in_app\":false,\"synthetic\":false}},\"lang\":\"javascript\",\"mangled_name\":\"harborLibraryDispatch\",\"raw_id\":\"harbor-library-frame/00\",\"resolved\":true,\"resolved_name\":\"harborLibraryDispatch\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"HarborRenderFault\",\"value\":\"Harbor card state was unavailable.\"}]",
+      "error-synthetic-added",
+      "harbor-render-fingerprint-a",
+      null
+    ]
+  ],
+  "types": [
+    [
+      "Nullable",
+      "UUID"
+    ],
+    [
+      "Nullable",
+      "DateTime64"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ]
+  ]
+}

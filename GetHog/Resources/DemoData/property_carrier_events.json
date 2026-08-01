@@ -1,0 +1,18 @@
+{
+  "columns": [
+    "event",
+    "occurrences",
+    "distinct_values",
+    "total_occurrences",
+    "distinct_events"
+  ],
+  "results": [
+    ["example_orbit_viewed", 610, 41, 2830, 13],
+    ["example_telescope_focused", 521, 53, 2830, 13],
+    ["example_star_chart_saved", 463, 67, 2830, 13],
+    ["example_observation_shared", 397, 79, 2830, 13],
+    ["example_nebula_exported", 331, 83, 2830, 13],
+    ["example_filter_applied", 281, 97, 2830, 13],
+    ["example_session_replayed", 227, 109, 2830, 13]
+  ]
+}

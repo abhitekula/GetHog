@@ -1,0 +1,95 @@
+{
+  "count": 10,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f2000-0000-7000-8000-000000000601",
+      "status": "idle",
+      "title": "Choosing observatory activation events",
+      "topic": null,
+      "user": {
+        "id": 700001,
+        "uuid": "018f0000-0000-7000-8000-000000000101",
+        "distinct_id": "person-example-001",
+        "first_name": "Orbit",
+        "last_name": "Guide",
+        "email": "orbit-guide@example.org",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-15T09:00:00.000Z",
+      "updated_at": "2026-01-15T10:00:00.000Z",
+      "type": "assistant",
+      "is_internal": false,
+      "slack_thread_key": null,
+      "slack_workspace_domain": null,
+      "task": null
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000602",
+      "status": "in_progress",
+      "title": "Researching orbit report patterns",
+      "topic": null,
+      "user": {
+        "id": 700001,
+        "uuid": "018f0000-0000-7000-8000-000000000101",
+        "distinct_id": "person-example-001",
+        "first_name": "Orbit",
+        "last_name": "Guide",
+        "email": "orbit-guide@example.org",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-15T11:00:00.000Z",
+      "updated_at": "2026-01-16T09:00:00.000Z",
+      "type": "deep_research",
+      "is_internal": false,
+      "slack_thread_key": null,
+      "slack_workspace_domain": null,
+      "task": null
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000603",
+      "status": "idle",
+      "title": "Reviewing telescope navigation feedback",
+      "topic": null,
+      "user": {
+        "id": 700002,
+        "uuid": "018f0000-0000-7000-8000-000000000102",
+        "distinct_id": "person-example-002",
+        "first_name": "",
+        "last_name": "",
+        "email": "sample.analyst@example.com",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-16T10:00:00.000Z",
+      "updated_at": "2026-01-17T12:00:00.000Z",
+      "type": "slack",
+      "is_internal": false,
+      "slack_thread_key": "example-navigation-thread",
+      "slack_workspace_domain": "app.example.com",
+      "task": null
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000014",
+      "status": "idle",
+      "title": "Synthetic fallback telescope navigation feedback",
+      "topic": null,
+      "user": {
+        "id": 700002,
+        "uuid": "018f0000-0000-7000-8000-000000000102",
+        "distinct_id": "person-example-002",
+        "first_name": "",
+        "last_name": "",
+        "email": "sample.analyst@example.com",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-16T10:00:00.000Z",
+      "updated_at": "2026-01-17T12:00:00.000Z",
+      "type": "slack",
+      "is_internal": false,
+      "slack_thread_key": "example-navigation-thread",
+      "slack_workspace_domain": "app.example.com",
+      "task": null
+    }
+  ]
+}

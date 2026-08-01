@@ -1,0 +1,82 @@
+{
+  "count": 779,
+  "next": "https://app.example.com/demo/example-9982?limit=4&offset=4",
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000352",
+      "name": "account_tier",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "tags": [],
+      "is_numerical": false,
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "updated_by": null,
+      "is_seen_on_filtered_events": true,
+      "property_type": "String",
+      "verified": true,
+      "verified_at": "2026-01-01T00:00:00.000Z",
+      "verified_by": null,
+      "hidden": false
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000197",
+      "name": "monthly_value",
+      "description": null,
+      "tags": [],
+      "is_numerical": true,
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "updated_by": null,
+      "is_seen_on_filtered_events": true,
+      "property_type": "Numeric",
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": false
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000409",
+      "name": "legacy_code",
+      "description": null,
+      "tags": [],
+      "is_numerical": false,
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "updated_by": null,
+      "is_seen_on_filtered_events": true,
+      "property_type": null,
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": true
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000360",
+      "name": "notification_opt_in",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "tags": [],
+      "is_numerical": false,
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "updated_by": null,
+      "is_seen_on_filtered_events": true,
+      "property_type": "Boolean",
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": false
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000017",
+      "name": "Synthetic added notification_opt_in",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "tags": [],
+      "is_numerical": false,
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "updated_by": null,
+      "is_seen_on_filtered_events": true,
+      "property_type": "Boolean",
+      "verified": false,
+      "verified_at": null,
+      "verified_by": null,
+      "hidden": false
+    }
+  ]
+}

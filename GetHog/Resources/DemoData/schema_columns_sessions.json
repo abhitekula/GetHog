@@ -1,0 +1,439 @@
+{
+  "columns": [
+    "column_name",
+    "data_type",
+    "is_nullable",
+    "is_array",
+    "field_kind",
+    "description"
+  ],
+  "types": [
+    [
+      "column_name",
+      "String"
+    ],
+    [
+      "data_type",
+      "String"
+    ],
+    [
+      "is_nullable",
+      "UInt8"
+    ],
+    [
+      "is_array",
+      "UInt8"
+    ],
+    [
+      "field_kind",
+      "String"
+    ],
+    [
+      "description",
+      "Nullable(String)"
+    ]
+  ],
+  "results": [
+    [
+      "Example results 2234-fixture-7448",
+      "Example results 2155-fixture-7449",
+      23,
+      23,
+      "Example results 2152-fixture-7450",
+      "Example results 2244-fixture-7451"
+    ],
+    [
+      "Example results 2245-fixture-7452",
+      "Example results 2155-fixture-7453",
+      23,
+      23,
+      "Example results 2152-fixture-7454",
+      "Example results 2244-fixture-7455"
+    ],
+    [
+      "Example results 2246-fixture-7456",
+      "Example results 2164-fixture-7457",
+      23,
+      23,
+      "Example results 2152-fixture-7458",
+      null
+    ],
+    [
+      "Example results 2163-fixture-7459",
+      "Example results 2164-fixture-7460",
+      23,
+      23,
+      "Example results 2152-fixture-7461",
+      null
+    ],
+    [
+      "Example results 2165-fixture-7462",
+      "Example results 2155-fixture-7463",
+      23,
+      23,
+      "Example results 2152-fixture-7464",
+      null
+    ],
+    [
+      "Example results 2247-fixture-7465",
+      "Example results 2161-fixture-7466",
+      23,
+      23,
+      "Example results 2152-fixture-7467",
+      "Example results 2248-fixture-7468"
+    ],
+    [
+      "Example results 2249-fixture-7469",
+      "Example results 2161-fixture-7470",
+      23,
+      23,
+      "Example results 2152-fixture-7471",
+      "Example results 2250-fixture-7472"
+    ],
+    [
+      "Example results 2251-fixture-7473",
+      "Example results 2161-fixture-7474",
+      23,
+      23,
+      "Example results 2152-fixture-7475",
+      null
+    ],
+    [
+      "Example results 2252-fixture-7476",
+      "Example results 2215-fixture-7477",
+      23,
+      23,
+      "Example results 2152-fixture-7478",
+      null
+    ],
+    [
+      "Example results 2253-fixture-7479",
+      "Example results 2164-fixture-7480",
+      23,
+      23,
+      "Example results 2152-fixture-7481",
+      null
+    ],
+    [
+      "Example results 2254-fixture-7482",
+      "Example results 2155-fixture-7483",
+      23,
+      23,
+      "Example results 2152-fixture-7484",
+      null
+    ],
+    [
+      "Example results 2255-fixture-7485",
+      "Example results 2155-fixture-7486",
+      23,
+      23,
+      "Example results 2152-fixture-7487",
+      null
+    ],
+    [
+      "Example results 2256-fixture-7488",
+      "Example results 2155-fixture-7489",
+      23,
+      23,
+      "Example results 2152-fixture-7490",
+      null
+    ],
+    [
+      "Example results 2257-fixture-7491",
+      "Example results 2155-fixture-7492",
+      23,
+      23,
+      "Example results 2152-fixture-7493",
+      null
+    ],
+    [
+      "Example results 2258-fixture-7494",
+      "Example results 2155-fixture-7495",
+      23,
+      23,
+      "Example results 2152-fixture-7496",
+      null
+    ],
+    [
+      "Example results 2259-fixture-7497",
+      "Example results 2155-fixture-7498",
+      23,
+      23,
+      "Example results 2152-fixture-7499",
+      null
+    ],
+    [
+      "Example results 2260-fixture-7500",
+      "Example results 2155-fixture-7501",
+      23,
+      23,
+      "Example results 2152-fixture-7502",
+      null
+    ],
+    [
+      "Example results 2261-fixture-7503",
+      "Example results 2155-fixture-7504",
+      23,
+      23,
+      "Example results 2152-fixture-7505",
+      null
+    ],
+    [
+      "Example results 2262-fixture-7506",
+      "Example results 2155-fixture-7507",
+      23,
+      23,
+      "Example results 2152-fixture-7508",
+      null
+    ],
+    [
+      "Example results 2263-fixture-7509",
+      "Example results 2155-fixture-7510",
+      23,
+      23,
+      "Example results 2152-fixture-7511",
+      null
+    ],
+    [
+      "Example results 2264-fixture-7512",
+      "Example results 2155-fixture-7513",
+      23,
+      23,
+      "Example results 2152-fixture-7514",
+      null
+    ],
+    [
+      "Example results 2265-fixture-7515",
+      "Example results 2155-fixture-7516",
+      23,
+      23,
+      "Example results 2152-fixture-7517",
+      null
+    ],
+    [
+      "Example results 2266-fixture-7518",
+      "Example results 2155-fixture-7519",
+      23,
+      23,
+      "Example results 2152-fixture-7520",
+      null
+    ],
+    [
+      "Example results 2267-fixture-7521",
+      "Example results 2155-fixture-7522",
+      23,
+      23,
+      "Example results 2152-fixture-7523",
+      null
+    ],
+    [
+      "Example results 2268-fixture-7524",
+      "Example results 2155-fixture-7525",
+      23,
+      23,
+      "Example results 2152-fixture-7526",
+      null
+    ],
+    [
+      "Example results 2269-fixture-7527",
+      "Example results 2155-fixture-7528",
+      23,
+      23,
+      "Example results 2152-fixture-7529",
+      null
+    ],
+    [
+      "Example results 2270-fixture-7530",
+      "Example results 2155-fixture-7531",
+      23,
+      23,
+      "Example results 2152-fixture-7532",
+      null
+    ],
+    [
+      "Example results 2271-fixture-7533",
+      "Example results 2155-fixture-7534",
+      23,
+      23,
+      "Example results 2152-fixture-7535",
+      null
+    ],
+    [
+      "Example results 2272-fixture-7536",
+      "Example results 2155-fixture-7537",
+      23,
+      23,
+      "Example results 2152-fixture-7538",
+      null
+    ],
+    [
+      "Example results 2273-fixture-7539",
+      "Example results 2155-fixture-7540",
+      23,
+      23,
+      "Example results 2152-fixture-7541",
+      null
+    ],
+    [
+      "Example results 2274-fixture-7542",
+      "Example results 2155-fixture-7543",
+      23,
+      23,
+      "Example results 2152-fixture-7544",
+      null
+    ],
+    [
+      "Example results 2275-fixture-7545",
+      "Example results 2155-fixture-7546",
+      23,
+      23,
+      "Example results 2152-fixture-7547",
+      null
+    ],
+    [
+      "Example results 2276-fixture-7548",
+      "Example results 2155-fixture-7549",
+      23,
+      23,
+      "Example results 2152-fixture-7550",
+      null
+    ],
+    [
+      "Example results 2277-fixture-7551",
+      "Example results 2155-fixture-7552",
+      23,
+      23,
+      "Example results 2152-fixture-7553",
+      null
+    ],
+    [
+      "Example results 2278-fixture-7554",
+      "Example results 2155-fixture-7555",
+      23,
+      23,
+      "Example results 2152-fixture-7556",
+      null
+    ],
+    [
+      "Example results 2279-fixture-7557",
+      "Example results 2155-fixture-7558",
+      23,
+      23,
+      "Example results 2152-fixture-7559",
+      null
+    ],
+    [
+      "Example results 2280-fixture-7560",
+      "Example results 2155-fixture-7561",
+      23,
+      23,
+      "Example results 2152-fixture-7562",
+      null
+    ],
+    [
+      "Example results 2281-fixture-7563",
+      "Example results 2164-fixture-7564",
+      23,
+      23,
+      "Example results 2152-fixture-7565",
+      null
+    ],
+    [
+      "Example results 2282-fixture-7566",
+      "Example results 2164-fixture-7567",
+      23,
+      23,
+      "Example results 2152-fixture-7568",
+      null
+    ],
+    [
+      "Example results 2283-fixture-7569",
+      "Example results 2164-fixture-7570",
+      23,
+      23,
+      "Example results 2152-fixture-7571",
+      null
+    ],
+    [
+      "Example results 2284-fixture-7572",
+      "Example results 2155-fixture-7573",
+      23,
+      23,
+      "Example results 2152-fixture-7574",
+      null
+    ],
+    [
+      "Example results 2285-fixture-7575",
+      "Example results 2164-fixture-7576",
+      23,
+      23,
+      "Example results 2152-fixture-7577",
+      null
+    ],
+    [
+      "Example results 2286-fixture-7578",
+      "Example results 2164-fixture-7579",
+      23,
+      23,
+      "Example results 2152-fixture-7580",
+      null
+    ],
+    [
+      "Example results 2287-fixture-7581",
+      "Example results 2229-fixture-7582",
+      23,
+      23,
+      "Example results 2152-fixture-7583",
+      null
+    ],
+    [
+      "Example results 2288-fixture-7584",
+      "Example results 2155-fixture-7585",
+      23,
+      23,
+      "Example results 2152-fixture-7586",
+      null
+    ],
+    [
+      "Example results 2289-fixture-7587",
+      "Example results 2174-fixture-7588",
+      23,
+      23,
+      "Example results 2152-fixture-7589",
+      null
+    ],
+    [
+      "Example results 2290-fixture-7590",
+      "Example results 2155-fixture-7591",
+      23,
+      23,
+      "Example results 2152-fixture-7592",
+      null
+    ],
+    [
+      "Example results 2291-fixture-7593",
+      "Example results 2155-fixture-7594",
+      23,
+      23,
+      "Example results 2152-fixture-7595",
+      null
+    ],
+    [
+      "Example results 2292-fixture-7596",
+      "Example results 2293-fixture-7597",
+      700024,
+      23,
+      "Example results 2152-fixture-7598",
+      null
+    ],
+    [
+      "Example results 2292-fixture-7596",
+      "Example results 2293-fixture-7597",
+      700024,
+      23,
+      "Example results 2152-fixture-7598",
+      null
+    ]
+  ],
+  "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+}

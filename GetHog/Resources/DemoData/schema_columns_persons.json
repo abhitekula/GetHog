@@ -1,0 +1,95 @@
+{
+  "columns": [
+    "column_name",
+    "data_type",
+    "is_nullable",
+    "is_array",
+    "field_kind",
+    "description"
+  ],
+  "types": [
+    [
+      "description",
+      "Nullable(String)"
+    ],
+    [
+      "is_nullable",
+      "UInt8"
+    ],
+    [
+      "column_name",
+      "String"
+    ],
+    [
+      "field_kind",
+      "String"
+    ],
+    [
+      "is_array",
+      "UInt8"
+    ],
+    [
+      "data_type",
+      "String"
+    ]
+  ],
+  "results": [
+    [
+      "fixture_person_keys",
+      "Array(FixedString(36))",
+      1,
+      1,
+      "virtual_table",
+      "Invented person keys used only by the deterministic directory fixture."
+    ],
+    [
+      "fixture_first_seen_samples",
+      "Array(DateTime64(3))",
+      1,
+      1,
+      "virtual_table",
+      "Synthetic timestamps for exercising nullable array metadata."
+    ],
+    [
+      "fixture_workspace_labels",
+      "Array(LowCardinality(String))",
+      1,
+      1,
+      "expression",
+      "Fictional workspace labels with no live tenant meaning."
+    ],
+    [
+      "fixture_property_maps",
+      "Array(Map(String, String))",
+      1,
+      1,
+      "virtual_table",
+      "Hand-authored property maps for schema-browser examples."
+    ],
+    [
+      "fixture_identity_states",
+      "Array(UInt8)",
+      1,
+      1,
+      "expression",
+      "Synthetic identity-state samples represented as UInt8 values."
+    ],
+    [
+      "fixture_alias_sets",
+      "Array(Array(String))",
+      0,
+      1,
+      "virtual_table",
+      "Nested fictional aliases used to exercise array rendering."
+    ],
+    [
+      "fixture_last_seen_samples",
+      "Array(Nullable(DateTime64(3)))",
+      1,
+      1,
+      "virtual_table",
+      "Optional synthetic activity samples for deterministic previews."
+    ]
+  ],
+  "hogql": "SELECT fixture_person_keys, fixture_identity_states FROM persons ORDER BY fixture_person_keys LIMIT 7"
+}

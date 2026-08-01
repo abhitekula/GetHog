@@ -1,0 +1,159 @@
+{
+  "results": [
+    {
+      "type": "person",
+      "id": "018f9000-0000-7000-8000-000000000426",
+      "uuid": "018f9000-0000-7000-8000-000000000426",
+      "created_at": "2026-01-08T10:14:00.000Z",
+      "last_seen_at": "2026-01-24T18:03:00.000Z",
+      "properties": {
+        "$os": "NebulaOS",
+        "name": "Sable Okafor",
+        "$host": "example.net",
+        "email": "sable.okafor@example.net",
+        "$browser": "Comet",
+        "$pathname": "/sandbox/people/sable/activity",
+        "$referrer": "https://example.org/synthetic/welcome",
+        "$initial_os": "NebulaOS",
+        "$os_version": "27.4",
+        "$current_url": "https://example.net/sandbox/people/sable/activity",
+        "$device_type": "Laptop",
+        "$initial_host": "example.net",
+        "$screen_width": 1472,
+        "$screen_height": 918,
+        "$geoip_latitude": 35.6895,
+        "$raw_user_agent": "SyntheticDirectoryClient/4.2",
+        "$viewport_width": 1392,
+        "$browser_version": 127,
+        "$geoip_city_name": "Example City",
+        "$geoip_longitude": 139.6917,
+        "$geoip_time_zone": "Etc/UTC",
+        "$initial_browser": "Comet",
+        "$viewport_height": 812,
+        "$initial_pathname": "/sandbox/people/sable",
+        "$initial_referrer": "https://example.org/synthetic/start",
+        "$referring_domain": "example.org",
+        "$creator_event_uuid": "018f9000-0000-7000-8000-000000000431",
+        "$geoip_country_code": "ZZ",
+        "$geoip_country_name": "Synthetic Region",
+        "$initial_os_version": "27.4",
+        "$initial_current_url": "https://example.net/sandbox/onboarding/sable",
+        "$initial_device_type": "Laptop",
+        "$geoip_continent_code": "AN",
+        "$geoip_continent_name": "Antarctica",
+        "$initial_screen_width": 1473,
+        "$geoip_accuracy_radius": 42,
+        "$initial_screen_height": 919,
+        "$initial_geoip_latitude": 35.6895,
+        "$initial_raw_user_agent": "SyntheticDirectoryClient/4.2",
+        "$initial_viewport_width": 1392,
+        "$initial_browser_version": 127,
+        "$initial_geoip_city_name": "Example City",
+        "$initial_geoip_longitude": 139.6917,
+        "$initial_geoip_time_zone": "Etc/UTC",
+        "$initial_viewport_height": 812,
+        "$initial_referring_domain": "example.org",
+        "$initial_geoip_country_code": "ZZ",
+        "$initial_geoip_country_name": "Synthetic Region",
+        "$initial_geoip_continent_code": "AN",
+        "$initial_geoip_continent_name": "Antarctica",
+        "$initial_geoip_accuracy_radius": 42,
+        "fixture_segment": "quartz-pioneers"
+      },
+      "is_identified": true,
+      "name": "Sable Okafor",
+      "distinct_ids": [
+        "person:sable:primary",
+        "person:sable:tablet",
+        "person:sable:browser"
+      ],
+      "matched_recordings": [],
+      "value_at_data_point": null
+    },
+    {
+      "type": "person",
+      "id": "018f9000-0000-7000-8000-000000000427",
+      "uuid": "018f9000-0000-7000-8000-000000000427",
+      "created_at": "2026-01-11T07:32:00.000Z",
+      "last_seen_at": "2026-01-23T09:46:00.000Z",
+      "properties": {
+        "$creator_event_uuid": "018f9000-0000-7000-8000-000000000432",
+        "fixture_segment": "amber-observers"
+      },
+      "is_identified": false,
+      "name": "visitor:amber-comet-73",
+      "distinct_ids": [
+        "visitor:amber-comet-73",
+        "device:amber-comet-73"
+      ],
+      "matched_recordings": [],
+      "value_at_data_point": null
+    },
+    {
+      "type": "person",
+      "id": "018f9000-0000-7000-8000-000000000428",
+      "uuid": "018f9000-0000-7000-8000-000000000428",
+      "created_at": "2026-01-14T13:27:00.000Z",
+      "last_seen_at": "2026-01-22T16:51:00.000Z",
+      "properties": {
+        "$creator_event_uuid": "018f9000-0000-7000-8000-000000000433",
+        "fixture_segment": "indigo-builders"
+      },
+      "is_identified": false,
+      "name": "workspace:indigo-builder-28",
+      "distinct_ids": [
+        "workspace:indigo-builder-28",
+        "device:indigo-builder-28",
+        "browser:indigo-builder-a",
+        "browser:indigo-builder-b"
+      ],
+      "matched_recordings": [],
+      "value_at_data_point": null
+    },
+    {
+      "type": "person",
+      "id": "018f9000-0000-7000-8000-000000000429",
+      "uuid": "018f9000-0000-7000-8000-000000000429",
+      "created_at": "2026-01-17T21:05:00.000Z",
+      "last_seen_at": "2026-01-21T05:18:00.000Z",
+      "properties": {
+        "$os": "OrbitOS",
+        "name": "Ivo Maren",
+        "$host": "example.net",
+        "email": "ivo.maren@example.org",
+        "$browser": "Pulsar",
+        "$pathname": "/sandbox/people/ivo/cohorts",
+        "$current_url": "https://example.net/sandbox/people/ivo/cohorts",
+        "$device_type": "Tablet",
+        "$creator_event_uuid": "018f9000-0000-7000-8000-000000000434",
+        "fixture_segment": "cobalt-guides"
+      },
+      "is_identified": true,
+      "name": "Ivo Maren",
+      "distinct_ids": [],
+      "matched_recordings": [],
+      "value_at_data_point": null
+    },
+    {
+      "type": "person",
+      "id": "018f9000-0000-7000-8000-000000000430",
+      "uuid": "018f9000-0000-7000-8000-000000000430",
+      "created_at": "2026-01-19T12:41:00.000Z",
+      "last_seen_at": "2026-01-20T14:22:00.000Z",
+      "properties": {
+        "$creator_event_uuid": "018f9000-0000-7000-8000-000000000435",
+        "fixture_segment": "violet-navigators"
+      },
+      "is_identified": false,
+      "name": "visitor:violet-navigator-51",
+      "distinct_ids": [
+        "visitor:violet-navigator-51",
+        "device:violet-navigator-51"
+      ],
+      "matched_recordings": [],
+      "value_at_data_point": null
+    }
+  ],
+  "next": "https://example.net/api/people?limit=4&offset=4",
+  "previous": null
+}

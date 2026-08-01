@@ -1,0 +1,206 @@
+{
+  "count": 120,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 700043,
+      "dashboard": null,
+      "insight": null,
+      "export_format": "video/mp4",
+      "created_at": "2026-01-07T15:17:23.456Z",
+      "has_content": true,
+      "export_context": {
+        "truncated": false,
+        "recording_fps": 13,
+        "playback_speed": 16.7,
+        "file_size_bytes": 2152533,
+        "video_duration_s": 47.211000000000006,
+        "inactivity_periods": [
+          {
+            "active": true,
+            "ts_to_s": 107.12400000000001,
+            "ts_from_s": 9,
+            "recording_ts_to_s": 107.12400000000001,
+            "recording_ts_from_s": 9
+          },
+          {
+            "active": false,
+            "ts_to_s": 148.20999999999998,
+            "ts_from_s": 107.12400000000001,
+            "recording_ts_to_s": 148.20999999999998,
+            "recording_ts_from_s": 107.12400000000001
+          },
+          {
+            "active": true,
+            "ts_to_s": 159.57999999999998,
+            "ts_from_s": 148.20999999999998,
+            "recording_ts_to_s": 159.57999999999998,
+            "recording_ts_from_s": 148.20999999999998
+          },
+          {
+            "active": true,
+            "ts_to_s": 171.58,
+            "ts_from_s": 159.58,
+            "recording_ts_to_s": 171.58,
+            "recording_ts_from_s": 159.58
+          }
+        ],
+        "render_fingerprint": "Example render fingerprint 0311",
+        "session_recording_id": "018f0000-0000-7000-8000-000000000001",
+        "show_metadata_footer": true
+      },
+      "filename": "Example filename 0312",
+      "expires_after": "2026-01-08T15:17:23.456Z",
+      "exception": null,
+      "user_access_level": "manager"
+    },
+    {
+      "id": 700044,
+      "dashboard": null,
+      "insight": null,
+      "export_format": "video/mp4",
+      "created_at": "2026-01-09T15:17:23.456Z",
+      "has_content": true,
+      "export_context": {
+        "truncated": true,
+        "recording_fps": 13,
+        "playback_speed": 8.7,
+        "file_size_bytes": 49761287,
+        "video_duration_s": 490.011,
+        "inactivity_periods": [
+          {
+            "active": true,
+            "ts_to_s": 2408.7,
+            "ts_from_s": 4,
+            "recording_ts_to_s": 2408.7,
+            "recording_ts_from_s": 5
+          },
+          {
+            "active": false,
+            "ts_to_s": 2415.2,
+            "ts_from_s": 2408.7,
+            "recording_ts_to_s": 2415.2,
+            "recording_ts_from_s": 2408.7
+          }
+        ],
+        "render_fingerprint": "Example render fingerprint 0313",
+        "session_recording_id": "018f0000-0000-7000-8000-000000000002",
+        "show_metadata_footer": true
+      },
+      "filename": "Example filename 0314",
+      "expires_after": "2026-01-10T15:17:23.456Z",
+      "exception": null,
+      "user_access_level": "manager"
+    },
+    {
+      "id": 700045,
+      "dashboard": null,
+      "insight": null,
+      "export_format": "video/mp4",
+      "created_at": "2026-01-11T15:17:23.456Z",
+      "has_content": false,
+      "export_context": {
+        "truncated": false,
+        "recording_fps": 13,
+        "playback_speed": 16.7,
+        "render_fingerprint": "Example render fingerprint 0315",
+        "session_recording_id": "018f0000-0000-7000-8000-000000000003",
+        "show_metadata_footer": true
+      },
+      "filename": null,
+      "expires_after": "2026-01-12T15:17:23.456Z",
+      "exception": null,
+      "user_access_level": "manager"
+    },
+    {
+      "id": 700046,
+      "dashboard": null,
+      "insight": null,
+      "export_format": "video/mp4",
+      "created_at": "2026-01-13T15:17:23.456Z",
+      "has_content": false,
+      "export_context": {
+        "truncated": false,
+        "recording_fps": 13,
+        "playback_speed": 16.7,
+        "render_fingerprint": "Example render fingerprint 0316",
+        "session_recording_id": "018f0000-0000-7000-8000-000000000004",
+        "show_metadata_footer": true
+      },
+      "filename": null,
+      "expires_after": "2026-01-14T15:17:23.456Z",
+      "exception": "Example exception 0317",
+      "user_access_level": "manager"
+    },
+    {
+      "id": 700047,
+      "dashboard": null,
+      "insight": null,
+      "export_format": "video/mp4",
+      "created_at": "2026-01-15T15:17:23.456Z",
+      "has_content": true,
+      "export_context": {
+        "truncated": false,
+        "recording_fps": 13,
+        "playback_speed": 16.7,
+        "file_size_bytes": 804243,
+        "video_duration_s": 16.811,
+        "inactivity_periods": [
+          {
+            "active": true,
+            "ts_to_s": 42.708000000000006,
+            "ts_from_s": 3,
+            "recording_ts_to_s": 42.708000000000006,
+            "recording_ts_from_s": 6
+          },
+          {
+            "active": false,
+            "ts_to_s": 49.2,
+            "ts_from_s": 42.708,
+            "recording_ts_to_s": 49.2,
+            "recording_ts_from_s": 42.708
+          }
+        ],
+        "render_fingerprint": "Example render fingerprint 0318",
+        "session_recording_id": "018f0000-0000-7000-8000-000000000005",
+        "show_metadata_footer": true
+      },
+      "filename": "Example filename 0319",
+      "expires_after": "2026-01-16T15:17:23.456Z",
+      "exception": null,
+      "user_access_level": "member"
+    },
+    {
+      "id": 700048,
+      "dashboard": null,
+      "insight": null,
+      "export_format": "video/mp4",
+      "created_at": "2026-02-27T15:10:00.000Z",
+      "has_content": true,
+      "export_context": {
+        "truncated": false,
+        "recording_fps": 13,
+        "playback_speed": 16.7,
+        "file_size_bytes": 804243,
+        "video_duration_s": 16.811,
+        "inactivity_periods": [
+          {
+            "active": true,
+            "ts_to_s": 36.4,
+            "ts_from_s": 2.4,
+            "recording_ts_to_s": 36.4,
+            "recording_ts_from_s": 2.4
+          }
+        ],
+        "render_fingerprint": "Example render fingerprint 0318",
+        "session_recording_id": "018f0000-0000-7000-8000-000000000006",
+        "show_metadata_footer": true
+      },
+      "filename": "Example catalog recording 0320",
+      "expires_after": "2026-05-28T15:10:00.000Z",
+      "exception": null,
+      "user_access_level": "member"
+    }
+  ]
+}

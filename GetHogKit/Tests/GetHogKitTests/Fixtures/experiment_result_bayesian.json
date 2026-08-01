@@ -1,0 +1,81 @@
+{
+  "kind": "ExperimentQuery",
+  "cache_key": "Example cache key 0287",
+  "is_cached": true,
+  "last_refresh": "2026-01-28T00:00:00.000Z",
+  "cache_target_age": "2026-01-28T00:00:00.000Z",
+  "next_allowed_client_refresh": "2026-01-28T00:05:00.000Z",
+  "timezone": "UTC",
+  "error": null,
+  "warnings": [],
+  "stats_version": 11,
+  "is_precomputed": true,
+  "significant": true,
+  "p_value": null,
+  "probability": {
+    "baseline": 0.17,
+    "streamlined": 0.83
+  },
+  "credible_intervals": {
+    "streamlined": [
+      0.04,
+      0.28
+    ]
+  },
+  "metric": {
+    "kind": "ExperimentMetric",
+    "uuid": "018f9000-0000-7000-8000-000000000179",
+    "metric_type": "funnel",
+    "name": "Meteor report opened",
+    "series": [
+      {
+        "kind": "EventsNode",
+        "event": "checkout_completed"
+      },
+      {
+        "kind": "EventsNode",
+        "event": "account_created"
+      },
+      {
+        "kind": "EventsNode",
+        "event": "checkout_submitted"
+      }
+    ]
+  },
+  "baseline": {
+    "key": "baseline",
+    "number_of_samples": 8427,
+    "sum": 1262.7,
+    "sum_squares": 1262.7,
+    "validation_failures": []
+  },
+  "variant_results": [
+    {
+      "key": "streamlined",
+      "method": "bayesian",
+      "number_of_samples": 8383,
+      "sum": 1496.7,
+      "sum_squares": 1496.7,
+      "step_counts": [
+        8383,
+        1503
+      ],
+      "chance_to_win": 0.83,
+      "credible_interval": [
+        0.04,
+        0.28
+      ],
+      "significant": true,
+      "validation_failures": []
+    },
+    {
+      "key": "synthetic-observer-7201",
+      "method": "bayesian",
+      "number_of_samples": 1,
+      "sum": 0,
+      "sum_squares": 0,
+      "significant": false,
+      "validation_failures": []
+    }
+  ]
+}

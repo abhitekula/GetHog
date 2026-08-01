@@ -1,0 +1,84 @@
+{
+  "count": 15,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000313",
+      "content": "Example Company reviewed a fictional activation signal and recorded the follow-up.",
+      "rich_content": null,
+      "author_type": "customer",
+      "author_name": "Alex Example",
+      "is_private": false,
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000377",
+      "content": "Example Company reviewed a fictional activation signal and recorded the follow-up.",
+      "rich_content": null,
+      "author_type": "support",
+      "author_name": "Alex Example",
+      "is_private": true,
+      "created_at": "2026-01-10T00:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000480",
+      "content": "Example Company reviewed a fictional activation signal and recorded the follow-up.",
+      "rich_content": null,
+      "author_type": "AI",
+      "author_name": "Alex Example",
+      "is_private": false,
+      "created_at": "2026-01-19T00:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000333",
+      "content": "",
+      "rich_content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "image",
+            "attrs": {
+              "src": "https://app.example.com/assets/example-5629.png"
+            }
+          },
+          {
+            "type": "image",
+            "attrs": {
+              "src": "https://app.example.com/audit-7001"
+            }
+          }
+        ]
+      },
+      "author_type": "customer",
+      "author_name": "Alex Example",
+      "is_private": false,
+      "created_at": "2026-01-28T00:00:00.000Z"
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000004",
+      "content": "",
+      "rich_content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "image",
+            "attrs": {
+              "src": "https://app.example.com/assets/example-5629.png"
+            }
+          },
+          {
+            "type": "image",
+            "attrs": {
+              "src": "https://app.example.com/audit-7001"
+            }
+          }
+        ]
+      },
+      "author_type": "customer",
+      "author_name": "Alex Example",
+      "is_private": false,
+      "created_at": "2026-01-28T00:00:00.000Z"
+    }
+  ]
+}

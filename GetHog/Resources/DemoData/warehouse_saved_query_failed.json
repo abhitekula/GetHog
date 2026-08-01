@@ -1,0 +1,56 @@
+{
+  "id": "018f9000-0000-7000-8000-000000000400",
+  "deleted": false,
+  "name": "example_meteor_delivery_failures",
+  "created_by": {
+    "first_name": "Alex Example",
+    "email": "alex+0156@example.com"
+  },
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+  "sync_frequency": "6hour",
+  "sync_frequency_managed_by_dag": false,
+  "columns": [
+    {
+      "key": "Example key 1423",
+      "name": "Example App metric 1424",
+      "type": "date",
+      "schema_valid": true
+    },
+    {
+      "key": "Example key 1425",
+      "name": "Example App metric 1426",
+      "type": "string",
+      "schema_valid": true
+    },
+    {
+      "key": "Example key 1427",
+      "name": "Example App metric 1428",
+      "type": "integer",
+      "schema_valid": true
+    }
+  ],
+  "status": "Failed",
+  "last_run_at": "2026-01-14T12:00:00.000Z",
+  "managed_viewset_kind": null,
+  "folder_id": null,
+  "folder_name": "Example folder name 1429",
+  "latest_error": "The synthetic request was rejected for deterministic error coverage.",
+  "is_materialized": true,
+  "origin": "Example origin 1431",
+  "is_test": false,
+  "expires_at": null,
+  "user_access_level": "editor",
+  "query": {
+    "kind": "HogQLQuery",
+    "query": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+  },
+  "latest_history_id": 700079,
+  "suspended": {
+    "clickhouse": {
+      "at": "2026-01-28T00:00:00.000Z",
+      "reason": "The synthetic request was rejected for deterministic error coverage.",
+      "job_id": "018f9000-0000-7000-8000-000000000506"
+    }
+  }
+}

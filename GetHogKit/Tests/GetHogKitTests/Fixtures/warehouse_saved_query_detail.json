@@ -1,0 +1,61 @@
+{
+  "deleted": false,
+  "sync_frequency_managed_by_dag": false,
+  "managed_viewset_kind": null,
+  "folder_id": null,
+  "is_test": false,
+  "expires_at": null,
+  "origin": "fictional_demo",
+  "id": "018f9000-0000-7000-8000-000000000362",
+  "name": "stalled_hourly_accounts",
+  "created_by": {
+    "first_name": "Analyst Three",
+    "email": "analyst-03@example.org"
+  },
+  "created_at": "2026-01-12T13:10:00.000Z",
+  "description": "Counts active fictional workspaces for each demo hour.",
+  "sync_frequency": "6hour",
+  "columns": [
+    {
+      "key": "activity_day",
+      "name": "Activity day",
+      "type": "date",
+      "schema_valid": true
+    },
+    {
+      "key": "workspace_total",
+      "name": "Workspace total",
+      "type": "integer",
+      "schema_valid": true
+    },
+    {
+      "key": "region_code",
+      "name": "Region code",
+      "type": "string",
+      "schema_valid": true
+    }
+  ],
+  "status": "Failed",
+  "last_run_at": "2026-01-23T10:42:00.000Z",
+  "folder_name": "Operations lab",
+  "latest_error": "Fictional worker exceeded its 384 MiB memory budget.",
+  "is_materialized": true,
+  "user_access_level": "editor",
+  "query": {
+    "kind": "HogQLQuery",
+    "query": "SELECT toDate(timestamp) AS activity_day, count(DISTINCT person_id) AS workspace_total, properties.region AS region_code FROM events WHERE event = 'workspace_active_demo' GROUP BY activity_day, region_code"
+  },
+  "latest_history_id": 73508,
+  "suspended": {
+    "primary": {
+      "at": "2026-01-23T10:43:00.000Z",
+      "reason": "Fictional worker exceeded its 384 MiB memory budget.",
+      "job_id": "018f9000-0000-7000-8000-000000000453"
+    },
+    "archive": {
+      "at": "2026-01-20T07:10:00.000Z",
+      "reason": "",
+      "job_id": "018f9000-0000-7000-8000-000000000340"
+    }
+  }
+}

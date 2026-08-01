@@ -1,0 +1,177 @@
+{
+  "count": 4,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 48017,
+      "name": "Example observatory test crew",
+      "description": "Synthetic staff and test accounts used to validate the Example App.",
+      "groups": [],
+      "deleted": false,
+      "filters": {
+        "properties": {
+          "type": "OR",
+          "values": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "$example_review_user",
+                  "type": "person",
+                  "value": false,
+                  "bytecode": [
+                    "fixture-r3-a",
+                    31001,
+                    31002,
+                    "example-review",
+                    31004,
+                    31005,
+                    "fixture-r3-b",
+                    31007,
+                    31008,
+                    "false",
+                    31010,
+                    31011,
+                    31012,
+                    31013
+                  ],
+                  "negation": false,
+                  "operator": "exact",
+                  "conditionHash": "r3condition000001"
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "contact_email",
+                  "type": "person",
+                  "value": "@example.com",
+                  "bytecode": [
+                    "fixture-r3-c",
+                    31101,
+                    31102,
+                    "%@example.com%",
+                    31104,
+                    "fixture-r3-d",
+                    31106,
+                    "fixture-r3-e",
+                    31108,
+                    "fixture-r3-f",
+                    31110,
+                    31111,
+                    31112,
+                    "fixture-r3-g",
+                    31114,
+                    31115,
+                    31116
+                  ],
+                  "negation": false,
+                  "operator": "icontains",
+                  "conditionHash": "r3condition000002"
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "account_tier",
+                  "type": "person",
+                  "value": "demo-plan",
+                  "bytecode": [
+                    "fixture-r3-h",
+                    31201,
+                    31202,
+                    "demo-plan",
+                    31204,
+                    "fixture-r3-i",
+                    31206,
+                    "fixture-r3-j",
+                    31208,
+                    31209,
+                    31210,
+                    "fixture-r3-k",
+                    31212,
+                    31213,
+                    31214
+                  ],
+                  "negation": false,
+                  "operator": "exact",
+                  "conditionHash": "r3condition000003"
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "onboarding_stage",
+                  "type": "person",
+                  "value": "guided-example",
+                  "bytecode": [
+                    "fixture-r3-l",
+                    31301,
+                    31302,
+                    "guided-example",
+                    31304,
+                    "fixture-r3-m",
+                    31306,
+                    31307,
+                    31308,
+                    31309,
+                    31310,
+                    31311
+                  ],
+                  "negation": false,
+                  "operator": "exact",
+                  "conditionHash": "r3condition000004"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "query": null,
+      "version": 8,
+      "pending_version": 8,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-01-18T14:00:00.000Z",
+      "last_calculation": "2026-01-12T11:45:00.000Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 2,
+      "last_error_message": "Synthetic retry recorded while refreshing the example cohort.",
+      "count": 27,
+      "is_static": false,
+      "cohort_type": "realtime",
+      "condition_type": null,
+      "experiment_set": []
+    },
+    {
+      "id": 48029,
+      "name": "Example archived orbit reviewers",
+      "description": "Fictional static membership used to demonstrate a second cohort row.",
+      "groups": [],
+      "deleted": false,
+      "filters": null,
+      "query": null,
+      "version": 3,
+      "pending_version": 3,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-02-02T12:00:00.000Z",
+      "last_calculation": "2026-02-03T08:30:00.000Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 0,
+      "last_error_message": null,
+      "count": 14,
+      "is_static": true,
+      "cohort_type": "static",
+      "condition_type": null,
+      "experiment_set": []
+    }
+  ]
+}

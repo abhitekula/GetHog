@@ -1,0 +1,83 @@
+{
+  "count": 11,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f2000-0000-7000-8000-000000000501",
+      "feature_flag": {
+        "id": 710301,
+        "team_id": 1001,
+        "name": "",
+        "key": "example-navigation",
+        "filters": {},
+        "deleted": false,
+        "active": true,
+        "ensure_experience_continuity": false,
+        "version": 80
+      },
+      "name": "Example navigation preview",
+      "description": "Lets fictional users preview Example App navigation",
+      "stage": "beta",
+      "documentation_url": "https://app.example.com/docs/example-navigation",
+      "payload": {},
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "created_by": {
+        "id": 700001,
+        "uuid": "018f0000-0000-7000-8000-000000000101",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "sample.analyst@example.com"
+      }
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000502",
+      "feature_flag": null,
+      "name": "Example search concept",
+      "description": "",
+      "stage": "concept",
+      "documentation_url": "",
+      "payload": {},
+      "created_at": "2026-01-16T12:00:00.000Z",
+      "created_by": null
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000503",
+      "feature_flag": {
+        "id": 710303,
+        "team_id": 1001,
+        "name": "",
+        "key": "example-search-constellations",
+        "filters": {},
+        "deleted": false,
+        "active": false
+      },
+      "name": "Example constellation search",
+      "description": "Makes fictional Example App searches return sooner",
+      "stage": "general-availability",
+      "documentation_url": null,
+      "payload": {},
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "created_by": null
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000003",
+      "feature_flag": {
+        "id": 710303,
+        "team_id": 1001,
+        "name": "",
+        "key": "example-search-constellations",
+        "filters": {},
+        "deleted": false,
+        "active": false
+      },
+      "name": "Example constellation search preview",
+      "description": "Makes fictional Example App searches return sooner",
+      "stage": "general-availability",
+      "documentation_url": null,
+      "payload": {},
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "created_by": null
+    }
+  ]
+}

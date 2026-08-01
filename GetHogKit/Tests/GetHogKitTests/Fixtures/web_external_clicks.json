@@ -1,0 +1,53 @@
+{
+  "columns": [
+    "context.columns.url",
+    "context.columns.visitors",
+    "context.columns.clicks"
+  ],
+  "results": [
+    [
+      "https://example.com/docs",
+      [
+        28,
+        21
+      ],
+      [
+        42,
+        31
+      ]
+    ],
+    [
+      "https://example.net/status",
+      [
+        17,
+        14
+      ],
+      [
+        29,
+        23
+      ]
+    ],
+    [
+      "https://example.org/changelog",
+      [
+        9,
+        7
+      ],
+      [
+        15,
+        11
+      ]
+    ],
+    [
+      "https://maps.example/launchpad",
+      [
+        4,
+        3
+      ],
+      [
+        6,
+        5
+      ]
+    ]
+  ]
+}

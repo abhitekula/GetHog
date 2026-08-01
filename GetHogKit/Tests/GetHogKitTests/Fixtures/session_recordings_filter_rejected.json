@@ -1,0 +1,6 @@
+{
+  "type": "validation_error",
+  "code": "extra_forbidden",
+  "detail": "The fictional rage_click filter key is extra_forbidden for session recordings.",
+  "attr": null
+}

@@ -1,0 +1,169 @@
+{
+  "columns": [
+    "person",
+    "id",
+    "person.$delete",
+    "event_distinct_ids"
+  ],
+  "types": [
+    "UUID",
+    "UUID",
+    "UInt8",
+    "Array(String)"
+  ],
+  "hasMore": true,
+  "limit": 17,
+  "offset": 7,
+  "missing_actors_count": 11,
+  "results": [
+    [
+      {
+        "id": "018f9000-0000-7000-8000-000000000114",
+        "created_at": "2026-01-11T19:12:00.000Z",
+        "last_seen_at": "2026-01-22T14:24:00.000Z",
+        "distinct_ids": [
+          "018f9000-0000-7000-8000-000000000383",
+          "Example distinct ids 0482",
+          "alex+0040@example.com",
+          "018f9000-0000-7000-8000-000000000252",
+          "018f9a00-0000-7000-8000-000000000010"
+        ],
+        "is_identified": true,
+        "properties": {
+          "synthetic_trait_28": "synthetic-value-28",
+          "name": "Example App metric 483",
+          "email": "alex+0041@example.com",
+          "$browser": "Example browser 0485",
+          "$device_type": "Example device type 0486",
+          "$host": "app.example.com",
+          "$current_url": "https://app.example.com/demo/example-8121",
+          "$geoip_city_name": "Example geoip city name 0487",
+          "$geoip_country_code": "Example geoip country code 0488",
+          "$geoip_country_name": "Example geoip country name 0489",
+          "$initial_referring_domain": "app.example.com",
+          "utm_source": null,
+          "synthetic_note_28": "Synthetic note 28"
+        }
+      },
+      "018f9000-0000-7000-8000-000000000114",
+      700001,
+      [
+        "018f9000-0000-7000-8000-000000000383",
+        "Example results 0490"
+      ]
+    ],
+    [
+      {
+        "id": "018f9000-0000-7000-8000-000000000385",
+        "distinct_ids": [
+          "018f9000-0000-7000-8000-000000000251",
+          "018f9a00-0000-7000-8000-000000000010"
+        ],
+        "is_unresolved": true
+      },
+      "018f9000-0000-7000-8000-000000000385",
+      700001,
+      [
+        "018f9000-0000-7000-8000-000000000251"
+      ]
+    ],
+    [
+      {
+        "id": "018f9000-0000-7000-8000-000000000146",
+        "created_at": "2026-01-06T09:36:00.000Z",
+        "last_seen_at": "2026-01-28T00:00:00.000Z",
+        "distinct_ids": [
+          "Example distinct ids 0491",
+          "synthetic-distinct-added-777"
+        ],
+        "is_identified": true,
+        "properties": {
+          "synthetic_trait_29": "synthetic-value-29",
+          "name": "Example App metric 492",
+          "email": "alex+0042@example.com",
+          "$browser": "Example browser 0494",
+          "$device_type": "Example device type 0495",
+          "$host": "app.example.com",
+          "$geoip_city_name": "Example geoip city name 0496",
+          "$geoip_country_code": "Example geoip country code 0497",
+          "$geoip_country_name": "Example geoip country name 0498",
+          "synthetic_note_29": "Synthetic note 29"
+        }
+      },
+      "018f9000-0000-7000-8000-000000000146",
+      700001,
+      [
+        "Example results 0499"
+      ]
+    ],
+    [
+      {
+        "id": "018f9000-0000-7000-8000-000000000471",
+        "distinct_ids": [
+          "018f9000-0000-7000-8000-000000000052",
+          "018f9a00-0000-7000-8000-000000000010"
+        ],
+        "is_unresolved": true
+      },
+      "018f9000-0000-7000-8000-000000000471",
+      700001,
+      [
+        "018f9000-0000-7000-8000-000000000052"
+      ]
+    ],
+    [
+      {
+        "id": "018f9000-0000-7000-8000-000000000266",
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "last_seen_at": "2026-01-17T04:48:00.000Z",
+        "distinct_ids": [
+          "Example distinct ids 0500",
+          "alex+0043@example.com",
+          "synthetic-contact-777@example.com"
+        ],
+        "is_identified": false,
+        "properties": {
+          "synthetic_trait_30": "synthetic-value-30",
+          "email": "alex+0044@example.com",
+          "$browser": "Example browser 0502",
+          "$device_type": "Example device type 0486",
+          "$geoip_country_code": "Example geoip country code 0503",
+          "$geoip_country_name": "Example geoip country name 0504",
+          "synthetic_note_30": "Synthetic note 30"
+        }
+      },
+      "018f9000-0000-7000-8000-000000000266",
+      700001,
+      [
+        "Example results 0505"
+      ]
+    ],
+    [
+      {
+        "id": "018f9000-0000-7000-8000-000000000266",
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "last_seen_at": "2026-01-17T04:48:00.000Z",
+        "distinct_ids": [
+          "Example distinct ids 0500",
+          "alex+0043@example.com",
+          "synthetic-contact-777@example.com"
+        ],
+        "is_identified": false,
+        "properties": {
+          "synthetic_trait_30": "synthetic-value-30",
+          "email": "alex+0044@example.com",
+          "$browser": "Example browser 0502",
+          "$device_type": "Example device type 0486",
+          "$geoip_country_code": "Example geoip country code 0503",
+          "$geoip_country_name": "Example geoip country name 0504",
+          "synthetic_note_30": "Synthetic note 30"
+        }
+      },
+      "018f9000-0000-7000-8000-000000000266",
+      700001,
+      [
+        "Example results 0505"
+      ]
+    ]
+  ]
+}

@@ -1,0 +1,2888 @@
+{
+  "id": 725101,
+  "name": "Example App metric 33",
+  "description": "",
+  "pinned": true,
+  "created_at": "2026-01-02T00:17:23.456Z",
+  "created_by": null,
+  "last_accessed_at": "2026-01-03T00:17:23.456Z",
+  "last_viewed_at": "2026-01-04T00:17:23.456Z",
+  "folder": "Example folder 0034",
+  "is_shared": false,
+  "deleted": false,
+  "creation_mode": "default",
+  "filters": {},
+  "variables": {
+    "synthetic_trait_471": "synthetic-value-471",
+    "synthetic_note_471": "Synthetic note 471"
+  },
+  "breakdown_colors": [],
+  "data_color_theme_id": null,
+  "restriction_level": 49,
+  "effective_restriction_level": 49,
+  "effective_privilege_level": 81,
+  "user_access_level": "manager",
+  "access_control_version": "v2",
+  "last_refresh": "2026-01-05T00:17:23.456Z",
+  "persisted_filters": null,
+  "persisted_variables": null,
+  "team_id": 1001,
+  "quick_filter_ids": [],
+  "tiles": [
+    {
+      "id": 700009,
+      "insight": {
+        "id": 700010,
+        "short_id": "synthetic-id-0007",
+        "name": "Example daily engagement",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "TrendsQuery",
+            "series": [
+              {
+                "kind": "EventsNode",
+                "math": "dau",
+                "name": "Synthetic name 44",
+                "event": "feature_used"
+              }
+            ],
+            "version": 4,
+            "interval": "day",
+            "dateRange": {
+              "date_from": "-20d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "trendsFilter": {
+              "display": "ActionsLineGraph",
+              "showLegend": false,
+              "yAxisScaleType": "linear",
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "showPercentStackView": false,
+              "aggregationAxisFormat": "numeric",
+              "showAlertThresholdLines": false
+            },
+            "breakdownFilter": {
+              "breakdown_type": "event"
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 700009,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77100,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-07T00:17:23.456Z",
+        "cache_target_age": "2026-01-08T00:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-09T00:17:23.456Z",
+        "result": [
+          {
+            "data": [
+              27,
+              45,
+              57,
+              43,
+              51,
+              109,
+              63,
+              43,
+              65,
+              71,
+              41,
+              39,
+              45,
+              37,
+              25,
+              43,
+              37,
+              33,
+              45,
+              43,
+              37,
+              67,
+              101,
+              101,
+              81,
+              37,
+              41,
+              39,
+              33,
+              45,
+              55
+            ],
+            "labels": [
+              "2026-01-10T00:17:23.456Z",
+              "2026-01-11T00:17:23.456Z",
+              "2026-01-12T00:17:23.456Z",
+              "2026-01-13T00:17:23.456Z",
+              "2026-01-14T00:17:23.456Z",
+              "2026-01-15T00:17:23.456Z",
+              "2026-01-16T00:17:23.456Z",
+              "2026-01-17T00:17:23.456Z",
+              "2026-01-18T00:17:23.456Z",
+              "2026-01-19T00:17:23.456Z",
+              "2026-01-20T00:17:23.456Z",
+              "2026-01-21T00:17:23.456Z",
+              "2026-01-22T00:17:23.456Z",
+              "2026-01-23T00:17:23.456Z",
+              "2026-01-24T00:17:23.456Z",
+              "2026-01-25T00:17:23.456Z",
+              "2026-01-26T00:17:23.456Z",
+              "2026-01-27T00:17:23.456Z",
+              "2026-01-28T00:17:23.456Z",
+              "2026-01-01T01:17:23.456Z",
+              "2026-01-02T01:17:23.456Z",
+              "2026-01-03T01:17:23.456Z",
+              "2026-01-04T01:17:23.456Z",
+              "2026-01-05T01:17:23.456Z",
+              "2026-01-06T01:17:23.456Z",
+              "2026-01-07T01:17:23.456Z",
+              "2026-01-08T01:17:23.456Z",
+              "2026-01-09T01:17:23.456Z",
+              "2026-01-10T01:17:23.456Z",
+              "2026-01-11T01:17:23.456Z",
+              "2026-01-12T01:17:23.456Z"
+            ],
+            "days": [
+              "2026-01-13T01:17:23.456Z",
+              "2026-01-14T01:17:23.456Z",
+              "2026-01-15T01:17:23.456Z",
+              "2026-01-16T01:17:23.456Z",
+              "2026-01-17T01:17:23.456Z",
+              "2026-01-18T01:17:23.456Z",
+              "2026-01-19T01:17:23.456Z",
+              "2026-01-20T01:17:23.456Z",
+              "2026-01-21T01:17:23.456Z",
+              "2026-01-22T01:17:23.456Z",
+              "2026-01-23T01:17:23.456Z",
+              "2026-01-24T01:17:23.456Z",
+              "2026-01-25T01:17:23.456Z",
+              "2026-01-26T01:17:23.456Z",
+              "2026-01-27T01:17:23.456Z",
+              "2026-01-28T01:17:23.456Z",
+              "2026-01-01T02:17:23.456Z",
+              "2026-01-02T02:17:23.456Z",
+              "2026-01-03T02:17:23.456Z",
+              "2026-01-04T02:17:23.456Z",
+              "2026-01-05T02:17:23.456Z",
+              "2026-01-06T02:17:23.456Z",
+              "2026-01-07T02:17:23.456Z",
+              "2026-01-08T02:17:23.456Z",
+              "2026-01-09T02:17:23.456Z",
+              "2026-01-10T02:17:23.456Z",
+              "2026-01-11T02:17:23.456Z",
+              "2026-01-12T02:17:23.456Z",
+              "2026-01-13T02:17:23.456Z",
+              "2026-01-14T02:17:23.456Z",
+              "2026-01-15T02:17:23.456Z"
+            ],
+            "count": 1382.7,
+            "label": "account_created",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-16T02:17:23.456Z",
+              "date_from": "2026-01-17T02:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsLineGraph",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-18T02:17:23.456Z",
+                "2026-01-19T02:17:23.456Z",
+                "2026-01-20T02:17:23.456Z",
+                "2026-01-21T02:17:23.456Z",
+                "2026-01-22T02:17:23.456Z",
+                "2026-01-23T02:17:23.456Z",
+                "2026-01-24T02:17:23.456Z",
+                "2026-01-25T02:17:23.456Z",
+                "2026-01-26T02:17:23.456Z",
+                "2026-01-27T02:17:23.456Z",
+                "2026-01-28T02:17:23.456Z",
+                "2026-01-01T03:17:23.456Z",
+                "2026-01-02T03:17:23.456Z",
+                "2026-01-03T03:17:23.456Z",
+                "2026-01-04T03:17:23.456Z",
+                "2026-01-05T03:17:23.456Z",
+                "2026-01-06T03:17:23.456Z",
+                "2026-01-07T03:17:23.456Z",
+                "2026-01-08T03:17:23.456Z",
+                "2026-01-09T03:17:23.456Z",
+                "2026-01-10T03:17:23.456Z",
+                "2026-01-11T03:17:23.456Z",
+                "2026-01-12T03:17:23.456Z",
+                "2026-01-13T03:17:23.456Z",
+                "2026-01-14T03:17:23.456Z",
+                "2026-01-15T03:17:23.456Z",
+                "2026-01-16T03:17:23.456Z",
+                "2026-01-17T03:17:23.456Z",
+                "2026-01-18T03:17:23.456Z",
+                "2026-01-19T03:17:23.456Z",
+                "2026-01-20T03:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 258,
+              "name": "Synthetic name 229",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_265": "synthetic-value-265",
+                "synthetic_note_265": "Synthetic note 265"
+              }
+            },
+            "order": 354
+          }
+        ],
+        "hasMore": false,
+        "columns": null,
+        "created_at": "2026-01-21T03:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-22T03:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-23T03:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-24T03:17:23.456Z",
+          "date_to": "2026-01-25T03:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0009"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 425,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 461,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#1d4ed8",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 476,
+      "last_refresh": "2026-01-26T03:17:23.456Z",
+      "is_cached": true
+    },
+    {
+      "id": 700011,
+      "insight": {
+        "id": 700012,
+        "short_id": "synthetic-id-0010",
+        "name": "Example App metric 42",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "TrendsQuery",
+            "series": [
+              {
+                "kind": "EventsNode",
+                "math": "dau",
+                "name": "Synthetic name 45",
+                "event": "feature_used"
+              }
+            ],
+            "version": 4,
+            "interval": "week",
+            "dateRange": {
+              "date_from": "-21d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "trendsFilter": {
+              "display": "ActionsLineGraph",
+              "showLegend": false,
+              "yAxisScaleType": "linear",
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "showPercentStackView": false,
+              "aggregationAxisFormat": "numeric",
+              "showAlertThresholdLines": false
+            },
+            "breakdownFilter": {
+              "breakdown_type": "event"
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 700011,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77101,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-28T03:17:23.456Z",
+        "cache_target_age": "2026-01-01T04:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-02T04:17:23.456Z",
+        "result": [
+          {
+            "data": [
+              19,
+              45,
+              157,
+              469,
+              339,
+              329,
+              203,
+              165,
+              503,
+              317,
+              251,
+              193,
+              407,
+              97
+            ],
+            "labels": [
+              "Example labels 0043",
+              "Example labels 0044",
+              "Example labels 0045",
+              "Example labels 0046",
+              "Example labels 0047",
+              "Example labels 0048",
+              "Example labels 0049",
+              "Example labels 0050",
+              "Example labels 0051",
+              "Example labels 0052",
+              "Example labels 0053",
+              "Example labels 0054",
+              "Example labels 0055",
+              "Example labels 0056"
+            ],
+            "days": [
+              "2026-01-03T04:17:23.456Z",
+              "2026-01-04T04:17:23.456Z",
+              "2026-01-05T04:17:23.456Z",
+              "2026-01-06T04:17:23.456Z",
+              "2026-01-07T04:17:23.456Z",
+              "2026-01-08T04:17:23.456Z",
+              "2026-01-09T04:17:23.456Z",
+              "2026-01-10T04:17:23.456Z",
+              "2026-01-11T04:17:23.456Z",
+              "2026-01-12T04:17:23.456Z",
+              "2026-01-13T04:17:23.456Z",
+              "2026-01-14T04:17:23.456Z",
+              "2026-01-15T04:17:23.456Z",
+              "2026-01-16T04:17:23.456Z"
+            ],
+            "count": 3396.7,
+            "label": "account_created",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-17T04:17:23.456Z",
+              "date_from": "2026-01-18T04:17:23.456Z",
+              "entity_type": "events",
+              "interval": "week",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsLineGraph",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-19T04:17:23.456Z",
+                "2026-01-20T04:17:23.456Z",
+                "2026-01-21T04:17:23.456Z",
+                "2026-01-22T04:17:23.456Z",
+                "2026-01-23T04:17:23.456Z",
+                "2026-01-24T04:17:23.456Z",
+                "2026-01-25T04:17:23.456Z",
+                "2026-01-26T04:17:23.456Z",
+                "2026-01-27T04:17:23.456Z",
+                "2026-01-28T04:17:23.456Z",
+                "2026-01-01T05:17:23.456Z",
+                "2026-01-02T05:17:23.456Z",
+                "2026-01-03T05:17:23.456Z",
+                "2026-01-04T05:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 259,
+              "name": "Synthetic name 230",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_266": "synthetic-value-266",
+                "synthetic_note_266": "Synthetic note 266"
+              }
+            },
+            "order": 355
+          }
+        ],
+        "hasMore": false,
+        "columns": null,
+        "created_at": "2026-01-05T05:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-06T05:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-07T05:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-08T05:17:23.456Z",
+          "date_to": "2026-01-09T05:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0011"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 0,
+          "y": 426,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 467,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#047857",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 478,
+      "last_refresh": "2026-01-10T05:17:23.456Z",
+      "is_cached": true
+    },
+    {
+      "id": 700013,
+      "insight": {
+        "id": 700014,
+        "short_id": "synthetic-id-0012",
+        "name": "Example App metric 58",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "LifecycleQuery",
+            "series": [
+              {
+                "kind": "EventsNode",
+                "name": "Synthetic name 46",
+                "event": "feature_used"
+              }
+            ],
+            "version": 2,
+            "interval": "week",
+            "dateRange": {
+              "date_from": "-22d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "lifecycleFilter": {
+              "showLegend": false
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 700013,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77102,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-12T05:17:23.456Z",
+        "cache_target_age": "2026-01-13T05:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-14T05:17:23.456Z",
+        "result": [
+          {
+            "action": {
+              "id": "synthetic-id-0008",
+              "name": "Synthetic name 231",
+              "type": "events",
+              "order": 260,
+              "math": "total"
+            },
+            "data": [
+              6.7,
+              10.7,
+              6.7,
+              6.7,
+              8.7
+            ],
+            "count": 36.7,
+            "labels": [
+              "Example labels 0052",
+              "Example labels 0053",
+              "Example labels 0054",
+              "Example labels 0055",
+              "Example labels 0056"
+            ],
+            "days": [
+              "2026-01-15T05:17:23.456Z",
+              "2026-01-16T05:17:23.456Z",
+              "2026-01-17T05:17:23.456Z",
+              "2026-01-18T05:17:23.456Z",
+              "2026-01-19T05:17:23.456Z"
+            ],
+            "label": "Example App segment 59",
+            "status": "new"
+          },
+          {
+            "action": {
+              "id": "synthetic-id-0008",
+              "name": "Synthetic name 232",
+              "type": "events",
+              "order": 261,
+              "math": "total"
+            },
+            "data": [
+              12.7,
+              14.7,
+              12.7,
+              6.7,
+              8.7
+            ],
+            "count": 52.7,
+            "labels": [
+              "Example labels 0052",
+              "Example labels 0053",
+              "Example labels 0054",
+              "Example labels 0055",
+              "Example labels 0056"
+            ],
+            "days": [
+              "2026-01-20T05:17:23.456Z",
+              "2026-01-21T05:17:23.456Z",
+              "2026-01-22T05:17:23.456Z",
+              "2026-01-23T05:17:23.456Z",
+              "2026-01-24T05:17:23.456Z"
+            ],
+            "label": "Example App segment 60",
+            "status": "returning"
+          },
+          {
+            "action": {
+              "id": "synthetic-id-0008",
+              "name": "Synthetic name 233",
+              "type": "events",
+              "order": 262,
+              "math": "total"
+            },
+            "data": [
+              0.811,
+              4.7,
+              4.7,
+              0.811,
+              4.7
+            ],
+            "count": 16.7,
+            "labels": [
+              "Example labels 0052",
+              "Example labels 0053",
+              "Example labels 0054",
+              "Example labels 0055",
+              "Example labels 0056"
+            ],
+            "days": [
+              "2026-01-25T05:17:23.456Z",
+              "2026-01-26T05:17:23.456Z",
+              "2026-01-27T05:17:23.456Z",
+              "2026-01-28T05:17:23.456Z",
+              "2026-01-01T06:17:23.456Z"
+            ],
+            "label": "Example App segment 61",
+            "status": "resurrecting"
+          },
+          {
+            "action": {
+              "id": "synthetic-id-0008",
+              "name": "Synthetic name 234",
+              "type": "events",
+              "order": 263,
+              "math": "total"
+            },
+            "data": [
+              -8.7,
+              -6.7,
+              -16.7,
+              -16.7,
+              -6.7
+            ],
+            "count": -52.7,
+            "labels": [
+              "Example labels 0052",
+              "Example labels 0053",
+              "Example labels 0054",
+              "Example labels 0055",
+              "Example labels 0056"
+            ],
+            "days": [
+              "2026-01-02T06:17:23.456Z",
+              "2026-01-03T06:17:23.456Z",
+              "2026-01-04T06:17:23.456Z",
+              "2026-01-05T06:17:23.456Z",
+              "2026-01-06T06:17:23.456Z"
+            ],
+            "label": "Example App segment 62",
+            "status": "dormant"
+          }
+        ],
+        "hasMore": null,
+        "columns": null,
+        "created_at": "2026-01-07T06:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-08T06:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-09T06:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-10T06:17:23.456Z",
+          "date_to": "2026-01-11T06:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0013"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 432,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 478,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#7c3aed",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 480,
+      "last_refresh": "2026-01-12T06:17:23.456Z",
+      "is_cached": true
+    },
+    {
+      "id": 700015,
+      "insight": {
+        "id": 700016,
+        "short_id": "synthetic-id-0014",
+        "name": "Example App metric 64",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "RetentionQuery",
+            "version": 2,
+            "dateRange": {
+              "date_from": "-26d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "retentionFilter": {
+              "period": "Example period 0065",
+              "targetEntity": {
+                "id": "synthetic-id-0008",
+                "type": "events"
+              },
+              "retentionType": "Example retentiontype 0066",
+              "totalIntervals": 29,
+              "returningEntity": {
+                "id": "synthetic-id-0008",
+                "type": "events"
+              }
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 700015,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77103,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-14T06:17:23.456Z",
+        "cache_target_age": "2026-01-15T06:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-16T06:17:23.456Z",
+        "result": [
+          {
+            "breakdown_value": null,
+            "date": "2026-01-17T06:17:23.456Z",
+            "label": "Example App segment 67",
+            "values": [
+              {
+                "aggregation_value": null,
+                "count": 372.7,
+                "label": "Example App segment 67"
+              },
+              {
+                "aggregation_value": null,
+                "count": 4.7,
+                "label": "Example App segment 68"
+              },
+              {
+                "aggregation_value": null,
+                "count": 462,
+                "label": "Example App segment 69"
+              },
+              {
+                "aggregation_value": null,
+                "count": 463,
+                "label": "Example App segment 70"
+              },
+              {
+                "aggregation_value": null,
+                "count": 464,
+                "label": "Example App segment 71"
+              },
+              {
+                "aggregation_value": null,
+                "count": 465,
+                "label": "Example App segment 72"
+              },
+              {
+                "aggregation_value": null,
+                "count": 466,
+                "label": "Example App segment 73"
+              },
+              {
+                "aggregation_value": null,
+                "count": 467,
+                "label": "Example App segment 74"
+              },
+              {
+                "aggregation_value": null,
+                "count": 468,
+                "label": "Example App segment 75"
+              },
+              {
+                "aggregation_value": null,
+                "count": 469,
+                "label": "Example App segment 76"
+              },
+              {
+                "aggregation_value": null,
+                "count": 470,
+                "label": "Example App segment 77"
+              }
+            ]
+          },
+          {
+            "breakdown_value": null,
+            "date": "2026-01-18T06:17:23.456Z",
+            "label": "Example App segment 68",
+            "values": [
+              {
+                "aggregation_value": null,
+                "count": 72.7,
+                "label": "Example App segment 67"
+              },
+              {
+                "aggregation_value": null,
+                "count": 472,
+                "label": "Example App segment 68"
+              },
+              {
+                "aggregation_value": null,
+                "count": 473,
+                "label": "Example App segment 69"
+              },
+              {
+                "aggregation_value": null,
+                "count": 474,
+                "label": "Example App segment 70"
+              },
+              {
+                "aggregation_value": null,
+                "count": 475,
+                "label": "Example App segment 71"
+              },
+              {
+                "aggregation_value": null,
+                "count": 476,
+                "label": "Example App segment 72"
+              },
+              {
+                "aggregation_value": null,
+                "count": 477,
+                "label": "Example App segment 73"
+              },
+              {
+                "aggregation_value": null,
+                "count": 478,
+                "label": "Example App segment 74"
+              },
+              {
+                "aggregation_value": null,
+                "count": 479,
+                "label": "Example App segment 75"
+              },
+              {
+                "aggregation_value": null,
+                "count": 480,
+                "label": "Example App segment 76"
+              },
+              {
+                "aggregation_value": null,
+                "count": 481,
+                "label": "Example App segment 77"
+              }
+            ]
+          }
+        ],
+        "hasMore": null,
+        "columns": null,
+        "created_at": "2026-01-19T06:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-20T06:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-21T06:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-22T06:17:23.456Z",
+          "date_to": "2026-01-23T06:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0015"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 0,
+          "y": 433,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 474,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#be123c",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 482,
+      "last_refresh": "2026-01-24T06:17:23.456Z",
+      "is_cached": true
+    },
+    {
+      "id": 700017,
+      "insight": {
+        "id": 700018,
+        "short_id": "synthetic-id-0016",
+        "name": "Example App metric 79",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "TrendsQuery",
+            "series": [
+              {
+                "kind": "EventsNode",
+                "math": "dau",
+                "name": "Synthetic name 47",
+                "event": "feature_used"
+              }
+            ],
+            "version": 4,
+            "interval": "day",
+            "dateRange": {
+              "date_from": "-25d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "trendsFilter": {
+              "display": "ActionsBarValue",
+              "showLegend": false,
+              "yAxisScaleType": "linear",
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "showPercentStackView": false,
+              "aggregationAxisFormat": "numeric",
+              "showAlertThresholdLines": false
+            },
+            "breakdownFilter": {
+              "breakdown": "synthetic_dimension_23",
+              "breakdown_type": "event"
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 700017,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77104,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-26T06:17:23.456Z",
+        "cache_target_age": "2026-01-27T06:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-28T06:17:23.456Z",
+        "result": [
+          {
+            "data": [],
+            "days": [],
+            "count": 386,
+            "aggregated_value": 393,
+            "label": "example.com synthetic fixture 6",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-01T07:17:23.456Z",
+              "date_from": "2026-01-02T07:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_297",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-03T07:17:23.456Z",
+                "2026-01-04T07:17:23.456Z",
+                "2026-01-05T07:17:23.456Z",
+                "2026-01-06T07:17:23.456Z",
+                "2026-01-07T07:17:23.456Z",
+                "2026-01-08T07:17:23.456Z",
+                "2026-01-09T07:17:23.456Z",
+                "2026-01-10T07:17:23.456Z",
+                "2026-01-11T07:17:23.456Z",
+                "2026-01-12T07:17:23.456Z",
+                "2026-01-13T07:17:23.456Z",
+                "2026-01-14T07:17:23.456Z",
+                "2026-01-15T07:17:23.456Z",
+                "2026-01-16T07:17:23.456Z",
+                "2026-01-17T07:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 264,
+              "name": "Synthetic name 235",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_267": "synthetic-value-267",
+                "synthetic_note_267": "Synthetic note 267"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0081",
+            "order": 356
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 387,
+            "aggregated_value": 231,
+            "label": "Synthetic series 332",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-18T07:17:23.456Z",
+              "date_from": "2026-01-19T07:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_298",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-20T07:17:23.456Z",
+                "2026-01-21T07:17:23.456Z",
+                "2026-01-22T07:17:23.456Z",
+                "2026-01-23T07:17:23.456Z",
+                "2026-01-24T07:17:23.456Z",
+                "2026-01-25T07:17:23.456Z",
+                "2026-01-26T07:17:23.456Z",
+                "2026-01-27T07:17:23.456Z",
+                "2026-01-28T07:17:23.456Z",
+                "2026-01-01T08:17:23.456Z",
+                "2026-01-02T08:17:23.456Z",
+                "2026-01-03T08:17:23.456Z",
+                "2026-01-04T08:17:23.456Z",
+                "2026-01-05T08:17:23.456Z",
+                "2026-01-06T08:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 265,
+              "name": "Synthetic name 236",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_268": "synthetic-value-268",
+                "synthetic_note_268": "Synthetic note 268"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0083",
+            "order": 357
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 388,
+            "aggregated_value": 49,
+            "label": "Example App segment 84",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-07T08:17:23.456Z",
+              "date_from": "2026-01-08T08:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_299",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-09T08:17:23.456Z",
+                "2026-01-10T08:17:23.456Z",
+                "2026-01-11T08:17:23.456Z",
+                "2026-01-12T08:17:23.456Z",
+                "2026-01-13T08:17:23.456Z",
+                "2026-01-14T08:17:23.456Z",
+                "2026-01-15T08:17:23.456Z",
+                "2026-01-16T08:17:23.456Z",
+                "2026-01-17T08:17:23.456Z",
+                "2026-01-18T08:17:23.456Z",
+                "2026-01-19T08:17:23.456Z",
+                "2026-01-20T08:17:23.456Z",
+                "2026-01-21T08:17:23.456Z",
+                "2026-01-22T08:17:23.456Z",
+                "2026-01-23T08:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 266,
+              "name": "Synthetic name 237",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_269": "synthetic-value-269",
+                "synthetic_note_269": "Synthetic note 269"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0085",
+            "order": 358
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 389,
+            "aggregated_value": 43,
+            "label": "Example App segment 86",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-24T08:17:23.456Z",
+              "date_from": "2026-01-25T08:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_300",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-26T08:17:23.456Z",
+                "2026-01-27T08:17:23.456Z",
+                "2026-01-28T08:17:23.456Z",
+                "2026-01-01T09:17:23.456Z",
+                "2026-01-02T09:17:23.456Z",
+                "2026-01-03T09:17:23.456Z",
+                "2026-01-04T09:17:23.456Z",
+                "2026-01-05T09:17:23.456Z",
+                "2026-01-06T09:17:23.456Z",
+                "2026-01-07T09:17:23.456Z",
+                "2026-01-08T09:17:23.456Z",
+                "2026-01-09T09:17:23.456Z",
+                "2026-01-10T09:17:23.456Z",
+                "2026-01-11T09:17:23.456Z",
+                "2026-01-12T09:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 267,
+              "name": "Synthetic name 238",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_270": "synthetic-value-270",
+                "synthetic_note_270": "Synthetic note 270"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0087",
+            "order": 359
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 390,
+            "aggregated_value": 21,
+            "label": "Example App segment 88",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-13T09:17:23.456Z",
+              "date_from": "2026-01-14T09:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_301",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-15T09:17:23.456Z",
+                "2026-01-16T09:17:23.456Z",
+                "2026-01-17T09:17:23.456Z",
+                "2026-01-18T09:17:23.456Z",
+                "2026-01-19T09:17:23.456Z",
+                "2026-01-20T09:17:23.456Z",
+                "2026-01-21T09:17:23.456Z",
+                "2026-01-22T09:17:23.456Z",
+                "2026-01-23T09:17:23.456Z",
+                "2026-01-24T09:17:23.456Z",
+                "2026-01-25T09:17:23.456Z",
+                "2026-01-26T09:17:23.456Z",
+                "2026-01-27T09:17:23.456Z",
+                "2026-01-28T09:17:23.456Z",
+                "2026-01-01T10:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 268,
+              "name": "Synthetic name 239",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_271": "synthetic-value-271",
+                "synthetic_note_271": "Synthetic note 271"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0089",
+            "order": 360
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 391,
+            "aggregated_value": 13,
+            "label": "Example App segment 90",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-02T10:17:23.456Z",
+              "date_from": "2026-01-03T10:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_302",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-04T10:17:23.456Z",
+                "2026-01-05T10:17:23.456Z",
+                "2026-01-06T10:17:23.456Z",
+                "2026-01-07T10:17:23.456Z",
+                "2026-01-08T10:17:23.456Z",
+                "2026-01-09T10:17:23.456Z",
+                "2026-01-10T10:17:23.456Z",
+                "2026-01-11T10:17:23.456Z",
+                "2026-01-12T10:17:23.456Z",
+                "2026-01-13T10:17:23.456Z",
+                "2026-01-14T10:17:23.456Z",
+                "2026-01-15T10:17:23.456Z",
+                "2026-01-16T10:17:23.456Z",
+                "2026-01-17T10:17:23.456Z",
+                "2026-01-18T10:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 269,
+              "name": "Synthetic name 240",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_272": "synthetic-value-272",
+                "synthetic_note_272": "Synthetic note 272"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0091",
+            "order": 361
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 392,
+            "aggregated_value": 11,
+            "label": "Example App segment 92",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-19T10:17:23.456Z",
+              "date_from": "2026-01-20T10:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_303",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-21T10:17:23.456Z",
+                "2026-01-22T10:17:23.456Z",
+                "2026-01-23T10:17:23.456Z",
+                "2026-01-24T10:17:23.456Z",
+                "2026-01-25T10:17:23.456Z",
+                "2026-01-26T10:17:23.456Z",
+                "2026-01-27T10:17:23.456Z",
+                "2026-01-28T10:17:23.456Z",
+                "2026-01-01T11:17:23.456Z",
+                "2026-01-02T11:17:23.456Z",
+                "2026-01-03T11:17:23.456Z",
+                "2026-01-04T11:17:23.456Z",
+                "2026-01-05T11:17:23.456Z",
+                "2026-01-06T11:17:23.456Z",
+                "2026-01-07T11:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 270,
+              "name": "Synthetic name 241",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_273": "synthetic-value-273",
+                "synthetic_note_273": "Synthetic note 273"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0093",
+            "order": 362
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 393,
+            "aggregated_value": 11,
+            "label": "Example App segment 94",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-08T11:17:23.456Z",
+              "date_from": "2026-01-09T11:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_304",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-10T11:17:23.456Z",
+                "2026-01-11T11:17:23.456Z",
+                "2026-01-12T11:17:23.456Z",
+                "2026-01-13T11:17:23.456Z",
+                "2026-01-14T11:17:23.456Z",
+                "2026-01-15T11:17:23.456Z",
+                "2026-01-16T11:17:23.456Z",
+                "2026-01-17T11:17:23.456Z",
+                "2026-01-18T11:17:23.456Z",
+                "2026-01-19T11:17:23.456Z",
+                "2026-01-20T11:17:23.456Z",
+                "2026-01-21T11:17:23.456Z",
+                "2026-01-22T11:17:23.456Z",
+                "2026-01-23T11:17:23.456Z",
+                "2026-01-24T11:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 271,
+              "name": "Synthetic name 242",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_274": "synthetic-value-274",
+                "synthetic_note_274": "Synthetic note 274"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0095",
+            "order": 363
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 394,
+            "aggregated_value": 700001,
+            "label": "Example App segment 96",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-25T11:17:23.456Z",
+              "date_from": "2026-01-26T11:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_305",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-27T11:17:23.456Z",
+                "2026-01-28T11:17:23.456Z",
+                "2026-01-01T12:17:23.456Z",
+                "2026-01-02T12:17:23.456Z",
+                "2026-01-03T12:17:23.456Z",
+                "2026-01-04T12:17:23.456Z",
+                "2026-01-05T12:17:23.456Z",
+                "2026-01-06T12:17:23.456Z",
+                "2026-01-07T12:17:23.456Z",
+                "2026-01-08T12:17:23.456Z",
+                "2026-01-09T12:17:23.456Z",
+                "2026-01-10T12:17:23.456Z",
+                "2026-01-11T12:17:23.456Z",
+                "2026-01-12T12:17:23.456Z",
+                "2026-01-13T12:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 272,
+              "name": "Synthetic name 243",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_275": "synthetic-value-275",
+                "synthetic_note_275": "Synthetic note 275"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0097",
+            "order": 364
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 395,
+            "aggregated_value": 700001,
+            "label": "Example App segment 98",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-14T12:17:23.456Z",
+              "date_from": "2026-01-15T12:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_306",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-16T12:17:23.456Z",
+                "2026-01-17T12:17:23.456Z",
+                "2026-01-18T12:17:23.456Z",
+                "2026-01-19T12:17:23.456Z",
+                "2026-01-20T12:17:23.456Z",
+                "2026-01-21T12:17:23.456Z",
+                "2026-01-22T12:17:23.456Z",
+                "2026-01-23T12:17:23.456Z",
+                "2026-01-24T12:17:23.456Z",
+                "2026-01-25T12:17:23.456Z",
+                "2026-01-26T12:17:23.456Z",
+                "2026-01-27T12:17:23.456Z",
+                "2026-01-28T12:17:23.456Z",
+                "2026-01-01T13:17:23.456Z",
+                "2026-01-02T13:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 273,
+              "name": "Synthetic name 244",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_276": "synthetic-value-276",
+                "synthetic_note_276": "Synthetic note 276"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0099",
+            "order": 365
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 396,
+            "aggregated_value": 700001,
+            "label": "Example App segment 100",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-03T13:17:23.456Z",
+              "date_from": "2026-01-04T13:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_307",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-05T13:17:23.456Z",
+                "2026-01-06T13:17:23.456Z",
+                "2026-01-07T13:17:23.456Z",
+                "2026-01-08T13:17:23.456Z",
+                "2026-01-09T13:17:23.456Z",
+                "2026-01-10T13:17:23.456Z",
+                "2026-01-11T13:17:23.456Z",
+                "2026-01-12T13:17:23.456Z",
+                "2026-01-13T13:17:23.456Z",
+                "2026-01-14T13:17:23.456Z",
+                "2026-01-15T13:17:23.456Z",
+                "2026-01-16T13:17:23.456Z",
+                "2026-01-17T13:17:23.456Z",
+                "2026-01-18T13:17:23.456Z",
+                "2026-01-19T13:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 274,
+              "name": "Synthetic name 245",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_277": "synthetic-value-277",
+                "synthetic_note_277": "Synthetic note 277"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0101",
+            "order": 366
+          },
+          {
+            "data": [],
+            "days": [],
+            "count": 397,
+            "aggregated_value": 700001,
+            "label": "Example App segment 102",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-20T13:17:23.456Z",
+              "date_from": "2026-01-21T13:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsBarValue",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown": "synthetic_dimension_308",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-22T13:17:23.456Z",
+                "2026-01-23T13:17:23.456Z",
+                "2026-01-24T13:17:23.456Z",
+                "2026-01-25T13:17:23.456Z",
+                "2026-01-26T13:17:23.456Z",
+                "2026-01-27T13:17:23.456Z",
+                "2026-01-28T13:17:23.456Z",
+                "2026-01-01T14:17:23.456Z",
+                "2026-01-02T14:17:23.456Z",
+                "2026-01-03T14:17:23.456Z",
+                "2026-01-04T14:17:23.456Z",
+                "2026-01-05T14:17:23.456Z",
+                "2026-01-06T14:17:23.456Z",
+                "2026-01-07T14:17:23.456Z",
+                "2026-01-08T14:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 275,
+              "name": "Synthetic name 246",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_278": "synthetic-value-278",
+                "synthetic_note_278": "Synthetic note 278"
+              }
+            },
+            "breakdown_value": "Example breakdown value 0103",
+            "order": 367
+          }
+        ],
+        "hasMore": false,
+        "columns": null,
+        "created_at": "2026-01-09T14:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-10T14:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-11T14:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-12T14:17:23.456Z",
+          "date_to": "2026-01-13T14:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0017"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 439,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 485,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#a16207",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 484,
+      "last_refresh": "2026-01-14T14:17:23.456Z",
+      "is_cached": true
+    },
+    {
+      "id": 700019,
+      "insight": {
+        "id": 700020,
+        "short_id": "synthetic-id-0018",
+        "name": "Example signup funnel by browser",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "FunnelsQuery",
+            "series": [
+              {
+                "kind": "EventsNode",
+                "name": "Synthetic name 48",
+                "event": "feature_used",
+                "custom_name": "Example custom name 0106"
+              },
+              {
+                "kind": "EventsNode",
+                "name": "Synthetic name 49",
+                "event": "feature_used",
+                "custom_name": "Example custom name 0107"
+              },
+              {
+                "kind": "EventsNode",
+                "name": "Synthetic name 50",
+                "event": "feature_used",
+                "custom_name": "Example custom name 0108"
+              }
+            ],
+            "version": 2,
+            "interval": "day",
+            "dateRange": {
+              "date_from": "-18d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "funnelsFilter": {
+              "layout": "Example layout 0109",
+              "exclusions": [],
+              "funnelVizType": "steps",
+              "funnelOrderType": "ordered",
+              "funnelStepReference": "total",
+              "funnelWindowInterval": 700006,
+              "breakdownAttributionType": "first_touch",
+              "funnelWindowIntervalUnit": "day"
+            },
+            "breakdownFilter": {
+              "breakdown": "synthetic_dimension_24",
+              "breakdown_type": "event"
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 700019,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77105,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-16T14:17:23.456Z",
+        "cache_target_age": "2026-01-17T14:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-18T14:17:23.456Z",
+        "result": [
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 157",
+              "custom_name": "Example custom name 0106",
+              "order": 192,
+              "people": [],
+              "count": 281,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0110"
+              ],
+              "breakdown_value": [
+                "Safari"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 158",
+              "custom_name": "Example custom name 0107",
+              "order": 194,
+              "people": [],
+              "count": 97,
+              "type": "events",
+              "average_conversion_time": 69923.09706665674,
+              "median_conversion_time": 27.336000156402587,
+              "breakdown": [
+                "Example breakdown 0110"
+              ],
+              "breakdown_value": [
+                "Safari"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 159",
+              "custom_name": "Example custom name 0108",
+              "order": 196,
+              "people": [],
+              "count": 53,
+              "type": "events",
+              "average_conversion_time": 3710.2720000059708,
+              "median_conversion_time": 31.107999992370605,
+              "breakdown": [
+                "Example breakdown 0110"
+              ],
+              "breakdown_value": [
+                "Safari"
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 160",
+              "custom_name": "Example custom name 0106",
+              "order": 195,
+              "people": [],
+              "count": 55,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0112"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0113"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 161",
+              "custom_name": "Example custom name 0107",
+              "order": 197,
+              "people": [],
+              "count": 21,
+              "type": "events",
+              "average_conversion_time": 97.3742856843131,
+              "median_conversion_time": 33.015999984741214,
+              "breakdown": [
+                "Example breakdown 0112"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0113"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 162",
+              "custom_name": "Example custom name 0108",
+              "order": 199,
+              "people": [],
+              "count": 19,
+              "type": "events",
+              "average_conversion_time": 21114.340666723252,
+              "median_conversion_time": 46.814000082015994,
+              "breakdown": [
+                "Example breakdown 0112"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0113"
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 163",
+              "custom_name": "Example custom name 0106",
+              "order": 198,
+              "people": [],
+              "count": 21,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0114"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0115"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 164",
+              "custom_name": "Example custom name 0107",
+              "order": 200,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": 0.04299996948242188,
+              "median_conversion_time": 0.04299996948242188,
+              "breakdown": [
+                "Example breakdown 0114"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0115"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 165",
+              "custom_name": "Example custom name 0108",
+              "order": 202,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": 332170.09999961854,
+              "median_conversion_time": 332170.09999961854,
+              "breakdown": [
+                "Example breakdown 0114"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0115"
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 166",
+              "custom_name": "Example custom name 0106",
+              "order": 201,
+              "people": [],
+              "count": 13,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0116"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0117"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 167",
+              "custom_name": "Example custom name 0107",
+              "order": 203,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": 16.80799980163574,
+              "median_conversion_time": 16.80799980163574,
+              "breakdown": [
+                "Example breakdown 0116"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0117"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 168",
+              "custom_name": "Example custom name 0108",
+              "order": 205,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": 5.825999927520752,
+              "median_conversion_time": 5.825999927520752,
+              "breakdown": [
+                "Example breakdown 0116"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0117"
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 169",
+              "custom_name": "Example custom name 0106",
+              "order": 204,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0118"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0119"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 170",
+              "custom_name": "Example custom name 0107",
+              "order": 206,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": 1011.9260003089905,
+              "median_conversion_time": 1011.9260003089905,
+              "breakdown": [
+                "Example breakdown 0118"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0119"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 171",
+              "custom_name": "Example custom name 0108",
+              "order": 208,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": 57.783999633789065,
+              "median_conversion_time": 57.783999633789065,
+              "breakdown": [
+                "Example breakdown 0118"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0119"
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 172",
+              "custom_name": "Example custom name 0106",
+              "order": 207,
+              "people": [],
+              "count": 11,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0120"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0121"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 173",
+              "custom_name": "Example custom name 0107",
+              "order": 209,
+              "people": [],
+              "count": 250,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0120"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0121"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 174",
+              "custom_name": "Example custom name 0108",
+              "order": 211,
+              "people": [],
+              "count": 251,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0120"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0121"
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 175",
+              "custom_name": "Example custom name 0106",
+              "order": 210,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                ""
+              ],
+              "breakdown_value": [
+                ""
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 176",
+              "custom_name": "Example custom name 0107",
+              "order": 212,
+              "people": [],
+              "count": 253,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                ""
+              ],
+              "breakdown_value": [
+                ""
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 177",
+              "custom_name": "Example custom name 0108",
+              "order": 214,
+              "people": [],
+              "count": 254,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                ""
+              ],
+              "breakdown_value": [
+                ""
+              ]
+            }
+          ],
+          [
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 178",
+              "custom_name": "Example custom name 0106",
+              "order": 213,
+              "people": [],
+              "count": 700001,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0122"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0123"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 179",
+              "custom_name": "Example custom name 0107",
+              "order": 215,
+              "people": [],
+              "count": 256,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0122"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0123"
+              ]
+            },
+            {
+              "action_id": "synthetic-id-0008",
+              "name": "Synthetic name 180",
+              "custom_name": "Example custom name 0108",
+              "order": 217,
+              "people": [],
+              "count": 257,
+              "type": "events",
+              "average_conversion_time": null,
+              "median_conversion_time": null,
+              "breakdown": [
+                "Example breakdown 0122"
+              ],
+              "breakdown_value": [
+                "Example breakdown value 0123"
+              ]
+            }
+          ]
+        ],
+        "hasMore": null,
+        "columns": null,
+        "created_at": "2026-01-19T14:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-20T14:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-21T14:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-22T14:17:23.456Z",
+          "date_to": "2026-01-23T14:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0019"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 0,
+          "y": 440,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 491,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#0e7490",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 486,
+      "last_refresh": "2026-01-24T14:17:23.456Z",
+      "is_cached": true
+    },
+    {
+      "id": 77021,
+      "insight": {
+        "id": 77022,
+        "short_id": "example-secondary-engagement-77022",
+        "name": "Example weekly engagement pulse",
+        "derived_name": null,
+        "filters": {},
+        "query": {
+          "kind": "InsightVizNode",
+          "source": {
+            "kind": "TrendsQuery",
+            "series": [
+              {
+                "kind": "EventsNode",
+                "math": "dau",
+                "name": "Synthetic name 44",
+                "event": "feature_used"
+              }
+            ],
+            "version": 4,
+            "interval": "day",
+            "dateRange": {
+              "date_from": "-20d",
+              "explicitDate": false
+            },
+            "properties": [],
+            "trendsFilter": {
+              "display": "ActionsLineGraph",
+              "showLegend": false,
+              "yAxisScaleType": "linear",
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "showPercentStackView": false,
+              "aggregationAxisFormat": "numeric",
+              "showAlertThresholdLines": false
+            },
+            "breakdownFilter": {
+              "breakdown_type": "event"
+            },
+            "filterTestAccounts": false
+          }
+        },
+        "order": null,
+        "deleted": false,
+        "dashboards": [
+          725101,
+          730202
+        ],
+        "dashboard_tiles": [
+          {
+            "id": 77021,
+            "dashboard_id": 725101,
+            "deleted": null
+          },
+          {
+            "id": 77106,
+            "dashboard_id": 730202,
+            "deleted": null
+          }
+        ],
+        "last_refresh": "2026-01-07T00:17:23.456Z",
+        "cache_target_age": "2026-01-08T00:17:23.456Z",
+        "next_allowed_client_refresh": "2026-01-09T00:17:23.456Z",
+        "result": [
+          {
+            "data": [
+              27,
+              45,
+              57,
+              43,
+              51,
+              109,
+              63,
+              43,
+              65,
+              71,
+              41,
+              39,
+              45,
+              37,
+              25,
+              43,
+              37,
+              33,
+              45,
+              43,
+              37,
+              67,
+              101,
+              101,
+              81,
+              37,
+              41,
+              39,
+              33,
+              45,
+              55
+            ],
+            "labels": [
+              "2026-01-10T00:17:23.456Z",
+              "2026-01-11T00:17:23.456Z",
+              "2026-01-12T00:17:23.456Z",
+              "2026-01-13T00:17:23.456Z",
+              "2026-01-14T00:17:23.456Z",
+              "2026-01-15T00:17:23.456Z",
+              "2026-01-16T00:17:23.456Z",
+              "2026-01-17T00:17:23.456Z",
+              "2026-01-18T00:17:23.456Z",
+              "2026-01-19T00:17:23.456Z",
+              "2026-01-20T00:17:23.456Z",
+              "2026-01-21T00:17:23.456Z",
+              "2026-01-22T00:17:23.456Z",
+              "2026-01-23T00:17:23.456Z",
+              "2026-01-24T00:17:23.456Z",
+              "2026-01-25T00:17:23.456Z",
+              "2026-01-26T00:17:23.456Z",
+              "2026-01-27T00:17:23.456Z",
+              "2026-01-28T00:17:23.456Z",
+              "2026-01-01T01:17:23.456Z",
+              "2026-01-02T01:17:23.456Z",
+              "2026-01-03T01:17:23.456Z",
+              "2026-01-04T01:17:23.456Z",
+              "2026-01-05T01:17:23.456Z",
+              "2026-01-06T01:17:23.456Z",
+              "2026-01-07T01:17:23.456Z",
+              "2026-01-08T01:17:23.456Z",
+              "2026-01-09T01:17:23.456Z",
+              "2026-01-10T01:17:23.456Z",
+              "2026-01-11T01:17:23.456Z",
+              "2026-01-12T01:17:23.456Z"
+            ],
+            "days": [
+              "2026-01-13T01:17:23.456Z",
+              "2026-01-14T01:17:23.456Z",
+              "2026-01-15T01:17:23.456Z",
+              "2026-01-16T01:17:23.456Z",
+              "2026-01-17T01:17:23.456Z",
+              "2026-01-18T01:17:23.456Z",
+              "2026-01-19T01:17:23.456Z",
+              "2026-01-20T01:17:23.456Z",
+              "2026-01-21T01:17:23.456Z",
+              "2026-01-22T01:17:23.456Z",
+              "2026-01-23T01:17:23.456Z",
+              "2026-01-24T01:17:23.456Z",
+              "2026-01-25T01:17:23.456Z",
+              "2026-01-26T01:17:23.456Z",
+              "2026-01-27T01:17:23.456Z",
+              "2026-01-28T01:17:23.456Z",
+              "2026-01-01T02:17:23.456Z",
+              "2026-01-02T02:17:23.456Z",
+              "2026-01-03T02:17:23.456Z",
+              "2026-01-04T02:17:23.456Z",
+              "2026-01-05T02:17:23.456Z",
+              "2026-01-06T02:17:23.456Z",
+              "2026-01-07T02:17:23.456Z",
+              "2026-01-08T02:17:23.456Z",
+              "2026-01-09T02:17:23.456Z",
+              "2026-01-10T02:17:23.456Z",
+              "2026-01-11T02:17:23.456Z",
+              "2026-01-12T02:17:23.456Z",
+              "2026-01-13T02:17:23.456Z",
+              "2026-01-14T02:17:23.456Z",
+              "2026-01-15T02:17:23.456Z"
+            ],
+            "count": 1382.7,
+            "label": "account_created",
+            "filter": {
+              "insight": "TRENDS",
+              "properties": [],
+              "filter_test_accounts": false,
+              "date_to": "2026-01-16T02:17:23.456Z",
+              "date_from": "2026-01-17T02:17:23.456Z",
+              "entity_type": "events",
+              "interval": "day",
+              "aggregationAxisFormat": "numeric",
+              "display": "ActionsLineGraph",
+              "excludeBoxPlotOutliers": true,
+              "hideWeekends": false,
+              "legendPosition": "Example legendposition 0038",
+              "metricColorByDirection": false,
+              "metricShowChange": true,
+              "metricSummary": "Example metricsummary 0039",
+              "resultCustomizationBy": "Example resultcustomizationby 0040",
+              "showAlertThresholdLines": false,
+              "showAnnotations": true,
+              "showLegend": false,
+              "showMultipleYAxes": false,
+              "showPercentStackView": false,
+              "showValuesOnSeries": false,
+              "smoothingIntervals": 700001,
+              "stackBreakdownValues": false,
+              "yAxisScaleType": "linear",
+              "breakdown_type": "event"
+            },
+            "action": {
+              "days": [
+                "2026-01-18T02:17:23.456Z",
+                "2026-01-19T02:17:23.456Z",
+                "2026-01-20T02:17:23.456Z",
+                "2026-01-21T02:17:23.456Z",
+                "2026-01-22T02:17:23.456Z",
+                "2026-01-23T02:17:23.456Z",
+                "2026-01-24T02:17:23.456Z",
+                "2026-01-25T02:17:23.456Z",
+                "2026-01-26T02:17:23.456Z",
+                "2026-01-27T02:17:23.456Z",
+                "2026-01-28T02:17:23.456Z",
+                "2026-01-01T03:17:23.456Z",
+                "2026-01-02T03:17:23.456Z",
+                "2026-01-03T03:17:23.456Z",
+                "2026-01-04T03:17:23.456Z",
+                "2026-01-05T03:17:23.456Z",
+                "2026-01-06T03:17:23.456Z",
+                "2026-01-07T03:17:23.456Z",
+                "2026-01-08T03:17:23.456Z",
+                "2026-01-09T03:17:23.456Z",
+                "2026-01-10T03:17:23.456Z",
+                "2026-01-11T03:17:23.456Z",
+                "2026-01-12T03:17:23.456Z",
+                "2026-01-13T03:17:23.456Z",
+                "2026-01-14T03:17:23.456Z",
+                "2026-01-15T03:17:23.456Z",
+                "2026-01-16T03:17:23.456Z",
+                "2026-01-17T03:17:23.456Z",
+                "2026-01-18T03:17:23.456Z",
+                "2026-01-19T03:17:23.456Z",
+                "2026-01-20T03:17:23.456Z"
+              ],
+              "id": "synthetic-id-0008",
+              "type": "events",
+              "order": 258,
+              "name": "Synthetic name 229",
+              "custom_name": null,
+              "math": "dau",
+              "math_property": null,
+              "math_hogql": null,
+              "math_group_type_index": null,
+              "properties": {
+                "synthetic_trait_265": "synthetic-value-265",
+                "synthetic_note_265": "Synthetic note 265"
+              }
+            },
+            "order": 354
+          }
+        ],
+        "hasMore": false,
+        "columns": null,
+        "created_at": "2026-01-21T03:17:23.456Z",
+        "created_by": null,
+        "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+        "updated_at": "2026-01-22T03:17:23.456Z",
+        "favorited": false,
+        "saved": true,
+        "last_modified_at": "2026-01-23T03:17:23.456Z",
+        "last_modified_by": null,
+        "is_sample": true,
+        "effective_restriction_level": 49,
+        "effective_privilege_level": 81,
+        "user_access_level": "manager",
+        "timezone": "America/Chicago",
+        "is_cached": true,
+        "query_status": null,
+        "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+        "types": null,
+        "resolved_date_range": {
+          "date_from": "2026-01-24T03:17:23.456Z",
+          "date_to": "2026-01-25T03:17:23.456Z"
+        },
+        "alerts": [],
+        "filter_override_context": null,
+        "last_viewed_at": null,
+        "tags": [],
+        "filters_hash": "synthetic-id-0009"
+      },
+      "text": null,
+      "button_tile": null,
+      "widget": null,
+      "layouts": {
+        "sm": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 425,
+          "minH": 3,
+          "minW": 4
+        },
+        "xs": {
+          "h": 3,
+          "w": 3,
+          "x": 1,
+          "y": 461,
+          "minH": 3,
+          "minW": 4
+        }
+      },
+      "color": "#1d4ed8",
+      "filters_overrides": {},
+      "show_description": null,
+      "transparent_background": null,
+      "order": 8,
+      "last_refresh": "2026-01-26T03:17:23.456Z",
+      "is_cached": true
+    }
+  ],
+  "tags": []
+}

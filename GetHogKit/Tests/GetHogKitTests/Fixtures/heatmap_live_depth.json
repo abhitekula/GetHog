@@ -1,0 +1,35 @@
+{
+  "results": [
+    {"count": 70, "pointer_y": 115},
+    {"count": 65, "pointer_y": 245},
+    {"count": 60, "pointer_y": 375},
+    {"count": 55, "pointer_y": 505},
+    {"count": 50, "pointer_y": 635},
+    {"count": 45, "pointer_y": 765},
+    {"count": 40, "pointer_y": 895},
+    {"count": 35, "pointer_y": 1025},
+    {"count": 30, "pointer_y": 1155},
+    {"count": 28, "pointer_y": 1285},
+    {"count": 26, "pointer_y": 1415},
+    {"count": 24, "pointer_y": 1545},
+    {"count": 22, "pointer_y": 1675},
+    {"count": 20, "pointer_y": 1805},
+    {"count": 18, "pointer_y": 1935},
+    {"count": 17, "pointer_y": 2065},
+    {"count": 16, "pointer_y": 2195},
+    {"count": 15, "pointer_y": 2325},
+    {"count": 14, "pointer_y": 2585},
+    {"count": 14, "pointer_y": 3185},
+    {"count": 14, "pointer_y": 4785},
+    {"count": 14, "pointer_y": 7185},
+    {"count": 14, "pointer_y": 10185},
+    {"count": 14, "pointer_y": 14185}
+  ],
+  "fold": {
+    "total_count": 240,
+    "below_fold_count": 96,
+    "pct_below_fold": 40.0,
+    "median_viewport_height": 950
+  },
+  "has_more": false
+}

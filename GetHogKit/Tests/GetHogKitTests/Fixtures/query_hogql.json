@@ -1,0 +1,115 @@
+{
+  "cache_key": "fixture-query-meteor-v1",
+  "cache_target_age": "2026-01-18T12:04:00.000Z",
+  "calculation_trigger": null,
+  "clickhouse": "SELECT event, timestamp, distinct_id, properties.$current_url FROM events WHERE event IN ('meteor_report_opened', 'meteor_filter_applied', 'meteor_export_requested', '$pageview') AND timestamp >= toDateTime('2026-01-18 00:00:00') ORDER BY timestamp DESC LIMIT 4",
+  "columns": [
+    "event",
+    "timestamp",
+    "distinct_id",
+    "$current_url"
+  ],
+  "error": null,
+  "explain": null,
+  "hasMore": null,
+  "hogql": "SELECT event, timestamp, distinct_id, properties.$current_url FROM events WHERE event IN ('meteor_report_opened', 'meteor_filter_applied', 'meteor_export_requested', '$pageview') AND timestamp >= toDateTime('2026-01-18 00:00:00') ORDER BY timestamp DESC LIMIT 4",
+  "is_cached": false,
+  "last_refresh": "2026-01-18T12:04:00.000Z",
+  "limit": null,
+  "metadata": null,
+  "modifiers": {
+    "bounceRateDurationSeconds": null,
+    "bounceRatePageViewMode": "count_pageviews",
+    "convertToProjectTimezone": true,
+    "customChannelTypeRules": null,
+    "dataWarehouseEventsModifiers": null,
+    "debug": null,
+    "forceClickhouseDataSkippingIndexes": null,
+    "formatCsvAllowDoubleQuotes": null,
+    "inCohortVia": "auto",
+    "inlineCohortCalculation": "auto",
+    "materializationMode": "auto",
+    "materializedColumnsOptimizationMode": null,
+    "optimizeJoinedFilters": false,
+    "optimizeProjections": true,
+    "parserMode": null,
+    "personsArgMaxVersion": "v2",
+    "personsJoinMode": null,
+    "personsOnEventsMode": "person_id_override_properties_joined",
+    "propertyGroupsMode": "enabled",
+    "pushDownPredicates": null,
+    "s3TableUseInvalidColumns": null,
+    "sessionIdPushdown": false,
+    "sessionPropertyPreAggregation": false,
+    "sessionTableVersion": "v2",
+    "sessionsV2JoinMode": "string",
+    "timings": null,
+    "useMaterializedViews": true,
+    "usePreaggregatedIntermediateResults": null,
+    "usePreaggregatedTableTransforms": null,
+    "useWebAnalyticsPreAggregatedTables": null
+  },
+  "next_allowed_client_refresh": "2026-01-18T12:05:00.000Z",
+  "offset": null,
+  "query": null,
+  "query_metadata": {
+    "events": [
+      "meteor_report_opened",
+      "meteor_filter_applied",
+      "meteor_export_requested",
+      "$pageview"
+    ],
+    "updated_at": "2026-01-18T12:04:00.000Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [
+    [
+      "meteor_report_opened",
+      "2026-01-18T12:03:00.000Z",
+      "person-example-meteor-201",
+      "https://app.example.com/lab/meteor"
+    ],
+    [
+      "meteor_filter_applied",
+      "2026-01-18T12:02:00.000Z",
+      "person-example-meteor-202",
+      "https://app.example.com/lab/meteor/filter"
+    ],
+    [
+      "meteor_export_requested",
+      "2026-01-18T12:01:00.000Z",
+      "person-example-meteor-201",
+      "https://app.example.com/lab/meteor/export"
+    ],
+    [
+      "$pageview",
+      "2026-01-18T12:00:00.000Z",
+      "person-example-meteor-203",
+      "https://app.example.com/home"
+    ]
+  ],
+  "timezone": "UTC",
+  "timings": null,
+  "types": [
+    [
+      "String",
+      "String"
+    ],
+    [
+      "DateTime",
+      "DateTime"
+    ],
+    [
+      "String",
+      "String"
+    ],
+    [
+      "String",
+      "String"
+    ]
+  ],
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

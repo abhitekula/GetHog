@@ -1,0 +1,285 @@
+{
+  "count": 4,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 7201,
+      "name": "Example App onboarding layout",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "start_date": "2026-01-14T12:00:00.000Z",
+      "end_date": null,
+      "feature_flag_key": "onboarding-layout",
+      "feature_flag": {
+        "id": 7301,
+        "team_id": 1001,
+        "name": "Example App onboarding layout",
+        "key": "onboarding-layout",
+        "active": true,
+        "deleted": false,
+        "ensure_experience_continuity": false,
+        "version": 13,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "evaluation_contexts": [],
+        "filters": {
+          "multivariate": {
+            "variants": [
+              {
+                "key": "baseline",
+                "name": "Current layout",
+                "rollout_percentage": 47
+              },
+              {
+                "key": "streamlined",
+                "name": "Streamlined layout",
+                "rollout_percentage": 53
+              },
+              {
+                "key": "synthetic-observer-7201",
+                "name": "Synthetic observer",
+                "rollout_percentage": 0
+              }
+            ]
+          }
+        }
+      },
+      "holdout": null,
+      "exposure_cohort": null,
+      "parameters": {
+        "minimum_detectable_effect": 47,
+        "variant_notes": null
+      },
+      "running_time_calculation": {
+        "minimum_detectable_effect": 25,
+        "recommended_sample_size": 12600,
+        "recommended_running_time": 18,
+        "exposure_estimate_config": null
+      },
+      "excluded_variants": [],
+      "archived": false,
+      "deleted": false,
+      "created_by": {
+        "id": 700037,
+        "uuid": "018f9000-0000-7000-8000-000000000242",
+        "distinct_id": "018f9000-0000-7000-8000-000000000242",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0018@example.com",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-16T10:17:09.000Z",
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "type": "web",
+      "conclusion": null,
+      "conclusion_comment": null,
+      "status": "running",
+      "is_legacy": false,
+      "user_access_level": "editor"
+    },
+    {
+      "id": 7202,
+      "name": "Example App guidance style",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "start_date": null,
+      "end_date": null,
+      "feature_flag_key": "guidance-style",
+      "feature_flag": {
+        "id": 7302,
+        "team_id": 1001,
+        "name": "Example App guidance style",
+        "key": "guidance-style",
+        "active": false,
+        "deleted": false,
+        "ensure_experience_continuity": false,
+        "version": 9,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "evaluation_contexts": [],
+        "filters": {
+          "multivariate": {
+            "variants": [
+              {
+                "key": "baseline",
+                "name": "No guidance",
+                "rollout_percentage": 30
+              },
+              {
+                "key": "inline-help",
+                "name": "Inline guidance",
+                "rollout_percentage": 35
+              },
+              {
+                "key": "modal-guide",
+                "name": "Modal guidance",
+                "rollout_percentage": 35
+              },
+              {
+                "key": "synthetic-observer-7202",
+                "name": "Synthetic observer",
+                "rollout_percentage": 0
+              }
+            ]
+          }
+        }
+      },
+      "holdout": null,
+      "exposure_cohort": null,
+      "parameters": null,
+      "running_time_calculation": {
+        "minimum_detectable_effect": 67,
+        "recommended_sample_size": 7807,
+        "recommended_running_time": 25,
+        "exposure_estimate_config": null
+      },
+      "excluded_variants": [],
+      "archived": false,
+      "deleted": false,
+      "created_by": {
+        "id": 700040,
+        "uuid": "018f9000-0000-7000-8000-000000000369",
+        "distinct_id": "018f9000-0000-7000-8000-000000000369",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0019@example.com",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-24T03:25:43.000Z",
+      "updated_at": "2026-01-24T03:25:43.000Z",
+      "type": "product",
+      "conclusion": null,
+      "conclusion_comment": null,
+      "status": "draft",
+      "is_legacy": false,
+      "user_access_level": "editor"
+    },
+    {
+      "id": 7203,
+      "name": "Example App setup copy",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "start_date": "2026-01-04T20:34:17.000Z",
+      "end_date": "2026-01-08T17:08:34.000Z",
+      "feature_flag_key": "setup-copy",
+      "feature_flag": {
+        "id": 7303,
+        "team_id": 1001,
+        "name": "Example App setup copy",
+        "key": "setup-copy",
+        "active": false,
+        "deleted": false,
+        "ensure_experience_continuity": true,
+        "version": 17,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "evaluation_contexts": [],
+        "filters": {
+          "multivariate": {
+            "variants": [
+              {
+                "key": "baseline",
+                "name": "Current copy",
+                "rollout_percentage": 47
+              },
+              {
+                "key": "concise",
+                "name": "Concise copy",
+                "rollout_percentage": 53
+              },
+              {
+                "key": "synthetic-observer-7203",
+                "name": "Synthetic observer",
+                "rollout_percentage": 0
+              }
+            ]
+          }
+        }
+      },
+      "holdout": null,
+      "exposure_cohort": null,
+      "parameters": null,
+      "running_time_calculation": null,
+      "excluded_variants": [],
+      "archived": false,
+      "deleted": false,
+      "created_by": {
+        "id": 700037,
+        "uuid": "018f9000-0000-7000-8000-000000000242",
+        "distinct_id": "018f9000-0000-7000-8000-000000000242",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0020@example.com",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-12T13:42:51.000Z",
+      "type": "web",
+      "conclusion": "won",
+      "conclusion_comment": "Concise setup copy improved completion for the fictional cohort.",
+      "status": "stopped",
+      "is_legacy": false,
+      "user_access_level": "editor"
+    },
+    {
+      "id": 7204,
+      "name": "Example App synthetic navigation experiment",
+      "description": "A fourth fictional lifecycle row for collection coverage.",
+      "start_date": null,
+      "end_date": null,
+      "feature_flag_key": "synthetic-navigation-experiment",
+      "feature_flag": {
+        "id": 8204,
+        "team_id": 1001,
+        "name": "Example App synthetic navigation experiment",
+        "key": "synthetic-navigation-experiment",
+        "active": false,
+        "deleted": false,
+        "ensure_experience_continuity": true,
+        "version": 17,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "evaluation_contexts": [],
+        "filters": {
+          "multivariate": {
+            "variants": [
+              {
+                "key": "baseline",
+                "name": "Current navigation",
+                "rollout_percentage": 47
+              },
+              {
+                "key": "compact-navigation",
+                "name": "Compact navigation",
+                "rollout_percentage": 53
+              },
+              {
+                "key": "synthetic-observer-7204",
+                "name": "Synthetic observer",
+                "rollout_percentage": 0
+              }
+            ]
+          }
+        }
+      },
+      "holdout": null,
+      "exposure_cohort": null,
+      "parameters": null,
+      "running_time_calculation": null,
+      "excluded_variants": [],
+      "archived": false,
+      "deleted": false,
+      "created_by": {
+        "id": 700037,
+        "uuid": "018f9000-0000-7000-8000-000000000242",
+        "distinct_id": "018f9000-0000-7000-8000-000000000242",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0020@example.com",
+        "is_email_verified": true
+      },
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-12T13:42:51.000Z",
+      "type": "web",
+      "conclusion": null,
+      "conclusion_comment": null,
+      "status": "draft",
+      "is_legacy": false,
+      "user_access_level": "editor"
+    }
+  ]
+}

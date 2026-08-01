@@ -1,0 +1,107 @@
+{
+  "cache_key": "synthetic-web-overview-20260412",
+  "cache_target_age": "2026-01-31T12:00:00Z",
+  "calculation_trigger": null,
+  "dateFrom": "2026-01-01",
+  "dateTo": "2026-01-31",
+  "error": null,
+  "hogql": null,
+  "is_cached": false,
+  "last_refresh": "2026-01-31T12:00:00Z",
+  "modifiers": {
+    "bounceRateDurationSeconds": null,
+    "bounceRatePageViewMode": "count_pageviews",
+    "convertToProjectTimezone": true,
+    "customChannelTypeRules": null,
+    "dataWarehouseEventsModifiers": null,
+    "debug": null,
+    "forceClickhouseDataSkippingIndexes": null,
+    "formatCsvAllowDoubleQuotes": null,
+    "inCohortVia": "auto",
+    "inlineCohortCalculation": "auto",
+    "materializationMode": "legacy_null_as_null",
+    "materializedColumnsOptimizationMode": null,
+    "optimizeJoinedFilters": false,
+    "optimizeProjections": true,
+    "parserMode": null,
+    "personsArgMaxVersion": "auto",
+    "personsJoinMode": null,
+    "personsOnEventsMode": "person_id_override_properties_on_events",
+    "propertyGroupsMode": "optimized",
+    "pushDownPredicates": null,
+    "s3TableUseInvalidColumns": null,
+    "sessionIdPushdown": false,
+    "sessionPropertyPreAggregation": false,
+    "sessionTableVersion": "auto",
+    "sessionsV2JoinMode": "uuid",
+    "timings": null,
+    "useMaterializedViews": true,
+    "usePreaggregatedIntermediateResults": null,
+    "usePreaggregatedTableTransforms": null,
+    "useWebAnalyticsPreAggregatedTables": null
+  },
+  "next_allowed_client_refresh": "2026-01-31T12:05:00Z",
+  "preComputeStrategy": "live",
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-01-31T12:00:00Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [
+    {
+      "key": "sample conversions",
+      "kind": "unit",
+      "value": 26,
+      "previous": null,
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null
+    },
+    {
+      "key": "sample visitors",
+      "kind": "unit",
+      "value": 312,
+      "previous": null,
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null
+    },
+    {
+      "key": "sample sessions",
+      "kind": "unit",
+      "value": 407,
+      "previous": null,
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null
+    },
+    {
+      "key": "sample views",
+      "kind": "unit",
+      "value": 1035,
+      "previous": null,
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null
+    },
+    {
+      "key": "sample bounce rate",
+      "kind": "percentage",
+      "value": 38.4,
+      "previous": null,
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": true
+    },
+    {
+      "key": "sample session duration",
+      "kind": "duration_s",
+      "value": 172.4,
+      "previous": null,
+      "changeFromPreviousPct": null,
+      "isIncreaseBad": null
+    }
+  ],
+  "samplingRate": null,
+  "timezone": "UTC",
+  "timings": null,
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

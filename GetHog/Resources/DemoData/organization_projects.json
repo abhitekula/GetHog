@@ -1,0 +1,37 @@
+{
+  "count": 700001,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1001,
+      "uuid": "018f9000-0000-7000-8000-000000000144",
+      "organization": "018f9000-0000-7000-8000-000000000356",
+      "api_token": "example-token",
+      "name": "Example App metric 1033",
+      "completed_snippet_onboarding": true,
+      "has_completed_onboarding_for": {
+        "product_analytics": true
+      },
+      "ingested_event": true,
+      "is_demo": false,
+      "timezone": "UTC",
+      "access_control": false
+    },
+    {
+      "id": 701778,
+      "uuid": "018f9a00-0000-7000-8000-000000000012",
+      "organization": "018f9000-0000-7000-8000-000000000356",
+      "api_token": "example-token",
+      "name": "Synthetic added Example App metric 1033",
+      "completed_snippet_onboarding": true,
+      "has_completed_onboarding_for": {
+        "product_analytics": true
+      },
+      "ingested_event": true,
+      "is_demo": false,
+      "timezone": "UTC",
+      "access_control": false
+    }
+  ]
+}

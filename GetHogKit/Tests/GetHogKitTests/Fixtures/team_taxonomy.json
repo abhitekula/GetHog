@@ -1,0 +1,18 @@
+{
+  "results": [
+    {"event": "feature_used", "count": 12},
+    {"event": "checkout_completed", "count": 10},
+    {"event": "export_started", "count": 18},
+    {"event": "checkout_submitted", "count": 15},
+    {"event": "account_created", "count": 0},
+    {"event": "export_completed", "count": 8},
+    {"event": "$survey_sent", "count": 0},
+    {"event": "cache_warmed", "count": 6},
+    {"event": "setup_hint_viewed", "count": 3},
+    {"event": "$survey_response", "count": 0}
+  ],
+  "hasMore": false,
+  "limit": 31,
+  "offset": 0,
+  "hogql": "SELECT event, count() AS count FROM events WHERE timestamp >= now() - INTERVAL 30 DAY AND event IN ('feature_used', 'checkout_completed', 'export_started', 'checkout_submitted', 'export_completed', 'cache_warmed', 'setup_hint_viewed') GROUP BY event ORDER BY count DESC LIMIT 31"
+}

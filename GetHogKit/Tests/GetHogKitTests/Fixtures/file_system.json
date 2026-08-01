@@ -1,0 +1,161 @@
+{
+  "count": 27,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "fs-cohort-01",
+      "path": "Sandbox/Archive/Groups/Observatory \\/ test crew",
+      "depth": 4,
+      "type": "cohort",
+      "ref": "730201",
+      "href": "/cohorts/730201",
+      "meta": {
+        "created_at": "2026-01-01T09:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-01T09:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": null
+    },
+    {
+      "id": "fs-insight-01",
+      "path": "Sandbox/Reports/Orbit path analysis",
+      "depth": 4,
+      "type": "insight",
+      "ref": "example-meteor-report",
+      "href": "/insights/example-meteor-report",
+      "meta": {
+        "created_at": "2026-01-02T10:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-02T10:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": "2026-01-12T16:30:00.000Z",
+      "user_access_level": "editor"
+    },
+    {
+      "id": "fs-flag-01",
+      "path": "Sandbox/Flags/Observatory navigation",
+      "depth": 4,
+      "type": "feature_flag",
+      "ref": "710301",
+      "href": "/feature_flags/710301",
+      "meta": {
+        "created_at": "2026-01-03T11:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-03T11:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": "editor"
+    },
+    {
+      "id": "fs-dashboard-01",
+      "path": "Sandbox/Dashboards/Orbital operations",
+      "depth": 4,
+      "type": "dashboard",
+      "ref": "725101",
+      "href": "/dashboards/725101",
+      "meta": {
+        "created_at": "2026-01-04T12:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-04T12:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": "2026-01-10T14:15:00.000Z",
+      "user_access_level": "viewer"
+    },
+    {
+      "id": "fs-folder-library",
+      "path": "Sandbox",
+      "depth": 1,
+      "type": "folder",
+      "ref": null,
+      "href": null,
+      "meta": {
+        "created_at": "2026-01-28T08:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-28T08:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": null
+    },
+    {
+      "id": "fs-playlist-01",
+      "path": "Sandbox/Replays/Reviewed orbit sessions",
+      "depth": 3,
+      "type": "session_recording_playlist",
+      "ref": "example-reviewed-orbits",
+      "href": "/replay/playlists/example-reviewed-orbits",
+      "meta": {
+        "created_at": "2026-01-05T13:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-05T13:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": null
+    },
+    {
+      "id": "fs-survey-01",
+      "path": "Sandbox/Surveys/Telescope feedback",
+      "depth": 4,
+      "type": "survey",
+      "ref": "survey-demo-feedback-2026",
+      "href": "/surveys/survey-demo-feedback-2026",
+      "meta": {
+        "created_at": "2026-01-06T14:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-06T14:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": null
+    },
+    {
+      "id": "fs-destination-01",
+      "path": "Sandbox/Pipeline/Observatory archive",
+      "depth": 4,
+      "type": "hog_function/internal_destination",
+      "ref": "example-observatory-archive",
+      "href": "/pipeline/destinations/example-observatory-archive",
+      "meta": {
+        "created_at": "2026-01-07T15:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-07T15:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": null
+    },
+    {
+      "id": "fs-transformation-01",
+      "path": "Sandbox/Pipeline/Orbit event normalizer",
+      "depth": 4,
+      "type": "hog_function/transformation",
+      "ref": "example-orbit-normalizer",
+      "href": "/pipeline/transformations/example-orbit-normalizer",
+      "meta": {
+        "created_at": "2026-01-08T16:00:00.000Z",
+        "created_by": null
+      },
+      "shortcut": false,
+      "created_at": "2026-01-08T16:00:00.000Z",
+      "created_by": null,
+      "last_viewed_at": null,
+      "user_access_level": null
+    }
+  ],
+  "users": []
+}

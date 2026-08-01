@@ -1,0 +1,2020 @@
+{
+  "count": 779,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000380",
+      "name": "$browser",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000158",
+      "name": "Example App metric 1937",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000254",
+      "name": "Example App metric 1938",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000422",
+      "name": "Example App metric 1939",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": true,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000180",
+      "name": "Example App metric 1941",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000358",
+      "name": "Example App metric 1942",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000203",
+      "name": "Example App metric 1943",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000375",
+      "name": "Example App metric 1944",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": true,
+      "tags": [
+        "Example tags 0231",
+        "Example tags 0231-synthetic-added"
+      ]
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000463",
+      "name": "Example App metric 1946",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000029",
+      "name": "Example App metric 1947",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000424",
+      "name": "Example App metric 1948",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000401",
+      "name": "Example App metric 1949",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000299",
+      "name": "Example App metric 1950",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000116",
+      "name": "Example App metric 1951",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000423",
+      "name": "Example App metric 1952",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000030",
+      "name": "Example App metric 1953",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000227",
+      "name": "Example App metric 1954",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000237",
+      "name": "Example App metric 1955",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000469",
+      "name": "Example App metric 1956",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000048",
+      "name": "Example App metric 1957",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000255",
+      "name": "Example App metric 1958",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000300",
+      "name": "Example App metric 1959",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000260",
+      "name": "Example App metric 1960",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000402",
+      "name": "Example App metric 1961",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000022",
+      "name": "Example App metric 1962",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000467",
+      "name": "Example App metric 1963",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000147",
+      "name": "Example App metric 1964",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000155",
+      "name": "Example App metric 1965",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000386",
+      "name": "Example App metric 1966",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000348",
+      "name": "Example App metric 1967",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000436",
+      "name": "Example App metric 1968",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000410",
+      "name": "Example App metric 1969",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000206",
+      "name": "Example App metric 1970",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000189",
+      "name": "Example App metric 1971",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000494",
+      "name": "Example App metric 1972",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000367",
+      "name": "Example App metric 1973",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000346",
+      "name": "Example App metric 1974",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000193",
+      "name": "Example App metric 1975",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000421",
+      "name": "Example App metric 1976",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000061",
+      "name": "Example App metric 1977",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000218",
+      "name": "Example App metric 1978",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000154",
+      "name": "Example App metric 1979",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000505",
+      "name": "Example App metric 1980",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000178",
+      "name": "Example App metric 1981",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000202",
+      "name": "Example App metric 1982",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000092",
+      "name": "Example App metric 1983",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000441",
+      "name": "Example App metric 1984",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000311",
+      "name": "Example App metric 1985",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000151",
+      "name": "Example App metric 1986",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000390",
+      "name": "Example App metric 1987",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000195",
+      "name": "Example App metric 1988",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000057",
+      "name": "Example App metric 1989",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000357",
+      "name": "Example App metric 1990",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000058",
+      "name": "Example App metric 1991",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000324",
+      "name": "Example App metric 1992",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000020",
+      "name": "Example App metric 1993",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000234",
+      "name": "Example App metric 1994",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000149",
+      "name": "Example App metric 1995",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000355",
+      "name": "Example App metric 1996",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000317",
+      "name": "Example App metric 1997",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000248",
+      "name": "Example App metric 1998",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000397",
+      "name": "Example App metric 1999",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000470",
+      "name": "Example App metric 2000",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000485",
+      "name": "Example App metric 2001",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000225",
+      "name": "Example App metric 2002",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000497",
+      "name": "Example App metric 2003",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000413",
+      "name": "Example App metric 2004",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000354",
+      "name": "Example App metric 2005",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000384",
+      "name": "Example App metric 2006",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000381",
+      "name": "Example App metric 2007",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000190",
+      "name": "Example App metric 2008",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000479",
+      "name": "Example App metric 2009",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000246",
+      "name": "Example App metric 2010",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000407",
+      "name": "Example App metric 2011",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000319",
+      "name": "Example App metric 2012",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000305",
+      "name": "Example App metric 2013",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000198",
+      "name": "Example App metric 2014",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000229",
+      "name": "Example App metric 2015",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000392",
+      "name": "Example App metric 2016",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000216",
+      "name": "Example App metric 2017",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000224",
+      "name": "Example App metric 626",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000032",
+      "name": "Example App metric 2018",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000416",
+      "name": "Example App metric 2019",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000399",
+      "name": "Example App metric 2020",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000307",
+      "name": "Example App metric 2021",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000345",
+      "name": "Example App metric 2022",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000379",
+      "name": "Example App metric 2023",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000419",
+      "name": "Example App metric 2024",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000493",
+      "name": "Example App metric 2025",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000232",
+      "name": "Example App metric 2026",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000403",
+      "name": "Example App metric 2027",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000018",
+      "name": "Example App metric 2028",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000113",
+      "name": "Example App metric 2029",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000228",
+      "name": "Example App metric 2030",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000111",
+      "name": "Example App metric 2031",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000160",
+      "name": "Example App metric 2032",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000391",
+      "name": "Example App metric 2033",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000194",
+      "name": "Example App metric 2034",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000196",
+      "name": "Example App metric 2035",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000210",
+      "name": "Example App metric 2036",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000231",
+      "name": "Example App metric 2037",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000465",
+      "name": "Example App metric 2038",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000314",
+      "name": "Example App metric 2039",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000212",
+      "name": "Example App metric 2040",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000059",
+      "name": "Example App metric 2041",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000389",
+      "name": "Example App metric 2042",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000490",
+      "name": "Example App metric 2043",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000457",
+      "name": "Example App metric 2044",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000444",
+      "name": "Example App metric 2045",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000188",
+      "name": "Example App metric 2046",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000047",
+      "name": "Example App metric 2047",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000347",
+      "name": "Example App metric 2048",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000258",
+      "name": "Example App metric 2049",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000016",
+      "name": "Example App metric 2050",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000486",
+      "name": "Example App metric 2051",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000247",
+      "name": "Example App metric 2052",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000023",
+      "name": "Example App metric 2053",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000209",
+      "name": "Example App metric 2054",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000491",
+      "name": "Example App metric 2055",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000481",
+      "name": "Example App metric 2056",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000214",
+      "name": "Example App metric 2057",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000368",
+      "name": "Example App metric 2058",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000496",
+      "name": "Example App metric 2059",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000245",
+      "name": "Example App metric 2060",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000451",
+      "name": "Example App metric 2061",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000489",
+      "name": "Example App metric 2062",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000456",
+      "name": "Example App metric 2063",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000472",
+      "name": "Example App metric 2064",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000054",
+      "name": "Example App metric 2065",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000476",
+      "name": "Example App metric 2066",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000013",
+      "name": "Example App metric 2067",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000310",
+      "name": "Example App metric 2068",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000226",
+      "name": "Example App metric 2069",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000316",
+      "name": "Example App metric 2070",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000201",
+      "name": "Example App metric 2071",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000398",
+      "name": "Example App metric 2072",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000473",
+      "name": "Example App metric 2073",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000353",
+      "name": "Example App metric 2074",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000351",
+      "name": "Example App metric 2075",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000115",
+      "name": "Example App metric 2076",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000152",
+      "name": "Example App metric 2077",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000056",
+      "name": "Example App metric 2078",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000240",
+      "name": "Example App metric 2079",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000034",
+      "name": "Example App metric 2080",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000425",
+      "name": "Example App metric 2081",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000060",
+      "name": "Example App metric 2082",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000031",
+      "name": "Example App metric 2083",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000153",
+      "name": "Example App metric 2084",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000388",
+      "name": "Example App metric 2085",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000280",
+      "name": "Example App metric 2086",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000455",
+      "name": "Example App metric 2087",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000257",
+      "name": "Example App metric 2088",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000452",
+      "name": "Example App metric 2089",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "DateTime",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000325",
+      "name": "Example App metric 2090",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000112",
+      "name": "Example App metric 2091",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000110",
+      "name": "Example App metric 2092",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000396",
+      "name": "Example App metric 2093",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000256",
+      "name": "Example App metric 2094",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000027",
+      "name": "Example App metric 2095",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000492",
+      "name": "Example App metric 2096",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000306",
+      "name": "Example App metric 2097",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000373",
+      "name": "Example App metric 2098",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000156",
+      "name": "Example App metric 2099",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000337",
+      "name": "$feature/announcement-studio",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000211",
+      "name": "Example App metric 2100",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000339",
+      "name": "Example App metric 2101",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000475",
+      "name": "Example App metric 2102",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000349",
+      "name": "Example App metric 2103",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000459",
+      "name": "Example App metric 2104",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000235",
+      "name": "Example App metric 2105",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000474",
+      "name": "Example App metric 2106",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000183",
+      "name": "Example App metric 2107",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000163",
+      "name": "Example App metric 2108",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000446",
+      "name": "Example App metric 2109",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000055",
+      "name": "Example App metric 2110",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000395",
+      "name": "Example App metric 2111",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000439",
+      "name": "Example App metric 2112",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000019",
+      "name": "Example App metric 2113",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000495",
+      "name": "Example App metric 2114",
+      "description": null,
+      "is_numerical": false,
+      "property_type": null,
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000415",
+      "name": "Example App metric 2115",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000011",
+      "name": "Example App metric 2116",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000320",
+      "name": "Example App metric 2117",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000033",
+      "name": "Example App metric 2118",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000095",
+      "name": "Example App metric 2119",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000394",
+      "name": "Example App metric 2120",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000026",
+      "name": "Example App metric 2121",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000094",
+      "name": "Example App metric 2122",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000162",
+      "name": "Example App metric 2123",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000341",
+      "name": "Example App metric 2124",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000221",
+      "name": "Example App metric 2125",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000164",
+      "name": "Example App metric 2126",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000220",
+      "name": "Example App metric 2127",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000335",
+      "name": "Example App metric 2128",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000450",
+      "name": "Example App metric 2129",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000241",
+      "name": "Example App metric 2130",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000321",
+      "name": "Example App metric 2131",
+      "description": null,
+      "is_numerical": true,
+      "property_type": "Numeric",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000185",
+      "name": "Example App metric 2132",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000363",
+      "name": "Example App metric 2133",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "String",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000065",
+      "name": "Example App metric 2134",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000312",
+      "name": "Example App metric 2135",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000019",
+      "name": "Synthetic added Example App metric 2135",
+      "description": null,
+      "is_numerical": false,
+      "property_type": "Boolean",
+      "verified": null,
+      "hidden": null,
+      "tags": []
+    }
+  ]
+}

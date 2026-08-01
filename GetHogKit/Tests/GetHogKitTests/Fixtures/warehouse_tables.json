@@ -1,0 +1,267 @@
+{
+  "count": 10,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000264",
+      "deleted": false,
+      "name": "demo_accounts",
+      "hogql_name": "demo.accounts",
+      "format": "DeltaS3Wrapper",
+      "created_by": null,
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "url_pattern": "https://app.example.com/demo/example-1410",
+      "credential": null,
+      "columns": [
+        {
+          "key": "account_key",
+          "name": "Account key",
+          "type": "string",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "workspace_key",
+          "name": "Workspace key",
+          "type": "string",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "sequence_number",
+          "name": "Sequence number",
+          "type": "integer",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "display_label",
+          "name": "Display label",
+          "type": "string",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "attributes",
+          "name": "Attributes",
+          "type": "json",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "is_active",
+          "name": "Is active",
+          "type": "boolean",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "archived_at",
+          "name": "Archived at",
+          "type": "datetime",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "region_code",
+          "name": "Region code",
+          "type": "string",
+          "schema_valid": false,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "usage_total",
+          "name": "Usage total",
+          "type": "float",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "created_day",
+          "name": "Created day",
+          "type": "date",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        }
+      ],
+      "external_data_source": {
+        "id": "018f9000-0000-7000-8000-000000000222",
+        "created_at": "2026-01-11T11:30:00.000Z",
+        "created_by": 73044,
+        "status": "Running",
+        "source_type": "S3"
+      },
+      "external_schema": {
+        "id": "018f9000-0000-7000-8000-000000000106",
+        "name": "accounts",
+        "label": null,
+        "should_sync": true,
+        "last_synced_at": "2026-01-23T08:44:00.000Z",
+        "sync_type": "incremental"
+      },
+      "options": {},
+      "user_access_level": "manager"
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000021",
+      "deleted": false,
+      "name": "Synthetic added demo_accounts",
+      "hogql_name": "demo.accounts",
+      "format": "DeltaS3Wrapper",
+      "created_by": null,
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "url_pattern": "https://app.example.com/demo/example-1410",
+      "credential": null,
+      "columns": [
+        {
+          "key": "account_key",
+          "name": "Account key",
+          "type": "string",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "workspace_key",
+          "name": "Workspace key",
+          "type": "string",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "sequence_number",
+          "name": "Sequence number",
+          "type": "integer",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "display_label",
+          "name": "Display label",
+          "type": "string",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "attributes",
+          "name": "Attributes",
+          "type": "json",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "is_active",
+          "name": "Is active",
+          "type": "boolean",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "archived_at",
+          "name": "Archived at",
+          "type": "datetime",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "region_code",
+          "name": "Region code",
+          "type": "string",
+          "schema_valid": false,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "usage_total",
+          "name": "Usage total",
+          "type": "float",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        },
+        {
+          "key": "created_day",
+          "name": "Created day",
+          "type": "date",
+          "schema_valid": true,
+          "fields": null,
+          "table": null,
+          "chain": null,
+          "description": null
+        }
+      ],
+      "external_data_source": {
+        "id": "018f9000-0000-7000-8000-000000000222",
+        "created_at": "2026-01-11T11:30:00.000Z",
+        "created_by": 73044,
+        "status": "Running",
+        "source_type": "S3"
+      },
+      "external_schema": {
+        "id": "018f9000-0000-7000-8000-000000000106",
+        "name": "accounts",
+        "label": null,
+        "should_sync": true,
+        "last_synced_at": "2026-01-23T08:44:00.000Z",
+        "sync_type": "incremental"
+      },
+      "options": {},
+      "user_access_level": "manager"
+    }
+  ]
+}

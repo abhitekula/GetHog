@@ -1,0 +1,96 @@
+{
+  "count": 6,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "survey-demo-feedback-2026",
+      "name": "Example App setup feedback",
+      "description": "Fictional feedback survey for deterministic client coverage.",
+      "type": "widget",
+      "start_date": "2026-01-03T09:00:00.000Z",
+      "end_date": null,
+      "archived": false,
+      "questions": [
+        {
+          "id": "q-feedback-topic",
+          "type": "single_choice",
+          "choices": [
+            "Navigation issue",
+            "Data question",
+            "Account help",
+            "Performance concern"
+          ],
+          "question": "What should we improve first?",
+          "branching": {
+            "type": "response_based",
+            "responseValues": {
+              "0": 11,
+              "1": 22,
+              "2": 33,
+              "3": 44
+            }
+          }
+        },
+        {
+          "id": "q-follow-up",
+          "type": "open",
+          "question": "Where should we send a guide?",
+          "buttonText": "Continue",
+          "description": "Optional contact preference for the fictional flow."
+        },
+        {
+          "id": "q-detail",
+          "type": "open",
+          "question": "What happened?",
+          "buttonText": "Continue",
+          "description": "A short fictional explanation."
+        },
+        {
+          "id": "q-satisfaction",
+          "type": "rating",
+          "scale": 5,
+          "display": "emoji",
+          "question": "How easy was setup?",
+          "branching": {
+            "type": "specific_question",
+            "index": 11
+          },
+          "lowerBoundLabel": "Very difficult synthetic fixture 25",
+          "upperBoundLabel": "Very easy synthetic fixture 26"
+        },
+        {
+          "id": "q-note",
+          "type": "open",
+          "optional": true,
+          "question": "Anything else to add?",
+          "buttonText": "Send feedback"
+        },
+        {
+          "id": "q-reference-note",
+          "type": "open",
+          "optional": true,
+          "question": "Which sample should we add next?",
+          "buttonText": "Finish"
+        }
+      ]
+    },
+    {
+      "id": "survey-demo-catalog-2026",
+      "name": "Sample catalog follow-up",
+      "description": "A second deterministic survey definition for collection behavior.",
+      "type": "popover",
+      "start_date": "2026-02-08T09:00:00.000Z",
+      "end_date": null,
+      "archived": false,
+      "questions": [
+        {
+          "id": "q-catalog-note",
+          "type": "open",
+          "optional": true,
+          "question": "What belongs in the sample catalog?"
+        }
+      ]
+    }
+  ]
+}

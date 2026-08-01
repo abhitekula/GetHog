@@ -1,0 +1,358 @@
+{
+  "cache_key": "cache-1001-c43146d94c",
+  "cache_target_age": "2026-01-28T00:00:00.000Z",
+  "calculation_trigger": null,
+  "error": null,
+  "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+  "is_cached": false,
+  "last_refresh": "2026-01-06T09:36:00.000Z",
+  "modifiers": {
+    "bounceRateDurationSeconds": null,
+    "bounceRatePageViewMode": "Example bounceratepageviewmode 0208",
+    "convertToProjectTimezone": true,
+    "customChannelTypeRules": null,
+    "dataWarehouseEventsModifiers": null,
+    "debug": null,
+    "forceClickhouseDataSkippingIndexes": null,
+    "formatCsvAllowDoubleQuotes": null,
+    "inCohortVia": "Example incohortvia 0209",
+    "inlineCohortCalculation": "Example inlinecohortcalculation 0210",
+    "materializationMode": "Example materializationmode 0211",
+    "materializedColumnsOptimizationMode": null,
+    "optimizeJoinedFilters": false,
+    "optimizeProjections": true,
+    "parserMode": null,
+    "personsArgMaxVersion": "Example personsargmaxversion 0212",
+    "personsJoinMode": null,
+    "personsOnEventsMode": "Example personsoneventsmode 0213",
+    "propertyGroupsMode": "Example propertygroupsmode 0214",
+    "pushDownPredicates": null,
+    "s3TableUseInvalidColumns": null,
+    "sessionIdPushdown": false,
+    "sessionPropertyPreAggregation": false,
+    "sessionTableVersion": "Example sessiontableversion 0215",
+    "sessionsV2JoinMode": "Example sessionsv2joinmode 0216",
+    "timings": null,
+    "useMaterializedViews": true,
+    "usePreaggregatedIntermediateResults": null,
+    "usePreaggregatedTableTransforms": null,
+    "useWebAnalyticsPreAggregatedTables": null
+  },
+  "next_allowed_client_refresh": "2026-01-22T14:24:00.000Z",
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-01-11T19:12:00.000Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": {
+    "date_from": "2026-01-01T00:00:00.000Z",
+    "date_to": "2026-01-17T04:48:00.000Z"
+  },
+  "results": [
+    {
+      "average_conversion_time": 158301.78333333335,
+      "source": "1_Example source 0568",
+      "target": "Example target 0569",
+      "value": 240.7
+    },
+    {
+      "average_conversion_time": 101472.77594936707,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0008/?limit=15",
+      "target": "Example target 0570",
+      "value": 158.7
+    },
+    {
+      "average_conversion_time": 87749.92666666667,
+      "source": "Example source 0568",
+      "target": "Example target 0571",
+      "value": 150.7
+    },
+    {
+      "average_conversion_time": 12434.29420289855,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0009/?limit=16",
+      "target": "Example target 0570",
+      "value": 138.7
+    },
+    {
+      "average_conversion_time": 38889.60566037736,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0010/?limit=17",
+      "target": "Example target 0570",
+      "value": 106.7
+    },
+    {
+      "average_conversion_time": 95376.62000000001,
+      "source": "Example source 0572",
+      "target": "Example target 0573",
+      "value": 100.7
+    },
+    {
+      "average_conversion_time": 67774.65833333334,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0011/?limit=7",
+      "target": "Example target 0570",
+      "value": 96.7
+    },
+    {
+      "average_conversion_time": 106865.26521739131,
+      "source": "Example source 0574",
+      "target": "Example target 0575",
+      "value": 92.7
+    },
+    {
+      "average_conversion_time": 14332.331578947369,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0012/?limit=8",
+      "target": "Example target 0576",
+      "value": 76.7
+    },
+    {
+      "average_conversion_time": 30968.213513513514,
+      "source": "Example source 0577",
+      "target": "Example target 0578",
+      "value": 74.7
+    },
+    {
+      "average_conversion_time": 75.67142857142858,
+      "source": "Example source 0579",
+      "target": "Example target 0580",
+      "value": 70.7
+    },
+    {
+      "average_conversion_time": 70177.15714285715,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0013/?limit=9",
+      "target": "Example target 0570",
+      "value": 70.7
+    },
+    {
+      "average_conversion_time": 4816.099999999999,
+      "source": "Example source 0581",
+      "target": "Example target 0582",
+      "value": 60.7
+    },
+    {
+      "average_conversion_time": 70718.01034482759,
+      "source": "Example source 0577",
+      "target": "Example target 0583",
+      "value": 58.7
+    },
+    {
+      "average_conversion_time": 111.44074074074075,
+      "source": "Example source 0581",
+      "target": "https://app.example.com/api/projects/1001/fictional/resource-0014/?limit=10",
+      "value": 54.7
+    },
+    {
+      "average_conversion_time": 9442.460000000001,
+      "source": "Example source 0584",
+      "target": "Example target 0582",
+      "value": 50.7
+    },
+    {
+      "average_conversion_time": 15260.352173913045,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0015/?limit=11",
+      "target": "Example target 0576",
+      "value": 46.7
+    },
+    {
+      "average_conversion_time": 72106.43913043478,
+      "source": "Example source 0572",
+      "target": "Example target 0585",
+      "value": 46.7
+    },
+    {
+      "average_conversion_time": 498.88181818181823,
+      "source": "Example source 0586",
+      "target": "Example target 0587",
+      "value": 44.7
+    },
+    {
+      "average_conversion_time": 294949.3666666667,
+      "source": "Example source 0568",
+      "target": "Example target 0588",
+      "value": 42.7
+    },
+    {
+      "average_conversion_time": 175886.2,
+      "source": "Example source 0589",
+      "target": "Example target 0590",
+      "value": 40.7
+    },
+    {
+      "average_conversion_time": 14593.99411764706,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0016/?limit=12",
+      "target": "Example target 0570",
+      "value": 34.7
+    },
+    {
+      "average_conversion_time": 4440.2,
+      "source": "Example source 0591",
+      "target": "https://app.example.com/api/projects/1001/fictional/resource-0017/?limit=13",
+      "value": 32.7
+    },
+    {
+      "average_conversion_time": 4457.233333333334,
+      "source": "Example source 0581",
+      "target": "Example target 0569",
+      "value": 30.7
+    },
+    {
+      "average_conversion_time": 4844.699999999999,
+      "source": "Example source 0574",
+      "target": "Example target 0583",
+      "value": 30.7
+    },
+    {
+      "average_conversion_time": 19955.128571428573,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0018/?limit=14",
+      "target": "Example target 0592",
+      "value": 28.7
+    },
+    {
+      "average_conversion_time": 12497.271428571428,
+      "source": "Example source 0593",
+      "target": "Example target 0578",
+      "value": 28.7
+    },
+    {
+      "average_conversion_time": 3285.007692307692,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0019/?limit=15",
+      "target": "Example target 0578",
+      "value": 26.7
+    },
+    {
+      "average_conversion_time": 105315.36666666667,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0020/?limit=16",
+      "target": "Example target 0592",
+      "value": 24.7
+    },
+    {
+      "average_conversion_time": 11823.033333333333,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0021/?limit=17",
+      "target": "Example target 0575",
+      "value": 24.7
+    },
+    {
+      "average_conversion_time": 11218.533333333335,
+      "source": "Example source 0589",
+      "target": "Example target 0594",
+      "value": 24.7
+    },
+    {
+      "average_conversion_time": 276401.1,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0022/?limit=7",
+      "target": "Example target 0595",
+      "value": 20.7
+    },
+    {
+      "average_conversion_time": 516.3,
+      "source": "Example source 0596",
+      "target": "Example target 0597",
+      "value": 20.7
+    },
+    {
+      "average_conversion_time": 357.5,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0023/?limit=8",
+      "target": "Example target 0575",
+      "value": 20.7
+    },
+    {
+      "average_conversion_time": 10497.58888888889,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0024/?limit=9",
+      "target": "Example target 0570",
+      "value": 18.7
+    },
+    {
+      "average_conversion_time": 91701.36666666667,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0025/?limit=10",
+      "target": "Example target 0592",
+      "value": 18.7
+    },
+    {
+      "average_conversion_time": 357378.92222222226,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0026/?limit=11",
+      "target": "Example target 0592",
+      "value": 18.7
+    },
+    {
+      "average_conversion_time": 9873.144444444446,
+      "source": "Example source 0589",
+      "target": "Example target 0585",
+      "value": 18.7
+    },
+    {
+      "average_conversion_time": 36375.7,
+      "source": "Example source 0596",
+      "target": "https://app.example.com/api/projects/1001/fictional/resource-0027/?limit=12",
+      "value": 16.7
+    },
+    {
+      "average_conversion_time": 620.4142857142858,
+      "source": "Example source 0598",
+      "target": "Example target 0580",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 32.98571428571429,
+      "source": "Example source 0579",
+      "target": "2_https://app.example.com/demo/example-2676",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 10493.842857142858,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0028/?limit=13",
+      "target": "Example target 0570",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 10463.557142857144,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0029/?limit=14",
+      "target": "Example target 0570",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 23437.557142857142,
+      "source": "Example source 0599",
+      "target": "Example target 0582",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 7610.414285714285,
+      "source": "Example source 0584",
+      "target": "Example target 0569",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 752.7,
+      "source": "Example source 0574",
+      "target": "Example target 0600",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 118691.27142857142,
+      "source": "Example source 0601",
+      "target": "Example target 0573",
+      "value": 14.7
+    },
+    {
+      "average_conversion_time": 5536.700000000001,
+      "source": "Example source 0602",
+      "target": "Example target 0592",
+      "value": 12.7
+    },
+    {
+      "average_conversion_time": 10280.366666666667,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0030/?limit=15",
+      "target": "Example target 0570",
+      "value": 12.7
+    },
+    {
+      "average_conversion_time": 10280.366666666667,
+      "source": "https://app.example.com/api/projects/1001/fictional/resource-0030/?limit=15",
+      "target": "Example target 0570",
+      "value": 12.7
+    }
+  ],
+  "timezone": "UTC",
+  "timings": null,
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

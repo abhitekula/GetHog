@@ -1,0 +1,91 @@
+{
+  "columns": [
+    "uuid",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "name",
+    "kind",
+    "service_name",
+    "status_code",
+    "timestamp",
+    "end_time",
+    "duration_nano",
+    "is_root_span",
+    "matched_filter",
+    "attributes"
+  ],
+  "results": [
+    [
+      "trace-event-entry",
+      "trace-example-widget",
+      "span-widget-entry",
+      null,
+      "POST /demo/widgets",
+      "Server",
+      "edge-service",
+      1,
+      "2026-01-22T10:00:00.000000Z",
+      "2026-01-22T10:00:00.530000Z",
+      530000000,
+      true,
+      6,
+      {
+        "http.method": "POST",
+        "http.route": "/demo/widgets"
+      }
+    ],
+    [
+      "trace-event-cache",
+      "trace-example-widget",
+      "span-widget-cache",
+      "span-widget-entry",
+      "GET widget cache",
+      "Client",
+      "cache-service",
+      2,
+      "2026-01-22T10:00:00.030000Z",
+      "2026-01-22T10:00:00.241000Z",
+      211000000,
+      false,
+      false,
+      {
+        "db.system": "redis"
+      }
+    ],
+    [
+      "trace-event-render",
+      "trace-example-widget",
+      "span-widget-render",
+      "span-widget-entry",
+      "Render widget preview",
+      "Internal",
+      "render-service",
+      "Error",
+      "2026-01-22T10:00:00.260000Z",
+      "2026-01-22T10:00:00.487000Z",
+      227000000,
+      false,
+      5,
+      {
+        "render.mode": "preview"
+      }
+    ],
+    [
+      "trace-event-health",
+      "trace-example-health",
+      "span-health-root",
+      null,
+      "GET /demo/health",
+      "Server",
+      "edge-service",
+      "Error",
+      "2026-01-22T09:58:00.000000Z",
+      "2026-01-22T09:58:00.012400Z",
+      12400000,
+      true,
+      1,
+      {}
+    ]
+  ]
+}

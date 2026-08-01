@@ -1,0 +1,48 @@
+{
+  "id": "018f9000-0000-7000-8000-000000000371",
+  "deleted": false,
+  "name": "example_orbital_signup_rollup",
+  "created_by": {
+    "first_name": "Alex Example",
+    "email": "alex+0158@example.com"
+  },
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+  "sync_frequency": "24hour",
+  "sync_frequency_managed_by_dag": false,
+  "columns": [
+    {
+      "key": "Example key 1434",
+      "name": "Example App metric 1435",
+      "type": "date",
+      "schema_valid": true
+    },
+    {
+      "key": "Example key 1436",
+      "name": "Example App metric 1437",
+      "type": "float",
+      "schema_valid": true
+    },
+    {
+      "key": "Example key 1451",
+      "name": "Example App metric 1452",
+      "type": "string",
+      "schema_valid": true
+    }
+  ],
+  "status": "Modified",
+  "last_run_at": "2026-01-28T00:00:00.000Z",
+  "managed_viewset_kind": null,
+  "folder_id": null,
+  "folder_name": "Example folder name 1438",
+  "latest_error": null,
+  "is_materialized": true,
+  "origin": "Example origin 1431",
+  "is_test": false,
+  "expires_at": null,
+  "user_access_level": "editor",
+  "query": {
+    "kind": "HogQLQuery",
+    "query": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+  }
+}

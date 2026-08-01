@@ -1,0 +1,52 @@
+{
+  "columns": [
+    "uuid",
+    "event",
+    "timestamp",
+    "distinct_id",
+    "properties.$current_url",
+    "properties"
+  ],
+  "results": [
+    [
+      "018f4000-0000-7000-8000-000000000001",
+      "$pageview",
+      "2026-01-15T12:00:01.000Z",
+      "person-example-001",
+      "https://app.example.com/dashboard",
+      {
+        "$session_id": "018f1000-0000-7000-8000-000000000001"
+      }
+    ],
+    [
+      "018f4000-0000-7000-8000-000000000002",
+      "harbor_filter_changed",
+      "2026-01-15T12:00:03.000Z",
+      "person-example-001",
+      "https://app.example.com/dashboard",
+      {
+        "$session_id": "018f1000-0000-7000-8000-000000000001"
+      }
+    ],
+    [
+      "018f4000-0000-7000-8000-000000000003",
+      "harbor_dashboard_opened",
+      "2026-01-15T12:00:05.000Z",
+      "person-example-001",
+      "https://app.example.com/dashboard",
+      {
+        "$session_id": "018f1000-0000-7000-8000-000000000001"
+      }
+    ],
+    [
+      "018f4000-0000-7000-8000-000000000004",
+      "harbor_report_downloaded",
+      "2026-01-15T12:00:07.000Z",
+      "person-example-001",
+      "https://app.example.com/reports/harbor",
+      {
+        "$session_id": "018f1000-0000-7000-8000-000000000001"
+      }
+    ]
+  ]
+}

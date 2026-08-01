@@ -1,0 +1,103 @@
+{
+  "cache_key": "fixture-groups-harbor-v3",
+  "cache_target_age": "2026-04-14T15:45:00.000Z",
+  "calculation_trigger": null,
+  "columns": [
+    "group_name",
+    "key",
+    "created_at",
+    "properties"
+  ],
+  "error": null,
+  "hasMore": false,
+  "hogql": "SELECT group_name, key, created_at, properties FROM synthetic_groups ORDER BY created_at DESC LIMIT 7",
+  "is_cached": false,
+  "kind": "GroupsQuery",
+  "last_refresh": "2026-04-14T15:33:00.000Z",
+  "limit": 37,
+  "modifiers": null,
+  "next_allowed_client_refresh": "2026-04-14T15:47:00.000Z",
+  "offset": 0,
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-04-14T15:33:00.000Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [
+    [
+      {
+        "display_name": "Harbor Analytics Lab",
+        "key": "group-harbor-3101"
+      },
+      "group-harbor-3101",
+      "2026-04-10T14:00:00.000Z",
+      "{\"name\":\"Harbor Analytics Lab\",\"plan\":\"fixture-pro\",\"region\":\"test-east\"}"
+    ],
+    [
+      {
+        "display_name": "Juniper QA Studio",
+        "key": "group-harbor-3102"
+      },
+      "group-harbor-3102",
+      "2026-04-08T11:30:00.000Z",
+      "{\"name\":\"Juniper QA Studio\",\"plan\":\"fixture-team\",\"region\":\"test-west\"}"
+    ],
+    [
+      {
+        "display_name": "Northstar Demo Works",
+        "key": "group-harbor-3103"
+      },
+      "group-harbor-3103",
+      "2026-04-05T09:15:00.000Z",
+      "{\"name\":\"Northstar Demo Works\",\"plan\":\"fixture-free\",\"region\":\"test-north\"}"
+    ],
+    [
+      {
+        "display_name": "Cobalt Test Bench",
+        "key": "group-harbor-3104"
+      },
+      "group-harbor-3104",
+      "2026-04-02T16:45:00.000Z",
+      "{\"name\":\"Cobalt Test Bench\",\"plan\":\"fixture-pro\",\"region\":\"test-south\"}"
+    ],
+    [
+      {
+        "display_name": "Marigold Sandbox",
+        "key": "group-harbor-3105"
+      },
+      "group-harbor-3105",
+      "2026-03-29T13:10:00.000Z",
+      "{\"name\":\"Marigold Sandbox\",\"plan\":\"fixture-team\",\"region\":\"test-east\"}"
+    ],
+    [
+      {
+        "display_name": "Lantern Fixture Co",
+        "key": "group-harbor-3106"
+      },
+      "group-harbor-3106",
+      "2026-03-25T10:20:00.000Z",
+      "{\"name\":\"Lantern Fixture Co\",\"plan\":\"fixture-free\",\"region\":\"test-west\"}"
+    ],
+    [
+      {
+        "display_name": "Pebble Automation Guild",
+        "key": "group-harbor-3107"
+      },
+      "group-harbor-3107",
+      "2026-03-20T08:05:00.000Z",
+      "{\"name\":\"Pebble Automation Guild\",\"plan\":\"fixture-pro\",\"region\":\"test-north\"}"
+    ]
+  ],
+  "timezone": "UTC",
+  "timings": null,
+  "types": [
+    "Tuple(String, String)",
+    "String",
+    "DateTime64(3, 'UTC')",
+    "String"
+  ],
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

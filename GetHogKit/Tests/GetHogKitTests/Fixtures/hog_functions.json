@@ -1,0 +1,245 @@
+{
+  "count": 9,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "hog-example-normalize-region",
+      "type": "transformation",
+      "name": "Normalize example region",
+      "description": "Adds a fictional region label to demo events.",
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_by": null,
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "enabled": true,
+      "hog": "event.properties.example_region := 'north'",
+      "filters": {
+        "source": "synthetic_event_stream",
+        "bytecode": [
+          "example_region",
+          716,
+          65,
+          83
+        ]
+      },
+      "icon_url": "https://app.example.com/assets/region-function.png",
+      "template": {
+        "id": "template-example-region",
+        "name": "Normalize example region",
+        "description": "Adds a fictional region label to demo events.",
+        "code": "event.properties.example_region := 'north'",
+        "code_language": "hog",
+        "inputs_schema": [],
+        "type": "transformation",
+        "status": "stable",
+        "category": [
+          "Demo enrichment",
+          "Fixture transform"
+        ],
+        "free": true,
+        "icon_url": "https://app.example.com/assets/region-function.png",
+        "filters": null,
+        "masking": null,
+        "mapping_templates": null
+      },
+      "status": {
+        "state": 2,
+        "tokens": 8400
+      },
+      "execution_order": 2
+    },
+    {
+      "id": "hog-example-notify-channel",
+      "type": "internal_destination",
+      "name": "Notify example channel",
+      "description": "Sends selected fictional events to an example notification channel.",
+      "created_at": "2026-01-28T00:00:00.000Z",
+      "created_by": {
+        "id": 730501,
+        "uuid": "user-example-pipeline",
+        "distinct_id": "pipeline-owner-example",
+        "first_name": "Taylor",
+        "last_name": "Demo",
+        "email": "taylor.demo@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "engineer"
+      },
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "enabled": true,
+      "hog": "fetch(inputs.endpoint, {method: 'POST', body: event})",
+      "filters": {
+        "events": [
+          {
+            "id": "account_created",
+            "type": "events"
+          },
+          {
+            "id": "sample_catalog_opened",
+            "type": "events"
+          }
+        ],
+        "source": "synthetic_delivery_stream",
+        "bytecode": [
+          "endpoint",
+          7,
+          71,
+          "POST",
+          71,
+          "application/json",
+          718,
+          8,
+          743,
+          "fixture-envelope"
+        ]
+      },
+      "icon_url": "https://app.example.com/assets/notify-function.png",
+      "template": {
+        "id": "template-example-notify",
+        "name": "Notify example channel",
+        "description": "Sends selected fictional events to an example notification channel.",
+        "code": "fetch(inputs.endpoint, {method: 'POST', body: event})",
+        "code_language": "hog",
+        "inputs_schema": [
+          {
+            "key": "workspace",
+            "type": "integration",
+            "label": "Example workspace",
+            "hidden": false,
+            "secret": false,
+            "required": true,
+            "integration": "example_chat"
+          },
+          {
+            "key": "synthetic_fixture_15_channel",
+            "type": "integration_field",
+            "label": "Example channel",
+            "hidden": false,
+            "secret": false,
+            "required": true,
+            "integration_key": "workspace",
+            "integration_field": "channels"
+          },
+          {
+            "key": "message",
+            "type": "string",
+            "label": "Message template",
+            "hidden": false,
+            "secret": false,
+            "default": "Example signup received",
+            "required": true
+          },
+          {
+            "key": "endpoint",
+            "type": "string",
+            "label": "Webhook endpoint",
+            "hidden": false,
+            "secret": false,
+            "default": "https://app.example.com/hooks/demo",
+            "required": true
+          },
+          {
+            "key": "format",
+            "type": "string",
+            "label": "Payload format",
+            "hidden": true,
+            "secret": false,
+            "default": "compact",
+            "required": true
+          },
+          {
+            "key": "footer",
+            "type": "string",
+            "label": "Optional footer",
+            "hidden": true,
+            "secret": false,
+            "required": false,
+            "description": "A fictional note appended to the demo message."
+          },
+          {
+            "key": "fixture_label",
+            "type": "string",
+            "label": "Fixture label",
+            "hidden": true,
+            "secret": false,
+            "default": "sample delivery",
+            "required": false
+          }
+        ],
+        "type": "destination",
+        "status": "stable",
+        "category": [
+          "Fixture delivery",
+          "Demo notification"
+        ],
+        "free": false,
+        "icon_url": "https://app.example.com/assets/notify-function.png",
+        "filters": null,
+        "masking": null,
+        "mapping_templates": null
+      },
+      "status": {
+        "state": 3,
+        "tokens": 9200
+      },
+      "execution_order": null
+    },
+    {
+      "id": "hog-example-catalog-segment",
+      "type": "transformation",
+      "name": "Attach sample catalog segment",
+      "description": "Adds a deterministic catalog segment to fictional demo events.",
+      "created_at": "2026-02-11T12:30:00.000Z",
+      "created_by": null,
+      "updated_at": "2026-02-12T09:15:00.000Z",
+      "enabled": true,
+      "hog": "event.properties.catalog_segment := 'sample'",
+      "filters": {
+        "source": "synthetic_catalog_stream",
+        "bytecode": [
+          "catalog_segment",
+          727,
+          73,
+          "sample",
+          31
+        ]
+      },
+      "icon_url": "https://app.example.com/assets/catalog-function.png",
+      "template": {
+        "id": "template-example-catalog",
+        "name": "Attach sample catalog segment",
+        "description": "Adds a deterministic catalog segment to fictional demo events.",
+        "code": "event.properties.catalog_segment := 'sample'",
+        "code_language": "hog",
+        "inputs_schema": [
+          {
+            "key": "segment",
+            "type": "string",
+            "label": "Sample segment",
+            "hidden": false,
+            "secret": false,
+            "default": "sample",
+            "required": true
+          }
+        ],
+        "type": "transformation",
+        "status": "stable",
+        "category": [
+          "Fixture transform",
+          "Demo enrichment",
+          "Sample catalog"
+        ],
+        "free": true,
+        "icon_url": "https://app.example.com/assets/catalog-function.png",
+        "filters": null,
+        "masking": null,
+        "mapping_templates": null
+      },
+      "status": {
+        "state": 1,
+        "tokens": 7600
+      },
+      "execution_order": 5
+    }
+  ]
+}

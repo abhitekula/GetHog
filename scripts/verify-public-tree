@@ -1,0 +1,321 @@
+#!/usr/bin/env bash
+
+# A publication gate for the exact working tree that would be made public.
+#
+# It intentionally reports only a rule id and a relative path. A verifier for
+# private data must never echo the private value it found into a terminal log.
+
+set -euo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/gethog-public-tree.XXXXXX")
+violations_file="$temporary_root/violations"
+manifest_file="$temporary_root/public-tree-manifest"
+files_file="$temporary_root/public-tree-files"
+: > "$violations_file"
+: > "$manifest_file"
+: > "$files_file"
+
+cleanup() {
+    rm -rf -- "$temporary_root"
+}
+trap cleanup EXIT HUP INT TERM
+
+record_violation() {
+    rule_id=$1
+    relative_path=$2
+    printf '%s\t%s\n' "$rule_id" "$relative_path" >> "$violations_file"
+}
+
+is_fixture_path() {
+    case "$1" in
+        GetHog/Resources/DemoData/*.json|GetHog/Resources/DemoData/*.jsonl|\
+        GetHogKit/Tests/GetHogKitTests/Fixtures/*.json|\
+        GetHogKit/Tests/GetHogKitTests/Fixtures/*.jsonl)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_allowed_png_path() {
+    case "$1" in
+        GetHog/Resources/Assets.xcassets/*.appiconset/*.png|\
+        GetHog/Resources/Assets.xcassets/*.imageset/*.png|\
+        docs/images/*.png|.github/assets/*.png)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+scan_text_file() {
+    full_path=$1
+    relative_path=$2
+
+    if LC_ALL=C grep -q '[[:blank:]]$' "$full_path"; then
+        record_violation "whitespace-error" "$relative_path"
+    fi
+
+    legacy_app="Mobile""Hog"
+    legacy_package="Post""HogKit"
+    if LC_ALL=C grep -Eqi "${legacy_app}|${legacy_package}|mobile""hog" "$full_path"; then
+        record_violation "legacy-text" "$relative_path"
+    fi
+
+    private_key_pattern='BEGIN [A-Z ]*PRIVATE KEY|ssh-(rsa|ed25519) [A-Za-z0-9+/]{32,}'
+    secret_pattern='phx_[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|sk_live_[A-Za-z0-9]{16,}|AKIA[A-Z0-9]{16}'
+    if LC_ALL=C grep -Eq "$private_key_pattern" "$full_path"; then
+        record_violation "private-key" "$relative_path"
+    fi
+    if LC_ALL=C grep -Eq "$secret_pattern" "$full_path"; then
+        record_violation "credential-token" "$relative_path"
+    fi
+
+    user_path_pattern="/""Users/|/""home/[^/]+/"
+    if LC_ALL=C grep -Eq "$user_path_pattern" "$full_path"; then
+        record_violation "private-local-path" "$relative_path"
+    fi
+
+    security_route_pattern="report"" vulnerabilities|security""@[A-Za-z0-9.-]+|responsible"" disclosure"
+    if LC_ALL=C grep -Eqi "$security_route_pattern" "$full_path"; then
+        record_violation "security-reporting-route" "$relative_path"
+    fi
+
+    emails_file="$temporary_root/emails"
+    : > "$emails_file"
+    LC_ALL=C grep -Eo '[A-Za-z0-9.!#$%&*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
+        "$full_path" > "$emails_file" || true
+    while IFS= read -r email; do
+        domain=${email##*@}
+        case "$domain" in
+            example.com|example.org|example.net|users.noreply.github.com)
+                ;;
+            *)
+                record_violation "non-reserved-email" "$relative_path"
+                break
+                ;;
+        esac
+    done < "$emails_file"
+
+    if is_fixture_path "$relative_path"; then
+        case "$relative_path" in
+            *.json)
+                if ! jq empty "$full_path" >/dev/null 2>&1; then
+                    record_violation "fixture-json" "$relative_path"
+                fi
+                ;;
+            *.jsonl)
+                line_number=0
+                while IFS= read -r line || [ -n "$line" ]; do
+                    line_number=$((line_number + 1))
+                    if [ -z "$line" ] || ! printf '%s\n' "$line" | jq -e . >/dev/null 2>&1; then
+                        record_violation "fixture-jsonl" "$relative_path"
+                        break
+                    fi
+                done < "$full_path"
+                ;;
+        esac
+    fi
+}
+
+scan_one_path() {
+    scan_root=$1
+    relative_path=$2
+    full_path="$scan_root/$relative_path"
+
+    # `git ls-files --cached` includes tracked paths deleted in the working
+    # tree. They are absent from the tree being prepared for publication.
+    if [ ! -e "$full_path" ] && [ ! -L "$full_path" ]; then
+        return
+    fi
+    if [ -L "$full_path" ] || [ ! -f "$full_path" ]; then
+        record_violation "unsafe-file-type" "$relative_path"
+        return
+    fi
+
+    if printf '%s' "$relative_path" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+        record_violation "unsafe-filename" "$relative_path"
+        return
+    fi
+
+    base_name=${relative_path##*/}
+    case "$base_name" in
+        .env|.env.*|*.pat|secrets.json|.netrc|*.mobileprovision|*.p12|\
+        *.xcresult|*.xcarchive|*.private.bundle|*.rewrite.bundle)
+            record_violation "unsafe-filename" "$relative_path"
+            ;;
+    esac
+
+    legacy_app="Mobile""Hog"
+    legacy_package="Post""HogKit"
+    if printf '%s' "$relative_path" | LC_ALL=C grep -Eqi "${legacy_app}|${legacy_package}|mobile""hog"; then
+        record_violation "legacy-filename" "$relative_path"
+    fi
+
+    case "$relative_path" in
+        .github/workflows/*)
+            record_violation "ci-config" "$relative_path"
+            ;;
+        .github/dependabot.yml|.github/dependabot.yaml)
+            record_violation "dependabot-config" "$relative_path"
+            ;;
+        SECURITY.md|.github/SECURITY.md|docs/SECURITY.md)
+            record_violation "security-reporting-route" "$relative_path"
+            ;;
+        docs/superpowers/*|.superpowers/*|CLAUDE.md|PROGRESS.md|\
+        .rewrite/*|.rewrite-worktrees/*)
+            record_violation "internal-artifact" "$relative_path"
+            ;;
+    esac
+
+    mime_type=$(file -b --mime-type "$full_path" 2>/dev/null || true)
+    case "$mime_type" in
+        text/*|application/json|application/xml|application/x-empty|\
+        application/javascript|application/x-sh|inode/x-empty)
+            scan_text_file "$full_path" "$relative_path"
+            ;;
+        image/png)
+            if ! is_allowed_png_path "$relative_path"; then
+                record_violation "binary-artifact" "$relative_path"
+            fi
+            strings -a "$full_path" > "$temporary_root/image-strings" || true
+            legacy_app="Mobile""Hog"
+            legacy_package="Post""HogKit"
+            image_private_pattern="${legacy_app}|${legacy_package}|/""Users/|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+            if LC_ALL=C grep -Eqi "$image_private_pattern" "$temporary_root/image-strings"; then
+                record_violation "image-metadata" "$relative_path"
+            fi
+            ;;
+        *)
+            record_violation "binary-artifact" "$relative_path"
+            ;;
+    esac
+
+    case "$relative_path" in
+        project.yml)
+            if ! LC_ALL=C grep -Eq '^    DEVELOPMENT_TEAM: ""$' "$full_path"; then
+                record_violation "signing-identity" "$relative_path"
+            fi
+            if ! LC_ALL=C grep -q 'bundleIdPrefix: app.gethog' "$full_path"; then
+                record_violation "signing-identity" "$relative_path"
+            fi
+            ;;
+        *.entitlements)
+            if LC_ALL=C grep -q '<string>group\.' "$full_path" && \
+               ! LC_ALL=C grep -Eq '<string>group\.app\.gethog(</string>|\.)' "$full_path"; then
+                record_violation "signing-identity" "$relative_path"
+            fi
+            ;;
+    esac
+}
+
+scan_list() {
+    scan_root=$1
+    nul_list=$2
+    while IFS= read -r -d '' relative_path; do
+        if printf '%s' "$relative_path" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+            record_violation "unsafe-filename" "<control-character-path>"
+            continue
+        fi
+        if [ ! -e "$scan_root/$relative_path" ] && [ ! -L "$scan_root/$relative_path" ]; then
+            continue
+        fi
+        printf '%s\n' "$relative_path" >> "$manifest_file"
+        scan_one_path "$scan_root" "$relative_path"
+    done < "$nul_list"
+}
+
+run_self_test() {
+    self_root="$temporary_root/self-test"
+    mkdir -p \
+        "$self_root/.github/workflows" \
+        "$self_root/docs/superpowers" \
+        "$self_root/docs/images" \
+        "$self_root/GetHog/Resources/DemoData"
+
+    printf 'local\n' > "$self_root/.env"
+    ln -s whitespace.txt "$self_root/link.txt"
+    printf 'ok \n' > "$self_root/whitespace.txt"
+    printf 'legacy\n' > "$self_root/""Mobile""Hog.txt"
+    printf '%s\n' "Post""HogKit" > "$self_root/legacy-text.txt"
+    printf '%s\n' "-----BEGIN ""PRIVATE KEY-----" > "$self_root/key.txt"
+    printf '%s\n' "phx_""0123456789abcdefghijklmnop" > "$self_root/token.txt"
+    printf '%s\n' "/""Users/example/private.txt" > "$self_root/path.txt"
+    printf '%s\n' "person@""private.invalid" > "$self_root/email.txt"
+    printf 'name: checks\n' > "$self_root/.github/workflows/checks.yml"
+    printf 'version: 2\n' > "$self_root/.github/dependabot.yml"
+    printf 'policy\n' > "$self_root/SECURITY.md"
+    printf 'plan\n' > "$self_root/docs/superpowers/plan.md"
+    printf '\000binary\n' > "$self_root/blob.bin"
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | \
+        openssl base64 -d -A > "$self_root/docs/images/metadata.png"
+    printf '%s\n' "Mobile""Hog" >> "$self_root/docs/images/metadata.png"
+    printf '{not-json}\n' > "$self_root/GetHog/Resources/DemoData/broken.json"
+    printf '{"ok":true}\n{not-json}\n' > "$self_root/GetHog/Resources/DemoData/broken.jsonl"
+    printf 'name: GetHog\n    DEVELOPMENT_TEAM: ABC123\n' > "$self_root/project.yml"
+
+    self_list="$temporary_root/self-test-files"
+    : > "$self_list"
+    find "$self_root" -type f -print0 > "$temporary_root/self-test-absolute"
+    while IFS= read -r -d '' absolute_path; do
+        relative_path=${absolute_path#"$self_root/"}
+        printf '%s\0' "$relative_path" >> "$self_list"
+    done < "$temporary_root/self-test-absolute"
+    printf '%s\0' 'link.txt' >> "$self_list"
+
+    scan_list "$self_root" "$self_list"
+
+    expected_rules='unsafe-filename unsafe-file-type whitespace-error legacy-filename legacy-text private-key credential-token private-local-path non-reserved-email ci-config dependabot-config security-reporting-route internal-artifact binary-artifact image-metadata fixture-json fixture-jsonl signing-identity'
+    for rule_id in $expected_rules; do
+        if ! awk -F '\t' -v wanted="$rule_id" '$1 == wanted { found = 1 } END { exit !found }' \
+            "$violations_file"; then
+            printf 'self-test failed: missing rule %s\n' "$rule_id" >&2
+            return 1
+        fi
+    done
+
+    printf 'public-tree verifier self-test passed (%s rules)\n' \
+        "$(printf '%s\n' $expected_rules | wc -l | tr -d ' ')"
+}
+
+report_violations() {
+    if [ ! -s "$violations_file" ]; then
+        return 0
+    fi
+    printf 'public-tree verification failed:\n' >&2
+    LC_ALL=C sort -u "$violations_file" | \
+        awk -F '\t' '{ printf "  [%s] %s\n", $1, $2 > "/dev/stderr" }'
+    return 1
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+    run_self_test
+    exit $?
+fi
+
+if [ "$#" -ne 0 ]; then
+    printf 'usage: scripts/verify-public-tree [--self-test]\n' >&2
+    exit 64
+fi
+
+cd "$repository_root"
+git ls-files --cached --others --exclude-standard -z > "$files_file"
+scan_list "$repository_root" "$files_file"
+report_violations
+
+# The Swift privacy gate owns schema-aware fixture checks, positional query
+# validation, deterministic identifier catalogues, and package/demo parity.
+# Passing the same manifest keeps both halves of this verifier on one inventory.
+export GETHOG_PUBLIC_TREE_MANIFEST="$manifest_file"
+if [ -n "${GETHOG_FIXTURE_DENYLIST_FILE:-}" ]; then
+    export GETHOG_REQUIRE_FIXTURE_DENYLIST=1
+fi
+swift test --package-path GetHogKit --filter FixturePrivacyTests
+
+printf 'public-tree verification passed\n'

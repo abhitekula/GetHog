@@ -1,0 +1,74 @@
+{
+  "id": "018f2000-0000-7000-8000-000000000601",
+  "status": "idle",
+  "title": "Choosing observatory activation events",
+  "topic": null,
+  "user": {
+    "id": 700001,
+    "uuid": "018f0000-0000-7000-8000-000000000101",
+    "distinct_id": "person-example-001",
+    "first_name": "Orbit",
+    "last_name": "Guide",
+    "email": "orbit-guide@example.org",
+    "is_email_verified": true
+  },
+  "created_at": "2026-01-15T09:00:00.000Z",
+  "updated_at": "2026-01-15T10:00:00.000Z",
+  "type": "assistant",
+  "is_internal": false,
+  "slack_thread_key": null,
+  "slack_workspace_domain": null,
+  "task": null,
+  "messages": [
+    {
+      "id": "018f2000-0000-7000-8000-000000000611",
+      "type": "human",
+      "content": "Which fictional events should define observatory activation?"
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000612",
+      "type": "ai/reasoning",
+      "content": "Compare the fictional telescope_opened and orbit_saved events.",
+      "substeps": [
+        "Inspect the synthetic event sequence",
+        "Inspect the synthetic event sequence-synthetic-added"
+      ]
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000613",
+      "type": "ai",
+      "content": "Use orbit_saved after telescope_opened for the fictional activation milestone.",
+      "meta": null
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000614",
+      "type": "ai/viz",
+      "answer": {
+        "kind": "TrendsQuery",
+        "series": [
+          {
+            "event": "feature_used"
+          },
+          {
+            "event": "feature_used"
+          }
+        ]
+      }
+    },
+    {
+      "id": "018f2000-0000-7000-8000-000000000615",
+      "type": "ai/failure",
+      "content": "Synthetic analysis stopped before the follow-up chart was ready."
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000013",
+      "type": "ai/failure",
+      "content": "Synthetic analysis stopped before the follow-up chart was ready."
+    }
+  ],
+  "has_unsupported_content": false,
+  "agent_mode": "assistant",
+  "agent_runtime": "langgraph",
+  "is_sandbox": false,
+  "pending_approvals": []
+}

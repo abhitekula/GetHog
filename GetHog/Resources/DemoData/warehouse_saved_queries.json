@@ -1,0 +1,177 @@
+{
+  "count": 15,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000400",
+      "deleted": false,
+      "name": "example_meteor_delivery_failures",
+      "created_by": {
+        "first_name": "Alex Example",
+        "email": "alex+0152@example.com"
+      },
+      "created_at": "2026-01-18T02:17:23.456Z",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "sync_frequency": "6hour",
+      "sync_frequency_managed_by_dag": false,
+      "columns": [
+        {
+          "key": "Example key 1423",
+          "name": "Example App metric 1424",
+          "type": "date",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 1425",
+          "name": "Example App metric 1426",
+          "type": "string",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 1427",
+          "name": "Example App metric 1428",
+          "type": "integer",
+          "schema_valid": true
+        }
+      ],
+      "status": "Failed",
+      "last_run_at": "2026-01-23T12:00:00.000Z",
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "folder_name": "Example folder name 1429",
+      "latest_error": "The synthetic request was rejected for deterministic error coverage.",
+      "is_materialized": true,
+      "origin": "Example origin 1431",
+      "is_test": false,
+      "expires_at": null,
+      "user_access_level": "editor"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000371",
+      "deleted": false,
+      "name": "example_orbital_signup_rollup",
+      "created_by": {
+        "first_name": "Alex Example",
+        "email": "alex+0153@example.com"
+      },
+      "created_at": "2026-01-19T02:17:23.456Z",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "sync_frequency": "24hour",
+      "sync_frequency_managed_by_dag": false,
+      "columns": [
+        {
+          "key": "Example key 1434",
+          "name": "Example App metric 1435",
+          "type": "date",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 1436",
+          "name": "Example App metric 1437",
+          "type": "float",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 1451",
+          "name": "Example App metric 1452",
+          "type": "string",
+          "schema_valid": true
+        }
+      ],
+      "status": "Modified",
+      "last_run_at": "2026-01-20T02:17:23.456Z",
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "folder_name": "Example folder name 1438",
+      "latest_error": null,
+      "is_materialized": true,
+      "origin": "Example origin 1431",
+      "is_test": false,
+      "expires_at": null,
+      "user_access_level": "editor"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000243",
+      "deleted": false,
+      "name": "example_comet_plan_summary",
+      "created_by": {
+        "first_name": "Alex Example",
+        "email": "alex+0154@example.com"
+      },
+      "created_at": "2026-01-21T02:17:23.456Z",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "sync_frequency": "1hour",
+      "sync_frequency_managed_by_dag": true,
+      "columns": [
+        {
+          "key": "Example key 1447",
+          "name": "Example App metric 1448",
+          "type": "string",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 1449",
+          "name": "Example App metric 1450",
+          "type": "float",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 1451",
+          "name": "Example App metric 1452",
+          "type": "string",
+          "schema_valid": true
+        }
+      ],
+      "status": "Completed",
+      "last_run_at": "2026-01-22T02:17:23.456Z",
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "folder_name": "Example folder name 1438",
+      "latest_error": null,
+      "is_materialized": true,
+      "origin": "Example origin 1431",
+      "is_test": false,
+      "expires_at": null,
+      "user_access_level": "editor"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000014",
+      "deleted": false,
+      "name": "example_moonbase_first_touch",
+      "created_by": {
+        "first_name": "Alex Example",
+        "email": "alex+0155@example.com"
+      },
+      "created_at": "2026-01-23T02:17:23.456Z",
+      "description": null,
+      "sync_frequency": "never",
+      "sync_frequency_managed_by_dag": false,
+      "columns": [
+        {
+          "key": "Example key 2588",
+          "name": "Example App metric 2589",
+          "type": "string",
+          "schema_valid": true
+        },
+        {
+          "key": "Example key 2590",
+          "name": "Example App metric 2591",
+          "type": "string",
+          "schema_valid": true
+        }
+      ],
+      "status": null,
+      "last_run_at": null,
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "folder_name": null,
+      "latest_error": null,
+      "is_materialized": false,
+      "origin": "Example origin 1431",
+      "is_test": false,
+      "expires_at": null,
+      "user_access_level": "editor"
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "date_joined": "2026-01-07T08:30:00.000Z",
+  "uuid": "018f9000-0000-7000-8000-000000000438",
+  "distinct_id": "person-example-operator",
+  "first_name": "Zadie",
+  "last_name": "Quell",
+  "email": "zadie.quell@example.net",
+  "pending_email": null,
+  "is_email_verified": true,
+  "notification_settings": {
+    "plugin_disabled": false,
+    "error_tracking_issue_assigned": false,
+    "error_tracking_weekly_digest": false,
+    "discussions_mentioned": false,
+    "project_weekly_digest_disabled": {},
+    "all_weekly_digest_disabled": true,
+    "data_pipeline_error_threshold": 0.073,
+    "project_api_key_exposed": false,
+    "materialized_view_sync_failed": true,
+    "web_analytics_weekly_digest": false,
+    "organization_member_join_email_disabled": {
+      "northstar_sandbox": true
+    },
+    "realtime_notifications_disabled": {
+      "synthetic_activity": true
+    },
+    "pipeline_notifications_disabled": {
+      "fixture_pipeline": true
+    },
+    "error_tracking_weekly_digest_project_enabled": {
+      "1001": false
+    }
+  },
+  "anonymize_data": true,
+  "allow_impersonation": false,
+  "toolbar_mode": "disabled_in_fixture",
+  "has_password": true,
+  "id": 710031,
+  "is_staff": false,
+  "is_impersonated": false,
+  "is_impersonated_until": null,
+  "is_impersonated_read_only": null,
+  "is_impersonated_reason": null,
+  "sensitive_session_expires_at": null,
+  "team": {
+    "id": 1001,
+    "uuid": "018f9000-0000-7000-8000-000000000445",
+    "organization": "018f9000-0000-7000-8000-000000000442",
+    "project_id": 1001,
+    "api_token": "fixture-token-starling-1001",
+    "name": "Starling Metrics Lab",
+    "completed_snippet_onboarding": true,
+    "has_completed_onboarding_for": {
+      "product_analytics": false,
+      "session_replay": true
+    },
+    "ingested_event": true,
+    "is_demo": false,
+    "timezone": "Etc/UTC",
+    "access_control": true
+  },
+  "organization": {
+    "id": "018f9000-0000-7000-8000-000000000442",
+    "name": "Northstar Sandbox",
+    "slug": "northstar-sandbox-fixture",
+    "logo_media_id": null,
+    "created_at": "2026-01-05T06:15:00.000Z",
+    "updated_at": "2026-01-26T19:40:00.000Z",
+    "membership_level": 19,
+    "plugins_access_level": 29,
+    "teams": [],
+    "projects": [],
+    "available_product_features": [
+      {
+        "key": "product_analytics",
+        "name": "Synthetic product analytics",
+        "note": null,
+        "unit": null,
+        "limit": 6400,
+        "category": "analytics",
+        "description": "Exercises fictional event and insight screens in deterministic demo mode.",
+        "is_plan_default": false,
+        "entitlement_only": true
+      },
+      {
+        "key": "session_replay",
+        "name": "Synthetic replay",
+        "note": "Fixture-only entitlement",
+        "unit": "recordings",
+        "limit": 320,
+        "category": "replay",
+        "description": "Keeps replay capability metadata separate from any live workspace.",
+        "is_plan_default": false,
+        "entitlement_only": true
+      },
+      {
+        "key": "feature_flags",
+        "name": "Synthetic feature flags",
+        "note": null,
+        "unit": "flags",
+        "limit": 48,
+        "category": "experimentation",
+        "description": "Supports deterministic flag-management examples with invented values.",
+        "is_plan_default": true,
+        "entitlement_only": true
+      }
+    ],
+    "is_member_join_email_enabled": false,
+    "metadata": {
+      "fixture_origin": "hand-authored",
+      "workspace_theme": "northstar"
+    },
+    "customer_id": "cus_fixture_northstar_2048",
+    "enforce_2fa": null,
+    "members_can_invite": false,
+    "members_can_create_projects": false,
+    "members_can_use_personal_api_keys": false,
+    "members_can_see_org_members": false,
+    "allow_publicly_shared_resources": true,
+    "member_count": 8,
+    "is_ai_data_processing_approved": false,
+    "is_ai_training_opted_in": false,
+    "is_ai_training_locked": false,
+    "is_ai_training_cta_shown": false,
+    "is_hipaa": false,
+    "default_experiment_stats_method": "bayesian",
+    "default_anonymize_ips": true,
+    "default_role_id": null,
+    "is_active": true,
+    "is_not_active_reason": null,
+    "is_pending_deletion": false
+  },
+  "organizations": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000443",
+      "name": "Juniper Test Guild",
+      "slug": "juniper-test-guild-fixture",
+      "logo_media_id": null,
+      "membership_level": 11,
+      "members_can_use_personal_api_keys": false,
+      "is_active": true,
+      "is_not_active_reason": null,
+      "is_pending_deletion": false
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000442",
+      "name": "Northstar Sandbox",
+      "slug": "northstar-sandbox-primary-fixture",
+      "logo_media_id": null,
+      "membership_level": 21,
+      "members_can_use_personal_api_keys": false,
+      "is_active": true,
+      "is_not_active_reason": null,
+      "is_pending_deletion": false
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000442",
+      "name": "Northstar Sandbox Duplicate Summary",
+      "slug": "northstar-sandbox-duplicate-fixture",
+      "logo_media_id": null,
+      "membership_level": 17,
+      "members_can_use_personal_api_keys": false,
+      "is_active": true,
+      "is_not_active_reason": null,
+      "is_pending_deletion": false
+    }
+  ],
+  "events_column_config": {
+    "active": "fixture_events"
+  },
+  "is_2fa_enabled": true,
+  "has_social_auth": false,
+  "has_sso_enforcement": true,
+  "has_seen_product_intro_for": {
+    "product_analytics": false,
+    "session_replay": true
+  },
+  "scene_personalisation": [],
+  "theme_mode": null,
+  "hedgehog_config": null,
+  "allow_sidebar_suggestions": false,
+  "shortcut_position": "bottom",
+  "role_at_organization": "fixture_operator",
+  "passkeys_enabled_for_2fa": true,
+  "hide_mcp_hints": false,
+  "onboarding_skipped_at": null,
+  "onboarding_skipped_reason": null,
+  "onboarding_skipped_organization_id": null,
+  "onboarding_delegated_to_invite": null,
+  "onboarding_delegated_to_organization_id": null,
+  "onboarding_delegation_accepted_at": null,
+  "is_organization_first_user": true,
+  "active_realtime_notification_types": [
+    "synthetic_activity",
+    "fixture_assignment",
+    "demo_pipeline_alert"
+  ],
+  "pending_invites": [],
+  "requires_credential_review": false
+}

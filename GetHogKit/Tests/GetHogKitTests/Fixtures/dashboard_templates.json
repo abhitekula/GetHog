@@ -1,0 +1,477 @@
+{
+  "count": 60,
+  "next": "https://app.example.com/demo/example-8321?limit=6&offset=6",
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000262",
+      "template_name": "Example App metric 125",
+      "dashboard_description": "Example dashboard description 0126",
+      "tags": [],
+      "deleted": null,
+      "created_at": "2026-01-19T00:00:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-7357.png",
+      "team_id": 1001,
+      "scope": "global",
+      "is_featured": true
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000342",
+      "template_name": "Example App metric 127",
+      "dashboard_description": "Example dashboard description 0128",
+      "dashboard_filters": {},
+      "tags": [],
+      "tiles": [
+        {
+          "name": "Example App metric 35",
+          "type": "INSIGHT",
+          "color": "#1d4ed8",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "TrendsQuery",
+              "series": [
+                "Example series 0129"
+              ],
+              "interval": "day",
+              "dateRange": {
+                "date_from": "-15d",
+                "explicitDate": false
+              },
+              "properties": [],
+              "trendsFilter": {
+                "display": "ActionsLineGraph",
+                "showLegend": false
+              },
+              "breakdownFilter": {
+                "breakdown_type": "event"
+              },
+              "filterTestAccounts": false
+            }
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 45,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 81,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "name": "Example App metric 42",
+          "type": "INSIGHT",
+          "color": "#047857",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "TrendsQuery",
+              "series": [
+                "Example series 0130"
+              ],
+              "interval": "week",
+              "dateRange": {
+                "date_from": "-16d",
+                "explicitDate": false
+              },
+              "properties": [],
+              "trendsFilter": {
+                "display": "ActionsLineGraph",
+                "showLegend": false
+              },
+              "breakdownFilter": {
+                "breakdown_type": "event"
+              },
+              "filterTestAccounts": false
+            }
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 3,
+              "x": 0,
+              "y": 46,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 87,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "name": "Example App metric 64",
+          "type": "INSIGHT",
+          "color": "#7c3aed",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "RetentionQuery",
+              "dateRange": {
+                "date_from": "-17d",
+                "explicitDate": false
+              },
+              "properties": [],
+              "retentionFilter": {
+                "period": "Example period 0065",
+                "targetEntity": "Example targetentity 0131",
+                "retentionType": "Example retentiontype 0066",
+                "totalIntervals": 29,
+                "returningEntity": "Example returningentity 0132"
+              },
+              "filterTestAccounts": false
+            }
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 3,
+              "x": 0,
+              "y": 52,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 93,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "name": "Example App metric 58",
+          "type": "INSIGHT",
+          "color": "#be123c",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "LifecycleQuery",
+              "series": [
+                "Example series 0129"
+              ],
+              "interval": "week",
+              "dateRange": {
+                "date_from": "-18d",
+                "explicitDate": false
+              },
+              "properties": [],
+              "lifecycleFilter": {
+                "showLegend": false
+              },
+              "filterTestAccounts": false
+            }
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 53,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 99,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "name": "Example App metric 79",
+          "type": "INSIGHT",
+          "color": "#a16207",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "TrendsQuery",
+              "series": [
+                {
+                  "kind": "EventsNode",
+                  "math": "dau",
+                  "name": "Synthetic name 102",
+                  "event": "feature_used"
+                }
+              ],
+              "interval": "day",
+              "dateRange": {
+                "date_from": "-19d",
+                "explicitDate": false
+              },
+              "properties": [],
+              "trendsFilter": {
+                "display": "ActionsBarValue",
+                "showLegend": false
+              },
+              "breakdownFilter": {
+                "breakdown": "synthetic_dimension_85",
+                "breakdown_type": "event"
+              },
+              "filterTestAccounts": false
+            }
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 59,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 105,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "name": "Example App metric 105",
+          "type": "INSIGHT",
+          "color": "#0e7490",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "FunnelsQuery",
+              "series": [
+                {
+                  "kind": "EventsNode",
+                  "name": "Synthetic name 103",
+                  "event": "feature_used",
+                  "custom_name": "Example custom name 0106"
+                },
+                {
+                  "kind": "EventsNode",
+                  "name": "Synthetic name 104",
+                  "event": "feature_used",
+                  "custom_name": "Example custom name 0107"
+                },
+                {
+                  "kind": "EventsNode",
+                  "name": "Synthetic name 105",
+                  "event": "feature_used",
+                  "custom_name": "Example custom name 0108"
+                }
+              ],
+              "interval": "day",
+              "dateRange": {
+                "date_from": "-20d",
+                "explicitDate": false
+              },
+              "properties": [],
+              "funnelsFilter": {
+                "layout": "Example layout 0109",
+                "funnelVizType": "steps",
+                "funnelOrderType": "ordered"
+              },
+              "breakdownFilter": {
+                "breakdown": "synthetic_dimension_86",
+                "breakdown_type": "event"
+              },
+              "filterTestAccounts": false
+            }
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 3,
+              "x": 0,
+              "y": 60,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 1,
+              "y": 111,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "name": "Sample catalog rows",
+          "type": "INSIGHT",
+          "color": "#4338ca",
+          "query": {
+            "kind": "DataTableNode"
+          },
+          "layouts": {
+            "sm": {
+              "h": 3,
+              "w": 4,
+              "x": 0,
+              "y": 66,
+              "minH": 3,
+              "minW": 4
+            },
+            "xs": {
+              "h": 3,
+              "w": 3,
+              "x": 0,
+              "y": 117,
+              "minH": 3,
+              "minW": 4
+            }
+          },
+          "description": "Lists deterministic sample catalog rows."
+        }
+      ],
+      "variables": [
+        {
+          "id": "synthetic-id-0020",
+          "name": "Example App metric 133",
+          "type": "event",
+          "default": {
+            "id": "synthetic-id-0008",
+            "math": "dau",
+            "name": "Synthetic name 107",
+            "type": "events"
+          },
+          "required": false,
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "id": "synthetic-id-0021",
+          "name": "Example App metric 135",
+          "type": "event",
+          "default": {
+            "id": "synthetic-id-0008",
+            "math": "weekly_active",
+            "name": "Synthetic name 108",
+            "type": "events"
+          },
+          "required": false,
+          "description": "Tracks fictional Example App behavior for deterministic client coverage."
+        },
+        {
+          "id": "synthetic-id-0022",
+          "name": "Sample catalog event",
+          "type": "event",
+          "default": {
+            "id": "synthetic-id-0023",
+            "math": "total",
+            "name": "Sample catalog opened",
+            "type": "events"
+          },
+          "required": false,
+          "description": "Selects a fictional event for deterministic template coverage."
+        }
+      ],
+      "deleted": null,
+      "created_at": "2026-01-10T00:00:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-2859.png",
+      "team_id": null,
+      "scope": "global",
+      "availability_contexts": [],
+      "is_featured": true,
+      "non_portable_references": {
+        "actions": 26,
+        "cohorts": 27,
+        "warehouse_tables": []
+      }
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000304",
+      "template_name": "Example App metric 137",
+      "dashboard_description": "Example dashboard description 0138",
+      "tags": [],
+      "deleted": null,
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-7731.png",
+      "team_id": null,
+      "scope": "global",
+      "is_featured": true
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000498",
+      "template_name": "Example App metric 139",
+      "dashboard_description": "Example dashboard description 0140",
+      "tags": [],
+      "deleted": null,
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-3220.png",
+      "team_id": null,
+      "scope": "global",
+      "is_featured": true
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000338",
+      "template_name": "Example App metric 141",
+      "dashboard_description": "Example dashboard description 0142",
+      "tags": [],
+      "deleted": null,
+      "created_at": "2026-01-28T00:00:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-1563.png",
+      "team_id": 1001,
+      "scope": "global",
+      "is_featured": false
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000301",
+      "template_name": "Example App metric 143",
+      "dashboard_description": "Example dashboard description 0144",
+      "tags": [],
+      "deleted": null,
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-3837.png",
+      "team_id": null,
+      "scope": "global",
+      "is_featured": false
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000343",
+      "template_name": "Example App metric 145",
+      "dashboard_description": "A deterministic sample catalog template.",
+      "tags": [
+        "sample-catalog",
+        "fixture-template"
+      ],
+      "deleted": null,
+      "created_at": "2026-02-22T11:30:00.000Z",
+      "created_by": null,
+      "image_url": "https://app.example.com/assets/example-catalog-template.png",
+      "team_id": null,
+      "scope": "global",
+      "is_featured": false
+    }
+  ]
+}

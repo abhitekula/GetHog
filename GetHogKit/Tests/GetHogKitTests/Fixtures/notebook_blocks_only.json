@@ -1,0 +1,54 @@
+{
+  "id": "notebook-example-blocks-only",
+  "short_id": "exampleBlocks42",
+  "title": "Example App embed collection",
+  "version": 120,
+  "deleted": false,
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "created_by": null,
+  "last_modified_at": "2026-01-28T00:00:00.000Z",
+  "last_modified_by": null,
+  "user_access_level": "viewer",
+  "text_content": "   ",
+  "content": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "ph-query",
+        "attrs": {
+          "nodeId": "node-blocks-saved-a",
+          "query": {
+            "kind": "SavedInsightNode",
+            "shortId": "exampleSavedA"
+          }
+        }
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "nodeId": "node-blocks-saved-b",
+          "query": {
+            "kind": "SavedInsightNode",
+            "shortId": "exampleSavedB"
+          }
+        }
+      },
+      {
+        "type": "ph-image",
+        "attrs": {
+          "nodeId": "node-blocks-image",
+          "src": "https://app.example.com/assets/example-631.png",
+          "file": null
+        }
+      },
+      {
+        "type": "ph-image",
+        "attrs": {
+          "nodeId": "node-blocks-image",
+          "src": "https://app.example.com/assets/example-631.png",
+          "file": null
+        }
+      }
+    ]
+  }
+}

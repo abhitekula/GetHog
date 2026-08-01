@@ -1,0 +1,695 @@
+{
+  "count": 23,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 710301,
+      "name": "Example navigation preview",
+      "key": "example-navigation",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 7,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 61,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "early_exit": false,
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0022@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "created_at": "2026-01-21T18:27:42.000Z",
+      "updated_at": "2026-01-23T20:18:28.000Z",
+      "version": 21,
+      "last_modified_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0023@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3328599,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "ACTIVE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": null,
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "announcement",
+        "Example tags 0376",
+        "reauthored-flag-01"
+      ]
+    },
+    {
+      "id": 710302,
+      "name": "Example orbit log importer",
+      "key": "example-import-orbit-log",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 4,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 62,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0024@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "created_at": "2026-01-17T14:46:09.000Z",
+      "updated_at": "2026-01-19T16:36:55.000Z",
+      "version": 22,
+      "last_modified_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0025@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3201681,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "ACTIVE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": null,
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "integration-import",
+        "Example tags 0378",
+        "reauthored-flag-02"
+      ]
+    },
+    {
+      "id": 710303,
+      "name": "Example constellation search",
+      "key": "example-search-constellations",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 7,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 63,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0026@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "created_at": "2026-01-15T12:55:23.000Z",
+      "updated_at": "2026-01-15T12:55:23.000Z",
+      "version": 23,
+      "last_modified_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0027@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3201679,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "ACTIVE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": "2026-01-28T00:00:00.000Z",
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "Example tags 0380",
+        "Example tags 0381",
+        "reauthored-flag-03"
+      ]
+    },
+    {
+      "id": 710304,
+      "name": "Example dense star charts",
+      "key": "example-chart-density",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 7,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 64,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0028@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "created_at": "2026-01-13T11:04:37.000Z",
+      "updated_at": "2026-01-13T11:04:37.000Z",
+      "version": 24,
+      "last_modified_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0029@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3201677,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "STALE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": "2026-01-25T22:09:14.000Z",
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "Example tags 0378",
+        "Example tags 0383",
+        "reauthored-flag-04"
+      ]
+    },
+    {
+      "id": 710305,
+      "name": "Example observatory tour",
+      "key": "example-guided-observatory",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 9,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 65,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0030@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "created_at": "2026-01-11T09:13:51.000Z",
+      "updated_at": "2026-01-11T09:13:51.000Z",
+      "version": 25,
+      "last_modified_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0031@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3201675,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "ACTIVE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": "2026-01-28T00:00:00.000Z",
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "Example tags 0378",
+        "Example tags 0380",
+        "reauthored-flag-05"
+      ]
+    },
+    {
+      "id": 710306,
+      "name": "Example orbit lab journey",
+      "key": "example-orbit-lab",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 9,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 66,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700027,
+        "uuid": "018f9000-0000-7000-8000-000000000440",
+        "distinct_id": "synthetic-id-0023",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0032@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0155"
+      },
+      "created_at": "2026-01-09T07:23:05.000Z",
+      "updated_at": "2026-01-09T07:23:05.000Z",
+      "version": 26,
+      "last_modified_by": {
+        "id": 700027,
+        "uuid": "018f9000-0000-7000-8000-000000000440",
+        "distinct_id": "synthetic-id-0023",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0033@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0155"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3078305,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "ACTIVE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": "2026-01-28T00:00:00.000Z",
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "Example tags 0381",
+        "Example tags 0380",
+        "reauthored-flag-06"
+      ]
+    },
+    {
+      "id": 710307,
+      "name": "Example telescope tooltips",
+      "key": "example-telescope-tooltips",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 3,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 67,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700027,
+        "uuid": "018f9000-0000-7000-8000-000000000440",
+        "distinct_id": "synthetic-id-0023",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0034@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0155"
+      },
+      "created_at": "2026-01-05T03:41:32.000Z",
+      "updated_at": "2026-01-05T03:41:32.000Z",
+      "version": 27,
+      "last_modified_by": {
+        "id": 700027,
+        "uuid": "018f9000-0000-7000-8000-000000000440",
+        "distinct_id": "synthetic-id-0023",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0035@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0155"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3035497,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "STALE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": "2026-01-07T05:32:18.000Z",
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "Example tags 0387",
+        "Example tags 0378",
+        "reauthored-flag-07"
+      ]
+    },
+    {
+      "id": 710308,
+      "name": "Example observatory panel layout",
+      "key": "example-observatory-panels",
+      "filters": {
+        "groups": [
+          {
+            "properties": [
+              {
+                "key": "example-chart-density",
+                "type": "person",
+                "value": [
+                  "Example value 0389",
+                  "Example value 0390",
+                  "Example reauthored compact value 1"
+                ],
+                "operator": "exact"
+              },
+              {
+                "key": "example-plan-tier",
+                "type": "person",
+                "value": [
+                  "Example tier 1",
+                  "Example tier 3"
+                ],
+                "operator": "exact"
+              }
+            ],
+            "rollout_percentage": 207,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [
+              {
+                "key": "example-chart-density",
+                "type": "person",
+                "value": [
+                  "Example value 0391",
+                  "Example reauthored compact value 2"
+                ],
+                "operator": "exact"
+              },
+              {
+                "key": "example-plan-tier",
+                "type": "person",
+                "value": [
+                  "Example tier 2",
+                  "Example tier 4"
+                ],
+                "operator": "exact"
+              }
+            ],
+            "rollout_percentage": 9,
+            "aggregation_group_type_index": null
+          },
+          {
+            "properties": [],
+            "rollout_percentage": 68,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700027,
+        "uuid": "018f9000-0000-7000-8000-000000000440",
+        "distinct_id": "synthetic-id-0023",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0036@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0155"
+      },
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "version": 28,
+      "last_modified_by": {
+        "id": 700027,
+        "uuid": "018f9000-0000-7000-8000-000000000440",
+        "distinct_id": "synthetic-id-0023",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0037@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0155"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 725110,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "STALE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": "2026-01-03T01:50:46.000Z",
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "Example tags 0392",
+        "Example tags 0380",
+        "reauthored-flag-08"
+      ]
+    },
+    {
+      "id": 710399,
+      "name": "Example midnight observatory theme",
+      "key": "example-observatory-theme",
+      "filters": {
+        "groups": [
+          {
+            "properties": [],
+            "rollout_percentage": 73,
+            "aggregation_group_type_index": null
+          }
+        ],
+        "early_exit": false,
+        "aggregation_group_type_index": null
+      },
+      "deleted": false,
+      "active": true,
+      "archived": false,
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0022@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "created_at": "2026-01-21T18:27:42.000Z",
+      "updated_at": "2026-01-23T20:18:28.000Z",
+      "version": 39,
+      "last_modified_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0023@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "ensure_experience_continuity": false,
+      "experiment_set": [],
+      "experiment_set_metadata": [],
+      "surveys": [],
+      "features": [],
+      "can_edit": true,
+      "usage_dashboard": 3328599,
+      "analytics_dashboards": [],
+      "has_enriched_analytics": false,
+      "user_access_level": "manager",
+      "is_remote_configuration": false,
+      "has_encrypted_payloads": false,
+      "status": "ACTIVE",
+      "evaluation_runtime": "Example evaluation runtime 0270",
+      "bucketing_identifier": "Example bucketing identifier 0375",
+      "last_called_at": null,
+      "is_used_in_replay_settings": false,
+      "is_eligible_for_experiment": false,
+      "evaluation_contexts": [],
+      "tags": [
+        "example-layout",
+        "reauthored-flag-09"
+      ]
+    }
+  ]
+}

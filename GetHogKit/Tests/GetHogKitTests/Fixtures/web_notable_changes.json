@@ -1,0 +1,49 @@
+{
+  "results": [
+    {
+      "metric": "sample sessions",
+      "dimension_type": "path",
+      "dimension_value": "/launchpad",
+      "current_value": 88,
+      "previous_value": 64,
+      "percent_change": 37.5,
+      "impact_score": 93.2
+    },
+    {
+      "metric": "sample views",
+      "dimension_type": "referrer",
+      "dimension_value": "$direct",
+      "current_value": 144,
+      "previous_value": 120,
+      "percent_change": 20.0,
+      "impact_score": 75.0
+    },
+    {
+      "metric": "sample bounce rate",
+      "dimension_type": "browser",
+      "dimension_value": "Orion",
+      "current_value": 42,
+      "previous_value": 36,
+      "percent_change": 16.7,
+      "impact_score": 62.4
+    },
+    {
+      "metric": "sample visitors",
+      "dimension_type": "country",
+      "dimension_value": "Canada",
+      "current_value": 73,
+      "previous_value": 61,
+      "percent_change": 19.7,
+      "impact_score": 48.1
+    },
+    {
+      "metric": "sample signups",
+      "dimension_type": "path",
+      "dimension_value": "/workbench",
+      "current_value": 41,
+      "previous_value": 35,
+      "percent_change": 17.1,
+      "impact_score": 31.5
+    }
+  ]
+}

@@ -1,0 +1,507 @@
+{
+  "count": 17,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 730004,
+      "name": "Example comet explorers",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "groups": [],
+      "deleted": false,
+      "filters": {
+        "properties": {
+          "fixture_attribute_1": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "Example key 0014-fixture-39",
+                  "type": "person",
+                  "value": [
+                    true
+                  ],
+                  "bytecode": [
+                    "Example bytecode 0015-fixture-41",
+                    700018,
+                    88,
+                    "Example bytecode 0016-fixture-42",
+                    88,
+                    "Example bytecode 0017-fixture-43",
+                    88,
+                    "Example bytecode 0018-fixture-44",
+                    88,
+                    "Example bytecode 0019-fixture-45",
+                    700018,
+                    30,
+                    46
+                  ],
+                  "negation": false,
+                  "operator": "exact",
+                  "conditionHash": "Example conditionhash 0020-fixture-47"
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "Example key 0021-fixture-49",
+                  "type": "person",
+                  "value": "Example value 0022-fixture-51",
+                  "bytecode": [
+                    "Example bytecode 0015-fixture-52",
+                    700018,
+                    88,
+                    "cohort.reader@example.net",
+                    88,
+                    "Example bytecode 0023-fixture-54",
+                    88,
+                    "Example bytecode 0018-fixture-55",
+                    88,
+                    "Example bytecode 0019-fixture-56",
+                    700018,
+                    30,
+                    730083,
+                    "Example bytecode 0024-fixture-57",
+                    700018,
+                    60
+                  ],
+                  "negation": false,
+                  "operator": "icontains",
+                  "conditionHash": "Example conditionhash 0025-fixture-59"
+                }
+              ]
+            },
+            {
+              "type": "OR",
+              "values": [
+                {
+                  "key": "Example key 0021-fixture-61",
+                  "type": "person",
+                  "value": "Example value 0026-fixture-63",
+                  "bytecode": [
+                    "Example bytecode 0015-fixture-64",
+                    700018,
+                    88,
+                    "Example bytecode 0027-fixture-65",
+                    88,
+                    "Example bytecode 0023-fixture-66",
+                    88,
+                    "Example bytecode 0018-fixture-67",
+                    88,
+                    "Example bytecode 0019-fixture-68",
+                    700018,
+                    30,
+                    730083,
+                    "Example bytecode 0024-fixture-69",
+                    700018,
+                    60
+                  ],
+                  "negation": false,
+                  "operator": "icontains",
+                  "conditionHash": "Example conditionhash 0028-fixture-71"
+                }
+              ]
+            }
+          ],
+          "fixture_attribute_2": "OR",
+          "fixture_attribute_3": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "Example key 0014-fixture-74",
+                  "type": "person",
+                  "value": [
+                    true
+                  ],
+                  "bytecode": [
+                    "Example bytecode 0015-fixture-76",
+                    700018,
+                    88,
+                    "Example bytecode 0016-fixture-77",
+                    88,
+                    "Example bytecode 0017-fixture-78",
+                    88,
+                    "Example bytecode 0018-fixture-79",
+                    88,
+                    "Example bytecode 0019-fixture-80",
+                    700018,
+                    30,
+                    46
+                  ],
+                  "negation": false,
+                  "operator": "exact",
+                  "conditionHash": "Example conditionhash 0020-fixture-82"
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "Example key 0021-fixture-84",
+                  "type": "person",
+                  "value": "Example value 0022-fixture-86",
+                  "bytecode": [
+                    "Example bytecode 0015-fixture-87",
+                    700018,
+                    88,
+                    "cohort.reader@example.net",
+                    88,
+                    "Example bytecode 0023-fixture-89",
+                    88,
+                    "Example bytecode 0018-fixture-90",
+                    88,
+                    "Example bytecode 0019-fixture-91",
+                    700018,
+                    30,
+                    730083,
+                    "Example bytecode 0024-fixture-92",
+                    700018,
+                    60
+                  ],
+                  "negation": false,
+                  "operator": "icontains",
+                  "conditionHash": "Example conditionhash 0025-fixture-94"
+                }
+              ]
+            },
+            {
+              "type": "OR",
+              "values": [
+                {
+                  "key": "Example key 0021-fixture-96",
+                  "type": "person",
+                  "value": "Example value 0026-fixture-98",
+                  "bytecode": [
+                    "Example bytecode 0015-fixture-99",
+                    700018,
+                    88,
+                    "Example bytecode 0027-fixture-100",
+                    88,
+                    "Example bytecode 0023-fixture-101",
+                    88,
+                    "Example bytecode 0018-fixture-102",
+                    88,
+                    "Example bytecode 0019-fixture-103",
+                    700018,
+                    30,
+                    730083,
+                    "Example bytecode 0024-fixture-104",
+                    700018,
+                    60
+                  ],
+                  "negation": false,
+                  "operator": "icontains",
+                  "conditionHash": "Example conditionhash 0028-fixture-106"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "query": null,
+      "version": 150,
+      "pending_version": 255,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "last_calculation": "2026-01-07T22:17:23.456Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 25,
+      "last_error_message": null,
+      "count": 29,
+      "is_static": false,
+      "cohort_type": "realtime",
+      "condition_type": null,
+      "experiment_set": []
+    },
+    {
+      "id": 730081,
+      "name": "Example nebula report readers",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "groups": [],
+      "deleted": false,
+      "filters": {
+        "properties": {
+          "fixture_attribute_1": [
+            {
+              "type": "OR",
+              "values": [
+                {
+                  "type": "behavioral",
+                  "value": "Example value 1531-fixture-172",
+                  "key": "integration booked-fixture-173",
+                  "event_type": "Example event type 1532",
+                  "time_value": 84,
+                  "time_interval": "Example time interval 1533-fixture-175",
+                  "negation": false
+                },
+                {
+                  "type": "behavioral",
+                  "value": "Example value 1534-fixture-177",
+                  "key": "integration viewed-fixture-178",
+                  "event_type": "Example event type 1532",
+                  "operator": "gte",
+                  "operator_value": 34,
+                  "explicit_datetime": "-28d-fixture-181",
+                  "negation": false
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "Example key 1447-fixture-183",
+                  "type": "person",
+                  "value": [
+                    "Example value 1535-fixture-185",
+                    "Example value 1536-fixture-186"
+                  ],
+                  "negation": false,
+                  "operator": "exact"
+                },
+                {
+                  "key": "Example key 1479-fixture-188",
+                  "type": "person_metadata",
+                  "value": "2026-01-09-fixture-190",
+                  "negation": false,
+                  "operator": "is_date_after"
+                },
+                {
+                  "type": "cohort",
+                  "key": "Example key 1461-fixture-193",
+                  "value": 730021,
+                  "negation": true
+                }
+              ]
+            }
+          ],
+          "fixture_attribute_2": "AND",
+          "fixture_attribute_3": [
+            {
+              "type": "OR",
+              "values": [
+                {
+                  "type": "behavioral",
+                  "value": "Example value 1531-fixture-197",
+                  "key": "integration booked-fixture-198",
+                  "event_type": "Example event type 1532",
+                  "time_value": 84,
+                  "time_interval": "Example time interval 1533-fixture-200",
+                  "negation": false
+                },
+                {
+                  "type": "behavioral",
+                  "value": "Example value 1534-fixture-202",
+                  "key": "integration viewed-fixture-203",
+                  "event_type": "Example event type 1532",
+                  "operator": "gte",
+                  "operator_value": 34,
+                  "explicit_datetime": "-28d-fixture-206",
+                  "negation": false
+                }
+              ]
+            },
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "key": "Example key 1447-fixture-208",
+                  "type": "person",
+                  "value": [
+                    "Example value 1535-fixture-210",
+                    "Example value 1536-fixture-211"
+                  ],
+                  "negation": false,
+                  "operator": "exact"
+                },
+                {
+                  "key": "Example key 1479-fixture-213",
+                  "type": "person_metadata",
+                  "value": "2026-01-09-fixture-215",
+                  "negation": false,
+                  "operator": "is_date_after"
+                },
+                {
+                  "type": "cohort",
+                  "key": "Example key 1461-fixture-218",
+                  "value": 730021,
+                  "negation": true
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "query": null,
+      "version": 68,
+      "pending_version": 700079,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "last_calculation": "2026-01-23T12:00:00.000Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 17,
+      "last_error_message": null,
+      "count": 2575,
+      "is_static": false,
+      "cohort_type": "behavioral",
+      "condition_type": null,
+      "experiment_set": []
+    },
+    {
+      "id": 730082,
+      "name": "Example atlas beta testers",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "groups": [],
+      "deleted": false,
+      "filters": {
+        "properties": {
+          "fixture_attribute_1": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "type": "behavioral",
+                  "value": "Example value 1531-fixture-159",
+                  "key": "Example key 1539-fixture-160",
+                  "event_type": "Example event type 1532",
+                  "explicit_datetime": "-15d-fixture-162",
+                  "negation": false
+                }
+              ]
+            }
+          ],
+          "fixture_attribute_2": "AND",
+          "fixture_attribute_3": [
+            {
+              "type": "AND",
+              "values": [
+                {
+                  "type": "behavioral",
+                  "value": "Example value 1531-fixture-166",
+                  "key": "Example key 1539-fixture-167",
+                  "event_type": "Example event type 1532",
+                  "explicit_datetime": "-15d-fixture-169",
+                  "negation": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "query": null,
+      "version": 45,
+      "pending_version": 43,
+      "is_calculating": true,
+      "created_by": null,
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "last_calculation": "2026-01-10T22:17:23.456Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 17,
+      "last_error_message": null,
+      "count": 1811,
+      "is_static": false,
+      "cohort_type": "realtime",
+      "condition_type": null,
+      "experiment_set": []
+    },
+    {
+      "id": 730083,
+      "name": "Example sandbox power users",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "groups": [],
+      "deleted": false,
+      "filters": null,
+      "query": null,
+      "version": 32,
+      "pending_version": 13,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "last_calculation": "2026-01-11T22:17:23.456Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 17,
+      "last_error_message": null,
+      "count": 687,
+      "is_static": true,
+      "cohort_type": "static",
+      "condition_type": null,
+      "experiment_set": []
+    },
+    {
+      "id": 730084,
+      "name": "Example launch-day visitors",
+      "description": "Fictional analytical cohort defined by a deterministic demo query.",
+      "groups": [],
+      "deleted": false,
+      "filters": {
+        "properties": {
+          "fixture_attribute_1": [],
+          "fixture_attribute_2": "AND",
+          "fixture_attribute_3": []
+        }
+      },
+      "query": {
+        "kind": "ActorsQuery",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+        }
+      },
+      "version": 38,
+      "pending_version": 23,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "last_calculation": "2026-01-14T12:00:00.000Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 17,
+      "last_error_message": null,
+      "count": 159,
+      "is_static": false,
+      "cohort_type": "analytical",
+      "condition_type": null,
+      "experiment_set": []
+    },
+    {
+      "id": 730085,
+      "name": "Example lunar export reviewers",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "groups": [],
+      "deleted": false,
+      "filters": {
+        "properties": {
+          "fixture_attribute_1": [],
+          "fixture_attribute_2": "AND",
+          "fixture_attribute_3": []
+        }
+      },
+      "query": {
+        "kind": "ActorsQuery",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+        }
+      },
+      "version": 38,
+      "pending_version": 23,
+      "is_calculating": false,
+      "created_by": null,
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "last_calculation": "2026-01-14T12:00:00.000Z",
+      "last_backfill_person_properties_at": null,
+      "errors_calculating": 17,
+      "last_error_message": null,
+      "count": 159,
+      "is_static": false,
+      "cohort_type": "analytical",
+      "condition_type": null,
+      "experiment_set": []
+    }
+  ]
+}

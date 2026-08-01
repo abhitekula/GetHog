@@ -1,0 +1,36 @@
+[
+  {
+    "group_type": "example-team",
+    "group_type_index": 1,
+    "name_singular": null,
+    "name_plural": null,
+    "detail_dashboard": null,
+    "default_columns": null,
+    "created_at": "2026-01-28T00:00:00.000Z"
+  },
+  {
+    "group_type": "workspace",
+    "group_type_index": 0,
+    "name_singular": "workspace",
+    "name_plural": "workspaces",
+    "detail_dashboard": null,
+    "default_columns": [
+      "group_name",
+      "key",
+      "created_at"
+    ],
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "group_type": "sample-collection",
+    "group_type_index": 2,
+    "name_singular": "sample collection",
+    "name_plural": "sample collections",
+    "detail_dashboard": null,
+    "default_columns": [
+      "group_name",
+      "sample_tier"
+    ],
+    "created_at": "2026-02-14T10:30:00.000Z"
+  }
+]

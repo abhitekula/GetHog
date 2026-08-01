@@ -1,0 +1,23 @@
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1301,
+      "uuid": "018f9000-0000-7000-8000-000000000449",
+      "organization": "018f9000-0000-7000-8000-000000000443",
+      "api_token": "fixture-token-juniper-1301",
+      "name": "Juniper Signal Forge",
+      "completed_snippet_onboarding": true,
+      "has_completed_onboarding_for": {
+        "product_analytics": true,
+        "session_replay": false
+      },
+      "ingested_event": true,
+      "is_demo": false,
+      "timezone": "Etc/UTC",
+      "access_control": true
+    }
+  ]
+}

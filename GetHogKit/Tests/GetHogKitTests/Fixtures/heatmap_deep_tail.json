@@ -1,0 +1,29 @@
+{
+  "results": [
+    {"count": 100, "pointer_y": 121, "pointer_relative_x": 0.107, "pointer_target_fixed": false},
+    {"count": 99, "pointer_y": 257, "pointer_relative_x": 0.143, "pointer_target_fixed": false},
+    {"count": 98, "pointer_y": 389, "pointer_relative_x": 0.179, "pointer_target_fixed": true},
+    {"count": 97, "pointer_y": 523, "pointer_relative_x": 0.215, "pointer_target_fixed": false},
+    {"count": 96, "pointer_y": 677, "pointer_relative_x": 0.251, "pointer_target_fixed": false},
+    {"count": 95, "pointer_y": 811, "pointer_relative_x": 0.287, "pointer_target_fixed": false},
+    {"count": 94, "pointer_y": 947, "pointer_relative_x": 0.323, "pointer_target_fixed": false},
+    {"count": 93, "pointer_y": 1081, "pointer_relative_x": 0.359, "pointer_target_fixed": false},
+    {"count": 92, "pointer_y": 1219, "pointer_relative_x": 0.395, "pointer_target_fixed": false},
+    {"count": 91, "pointer_y": 1373, "pointer_relative_x": 0.431, "pointer_target_fixed": false},
+    {"count": 90, "pointer_y": 1547, "pointer_relative_x": 0.467, "pointer_target_fixed": false},
+    {"count": 89, "pointer_y": 1721, "pointer_relative_x": 0.503, "pointer_target_fixed": false},
+    {"count": 88, "pointer_y": 1901, "pointer_relative_x": 0.539, "pointer_target_fixed": false},
+    {"count": 87, "pointer_y": 2291, "pointer_relative_x": 0.575, "pointer_target_fixed": false},
+    {"count": 86, "pointer_y": 2873, "pointer_relative_x": 0.611, "pointer_target_fixed": false},
+    {"count": 85, "pointer_y": 3521, "pointer_relative_x": 0.647, "pointer_target_fixed": true},
+    {"count": 20, "pointer_y": 6101, "pointer_relative_x": 0.683, "pointer_target_fixed": false},
+    {"count": 18, "pointer_y": 12503, "pointer_relative_x": 1, "pointer_target_fixed": false}
+  ],
+  "fold": {
+    "total_count": 180,
+    "below_fold_count": 72,
+    "pct_below_fold": 40.0,
+    "median_viewport_height": 950
+  },
+  "has_more": false
+}

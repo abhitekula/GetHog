@@ -1,0 +1,54 @@
+{
+  "columns": [
+    "uuid",
+    "timestamp",
+    "exception_list",
+    "level",
+    "fingerprint",
+    "steps"
+  ],
+  "results": [
+    [
+      "018f3300-0000-7000-8000-000000000912",
+      "2026-01-18T10:00:00.000Z",
+      "[{\"id\":\"harbor-ledger-exception-a\",\"mechanism\":{\"handled\":true,\"synthetic\":false,\"type\":\"generic\"},\"stacktrace\":{\"frames\":[{\"column\":18,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"chunk_id\":\"harbor-ledger-chunk-a\",\"colno\":3607,\"filename\":\"https://app.example.com/assets/harbor-ledger-a.js\",\"function\":\"h\",\"in_app\":true,\"lineno\":1,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":47,\"mangled_name\":\"h\",\"raw_id\":\"harbor-ledger-frame/0\",\"resolved\":true,\"resolved_name\":\"fetchHarborLedger\",\"source\":\"webpack://quill-harbor/src/data/ledger-gateway.ts\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"LedgerFetchFault\",\"value\":\"Ledger response could not be decoded.\"}]",
+      "error-synthetic-added",
+      "harbor-ledger-fingerprint-a",
+      null
+    ],
+    [
+      "018f3300-0000-7000-8000-000000000912",
+      "2026-01-18T10:00:00.000Z",
+      "[{\"id\":\"harbor-ledger-exception-a\",\"mechanism\":{\"handled\":true,\"synthetic\":false,\"type\":\"generic\"},\"stacktrace\":{\"frames\":[{\"column\":18,\"in_app\":true,\"junk_drawer\":{\"raw_frame\":{\"chunk_id\":\"harbor-ledger-chunk-a\",\"colno\":3607,\"filename\":\"https://app.example.com/assets/harbor-ledger-a.js\",\"function\":\"h\",\"in_app\":true,\"lineno\":1,\"synthetic\":false}},\"lang\":\"javascript\",\"line\":47,\"mangled_name\":\"h\",\"raw_id\":\"harbor-ledger-frame/0\",\"resolved\":true,\"resolved_name\":\"fetchHarborLedger\",\"source\":\"webpack://quill-harbor/src/data/ledger-gateway.ts\",\"suspicious\":false,\"synthetic\":false}],\"type\":\"resolved\"},\"type\":\"LedgerFetchFault\",\"value\":\"Ledger response could not be decoded.\"}]",
+      "error-synthetic-added",
+      "harbor-ledger-fingerprint-a",
+      null
+    ]
+  ],
+  "types": [
+    [
+      "Nullable",
+      "UUID"
+    ],
+    [
+      "Nullable",
+      "DateTime64"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ],
+    [
+      "Nullable",
+      "String"
+    ]
+  ]
+}

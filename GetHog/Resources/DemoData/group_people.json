@@ -1,0 +1,17 @@
+{
+  "columns": [
+    "person_id",
+    "distinct_id",
+    "email",
+    "name",
+    "occurrences",
+    "last_seen",
+    "distinct_people"
+  ],
+  "results": [
+    ["person-harbor-401", "fixture-user-401", "mira.lane@example.com", "Mira Lane", 318, "2026-04-14T15:20:00.000Z", 7],
+    ["person-harbor-402", "fixture-user-402", "orin.woods@example.com", "Orin Woods", 247, "2026-04-14T14:55:00.000Z", 7],
+    ["person-harbor-403", "fixture-user-403", "", "Tavi Chen", 169, "2026-04-14T14:30:00.000Z", 7],
+    ["person-harbor-404", "fixture-user-404", "sela.park@example.com", "", 91, "2026-04-14T13:45:00.000Z", 7]
+  ]
+}

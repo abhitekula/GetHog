@@ -1,0 +1,724 @@
+{
+  "columns": [
+    "table_name",
+    "table_type",
+    "description"
+  ],
+  "types": [
+    [
+      "table_name",
+      "String"
+    ],
+    [
+      "table_type",
+      "String"
+    ],
+    [
+      "description",
+      "Nullable(String)"
+    ]
+  ],
+  "results": [
+    [
+      "Example results 2296",
+      "Example results 2297",
+      "Example results 2298"
+    ],
+    [
+      "Example results 2299",
+      "Example results 2297",
+      "Example results 2300"
+    ],
+    [
+      "Example results 2301",
+      "Example results 2297",
+      "Example results 2302"
+    ],
+    [
+      "Example results 2303",
+      "Example results 2297",
+      "Example results 2304"
+    ],
+    [
+      "Example results 2305",
+      "Example results 2297",
+      "Example results 2306"
+    ],
+    [
+      "Example results 2307",
+      "Example results 2297",
+      "Example results 2308"
+    ],
+    [
+      "Example results 2309",
+      "Example results 2297",
+      "Example results 2310"
+    ],
+    [
+      "Example results 2311",
+      "Example results 2297",
+      "Example results 2310"
+    ],
+    [
+      "Example results 2312",
+      "Example results 2297",
+      "Example results 2313"
+    ],
+    [
+      "Example results 2314",
+      "Example results 2297",
+      "Example results 2315"
+    ],
+    [
+      "Example results 2316",
+      "Example results 2297",
+      "Example results 2317"
+    ],
+    [
+      "Example results 2318",
+      "Example results 2297",
+      "Example results 2319"
+    ],
+    [
+      "Example results 2320",
+      "Example results 2297",
+      "Example results 2321"
+    ],
+    [
+      "Example results 2322",
+      "Example results 2297",
+      "Example results 2323"
+    ],
+    [
+      "Example results 2324",
+      "Example results 2297",
+      "Example results 2325"
+    ],
+    [
+      "Example results 2326",
+      "Example results 2297",
+      "Example results 2327"
+    ],
+    [
+      "Example results 2328",
+      "Example results 2297",
+      "Example results 2329"
+    ],
+    [
+      "Example results 2330",
+      "Example results 2297",
+      "Example results 2331"
+    ],
+    [
+      "Example results 2332",
+      "Example results 2297",
+      "Example results 2333"
+    ],
+    [
+      "Example results 2334",
+      "Example results 2297",
+      "Example results 2335"
+    ],
+    [
+      "Example results 2336",
+      "Example results 2297",
+      "Example results 2337"
+    ],
+    [
+      "Example results 2338",
+      "Example results 2297",
+      "Example results 2339"
+    ],
+    [
+      "Example results 2340",
+      "Example results 2297",
+      "Example results 2341"
+    ],
+    [
+      "Example results 2342",
+      "Example results 2297",
+      "Example results 2343"
+    ],
+    [
+      "Example results 2344",
+      "Example results 2297",
+      "Example results 2345"
+    ],
+    [
+      "Example results 2346",
+      "Example results 2297",
+      "Example results 2347"
+    ],
+    [
+      "Example results 2348",
+      "Example results 2297",
+      "Example results 2349"
+    ],
+    [
+      "Example results 2350",
+      "Example results 2297",
+      "Example results 2351"
+    ],
+    [
+      "Example results 2352",
+      "Example results 2297",
+      "Example results 2353"
+    ],
+    [
+      "Example results 2354",
+      "Example results 2297",
+      "Example results 2355"
+    ],
+    [
+      "Example results 2356",
+      "Example results 2297",
+      null
+    ],
+    [
+      "Example results 2357",
+      "Example results 2297",
+      "Example results 2358"
+    ],
+    [
+      "Example results 2359",
+      "Example results 2297",
+      "Example results 2360"
+    ],
+    [
+      "Example results 2361",
+      "Example results 2297",
+      "Example results 2362"
+    ],
+    [
+      "Example results 2363",
+      "Example results 2297",
+      "Example results 2364"
+    ],
+    [
+      "Example results 2365",
+      "Example results 2297",
+      "Example results 2366"
+    ],
+    [
+      "Example results 2367",
+      "Example results 2297",
+      "Example results 2368"
+    ],
+    [
+      "Example results 2369",
+      "Example results 2297",
+      "Example results 2370"
+    ],
+    [
+      "Example results 2371",
+      "Example results 2297",
+      "Example results 2372"
+    ],
+    [
+      "Example results 2373",
+      "Example results 2297",
+      "Example results 2374"
+    ],
+    [
+      "Example results 2375",
+      "Example results 2297",
+      "Example results 2376"
+    ],
+    [
+      "Example results 2377",
+      "Example results 2297",
+      "Example results 2378"
+    ],
+    [
+      "Example results 2379",
+      "Example results 2297",
+      "Example results 2380"
+    ],
+    [
+      "Example results 2381",
+      "Example results 2297",
+      "Example results 2382"
+    ],
+    [
+      "Example results 2383",
+      "Example results 2297",
+      "Example results 2384"
+    ],
+    [
+      "Example results 2385",
+      "Example results 2297",
+      "Example results 2386"
+    ],
+    [
+      "Example results 2387",
+      "Example results 2297",
+      "Example results 2388"
+    ],
+    [
+      "Example results 2389",
+      "Example results 2297",
+      "Example results 2390"
+    ],
+    [
+      "Example results 2391",
+      "Example results 2297",
+      "Example results 2392"
+    ],
+    [
+      "Example results 2393",
+      "Example results 2297",
+      "Example results 2394"
+    ],
+    [
+      "Example results 2395",
+      "Example results 2297",
+      "Example results 2396"
+    ],
+    [
+      "Example results 2397",
+      "Example results 2297",
+      "Example results 2398"
+    ],
+    [
+      "Example results 2399",
+      "Example results 2297",
+      "Example results 2400"
+    ],
+    [
+      "Example results 2401",
+      "Example results 2297",
+      "Example results 2402"
+    ],
+    [
+      "Example results 2403",
+      "Example results 2297",
+      "Example results 2404"
+    ],
+    [
+      "Example results 2405",
+      "Example results 2297",
+      "Example results 2406"
+    ],
+    [
+      "Example results 2407",
+      "Example results 2297",
+      "Example results 2408"
+    ],
+    [
+      "Example results 2409",
+      "Example results 2297",
+      "Example results 2410"
+    ],
+    [
+      "Example results 2411",
+      "Example results 2297",
+      "Example results 2412"
+    ],
+    [
+      "Example results 2413",
+      "Example results 2297",
+      "Example results 2414"
+    ],
+    [
+      "Example results 2415",
+      "Example results 2297",
+      "Example results 2416"
+    ],
+    [
+      "Example results 2417",
+      "Example results 2297",
+      "Example results 2418"
+    ],
+    [
+      "Example results 2419",
+      "Example results 2297",
+      "Example results 2420"
+    ],
+    [
+      "Example results 2421",
+      "Example results 2297",
+      null
+    ],
+    [
+      "Example results 2422",
+      "Example results 2297",
+      "Example results 2423"
+    ],
+    [
+      "Example results 2424",
+      "Example results 2297",
+      "Example results 2425"
+    ],
+    [
+      "Example results 2426",
+      "Example results 2297",
+      "Example results 2427"
+    ],
+    [
+      "Example results 2428",
+      "Example results 2297",
+      "Example results 2429"
+    ],
+    [
+      "Example results 2430",
+      "Example results 2431",
+      "Example results 2432"
+    ],
+    [
+      "Example results 2433",
+      "Example results 2431",
+      "Example results 2434"
+    ],
+    [
+      "Example results 2435",
+      "Example results 2431",
+      "Example results 2436"
+    ],
+    [
+      "Example results 2437",
+      "Example results 2431",
+      "Example results 2438"
+    ],
+    [
+      "Example results 2439",
+      "Example results 2431",
+      "Example results 2440"
+    ],
+    [
+      "Example results 2441",
+      "Example results 2431",
+      "Example results 2442"
+    ],
+    [
+      "Example results 2443",
+      "Example results 2431",
+      "Example results 2444"
+    ],
+    [
+      "Example results 2445",
+      "Example results 2431",
+      "Example results 2446"
+    ],
+    [
+      "Example results 2447",
+      "Example results 2431",
+      "Example results 2448"
+    ],
+    [
+      "Example results 2449",
+      "Example results 2431",
+      "Example results 2450"
+    ],
+    [
+      "Example results 2451",
+      "Example results 2431",
+      "Example results 2452"
+    ],
+    [
+      "Example results 2453",
+      "Example results 2431",
+      "Example results 2454"
+    ],
+    [
+      "Example results 2455",
+      "Example results 2431",
+      "Example results 2456"
+    ],
+    [
+      "Example results 2457",
+      "Example results 2431",
+      "Example results 2458"
+    ],
+    [
+      "Example results 2459",
+      "Example results 2431",
+      "Example results 2460"
+    ],
+    [
+      "Example results 2461",
+      "Example results 2431",
+      "Example results 2462"
+    ],
+    [
+      "Example results 2463",
+      "Example results 2431",
+      "Example results 2464"
+    ],
+    [
+      "Example results 2465",
+      "Example results 2431",
+      "Example results 2466"
+    ],
+    [
+      "Example results 2467",
+      "Example results 2431",
+      "Example results 2468"
+    ],
+    [
+      "Example results 2469",
+      "Example results 2431",
+      "Example results 2470"
+    ],
+    [
+      "Example results 2471",
+      "Example results 2431",
+      "Example results 2472"
+    ],
+    [
+      "Example results 2473",
+      "Example results 2431",
+      "Example results 2474"
+    ],
+    [
+      "Example results 2475",
+      "Example results 2431",
+      "Example results 2476"
+    ],
+    [
+      "Example results 2477",
+      "Example results 2431",
+      "Example results 2478"
+    ],
+    [
+      "Example results 2479",
+      "Example results 2431",
+      "Example results 2480"
+    ],
+    [
+      "Example results 2481",
+      "Example results 2431",
+      "Example results 2482"
+    ],
+    [
+      "Example results 2483",
+      "Example results 2431",
+      "Example results 2484"
+    ],
+    [
+      "Example results 2485",
+      "Example results 2431",
+      "Example results 2486"
+    ],
+    [
+      "Example results 2487",
+      "Example results 2431",
+      "Example results 2488"
+    ],
+    [
+      "Example results 2489",
+      "Example results 2431",
+      "Example results 2490"
+    ],
+    [
+      "Example results 2491",
+      "Example results 2431",
+      "Example results 2492"
+    ],
+    [
+      "Example results 2493",
+      "Example results 2431",
+      "Example results 2494"
+    ],
+    [
+      "Example results 2495",
+      "Example results 2431",
+      "Example results 2496"
+    ],
+    [
+      "Example results 2497",
+      "Example results 2431",
+      "Example results 2498"
+    ],
+    [
+      "Example results 2499",
+      "Example results 2431",
+      "Example results 2500"
+    ],
+    [
+      "Example results 2501",
+      "Example results 2431",
+      "Example results 2502"
+    ],
+    [
+      "Example results 2503",
+      "Example results 2431",
+      "Example results 2504"
+    ],
+    [
+      "Example results 2505",
+      "Example results 2431",
+      "Example results 2506"
+    ],
+    [
+      "Example results 2507",
+      "Example results 2431",
+      "Example results 2508"
+    ],
+    [
+      "Example results 2509",
+      "Example results 2431",
+      "Example results 2510"
+    ],
+    [
+      "Example results 2511",
+      "Example results 2512",
+      "Example results 2513"
+    ],
+    [
+      "Example results 2514",
+      "Example results 2512",
+      "Example results 2515"
+    ],
+    [
+      "Example results 2516",
+      "Example results 2512",
+      "Example results 2517"
+    ],
+    [
+      "Example results 2518",
+      "Example results 2512",
+      "Example results 2519"
+    ],
+    [
+      "Example results 2520",
+      "Example results 2431",
+      "Example results 2521"
+    ],
+    [
+      "Example results 2522",
+      "Example results 2431",
+      "Example results 2523"
+    ],
+    [
+      "Example results 2524",
+      "Example results 2431",
+      "Example results 2525"
+    ],
+    [
+      "Example results 2526",
+      "Example results 2431",
+      "Example results 2527"
+    ],
+    [
+      "Example results 2528",
+      "Example results 2431",
+      "Example results 2529"
+    ],
+    [
+      "Example results 2530",
+      "Example results 2431",
+      "Example results 2531"
+    ],
+    [
+      "Example results 2532",
+      "Example results 2431",
+      "Example results 2533"
+    ],
+    [
+      "Example results 2534",
+      "Example results 2431",
+      "Example results 2535"
+    ],
+    [
+      "Example results 2536",
+      "Example results 2431",
+      "Example results 2537"
+    ],
+    [
+      "Example results 2538",
+      "Example results 2431",
+      "Example results 2539"
+    ],
+    [
+      "Example results 2540",
+      "Example results 2431",
+      "Example results 2541"
+    ],
+    [
+      "Example results 2542",
+      "Example results 2431",
+      "Example results 2543"
+    ],
+    [
+      "Example results 2544",
+      "Example results 2431",
+      "Example results 2545"
+    ],
+    [
+      "Example results 2546",
+      "Example results 2431",
+      "Example results 2547"
+    ],
+    [
+      "Example results 2548",
+      "Example results 2431",
+      "Example results 2549"
+    ],
+    [
+      "Example results 2550",
+      "Example results 2431",
+      "Example results 2551"
+    ],
+    [
+      "Example results 2552",
+      "Example results 2431",
+      "Example results 2553"
+    ],
+    [
+      "Example results 2554",
+      "Example results 2431",
+      "Example results 2555"
+    ],
+    [
+      "Example results 2556",
+      "Example results 2431",
+      "Example results 2557"
+    ],
+    [
+      "Example results 2558",
+      "Example results 2431",
+      "Example results 2559"
+    ],
+    [
+      "Example results 2560",
+      "Example results 2431",
+      "Example results 2561"
+    ],
+    [
+      "Example results 2562",
+      "Example results 2431",
+      "Example results 2563"
+    ],
+    [
+      "Example results 2564",
+      "Example results 2431",
+      "Example results 2565"
+    ],
+    [
+      "Example results 2566",
+      "Example results 2431",
+      "Example results 2567"
+    ],
+    [
+      "Example results 2568",
+      "Example results 2431",
+      "Example results 2569"
+    ],
+    [
+      "Example results 2570",
+      "Example results 2297",
+      "Example results 2571"
+    ],
+    [
+      "Example results 2572",
+      "Example results 2297",
+      "Example results 2573"
+    ],
+    [
+      "Example results 2572",
+      "Example results 2297",
+      "Example results 2573"
+    ]
+  ],
+  "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+}

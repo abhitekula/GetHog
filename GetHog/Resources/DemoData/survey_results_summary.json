@@ -1,0 +1,61 @@
+{
+  "columns": [
+    "impressions",
+    "responses",
+    "dismissals",
+    "abandonments",
+    "partials",
+    "first_seen",
+    "last_seen"
+  ],
+  "types": [
+    [
+      "Nullable",
+      "UInt64"
+    ],
+    [
+      "Nullable",
+      "UInt64"
+    ],
+    [
+      "Nullable",
+      "UInt64"
+    ],
+    [
+      "Nullable",
+      "UInt64"
+    ],
+    [
+      "Nullable",
+      "UInt64"
+    ],
+    [
+      "Nullable",
+      "DateTime64"
+    ],
+    [
+      "Nullable",
+      "DateTime64"
+    ]
+  ],
+  "results": [
+    [
+      37,
+      2,
+      9,
+      4,
+      2,
+      "2026-01-04T09:45:00.000Z",
+      "2026-01-26T17:15:00.000Z"
+    ],
+    [
+      11,
+      1,
+      2,
+      1,
+      1,
+      "2026-02-03T10:20:00.000Z",
+      "2026-02-18T15:40:00.000Z"
+    ]
+  ]
+}

@@ -1,0 +1,172 @@
+{
+  "id": "018f1000-0000-7000-8000-000000000011",
+  "session_id": "018f1000-0000-7000-8000-000000000002",
+  "distinct_id": "person-example-002",
+  "session_start_time": "2026-01-15T11:30:00.000Z",
+  "session_duration": 765,
+  "summary": {
+    "segments": [
+      {
+        "name": "Open reports",
+        "index": 0,
+        "start_event_id": "event-report-open",
+        "end_event_id": "event-report-open",
+        "meta": {
+          "duration": 120,
+          "events_count": 1,
+          "failure_count": 0,
+          "confusion_count": 0,
+          "abandonment_count": 0,
+          "exception_count": 0,
+          "key_action_count": 1,
+          "events_percentage": 0.2,
+          "duration_percentage": 0.1569
+        }
+      },
+      {
+        "name": "Start export",
+        "index": 1,
+        "start_event_id": "event-export-start",
+        "end_event_id": "event-export-start",
+        "meta": {
+          "duration": 300,
+          "events_count": 2,
+          "failure_count": 1,
+          "confusion_count": 2,
+          "abandonment_count": 0,
+          "exception_count": 1,
+          "key_action_count": 1,
+          "events_percentage": 0.4,
+          "duration_percentage": 0.3922
+        }
+      },
+      {
+        "name": "Review export",
+        "index": 2,
+        "start_event_id": "event-export-review",
+        "end_event_id": "event-export-review",
+        "meta": {
+          "duration": 345,
+          "events_count": 2,
+          "failure_count": 1,
+          "confusion_count": 1,
+          "abandonment_count": 0,
+          "exception_count": 1,
+          "key_action_count": 1,
+          "events_percentage": 0.4,
+          "duration_percentage": 0.451
+        }
+      }
+    ],
+    "sentiment": {
+      "outcome": "frustrated",
+      "frustration_score": 0.75,
+      "sentiment_signals": [
+        {
+          "intensity": 0.875,
+          "description": "The fictional export surfaced two related validation messages.",
+          "signal_type": "error_cascade",
+          "segment_index": 1
+        },
+        {
+          "intensity": 0.625,
+          "description": "The fictional export was attempted again after the first message.",
+          "signal_type": "repeated_error",
+          "segment_index": 1
+        },
+        {
+          "intensity": 0.375,
+          "description": "The user returned to the fictional report after reviewing the export.",
+          "signal_type": "backtracking",
+          "segment_index": 2
+        }
+      ]
+    },
+    "key_actions": [
+      {
+        "segment_index": 0,
+        "events": [
+          {
+            "event": "$pageview",
+            "event_id": "event-report-open",
+            "confusion": false,
+            "exception": null,
+            "timestamp": "2026-01-15T11:30:10.000Z",
+            "event_type": "pageview",
+            "session_id": "018f1000-0000-7000-8000-000000000002",
+            "abandonment": false,
+            "current_url": "https://app.example.com/reports",
+            "description": "The user opened the fictional reports page.",
+            "event_index": 0,
+            "milliseconds_since_start": 10000
+          }
+        ]
+      },
+      {
+        "segment_index": 1,
+        "events": [
+          {
+            "event": "export_started",
+            "event_id": "event-export-start",
+            "confusion": true,
+            "exception": "blocking",
+            "timestamp": "2026-01-15T11:32:30.000Z",
+            "event_type": "export",
+            "session_id": "018f1000-0000-7000-8000-000000000002",
+            "abandonment": false,
+            "current_url": "https://app.example.com/reports/export",
+            "description": "The fictional export stopped on a recoverable validation message.",
+            "event_index": 1,
+            "milliseconds_since_start": 150000
+          }
+        ]
+      },
+      {
+        "segment_index": 2,
+        "events": [
+          {
+            "event": "$exception",
+            "event_id": "event-export-review",
+            "confusion": true,
+            "exception": "non_blocking",
+            "timestamp": "2026-01-15T11:38:20.000Z",
+            "event_type": "exception",
+            "session_id": "018f1000-0000-7000-8000-000000000002",
+            "abandonment": false,
+            "current_url": "https://app.example.com/reports/export",
+            "description": "A fictional status warning remained visible while the report stayed available.",
+            "event_index": 2,
+            "milliseconds_since_start": 500000
+          }
+        ]
+      }
+    ],
+    "session_outcome": {
+      "success": false,
+      "description": "The fictional report export did not finish."
+    },
+    "segment_outcomes": [
+      {
+        "success": true,
+        "summary": "The fictional reports page opened.",
+        "segment_index": 0
+      },
+      {
+        "success": false,
+        "summary": "The fictional export stopped for validation.",
+        "segment_index": 1
+      },
+      {
+        "success": false,
+        "summary": "The fictional report remained available without an export.",
+        "segment_index": 2
+      }
+    ]
+  },
+  "exception_event_ids": ["event-export-start", "event-export-review"],
+  "run_metadata": {
+    "model_used": "synthetic-fixture",
+    "visual_confirmation": false
+  },
+  "created_at": "2026-01-15T11:43:00.000Z"
+}

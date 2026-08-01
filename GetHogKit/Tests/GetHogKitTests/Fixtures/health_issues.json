@@ -1,0 +1,207 @@
+{
+  "count": 24,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000109",
+      "kind": "sdk_outdated",
+      "severity": "critical",
+      "status": "active",
+      "dismissed": false,
+      "payload": {
+        "usage": [
+          {
+            "count": 73,
+            "is_latest": false,
+            "is_outdated": true,
+            "lib_version": "Example lib version 0425",
+            "release_date": null,
+            "max_timestamp": "2026-01-27T15:17:23.456Z",
+            "status_reason": "Example status reason 0426"
+          },
+          {
+            "count": 210,
+            "is_latest": false,
+            "is_outdated": true,
+            "lib_version": "Example companion version 1",
+            "release_date": null,
+            "max_timestamp": "2026-02-10T11:25:00.000Z",
+            "status_reason": "Synthetic companion status 1"
+          }
+        ],
+        "is_old": false,
+        "reason": "The synthetic request was rejected for deterministic error coverage.",
+        "banners": [
+          "Example banners 0428",
+          "Example secondary SDK notice"
+        ],
+        "sdk_name": "Example sdk name 0429",
+        "is_outdated": true,
+        "latest_version": "Example latest version 0430",
+        "current_version": "Example current version 0431"
+      },
+      "created_at": "2026-01-21T06:00:00.000Z",
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "resolved_at": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000182",
+      "kind": "sdk_outdated",
+      "severity": "critical",
+      "status": "active",
+      "dismissed": false,
+      "payload": {
+        "usage": [
+          {
+            "count": 10495,
+            "is_latest": false,
+            "is_outdated": true,
+            "lib_version": "Example lib version 0432",
+            "release_date": null,
+            "max_timestamp": "2026-01-28T15:17:23.456Z",
+            "status_reason": "Example status reason 0426"
+          },
+          {
+            "count": 247,
+            "is_latest": false,
+            "is_outdated": true,
+            "lib_version": "Example companion version 2",
+            "release_date": null,
+            "max_timestamp": "2026-02-11T11:25:00.000Z",
+            "status_reason": "Synthetic companion status 2"
+          }
+        ],
+        "is_old": false,
+        "reason": "The synthetic request was rejected for deterministic error coverage.",
+        "banners": [
+          "Example banners 0434",
+          "Example companion SDK notice"
+        ],
+        "sdk_name": "Example sdk name 0435",
+        "is_outdated": true,
+        "latest_version": "Example latest version 0436",
+        "current_version": "Example current version 0437"
+      },
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "updated_at": "2026-01-28T00:00:00.000Z",
+      "resolved_at": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000051",
+      "kind": "ingestion_warning",
+      "severity": "warning",
+      "status": "resolved",
+      "dismissed": false,
+      "payload": {
+        "last_seen_at": "2026-01-01T16:17:23.456Z",
+        "warning_type": "Example warning type 0438",
+        "affected_count": 55
+      },
+      "created_at": "2026-01-23T12:00:00.000Z",
+      "updated_at": "2026-01-25T18:00:00.000Z",
+      "resolved_at": "2026-01-25T18:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000053",
+      "kind": "sdk_outdated",
+      "severity": "warning",
+      "status": "resolved",
+      "dismissed": false,
+      "payload": {
+        "usage": [
+          {
+            "count": 700001,
+            "is_latest": false,
+            "lib_version": "Example lib version 0425",
+            "release_date": "2026-01-01T00:00:00.000Z",
+            "max_timestamp": "2026-01-02T16:17:23.456Z"
+          },
+          {
+            "count": 284,
+            "is_latest": false,
+            "lib_version": "Example companion version 3",
+            "release_date": "2026-01-01T00:00:00.000Z",
+            "max_timestamp": "2026-02-12T11:25:00.000Z",
+            "status_reason": "Synthetic companion status 3"
+          }
+        ],
+        "sdk_name": "Example sdk name 0429",
+        "latest_version": "Example latest version 0439"
+      },
+      "created_at": "2026-01-12T06:00:00.000Z",
+      "updated_at": "2026-01-19T00:00:00.000Z",
+      "resolved_at": "2026-01-19T00:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000359",
+      "kind": "web_vitals",
+      "severity": "warning",
+      "status": "resolved",
+      "dismissed": false,
+      "payload": {
+        "reason": "The synthetic request was rejected for deterministic error coverage."
+      },
+      "created_at": "2026-01-07T18:00:00.000Z",
+      "updated_at": "2026-01-16T18:00:00.000Z",
+      "resolved_at": "2026-01-16T18:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000064",
+      "kind": "sdk_outdated",
+      "severity": "warning",
+      "status": "resolved",
+      "dismissed": false,
+      "payload": {
+        "usage": [
+          {
+            "count": 15,
+            "is_latest": false,
+            "lib_version": "Example lib version 0425",
+            "release_date": "2026-01-01T00:00:00.000Z",
+            "max_timestamp": "2026-01-03T16:17:23.456Z"
+          },
+          {
+            "count": 321,
+            "is_latest": false,
+            "lib_version": "Example companion version 4",
+            "release_date": "2026-01-01T00:00:00.000Z",
+            "max_timestamp": "2026-02-13T11:25:00.000Z",
+            "status_reason": "Synthetic companion status 4"
+          }
+        ],
+        "sdk_name": "Example sdk name 0429",
+        "latest_version": "Example latest version 0441"
+      },
+      "created_at": "2026-01-05T12:00:00.000Z",
+      "updated_at": "2026-01-10T00:00:00.000Z",
+      "resolved_at": "2026-01-10T00:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000187",
+      "kind": "authorized_urls",
+      "severity": "warning",
+      "status": "resolved",
+      "dismissed": false,
+      "payload": {
+        "reason": "The synthetic request was rejected for deterministic error coverage."
+      },
+      "created_at": "2026-01-03T06:00:00.000Z",
+      "updated_at": "2026-01-14T12:00:00.000Z",
+      "resolved_at": "2026-01-14T12:00:00.000Z"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000204",
+      "kind": "web_vitals",
+      "severity": "warning",
+      "status": "active",
+      "dismissed": false,
+      "payload": {
+        "reason": "A fictional catalog page exceeded its deterministic sample threshold."
+      },
+      "created_at": "2026-02-16T09:20:00.000Z",
+      "updated_at": "2026-02-17T13:40:00.000Z",
+      "resolved_at": null
+    }
+  ]
+}

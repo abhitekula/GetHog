@@ -1,0 +1,59 @@
+{
+  "results": [
+    {
+      "id": "018f1000-0000-7000-8000-000000000002",
+      "distinct_id": "person-example-002",
+      "recording_duration": 765,
+      "active_seconds": 60,
+      "start_time": "2026-01-15T11:30:00.000Z",
+      "end_time": "2026-01-15T11:42:45.000Z",
+      "start_url": "https://app.example.com/reports",
+      "click_count": 6,
+      "keypress_count": 2,
+      "console_log_count": 2,
+      "console_warn_count": 1,
+      "console_error_count": 1,
+      "snapshot_source": "web",
+      "ongoing": false,
+      "viewed": true,
+      "person": {
+        "uuid": "018f0000-0000-7000-8000-000000000102",
+        "name": "Casey Example",
+        "distinct_ids": ["person-example-002"],
+        "properties": {
+          "email": "orbit.viewer@example.net",
+          "$current_url": "https://app.example.com/reports"
+        }
+      }
+    },
+    {
+      "id": "018f1000-0000-7000-8000-000000000004",
+      "distinct_id": "person-example-004",
+      "recording_duration": 120,
+      "active_seconds": 90,
+      "start_time": "2026-01-15T09:30:00.000Z",
+      "end_time": "2026-01-15T09:32:00.000Z",
+      "start_url": "https://app.example.com/onboarding",
+      "click_count": 8,
+      "keypress_count": 4,
+      "console_log_count": 0,
+      "console_warn_count": 0,
+      "console_error_count": 0,
+      "snapshot_source": "mobile",
+      "ongoing": false,
+      "viewed": true,
+      "person": {
+        "uuid": "018f0000-0000-7000-8000-000000000104",
+        "name": "Riley Example",
+        "distinct_ids": ["person-example-004"],
+        "properties": {
+          "email": "telescope.reader@example.com",
+          "$current_url": "https://app.example.com/onboarding"
+        }
+      }
+    }
+  ],
+  "has_next": false,
+  "version": 4,
+  "next_cursor": null
+}

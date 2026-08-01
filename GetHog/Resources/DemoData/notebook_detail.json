@@ -1,0 +1,1036 @@
+{
+  "id": "018f9000-0000-7000-8000-000000000323",
+  "short_id": "synthetic-id-0050",
+  "title": "Orbit field log",
+  "version": 700079,
+  "deleted": false,
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "created_by": {
+    "id": 700022,
+    "uuid": "018f9000-0000-7000-8000-000000000378",
+    "distinct_id": "synthetic-id-0022",
+    "first_name": "Alex",
+    "last_name": "Example",
+    "email": "alex+0143@example.com",
+    "is_email_verified": true
+  },
+  "last_modified_at": "2026-01-28T00:00:00.000Z",
+  "last_modified_by": null,
+  "user_access_level": "editor",
+  "text_content": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.",
+  "content": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "attrs": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7031"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8000
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7008"
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              },
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7011-fixture-7034"
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7029"
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "code"
+              },
+              {
+                "type": "code"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7027"
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7024"
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "https://app.example.com/audit-7021"
+                }
+              },
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "https://app.example.com/audit-7106"
+                }
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7022"
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7018"
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "italic"
+              },
+              {
+                "type": "italic"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7016"
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7013"
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              },
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7011"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8001
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7036"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8002
+      },
+      {
+        "type": "mermaid",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000017"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7038"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8003
+      },
+      {
+        "type": "ph-hypothetical-future-node",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000376",
+          "id": 700067
+        },
+        "synthetic_fixture_ordinal": 8004
+      },
+      {
+        "type": "ph-zendesk-tickets",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000239",
+          "personId": "018f9000-0000-7000-8000-000000000236",
+          "groupKey": null
+        },
+        "synthetic_fixture_ordinal": 8005
+      },
+      {
+        "type": "ph-latex",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000308",
+          "formula": "Example formula 0565"
+        },
+        "synthetic_fixture_ordinal": 8006
+      },
+      {
+        "type": "ph-image",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000191",
+          "src": null,
+          "file": null,
+          "title": "Meteor report detail"
+        },
+        "synthetic_fixture_ordinal": 8007
+      },
+      {
+        "type": "ph-hogql-sql",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000186",
+          "code": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+          "returnVariable": "Example returnvariable 0563",
+          "hogqlExecution": null,
+          "showSettings": false
+        },
+        "synthetic_fixture_ordinal": 8008
+      },
+      {
+        "type": "ph-person",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000370",
+          "id": "018f9000-0000-7000-8000-000000000236",
+          "distinctId": "synthetic-id-0100"
+        },
+        "synthetic_fixture_ordinal": 8009
+      },
+      {
+        "type": "ph-survey",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000344",
+          "id": "018f9000-0000-7000-8000-000000000261"
+        },
+        "synthetic_fixture_ordinal": 8010
+      },
+      {
+        "type": "ph-feature-flag",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000477",
+          "id": 700048
+        },
+        "synthetic_fixture_ordinal": 8011
+      },
+      {
+        "type": "ph-recording-playlist",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000207",
+          "title": "Nebula export detail",
+          "universalFilters": {
+            "date_from": "-18d",
+            "filter_group": {
+              "type": "AND",
+              "values": []
+            }
+          },
+          "pinned": null
+        },
+        "synthetic_fixture_ordinal": 8012
+      },
+      {
+        "type": "ph-recording",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000322",
+          "id": "018f9000-0000-7000-8000-000000000150",
+          "noInspector": false,
+          "timestampMs": 1768481095061
+        },
+        "synthetic_fixture_ordinal": 8013
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000063",
+          "title": "Orbit chart reference",
+          "query": {
+            "kind": "InsightVizNode",
+            "source": {
+              "kind": "TrendsQuery",
+              "series": [
+                {
+                  "kind": "EventsNode",
+                  "event": "feature_used",
+                  "math": "total"
+                }
+              ],
+              "interval": "day",
+              "dateRange": {
+                "date_from": "-17d"
+              },
+              "trendsFilter": {
+                "display": "ActionsLineGraph"
+              },
+              "filterTestAccounts": true
+            }
+          },
+          "isDefaultFilterApplied": false,
+          "showSettings": false,
+          "outputTab": "Example outputtab 0548"
+        },
+        "synthetic_fixture_ordinal": 8014
+      },
+      {
+        "type": "horizontalRule",
+        "synthetic_fixture_ordinal": 8015
+      },
+      {
+        "type": "codeBlock",
+        "attrs": {
+          "language": "Example language 0559"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7040"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8016
+      },
+      {
+        "type": "blockquote",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+              },
+              {
+                "type": "text",
+                "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7069"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7043"
+              },
+              {
+                "type": "text",
+                "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7043-fixture-7071"
+              }
+            ]
+          }
+        ],
+        "synthetic_fixture_ordinal": 8017
+      },
+      {
+        "type": "taskList",
+        "content": [
+          {
+            "type": "taskItem",
+            "attrs": {
+              "checked": true
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7116"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7074"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7074-fixture-7118"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskItem",
+            "attrs": {
+              "checked": false
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7047"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7047-fixture-7120"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7047-fixture-7077"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7047-fixture-7077-fixture-7122"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskItem",
+            "attrs": {
+              "checked": false
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7124"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7080"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7080-fixture-7126"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "synthetic_fixture_ordinal": 8018
+      },
+      {
+        "type": "orderedList",
+        "attrs": {
+          "start": 700001
+        },
+        "content": [
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7128"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7083"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7083-fixture-7130"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7051"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7051-fixture-7132"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7051-fixture-7086"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7051-fixture-7086-fixture-7134"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7136"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7089"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7089-fixture-7138"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "synthetic_fixture_ordinal": 8019
+      },
+      {
+        "type": "bulletList",
+        "content": [
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7140"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7092"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7092-fixture-7142"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7055"
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7055-fixture-7144"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7188"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7165"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7165-fixture-7190"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7148"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7148-fixture-7192"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7148-fixture-7168"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7097-fixture-7148-fixture-7168-fixture-7194"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7196"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7171"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7171-fixture-7198"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7152"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7152-fixture-7200"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7152-fixture-7174"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7060-fixture-7152-fixture-7174-fixture-7202"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                  },
+                  {
+                    "type": "text",
+                    "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7154"
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7204"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7177"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7177-fixture-7206"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7158"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7158-fixture-7208"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7158-fixture-7180"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7102-fixture-7158-fixture-7180-fixture-7210"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7212"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7183"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7183-fixture-7214"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7162"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7162-fixture-7216"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7162-fixture-7186"
+                          },
+                          {
+                            "type": "text",
+                            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7162-fixture-7186-fixture-7218"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "synthetic_fixture_ordinal": 8020
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7062"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8021
+      },
+      {
+        "type": "heading",
+        "attrs": {
+          "level": 700066
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7064"
+          }
+        ],
+        "synthetic_fixture_ordinal": 8022
+      },
+      {
+        "type": "ph-query",
+        "attrs": {
+          "nodeId": "018f9000-0000-7000-8000-000000000420",
+          "title": "Observation archive note",
+          "height": 727,
+          "query": {
+            "kind": "SavedInsightNode",
+            "shortId": "example-constellation-journey"
+          },
+          "isDefaultFilterApplied": false,
+          "showSettings": false,
+          "outputTab": "Example outputtab 0548"
+        },
+        "synthetic_fixture_ordinal": 8023
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              },
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up.-fixture-7067"
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "code"
+              },
+              {
+                "type": "code"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "https://app.example.com/demo/example-155"
+                }
+              },
+              {
+                "type": "link",
+                "attrs": {
+                  "href": "https://app.example.com/audit-7112"
+                }
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "italic"
+              },
+              {
+                "type": "italic"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          },
+          {
+            "type": "text",
+            "marks": [
+              {
+                "type": "bold"
+              },
+              {
+                "type": "bold"
+              }
+            ],
+            "text": "Observatory Lab reviewed a fictional orbit signal and recorded the follow-up."
+          }
+        ],
+        "synthetic_fixture_ordinal": 8024
+      }
+    ]
+  }
+}

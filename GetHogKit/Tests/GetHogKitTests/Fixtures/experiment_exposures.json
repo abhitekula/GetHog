@@ -1,0 +1,82 @@
+{
+  "kind": "ExperimentExposureQuery",
+  "cache_key": "Example cache key 0284",
+  "is_cached": true,
+  "last_refresh": "2026-01-28T00:00:00.000Z",
+  "timezone": "UTC",
+  "error": null,
+  "warnings": [],
+  "date_range": {
+    "date_from": "2026-01-14T12:00:00.000Z",
+    "date_to": "2026-01-28T00:00:00.000Z"
+  },
+  "total_exposures": {
+    "baseline": 8420.7,
+    "streamlined": 8376.7,
+    "synthetic-observer-7201": 1
+  },
+  "sample_ratio_mismatch": {
+    "expected": {
+      "baseline": 0.47,
+      "streamlined": 0.53,
+      "synthetic-observer-7201": 0
+    },
+    "p_value": 0.6606000000000001
+  },
+  "bias_risk": {
+    "multiple_variant_percentage": 0.33100000000000007
+  },
+  "timeseries": [
+    {
+      "variant": "baseline",
+      "days": [
+        "2026-01-15",
+        "2026-01-16",
+        "2026-01-17",
+        "2026-01-18",
+        "2026-01-19",
+        "2026-01-20"
+      ],
+      "exposure_counts": [
+        831,
+        1813,
+        2961,
+        4527,
+        6029,
+        6046
+      ]
+    },
+    {
+      "variant": "streamlined",
+      "days": [
+        "2026-01-15",
+        "2026-01-16",
+        "2026-01-17",
+        "2026-01-18",
+        "2026-01-19",
+        "2026-01-20"
+      ],
+      "exposure_counts": [
+        803,
+        1785,
+        2931,
+        4495,
+        5999,
+        6016
+      ]
+    },
+    {
+      "variant": "synthetic-observer-7201",
+      "days": [
+        "2026-01-15",
+        "2026-01-16",
+        "2026-01-17"
+      ],
+      "exposure_counts": [
+        0,
+        1,
+        1
+      ]
+    }
+  ]
+}

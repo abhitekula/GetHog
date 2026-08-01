@@ -1,0 +1,229 @@
+{
+  "results": [
+    {
+      "count": 64,
+      "hash": "018f1000-0000-7000-8000-000000000201",
+      "type": "$autocapture",
+      "elements": [
+        {
+          "text": null,
+          "tag_name": "a",
+          "attr_class": [
+            "navigation-trigger",
+            "rounded",
+            "interactive",
+            "fixture-class-2"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": 2,
+          "nth_of_type": 3,
+          "attributes": {
+            "attr__aria-label": "Open Example App navigation",
+            "attr__data-active": "true",
+            "attr__data-testid": "example-navigation-button",
+            "attr__type": "menu",
+            "attr__data-fixture": "element-1-2"
+          },
+          "order": 1
+        },
+        {
+          "text": null,
+          "tag_name": "svg",
+          "attr_class": [
+            "synthetic-icon",
+            "synthetic-size",
+            "synthetic-fixed"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": 2,
+          "nth_of_type": 2,
+          "attributes": {
+            "attr__alt": "Synthetic navigation icon",
+            "icon size-5\"attr__src": "/assets/synthetic-navigation.svg",
+            "attr__data-fixture": "element-1-1"
+          },
+          "order": 0
+        },
+        {
+          "text": null,
+          "tag_name": "section",
+          "attr_class": null,
+          "href": null,
+          "attr_id": null,
+          "nth_child": null,
+          "nth_of_type": null,
+          "attributes": {
+            "attr__class": "\"synthetic-nth-child=",
+            "2\"nth-of-type": "2",
+            "attr__data-fixture": "element-1-4"
+          },
+          "order": 3
+        },
+        {
+          "text": null,
+          "tag_name": "nav",
+          "attr_class": [
+            "primary-navigation",
+            "layout-relative",
+            "no-shrink",
+            "fixture-class-3"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": 2,
+          "nth_of_type": 1,
+          "attributes": {
+            "attr__class": "primary-navigation relative shrink-0",
+            "attr__data-fixture": "element-1-3"
+          },
+          "order": 2
+        },
+        {
+          "text": null,
+          "tag_name": "figure",
+          "attr_class": [
+            "fixture-shell",
+            "fixture-canvas"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": 1,
+          "nth_of_type": 81,
+          "attributes": {
+            "attr__data-fixture": "element-1-7"
+          },
+          "order": 5
+        },
+        {
+          "text": null,
+          "tag_name": "article",
+          "attr_class": [
+            "app-content",
+            "grow",
+            "min-width-zero",
+            "fixture-class-5"
+          ],
+          "href": null,
+          "attr_id": "example-app-content",
+          "nth_child": 4,
+          "nth_of_type": 2,
+          "attributes": {
+            "attr__data-example-tour": "app-overview",
+            "attr__id": "example-app-content",
+            "attr__data-fixture": "element-1-5"
+          },
+          "order": 4
+        },
+        {
+          "text": null,
+          "tag_name": "html",
+          "attr_class": [
+            "example-theme",
+            "fixture-class-6"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": null,
+          "nth_of_type": null,
+          "attributes": {
+            "attr__class": "example-theme",
+            "attr__data-fixture": "element-1-6"
+          },
+          "order": 6
+        }
+      ]
+    },
+    {
+      "count": 51,
+      "hash": "018f1000-0000-7000-8000-000000000202",
+      "type": "$dead_click",
+      "elements": [
+        {
+          "text": null,
+          "tag_name": "aside",
+          "attr_class": [
+            "retry-action",
+            "ring-1",
+            "rounded",
+            "fixture-retry-2"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": 3,
+          "nth_of_type": 2,
+          "attributes": {
+            "attr__aria-current": "false",
+            "attr__aria-label": "Retry synthetic action",
+            "attr__data-active": "false",
+            "attr__data-testid": "example-retry-button",
+            "attr__type": "reset",
+            "attr__data-fixture": "element-2-2"
+          },
+          "order": 1
+        },
+        {
+          "text": null,
+          "tag_name": "span",
+          "attr_class": [
+            "synthetic-retry",
+            "synthetic-button",
+            "synthetic-fixed"
+          ],
+          "href": null,
+          "attr_id": null,
+          "nth_child": 3,
+          "nth_of_type": 2,
+          "attributes": {
+            "attr__alt": "Synthetic retry icon",
+            "retry-icon size-4\"attr__src": "/assets/synthetic-retry.svg",
+            "attr__data-fixture": "element-2-1"
+          },
+          "order": 0
+        },
+        {
+          "text": null,
+          "tag_name": "footer",
+          "attr_class": [
+            "fixture-recovery",
+            "fixture-panel"
+          ],
+          "href": null,
+          "attr_id": "fixture-recovery-panel",
+          "nth_child": 1,
+          "nth_of_type": 1,
+          "attributes": {
+            "attr__data-fixture": "element-2-3"
+          },
+          "order": 2
+        }
+      ]
+    },
+    {
+      "count": 37,
+      "hash": "018f1000-0000-7000-8000-000000000203",
+      "type": "$autocapture",
+      "elements": [
+        {
+          "text": "Open sample catalog",
+          "tag_name": "aside",
+          "attr_class": [
+            "fixture-catalog",
+            "fixture-action"
+          ],
+          "href": null,
+          "attr_id": "fixture-catalog-button",
+          "nth_child": 2,
+          "nth_of_type": 1,
+          "attributes": {
+            "attr__data-fixture": "element-3-1"
+          },
+          "order": 0
+        }
+      ]
+    }
+  ],
+  "next": "https://app.example.com/api/projects/1001/elements/stats/?limit=2&offset=2",
+  "previous": null
+}

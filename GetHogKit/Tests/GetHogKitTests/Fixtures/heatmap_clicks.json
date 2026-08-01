@@ -1,0 +1,257 @@
+{
+  "results": [
+    {
+      "count": 99,
+      "pointer_y": 125,
+      "pointer_relative_x": 0.103,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 98,
+      "pointer_y": 231,
+      "pointer_relative_x": 0.12,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 97,
+      "pointer_y": 337,
+      "pointer_relative_x": 0.137,
+      "pointer_target_fixed": true
+    },
+    {
+      "count": 96,
+      "pointer_y": 443,
+      "pointer_relative_x": 0.154,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 95,
+      "pointer_y": 549,
+      "pointer_relative_x": 0.171,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 94,
+      "pointer_y": 655,
+      "pointer_relative_x": 0.188,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 93,
+      "pointer_y": 761,
+      "pointer_relative_x": 0.205,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 92,
+      "pointer_y": 867,
+      "pointer_relative_x": 0.222,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 91,
+      "pointer_y": 973,
+      "pointer_relative_x": 0.239,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 90,
+      "pointer_y": 1079,
+      "pointer_relative_x": 0.256,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 89,
+      "pointer_y": 1185,
+      "pointer_relative_x": 0.273,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 88,
+      "pointer_y": 1291,
+      "pointer_relative_x": 0.29,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 87,
+      "pointer_y": 1397,
+      "pointer_relative_x": 0.307,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 86,
+      "pointer_y": 1503,
+      "pointer_relative_x": 0.324,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 85,
+      "pointer_y": 1609,
+      "pointer_relative_x": 0.341,
+      "pointer_target_fixed": true
+    },
+    {
+      "count": 84,
+      "pointer_y": 1715,
+      "pointer_relative_x": 0.358,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 83,
+      "pointer_y": 1821,
+      "pointer_relative_x": 0.375,
+      "pointer_target_fixed": true
+    },
+    {
+      "count": 82,
+      "pointer_y": 1927,
+      "pointer_relative_x": 0.392,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 81,
+      "pointer_y": 2033,
+      "pointer_relative_x": 0.409,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 80,
+      "pointer_y": 2139,
+      "pointer_relative_x": 0.426,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 79,
+      "pointer_y": 2245,
+      "pointer_relative_x": 0.443,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 78,
+      "pointer_y": 2351,
+      "pointer_relative_x": 0.46,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 77,
+      "pointer_y": 2457,
+      "pointer_relative_x": 0.477,
+      "pointer_target_fixed": true
+    },
+    {
+      "count": 76,
+      "pointer_y": 2563,
+      "pointer_relative_x": 0.494,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 75,
+      "pointer_y": 2669,
+      "pointer_relative_x": 0.511,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 74,
+      "pointer_y": 2775,
+      "pointer_relative_x": 0.528,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 73,
+      "pointer_y": 2881,
+      "pointer_relative_x": 0.545,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 72,
+      "pointer_y": 2987,
+      "pointer_relative_x": 0.562,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 71,
+      "pointer_y": 3093,
+      "pointer_relative_x": 0.579,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 70,
+      "pointer_y": 3199,
+      "pointer_relative_x": 0.596,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 69,
+      "pointer_y": 3305,
+      "pointer_relative_x": 0.613,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 68,
+      "pointer_y": 3411,
+      "pointer_relative_x": 0.63,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 67,
+      "pointer_y": 3517,
+      "pointer_relative_x": 0.647,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 66,
+      "pointer_y": 3623,
+      "pointer_relative_x": 0.664,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 65,
+      "pointer_y": 3729,
+      "pointer_relative_x": 0.681,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 64,
+      "pointer_y": 3835,
+      "pointer_relative_x": 0.698,
+      "pointer_target_fixed": true
+    },
+    {
+      "count": 63,
+      "pointer_y": 3941,
+      "pointer_relative_x": 0.715,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 62,
+      "pointer_y": 4047,
+      "pointer_relative_x": 0.732,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 61,
+      "pointer_y": 4153,
+      "pointer_relative_x": 0.749,
+      "pointer_target_fixed": true
+    },
+    {
+      "count": 60,
+      "pointer_y": 4259,
+      "pointer_relative_x": 0.766,
+      "pointer_target_fixed": false
+    },
+    {
+      "count": 60,
+      "pointer_y": 4259,
+      "pointer_relative_x": 0.766,
+      "pointer_target_fixed": false
+    }
+  ],
+  "fold": {
+    "total_count": 120,
+    "below_fold_count": 36,
+    "pct_below_fold": 30,
+    "median_viewport_height": 900
+  },
+  "has_more": false
+}

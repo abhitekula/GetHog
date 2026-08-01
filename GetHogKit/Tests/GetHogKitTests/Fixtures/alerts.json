@@ -1,0 +1,144 @@
+{
+  "count": 76,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f3300-0000-7000-8000-000000000801",
+      "created_by": {
+        "id": 722011,
+        "uuid": "018f0000-0000-7000-8000-000000000101",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "sample.analyst@example.com"
+      },
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 710101,
+        "short_id": "example-meteor-report",
+        "name": "Example meteor report",
+        "derived_name": null
+      },
+      "name": "Harbor trials below floor",
+      "subscribed_users": [
+        {
+          "id": 722021,
+          "first_name": "Alex Example",
+          "email": "sample.analyst@example.com"
+        },
+        {
+          "id": 722022,
+          "first_name": "Alex Example",
+          "email": "synthetic-contact-777@example.com"
+        }
+      ],
+      "threshold": {
+        "id": "018f3300-0000-7000-8000-000000000811",
+        "created_at": "2026-01-15T12:00:00.000Z",
+        "name": "",
+        "configuration": {
+          "type": "absolute",
+          "bounds": {
+            "lower": 25,
+            "upper": null
+          }
+        }
+      },
+      "condition": {
+        "type": "absolute_value"
+      },
+      "state": "Firing",
+      "enabled": true,
+      "last_notified_at": "2026-01-16T08:00:00.000Z",
+      "last_checked_at": "2026-01-16T09:00:00.000Z",
+      "next_check_at": "2026-01-17T09:00:00.000Z",
+      "checks": [],
+      "config": {
+        "type": "TrendsAlertConfig",
+        "series_index": 7
+      },
+      "calculation_interval": "daily",
+      "snoozed_until": null,
+      "skip_weekend": false,
+      "last_value": 18.75
+    },
+    {
+      "id": "018f3300-0000-7000-8000-000000000802",
+      "created_by": null,
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "insight": {
+        "id": 710104,
+        "short_id": "example-constellation-journey",
+        "name": null,
+        "derived_name": "Example constellation journey"
+      },
+      "name": "",
+      "subscribed_users": [],
+      "threshold": {
+        "id": "018f3300-0000-7000-8000-000000000812",
+        "created_at": "2026-01-14T12:00:00.000Z",
+        "name": "",
+        "configuration": {
+          "type": "percentage",
+          "bounds": {
+            "lower": null,
+            "upper": 72.2
+          }
+        }
+      },
+      "condition": {
+        "type": "relative_increase"
+      },
+      "state": "Not firing",
+      "enabled": false,
+      "last_notified_at": null,
+      "last_checked_at": null,
+      "next_check_at": null,
+      "checks": [],
+      "config": null,
+      "calculation_interval": "hourly",
+      "snoozed_until": null,
+      "skip_weekend": null,
+      "last_value": null
+    },
+    {
+      "id": "018f9a00-0000-7000-8000-000000000002",
+      "created_by": null,
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "insight": {
+        "id": 710104,
+        "short_id": "example-constellation-journey",
+        "name": null,
+        "derived_name": "Example constellation journey"
+      },
+      "name": "Synthetic added ",
+      "subscribed_users": [],
+      "threshold": {
+        "id": "018f3300-0000-7000-8000-000000000812",
+        "created_at": "2026-01-14T12:00:00.000Z",
+        "name": "",
+        "configuration": {
+          "type": "percentage",
+          "bounds": {
+            "lower": null,
+            "upper": 72.2
+          }
+        }
+      },
+      "condition": {
+        "type": "relative_increase"
+      },
+      "state": "Not firing",
+      "enabled": false,
+      "last_notified_at": null,
+      "last_checked_at": null,
+      "next_check_at": null,
+      "checks": [],
+      "config": null,
+      "calculation_interval": "hourly",
+      "snoozed_until": null,
+      "skip_weekend": null,
+      "last_value": null
+    }
+  ]
+}

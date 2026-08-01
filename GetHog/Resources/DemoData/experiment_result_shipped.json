@@ -1,0 +1,73 @@
+{
+  "kind": "ExperimentQuery",
+  "is_cached": true,
+  "timezone": "Pacific/Auckland",
+  "error": null,
+  "warnings": [],
+  "stats_version": 11,
+  "is_precomputed": true,
+  "cache_key": "example-export-funnel-result",
+  "last_refresh": "2026-01-26T12:52:00.000Z",
+  "cache_target_age": "2026-01-26T12:37:00.000Z",
+  "next_allowed_client_refresh": "2026-01-26T13:07:00.000Z",
+  "significant": true,
+  "p_value": 0.0087,
+  "probability": {},
+  "credible_intervals": {},
+  "metric": {
+    "kind": "ExperimentMetric",
+    "uuid": "018f9000-0000-7000-8000-000000000270",
+    "metric_type": "funnel",
+    "name": "Successful CSV exports",
+    "series": [
+      {
+        "kind": "EventsNode",
+        "event": "export_started"
+      },
+      {
+        "kind": "EventsNode",
+        "event": "export_completed"
+      },
+      {
+        "kind": "EventsNode",
+        "event": "feature_used"
+      }
+    ]
+  },
+  "baseline": {
+    "key": "reference-export-71103",
+    "number_of_samples": 14207,
+    "sum": 6115,
+    "sum_squares": 6115,
+    "validation_failures": []
+  },
+  "variant_results": [
+    {
+      "key": "focused-export-71103",
+      "method": "frequentist",
+      "number_of_samples": 14399,
+      "sum": 7013,
+      "sum_squares": 7013,
+      "step_counts": [
+        14399,
+        7013
+      ],
+      "p_value": 0.0087,
+      "confidence_interval": [
+        0.0521,
+        0.1743
+      ],
+      "significant": true,
+      "validation_failures": []
+    },
+    {
+      "key": "synthetic-observer-71103",
+      "method": "frequentist",
+      "number_of_samples": 1,
+      "sum": 0,
+      "sum_squares": 0,
+      "significant": false,
+      "validation_failures": []
+    }
+  ]
+}

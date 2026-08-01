@@ -1,0 +1,1319 @@
+{
+  "count": 19,
+  "next": "https://app.example.com/demo/example-6182?limit=5&offset=5",
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000107",
+      "name": "Example App metric 829",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "type": "popover",
+      "schedule": "Example schedule 0831",
+      "linked_flag": null,
+      "linked_flag_id": null,
+      "linked_insight_id": null,
+      "targeting_flag": null,
+      "internal_targeting_flag": {
+        "id": 700073,
+        "team_id": 1001,
+        "name": "Example App metric 832",
+        "key": "Example key 0833",
+        "filters": {
+          "groups": [
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000107",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000107",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "example-audience-1-1-1",
+                  "type": "person",
+                  "value": "Example audience 1-1-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000107",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000107",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0836",
+                  "operator": "is_date_before"
+                },
+                {
+                  "key": "example-audience-1-1-2",
+                  "type": "person",
+                  "value": "Example audience 1-1-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-audience-1-1",
+                  "type": "person",
+                  "value": "Example new audience 1-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 71,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 31,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "questions": [
+        {
+          "id": "018f9000-0000-7000-8000-000000000161",
+          "type": "rating",
+          "scale": 13,
+          "display": "emoji",
+          "question": "Example question 0837",
+          "branching": {
+            "type": "next_question"
+          },
+          "lowerBoundLabel": "Example lowerboundlabel 0838",
+          "upperBoundLabel": "Example upperboundlabel 0839"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000372",
+          "type": "open",
+          "optional": true,
+          "question": "Example question 0840",
+          "buttonText": "Example buttontext 0803"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000281",
+          "type": "open",
+          "optional": true,
+          "question": "Example reauthored follow-up 1-1",
+          "buttonText": "Continue example survey"
+        }
+      ],
+      "conditions": {
+        "url": "/dashboard/integrations",
+        "events": {
+          "values": [
+            {
+              "name": "Example App metric 841"
+            }
+          ],
+          "repeatedActivation": false
+        },
+        "urlMatchType": "Example urlmatchtype 0842",
+        "seenSurveyWaitPeriodInDays": 21
+      },
+      "appearance": {
+        "textColor": "#1d4ed8",
+        "borderColor": "#047857",
+        "autoDisappear": true,
+        "backgroundColor": "#7c3aed",
+        "ratingButtonColor": "#be123c",
+        "submitButtonColor": "#a16207",
+        "descriptionTextColor": "#0e7490",
+        "submitButtonTextColor": "#1d4ed8",
+        "thankYouMessageHeader": "Example thankyoumessageheader 0843",
+        "displayThankYouMessage": true,
+        "ratingButtonHoverColor": "#047857",
+        "ratingButtonActiveColor": "#7c3aed",
+        "surveyPopupDelaySeconds": 17,
+        "thankYouMessageDescription": "Example thankyoumessagedescription 0844"
+      },
+      "created_at": "2026-01-28T00:00:00.000Z",
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0073@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "start_date": null,
+      "end_date": null,
+      "archived": false,
+      "responses_limit": null,
+      "feature_flag_keys": [
+        {
+          "key": "Example key 0845",
+          "value": null
+        },
+        {
+          "key": "Example key 0846",
+          "value": null
+        },
+        {
+          "key": "Example key 0847",
+          "value": "Example value 0848"
+        },
+        {
+          "key": "Example key 0849",
+          "value": null
+        },
+        "example-reauthored-survey-1-1"
+      ],
+      "iteration_count": null,
+      "iteration_frequency_days": null,
+      "iteration_start_dates": [],
+      "current_iteration": null,
+      "current_iteration_start_date": null,
+      "response_sampling_start_date": null,
+      "response_sampling_interval_type": "Example response sampling interval type 0850",
+      "response_sampling_interval": null,
+      "response_sampling_limit": null,
+      "response_sampling_daily_limits": null,
+      "enable_partial_responses": false,
+      "enable_iframe_embedding": false,
+      "base_language": "Example base language 0851",
+      "translations": null,
+      "user_access_level": "manager",
+      "form_content": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000200",
+      "name": "Example App metric 852",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "type": "popover",
+      "schedule": "Example schedule 0831",
+      "linked_flag": null,
+      "linked_flag_id": null,
+      "linked_insight_id": null,
+      "targeting_flag": null,
+      "internal_targeting_flag": {
+        "id": 700074,
+        "team_id": 1001,
+        "name": "Example App metric 854",
+        "key": "Example key 0855",
+        "filters": {
+          "groups": [
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000200",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000200",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "example-audience-1-2-1",
+                  "type": "person",
+                  "value": "Example audience 1-2-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000200",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000200",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0836",
+                  "operator": "is_date_before"
+                },
+                {
+                  "key": "example-audience-1-2-2",
+                  "type": "person",
+                  "value": "Example audience 1-2-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-audience-1-2",
+                  "type": "person",
+                  "value": "Example new audience 1-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 72,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 32,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "questions": [
+        {
+          "id": "018f9000-0000-7000-8000-000000000374",
+          "type": "rating",
+          "scale": 11,
+          "display": "emoji",
+          "question": "Example question 0856",
+          "branching": {
+            "type": "next_question"
+          },
+          "lowerBoundLabel": "Example lowerboundlabel 0857",
+          "upperBoundLabel": "Example upperboundlabel 0858"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000215",
+          "type": "open",
+          "optional": true,
+          "question": "Example question 0859",
+          "buttonText": "Example buttontext 0803"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000282",
+          "type": "open",
+          "optional": true,
+          "question": "Example reauthored follow-up 1-2",
+          "buttonText": "Continue example survey"
+        }
+      ],
+      "conditions": {
+        "url": "Example url 0860",
+        "events": {
+          "values": [
+            {
+              "name": "Example App metric 861"
+            }
+          ],
+          "repeatedActivation": false
+        },
+        "urlMatchType": "Example urlmatchtype 0842",
+        "seenSurveyWaitPeriodInDays": 21
+      },
+      "appearance": {
+        "textColor": "#be123c",
+        "borderColor": "#a16207",
+        "autoDisappear": true,
+        "backgroundColor": "#0e7490",
+        "ratingButtonColor": "#1d4ed8",
+        "submitButtonColor": "#047857",
+        "descriptionTextColor": "#7c3aed",
+        "submitButtonTextColor": "#be123c",
+        "thankYouMessageHeader": "Example thankyoumessageheader 0843",
+        "displayThankYouMessage": true,
+        "ratingButtonHoverColor": "#a16207",
+        "ratingButtonActiveColor": "#0e7490",
+        "surveyPopupDelaySeconds": 17,
+        "thankYouMessageDescription": "Example thankyoumessagedescription 0862"
+      },
+      "created_at": "2026-01-21T06:00:00.000Z",
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0074@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "start_date": null,
+      "end_date": null,
+      "archived": false,
+      "responses_limit": null,
+      "feature_flag_keys": [
+        {
+          "key": "Example key 0845",
+          "value": null
+        },
+        {
+          "key": "Example key 0846",
+          "value": null
+        },
+        {
+          "key": "Example key 0847",
+          "value": "Example value 0863"
+        },
+        {
+          "key": "Example key 0849",
+          "value": null
+        },
+        "example-reauthored-survey-1-2"
+      ],
+      "iteration_count": null,
+      "iteration_frequency_days": null,
+      "iteration_start_dates": [],
+      "current_iteration": null,
+      "current_iteration_start_date": null,
+      "response_sampling_start_date": null,
+      "response_sampling_interval_type": "Example response sampling interval type 0850",
+      "response_sampling_interval": null,
+      "response_sampling_limit": null,
+      "response_sampling_daily_limits": null,
+      "enable_partial_responses": false,
+      "enable_iframe_embedding": false,
+      "base_language": "Example base language 0851",
+      "translations": null,
+      "user_access_level": "manager",
+      "form_content": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000484",
+      "name": "Example App metric 864",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "type": "popover",
+      "schedule": "Example schedule 0831",
+      "linked_flag": null,
+      "linked_flag_id": null,
+      "linked_insight_id": null,
+      "targeting_flag": null,
+      "internal_targeting_flag": {
+        "id": 700075,
+        "team_id": 1001,
+        "name": "Example App metric 866",
+        "key": "Example key 0867",
+        "filters": {
+          "groups": [
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000484",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000484",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "example-audience-1-3-1",
+                  "type": "person",
+                  "value": "Example audience 1-3-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000484",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000484",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0836",
+                  "operator": "is_date_before"
+                },
+                {
+                  "key": "example-audience-1-3-2",
+                  "type": "person",
+                  "value": "Example audience 1-3-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-audience-1-3",
+                  "type": "person",
+                  "value": "Example new audience 1-3",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 73,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 33,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "questions": [
+        {
+          "id": "018f9000-0000-7000-8000-000000000464",
+          "type": "rating",
+          "scale": 13,
+          "display": "emoji",
+          "question": "Example question 0868",
+          "branching": {
+            "type": "next_question"
+          },
+          "lowerBoundLabel": "Example lowerboundlabel 0869",
+          "upperBoundLabel": "Example upperboundlabel 0870"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000024",
+          "type": "open",
+          "optional": true,
+          "question": "Example question 0871",
+          "buttonText": "Example buttontext 0803"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000283",
+          "type": "open",
+          "optional": true,
+          "question": "Example reauthored follow-up 1-3",
+          "buttonText": "Continue example survey"
+        }
+      ],
+      "conditions": {
+        "url": "Example url 0872",
+        "events": {
+          "values": [
+            {
+              "name": "Example App metric 873"
+            }
+          ],
+          "repeatedActivation": false
+        },
+        "urlMatchType": "Example urlmatchtype 0842",
+        "seenSurveyWaitPeriodInDays": 21
+      },
+      "appearance": {
+        "textColor": "#1d4ed8",
+        "borderColor": "#047857",
+        "autoDisappear": true,
+        "backgroundColor": "#7c3aed",
+        "ratingButtonColor": "#be123c",
+        "submitButtonColor": "#a16207",
+        "descriptionTextColor": "#0e7490",
+        "submitButtonTextColor": "#1d4ed8",
+        "thankYouMessageHeader": "Example thankyoumessageheader 0843",
+        "displayThankYouMessage": true,
+        "ratingButtonHoverColor": "#047857",
+        "ratingButtonActiveColor": "#7c3aed",
+        "surveyPopupDelaySeconds": 17,
+        "thankYouMessageDescription": "Example thankyoumessagedescription 0874"
+      },
+      "created_at": "2026-01-14T12:00:00.000Z",
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0075@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "start_date": null,
+      "end_date": null,
+      "archived": false,
+      "responses_limit": null,
+      "feature_flag_keys": [
+        {
+          "key": "Example key 0845",
+          "value": null
+        },
+        {
+          "key": "Example key 0846",
+          "value": null
+        },
+        {
+          "key": "Example key 0847",
+          "value": "Example value 0875"
+        },
+        {
+          "key": "Example key 0849",
+          "value": null
+        },
+        "example-reauthored-survey-1-3"
+      ],
+      "iteration_count": null,
+      "iteration_frequency_days": null,
+      "iteration_start_dates": [],
+      "current_iteration": null,
+      "current_iteration_start_date": null,
+      "response_sampling_start_date": null,
+      "response_sampling_interval_type": "Example response sampling interval type 0850",
+      "response_sampling_interval": null,
+      "response_sampling_limit": null,
+      "response_sampling_daily_limits": null,
+      "enable_partial_responses": false,
+      "enable_iframe_embedding": false,
+      "base_language": "Example base language 0851",
+      "translations": null,
+      "user_access_level": "manager",
+      "form_content": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000261",
+      "name": "Example App metric 876",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "type": "popover",
+      "schedule": "Example schedule 0831",
+      "linked_flag": null,
+      "linked_flag_id": null,
+      "linked_insight_id": null,
+      "targeting_flag": {
+        "id": 700076,
+        "team_id": 1001,
+        "name": "Example App metric 878",
+        "key": "Example key 0879",
+        "filters": {
+          "groups": [
+            {
+              "properties": [
+                {
+                  "key": "Example key 0880",
+                  "type": "person",
+                  "value": "Example value 0881",
+                  "operator": "gte"
+                },
+                {
+                  "key": "example-target-1-4-1",
+                  "type": "person",
+                  "value": "Example target 1-4-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-target-1-4",
+                  "type": "person",
+                  "value": "Example new target 1-4",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 67,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 44,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "internal_targeting_flag": {
+        "id": 700077,
+        "team_id": 1001,
+        "name": "Example App metric 878",
+        "key": "Example key 0882",
+        "filters": {
+          "groups": [
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000261",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000261",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "example-audience-1-4-1",
+                  "type": "person",
+                  "value": "Example audience 1-4-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000261",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000261",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0836",
+                  "operator": "is_date_before"
+                },
+                {
+                  "key": "example-audience-1-4-2",
+                  "type": "person",
+                  "value": "Example audience 1-4-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-audience-1-4",
+                  "type": "person",
+                  "value": "Example new audience 1-4",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 74,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 34,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "questions": [
+        {
+          "id": "018f9000-0000-7000-8000-000000000315",
+          "type": "rating",
+          "scale": 14,
+          "display": "number",
+          "question": "Example question 0883",
+          "branching": {
+            "type": "next_question"
+          },
+          "lowerBoundLabel": "Example lowerboundlabel 0814",
+          "upperBoundLabel": "Example upperboundlabel 0815"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000454",
+          "type": "open",
+          "optional": true,
+          "question": "Example question 0884",
+          "buttonText": "Example buttontext 0803"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000284",
+          "type": "open",
+          "optional": true,
+          "question": "Example reauthored follow-up 1-4",
+          "buttonText": "Continue example survey"
+        }
+      ],
+      "conditions": {
+        "url": "Example url 0885",
+        "urlMatchType": "Example urlmatchtype 0842",
+        "seenSurveyWaitPeriodInDays": 21
+      },
+      "appearance": {
+        "textColor": "#be123c",
+        "borderColor": "#a16207",
+        "autoDisappear": true,
+        "backgroundColor": "#0e7490",
+        "ratingButtonColor": "#1d4ed8",
+        "submitButtonColor": "#047857",
+        "descriptionTextColor": "#7c3aed",
+        "submitButtonTextColor": "#be123c",
+        "thankYouMessageHeader": "Example thankyoumessageheader 0886",
+        "displayThankYouMessage": true,
+        "ratingButtonHoverColor": "#a16207",
+        "ratingButtonActiveColor": "#0e7490",
+        "surveyPopupDelaySeconds": 17,
+        "thankYouMessageDescription": "Example thankyoumessagedescription 0887"
+      },
+      "created_at": "2026-01-07T18:00:00.000Z",
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0076@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "start_date": null,
+      "end_date": null,
+      "archived": false,
+      "responses_limit": null,
+      "feature_flag_keys": [
+        {
+          "key": "Example key 0845",
+          "value": null
+        },
+        {
+          "key": "Example key 0846",
+          "value": "Example value 0888"
+        },
+        {
+          "key": "Example key 0847",
+          "value": "Example value 0889"
+        },
+        {
+          "key": "Example key 0849",
+          "value": null
+        },
+        "example-reauthored-survey-1-4"
+      ],
+      "iteration_count": null,
+      "iteration_frequency_days": null,
+      "iteration_start_dates": [],
+      "current_iteration": null,
+      "current_iteration_start_date": null,
+      "response_sampling_start_date": null,
+      "response_sampling_interval_type": "Example response sampling interval type 0850",
+      "response_sampling_interval": null,
+      "response_sampling_limit": null,
+      "response_sampling_daily_limits": null,
+      "enable_partial_responses": false,
+      "enable_iframe_embedding": false,
+      "base_language": "Example base language 0851",
+      "translations": null,
+      "user_access_level": "manager",
+      "form_content": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000199",
+      "name": "Example App metric 890",
+      "description": "Tracks fictional Example App behavior for deterministic client coverage.",
+      "type": "popover",
+      "schedule": "Example schedule 0831",
+      "linked_flag": null,
+      "linked_flag_id": null,
+      "linked_insight_id": null,
+      "targeting_flag": null,
+      "internal_targeting_flag": {
+        "id": 700078,
+        "team_id": 1001,
+        "name": "Example App metric 892",
+        "key": "Example key 0893",
+        "filters": {
+          "groups": [
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "example-audience-1-5-1",
+                  "type": "person",
+                  "value": "Example audience 1-5-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0836",
+                  "operator": "is_date_before"
+                },
+                {
+                  "key": "example-audience-1-5-2",
+                  "type": "person",
+                  "value": "Example audience 1-5-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-audience-1-5",
+                  "type": "person",
+                  "value": "Example new audience 1-5",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 75,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 35,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "questions": [
+        {
+          "id": "018f9000-0000-7000-8000-000000000050",
+          "type": "rating",
+          "scale": 11,
+          "display": "number",
+          "question": "Example question 0894",
+          "branching": {
+            "type": "next_question"
+          },
+          "lowerBoundLabel": "Example lowerboundlabel 0814",
+          "upperBoundLabel": "Example upperboundlabel 0815"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000406",
+          "type": "open",
+          "optional": true,
+          "question": "Example question 0895",
+          "buttonText": "Example buttontext 0803"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000285",
+          "type": "open",
+          "optional": true,
+          "question": "Example reauthored follow-up 1-5",
+          "buttonText": "Continue example survey"
+        }
+      ],
+      "conditions": {
+        "url": "Example url 0885",
+        "events": {
+          "values": [
+            {
+              "name": "Example App metric 896"
+            }
+          ],
+          "repeatedActivation": false
+        },
+        "urlMatchType": "Example urlmatchtype 0842",
+        "seenSurveyWaitPeriodInDays": 21
+      },
+      "appearance": {
+        "textColor": "#1d4ed8",
+        "borderColor": "#047857",
+        "autoDisappear": true,
+        "backgroundColor": "#7c3aed",
+        "ratingButtonColor": "#be123c",
+        "submitButtonColor": "#a16207",
+        "descriptionTextColor": "#0e7490",
+        "submitButtonTextColor": "#1d4ed8",
+        "thankYouMessageHeader": "Example thankyoumessageheader 0843",
+        "displayThankYouMessage": true,
+        "ratingButtonHoverColor": "#047857",
+        "ratingButtonActiveColor": "#7c3aed",
+        "surveyPopupDelaySeconds": 17,
+        "thankYouMessageDescription": "Example thankyoumessagedescription 0897"
+      },
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0077@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "start_date": null,
+      "end_date": null,
+      "archived": false,
+      "responses_limit": null,
+      "feature_flag_keys": [
+        {
+          "key": "Example key 0845",
+          "value": null
+        },
+        {
+          "key": "Example key 0846",
+          "value": null
+        },
+        {
+          "key": "Example key 0847",
+          "value": "Example value 0898"
+        },
+        {
+          "key": "Example key 0849",
+          "value": null
+        },
+        "example-reauthored-survey-1-5"
+      ],
+      "iteration_count": null,
+      "iteration_frequency_days": null,
+      "iteration_start_dates": [],
+      "current_iteration": null,
+      "current_iteration_start_date": null,
+      "response_sampling_start_date": null,
+      "response_sampling_interval_type": "Example response sampling interval type 0850",
+      "response_sampling_interval": null,
+      "response_sampling_limit": null,
+      "response_sampling_daily_limits": null,
+      "enable_partial_responses": false,
+      "enable_iframe_embedding": false,
+      "base_language": "Example base language 0851",
+      "translations": null,
+      "user_access_level": "manager",
+      "form_content": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000289",
+      "name": "Example reauthored survey 1",
+      "description": "A fully fictional extra survey for deterministic collection coverage.",
+      "type": "popover",
+      "schedule": "Example schedule 0831",
+      "linked_flag": null,
+      "linked_flag_id": null,
+      "linked_insight_id": null,
+      "targeting_flag": null,
+      "internal_targeting_flag": {
+        "id": 79001,
+        "team_id": 1001,
+        "name": "Example reauthored survey flag 1",
+        "key": "example-reauthored-survey-flag-1",
+        "filters": {
+          "groups": [
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "example-audience-1-5-1",
+                  "type": "person",
+                  "value": "Example audience 1-5-1",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "$survey_dismissed/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "$survey_responded/018f9000-0000-7000-8000-000000000199",
+                  "type": "person",
+                  "value": "Example value 0834",
+                  "operator": "is_not_set"
+                },
+                {
+                  "key": "Example key 0835",
+                  "type": "person",
+                  "value": "Example value 0836",
+                  "operator": "is_date_before"
+                },
+                {
+                  "key": "example-audience-1-5-2",
+                  "type": "person",
+                  "value": "Example audience 1-5-2",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 207,
+              "aggregation_group_type_index": null
+            },
+            {
+              "variant": "",
+              "properties": [
+                {
+                  "key": "example-new-audience-1-5",
+                  "type": "person",
+                  "value": "Example new audience 1-5",
+                  "operator": "exact"
+                }
+              ],
+              "rollout_percentage": 75,
+              "aggregation_group_type_index": null
+            }
+          ],
+          "aggregation_group_type_index": null
+        },
+        "deleted": false,
+        "active": false,
+        "ensure_experience_continuity": false,
+        "version": 35,
+        "evaluation_runtime": "Example evaluation runtime 0270",
+        "bucketing_identifier": "Example bucketing identifier 0375",
+        "evaluation_contexts": []
+      },
+      "questions": [
+        {
+          "id": "018f9000-0000-7000-8000-000000000286",
+          "type": "rating",
+          "scale": 11,
+          "display": "number",
+          "question": "Example question 0894",
+          "branching": {
+            "type": "next_question"
+          },
+          "lowerBoundLabel": "Example lowerboundlabel 0814",
+          "upperBoundLabel": "Example upperboundlabel 0815"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000287",
+          "type": "open",
+          "optional": true,
+          "question": "Example question 0895",
+          "buttonText": "Example buttontext 0803"
+        },
+        {
+          "id": "018f9000-0000-7000-8000-000000000288",
+          "type": "open",
+          "optional": true,
+          "question": "Example reauthored follow-up 1-5",
+          "buttonText": "Continue example survey"
+        }
+      ],
+      "conditions": {
+        "url": "Example url 0885",
+        "events": {
+          "values": [
+            {
+              "name": "Example App metric 896"
+            }
+          ],
+          "repeatedActivation": false
+        },
+        "urlMatchType": "Example urlmatchtype 0842",
+        "seenSurveyWaitPeriodInDays": 21
+      },
+      "appearance": {
+        "textColor": "#1d4ed8",
+        "borderColor": "#047857",
+        "autoDisappear": true,
+        "backgroundColor": "#7c3aed",
+        "ratingButtonColor": "#be123c",
+        "submitButtonColor": "#a16207",
+        "descriptionTextColor": "#0e7490",
+        "submitButtonTextColor": "#1d4ed8",
+        "thankYouMessageHeader": "Example thankyoumessageheader 0843",
+        "displayThankYouMessage": true,
+        "ratingButtonHoverColor": "#047857",
+        "ratingButtonActiveColor": "#7c3aed",
+        "surveyPopupDelaySeconds": 17,
+        "thankYouMessageDescription": "Example thankyoumessagedescription 0897"
+      },
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_by": {
+        "id": 700022,
+        "uuid": "018f9000-0000-7000-8000-000000000378",
+        "distinct_id": "synthetic-id-0022",
+        "first_name": "Alex",
+        "last_name": "Example",
+        "email": "alex+0077@example.com",
+        "is_email_verified": true,
+        "hedgehog_config": null,
+        "role_at_organization": "Example role at organization 0147"
+      },
+      "start_date": null,
+      "end_date": null,
+      "archived": false,
+      "responses_limit": null,
+      "feature_flag_keys": [
+        {
+          "key": "Example key 0845",
+          "value": null
+        },
+        {
+          "key": "Example key 0846",
+          "value": null
+        },
+        {
+          "key": "Example key 0847",
+          "value": "Example value 0898"
+        },
+        {
+          "key": "Example key 0849",
+          "value": null
+        },
+        "example-reauthored-survey-1-5"
+      ],
+      "iteration_count": null,
+      "iteration_frequency_days": null,
+      "iteration_start_dates": [],
+      "current_iteration": null,
+      "current_iteration_start_date": null,
+      "response_sampling_start_date": null,
+      "response_sampling_interval_type": "Example response sampling interval type 0850",
+      "response_sampling_interval": null,
+      "response_sampling_limit": null,
+      "response_sampling_daily_limits": null,
+      "enable_partial_responses": false,
+      "enable_iframe_embedding": false,
+      "base_language": "Example base language 0851",
+      "translations": null,
+      "user_access_level": "manager",
+      "form_content": null
+    }
+  ]
+}

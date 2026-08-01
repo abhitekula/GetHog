@@ -1,0 +1,288 @@
+{
+  "count": 8,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000336",
+      "name": "governed_margin_view",
+      "status": "Reconciling",
+      "is_materialized": true,
+      "last_run_at": "2026-01-22T09:44:00.000Z",
+      "origin": "fictional_demo",
+      "managed_viewset_kind": "curated_metric",
+      "columns": [
+        {
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": false,
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000093",
+      "name": "renewal_watchlist",
+      "created_by": {
+        "first_name": "Analyst One",
+        "email": "analyst-01@example.org"
+      },
+      "created_at": "2026-01-14T08:15:00.000Z",
+      "description": null,
+      "sync_frequency": "12hour",
+      "columns": [
+        {
+          "key": "workspace_key",
+          "name": "Workspace key",
+          "type": "string",
+          "schema_valid": true
+        },
+        {
+          "key": "renewal_score",
+          "name": "Renewal score",
+          "type": "float",
+          "schema_valid": true
+        }
+      ],
+      "status": "Running",
+      "last_run_at": "2026-01-21T18:20:00.000Z",
+      "folder_name": null,
+      "latest_error": "A prior synthetic run lost its lease.",
+      "is_materialized": true,
+      "user_access_level": "editor"
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": true,
+      "managed_viewset_kind": null,
+      "folder_id": "018f9000-0000-7000-8000-000000000414",
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000123",
+      "name": "billing_health",
+      "created_by": {
+        "first_name": "Analyst Two",
+        "email": "analyst-02@example.org"
+      },
+      "created_at": "2026-01-10T16:32:00.000Z",
+      "description": "Summarizes fictional invoice health by demo plan.",
+      "sync_frequency": "1hour",
+      "columns": [
+        {
+          "key": "plan_code",
+          "name": "Plan code",
+          "type": "string",
+          "schema_valid": true
+        },
+        {
+          "key": "invoice_total",
+          "name": "Invoice total",
+          "type": "float",
+          "schema_valid": true
+        },
+        {
+          "key": "health_band",
+          "name": "Health band",
+          "type": "string",
+          "schema_valid": false
+        }
+      ],
+      "status": "Completed",
+      "last_run_at": "2026-01-23T11:05:00.000Z",
+      "folder_name": "Revenue lab",
+      "latest_error": null,
+      "is_materialized": true,
+      "user_access_level": "editor"
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": false,
+      "managed_viewset_kind": null,
+      "folder_id": "018f9000-0000-7000-8000-000000000414",
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000362",
+      "name": "stalled_hourly_accounts",
+      "created_by": {
+        "first_name": "Analyst Three",
+        "email": "analyst-03@example.org"
+      },
+      "created_at": "2026-01-12T13:10:00.000Z",
+      "description": "Counts active fictional workspaces for each demo hour.",
+      "sync_frequency": "6hour",
+      "columns": [
+        {
+          "key": "activity_day",
+          "name": "Activity day",
+          "type": "date",
+          "schema_valid": true
+        },
+        {
+          "key": "workspace_total",
+          "name": "Workspace total",
+          "type": "integer",
+          "schema_valid": true
+        },
+        {
+          "key": "region_code",
+          "name": "Region code",
+          "type": "string",
+          "schema_valid": true
+        }
+      ],
+      "status": "Failed",
+      "last_run_at": "2026-01-23T10:42:00.000Z",
+      "folder_name": "Operations lab",
+      "latest_error": "Fictional worker exceeded its 384 MiB memory budget.",
+      "is_materialized": true,
+      "user_access_level": "editor"
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": false,
+      "managed_viewset_kind": null,
+      "folder_id": "018f9000-0000-7000-8000-000000000414",
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000458",
+      "name": "plan_value_rollup",
+      "created_by": {
+        "first_name": "Analyst Four",
+        "email": "analyst-04@example.org"
+      },
+      "created_at": "2026-01-09T19:25:00.000Z",
+      "description": "Aggregates fictional recurring value by demo plan.",
+      "sync_frequency": "24hour",
+      "columns": [
+        {
+          "key": "billing_day",
+          "name": "Billing day",
+          "type": "date",
+          "schema_valid": true
+        },
+        {
+          "key": "recurring_value",
+          "name": "Recurring value",
+          "type": "float",
+          "schema_valid": true
+        }
+      ],
+      "status": "Modified",
+      "last_run_at": "2026-01-20T06:30:00.000Z",
+      "folder_name": "Revenue lab",
+      "latest_error": null,
+      "is_materialized": true,
+      "user_access_level": "editor"
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": false,
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000145",
+      "name": "activation_checkpoint",
+      "created_by": {
+        "first_name": "",
+        "email": "analyst-05@example.org"
+      },
+      "created_at": "2026-01-13T10:05:00.000Z",
+      "description": null,
+      "sync_frequency": null,
+      "columns": [
+        {
+          "key": "workspace_key",
+          "name": "Workspace key",
+          "type": "string",
+          "schema_valid": true
+        },
+        {
+          "key": "activated_step",
+          "name": "Activated step",
+          "type": "integer",
+          "schema_valid": true
+        }
+      ],
+      "status": "Completed",
+      "last_run_at": "2026-01-19T23:55:00.000Z",
+      "folder_name": null,
+      "latest_error": null,
+      "is_materialized": true,
+      "user_access_level": "viewer"
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": false,
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000468",
+      "name": "acquisition_origin",
+      "created_by": {
+        "first_name": "Analyst Six",
+        "email": "analyst-06@example.org"
+      },
+      "created_at": "2026-01-08T14:50:00.000Z",
+      "description": "",
+      "sync_frequency": "never",
+      "columns": [
+
+      ],
+      "status": null,
+      "last_run_at": null,
+      "folder_name": null,
+      "latest_error": "",
+      "is_materialized": false,
+      "user_access_level": "editor"
+    },
+    {
+      "deleted": false,
+      "sync_frequency_managed_by_dag": false,
+      "managed_viewset_kind": null,
+      "folder_id": null,
+      "is_test": false,
+      "expires_at": null,
+      "origin": "fictional_demo",
+      "id": "018f9000-0000-7000-8000-000000000230",
+      "name": "trial_retention_curve",
+      "created_by": {
+        "first_name": "Analyst Seven",
+        "email": "analyst-07@example.org"
+      },
+      "created_at": "2026-01-15T12:00:00.000Z",
+      "description": "Models fictional weekly retention for demo workspaces.",
+      "sync_frequency": "8hour",
+      "columns": [
+        {
+          "key": "cohort_week",
+          "name": "Cohort week",
+          "type": "date",
+          "schema_valid": true
+        },
+        {
+          "key": "retained_ratio",
+          "name": "Retained ratio",
+          "type": "float",
+          "schema_valid": true
+        }
+      ],
+      "status": "Completed",
+      "last_run_at": "2026-01-23T08:00:00.000Z",
+      "folder_name": "Lifecycle lab",
+      "latest_error": null,
+      "is_materialized": true,
+      "user_access_level": "viewer"
+    }
+  ]
+}

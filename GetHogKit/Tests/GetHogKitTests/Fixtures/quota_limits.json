@@ -1,0 +1,81 @@
+{
+  "events": {
+    "limited": false,
+    "usage": 3631,
+    "limit": 2000007
+  },
+  "exceptions": {
+    "limited": false,
+    "usage": 43
+  },
+  "recordings": {
+    "limited": false,
+    "usage": 27
+  },
+  "mobile_recordings": {
+    "limited": false,
+    "usage": 4
+  },
+  "llm_events": {
+    "limited": false,
+    "usage": 155
+  },
+  "rows_synced": {
+    "limited": false,
+    "usage": 9
+  },
+  "feature_flag_requests": {
+    "limited": false,
+    "usage": 6
+  },
+  "api_queries_read_bytes": {
+    "limited": false,
+    "usage": 4
+  },
+  "logs_mb_ingested": {
+    "limited": false,
+    "usage": 7
+  },
+  "error_tracking_symbol_sets": {
+    "limited": false,
+    "usage": 3
+  },
+  "surveys_responses": {
+    "limited": false,
+    "usage": 6
+  },
+  "data_pipelines": {
+    "limited": false,
+    "usage": 3
+  },
+  "ai_credits": {
+    "limited": false,
+    "usage": 121,
+    "limit": 31007
+  },
+  "signals_credits": {
+    "limited": false,
+    "usage": 6007,
+    "limit": 9007
+  },
+  "posthog_code_credits": {
+    "limited": false,
+    "usage": 6,
+    "limit": 14007
+  },
+  "replay_vision_credits": {
+    "limited": false,
+    "usage": 7,
+    "limit": 2007
+  },
+  "workflow_emails": {
+    "limited": false,
+    "usage": 7,
+    "limit": 10007
+  },
+  "workflow_sms": {
+    "limited": false,
+    "usage": 3,
+    "limit": 2007
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "columns": [
+    "group_name",
+    "key",
+    "created_at",
+    "properties"
+  ],
+  "types": [
+    [
+      "group_name",
+      "Tuple(String, String)"
+    ],
+    [
+      "key",
+      "String"
+    ],
+    [
+      "created_at",
+      "DateTime"
+    ],
+    [
+      "properties",
+      "String"
+    ]
+  ],
+  "results": [
+    [
+      {
+        "display_name": "Cobalt Research Lab",
+        "key": "group-example-cobalt"
+      },
+      "group-example-cobalt",
+      "2026-01-28T00:00:00.000Z",
+      "{\"name\":\"Cobalt Research Lab\",\"subdomain\":\"cobalt-lab.example.com\"}"
+    ],
+    [
+      {
+        "display_name": "Quartz Observatory",
+        "key": "group-example-quartz"
+      },
+      "group-example-quartz",
+      "2026-01-14T12:00:00.000Z",
+      "{\"name\":\"Quartz Observatory\",\"subdomain\":\"quartz-observatory.example.org\"}"
+    ],
+    [
+      {
+        "display_name": "group-example-ember",
+        "key": "group-example-ember"
+      },
+      "group-example-ember",
+      "2026-01-01T00:00:00.000Z",
+      "{\"subdomain\":\"ember-observatory.example.net\"}"
+    ],
+    [
+      {
+        "display_name": "group-example-delta",
+        "key": "group-example-delta"
+      },
+      "group-example-delta",
+      "2026-01-25T08:45:00.000Z",
+      "{\"subdomain\":\"delta-telescope.example.com\",\"sample_tier\":\"preview\"}"
+    ]
+  ],
+  "hasMore": false,
+  "limit": 207,
+  "offset": 0,
+  "hogql": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser"
+}

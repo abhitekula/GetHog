@@ -1,0 +1,53 @@
+{
+  "overall_health": "needs_attention",
+  "health": "danger",
+  "needs_updating_count": 2,
+  "sdks": [
+    {
+      "sdk_name": "Example sdk name 0429",
+      "severity": "critical",
+      "health": "danger",
+      "is_outdated": true,
+      "current_version": "Example current version 0431",
+      "latest_version": "Example latest version 0430",
+      "reason": "The synthetic request was rejected for deterministic error coverage.",
+      "banners": [
+        "Example banners 0428",
+        "Example banners 0428-synthetic-added"
+      ]
+    },
+    {
+      "sdk_name": "Example sdk name 0435",
+      "severity": "critical",
+      "health": "danger",
+      "is_outdated": true,
+      "current_version": "Example current version 0437",
+      "latest_version": "Example latest version 0650",
+      "reason": "The synthetic request was rejected for deterministic error coverage.",
+      "banners": [
+        "Example banners 0434",
+        "Example banners 0434-synthetic-added"
+      ]
+    },
+    {
+      "sdk_name": "Example sdk name 0652",
+      "severity": "info",
+      "health": "healthy",
+      "is_outdated": false,
+      "current_version": "Example current version 0654",
+      "latest_version": "Example latest version 0655",
+      "reason": "The synthetic request was rejected for deterministic error coverage.",
+      "banners": []
+    },
+    {
+      "sdk_name": "Example sdk name 0652",
+      "severity": "info",
+      "health": "healthy",
+      "is_outdated": false,
+      "current_version": "Example current version 0654",
+      "latest_version": "Example latest version 0655",
+      "reason": "The synthetic request was rejected for deterministic error coverage.",
+      "banners": []
+    }
+  ]
+}

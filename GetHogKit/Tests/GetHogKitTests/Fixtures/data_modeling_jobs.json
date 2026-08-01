@@ -1,0 +1,67 @@
+{
+  "count": 5,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f9000-0000-7000-8000-000000000382",
+      "saved_query_id": "018f9000-0000-7000-8000-000000000362",
+      "status": "Completed",
+      "rows_materialized": 326411,
+      "rows_expected": 326411,
+      "error": null,
+      "created_at": "2026-01-22T10:00:00.000Z",
+      "last_run_at": "2026-01-22T10:04:35.000Z",
+      "workflow_id": "fictional-workflow-91",
+      "workflow_run_id": "018f9000-0000-7000-8000-000000000035"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000453",
+      "saved_query_id": "018f9000-0000-7000-8000-000000000362",
+      "status": "Failed",
+      "rows_materialized": 0,
+      "rows_expected": 328640,
+      "error": "Fictional worker exceeded its 384 MiB memory budget.",
+      "created_at": "2026-01-23T10:40:00.000Z",
+      "last_run_at": "2026-01-23T10:42:10.000Z",
+      "workflow_id": "fictional-workflow-92",
+      "workflow_run_id": "018f9000-0000-7000-8000-000000000238"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000366",
+      "saved_query_id": "018f9000-0000-7000-8000-000000000362",
+      "status": "Running",
+      "rows_materialized": 51200,
+      "rows_expected": 329104,
+      "error": null,
+      "created_at": "2026-01-24T09:00:00.000Z",
+      "last_run_at": null,
+      "workflow_id": "fictional-workflow-93",
+      "workflow_run_id": "018f9000-0000-7000-8000-000000000259"
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000184",
+      "saved_query_id": "018f9000-0000-7000-8000-000000000362",
+      "status": "Cancelled",
+      "rows_materialized": 72315,
+      "rows_expected": null,
+      "error": "",
+      "created_at": "2026-01-21T12:00:00.000Z",
+      "last_run_at": "2026-01-21T12:02:40.000Z",
+      "workflow_id": "fictional-workflow-90",
+      "workflow_run_id": null
+    },
+    {
+      "id": "018f9000-0000-7000-8000-000000000361",
+      "saved_query_id": "018f9000-0000-7000-8000-000000000362",
+      "status": "Completed",
+      "rows_materialized": 321004,
+      "rows_expected": 321004,
+      "error": null,
+      "created_at": "2026-01-20T08:30:00.000Z",
+      "last_run_at": "2026-01-20T08:33:08.000Z",
+      "workflow_id": "fictional-workflow-89",
+      "workflow_run_id": "018f9000-0000-7000-8000-000000000181"
+    }
+  ]
+}

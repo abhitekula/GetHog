@@ -1,0 +1,19 @@
+{
+  "columns": [
+    "event",
+    "occurrences",
+    "people",
+    "last_seen",
+    "total_occurrences",
+    "distinct_events"
+  ],
+  "results": [
+    ["harbor_dashboard_opened", 620, 7, "2026-04-14T15:25:00.000Z", 1740, 11],
+    ["harbor_report_downloaded", 355, 6, "2026-04-14T15:18:00.000Z", 1740, 11],
+    ["harbor_filter_changed", 248, 4, "2026-04-14T15:12:00.000Z", 1740, 11],
+    ["harbor_help_opened", 184, 7, "2026-04-14T15:05:00.000Z", 1740, 11],
+    ["harbor_note_saved", 113, 4, "2026-04-14T14:48:00.000Z", 1740, 11],
+    ["harbor_search_run", 76, 3, "2026-04-14T14:22:00.000Z", 1740, 11],
+    ["harbor_widget_pinned", 44, 2, "2026-04-14T13:58:00.000Z", 1740, 11]
+  ]
+}

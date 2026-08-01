@@ -1,0 +1,60 @@
+{
+  "cache_key": "synthetic-endpoint-usage-overview-20260412",
+  "cache_target_age": "2026-04-12T12:30:00Z",
+  "calculation_trigger": null,
+  "error": null,
+  "hogql": "SELECT 'synthetic_fixture' AS source",
+  "is_cached": true,
+  "last_refresh": "2026-04-12T12:00:00Z",
+  "modifiers": null,
+  "next_allowed_client_refresh": "2026-04-12T12:05:00Z",
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-04-12T12:00:00Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [
+    {
+      "key": "example_orbit_requests",
+      "value": 128,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_telescope_failures",
+      "value": 7,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_starlight_cache_hits",
+      "value": 83,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_constellation_rows",
+      "value": 12000,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_observation_duration_ms",
+      "value": 145.5,
+      "previous": null,
+      "changeFromPreviousPct": null
+    },
+    {
+      "key": "example_lens_cpu_seconds",
+      "value": null,
+      "previous": null,
+      "changeFromPreviousPct": null
+    }
+  ],
+  "timezone": "UTC",
+  "timings": null,
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

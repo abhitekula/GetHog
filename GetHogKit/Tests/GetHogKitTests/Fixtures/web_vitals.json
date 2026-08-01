@@ -1,0 +1,119 @@
+{
+  "cache_key": "synthetic-web-vitals-20260412",
+  "cache_target_age": "2026-04-12T12:30:00Z",
+  "calculation_trigger": null,
+  "columns": null,
+  "error": null,
+  "hasMore": null,
+  "hogql": "SELECT 'synthetic_fixture' AS source",
+  "is_cached": false,
+  "last_refresh": "2026-04-12T12:00:00Z",
+  "limit": null,
+  "modifiers": {
+    "bounceRateDurationSeconds": null,
+    "bounceRatePageViewMode": "Example bounceratepageviewmode 0208",
+    "convertToProjectTimezone": true,
+    "customChannelTypeRules": null,
+    "dataWarehouseEventsModifiers": null,
+    "debug": null,
+    "forceClickhouseDataSkippingIndexes": null,
+    "formatCsvAllowDoubleQuotes": null,
+    "inCohortVia": "Example incohortvia 0209",
+    "inlineCohortCalculation": "Example inlinecohortcalculation 0210",
+    "materializationMode": "Example materializationmode 0211",
+    "materializedColumnsOptimizationMode": null,
+    "optimizeJoinedFilters": false,
+    "optimizeProjections": true,
+    "parserMode": null,
+    "personsArgMaxVersion": "Example personsargmaxversion 0212",
+    "personsJoinMode": null,
+    "personsOnEventsMode": "Example personsoneventsmode 0213",
+    "propertyGroupsMode": "Example propertygroupsmode 0214",
+    "pushDownPredicates": null,
+    "s3TableUseInvalidColumns": null,
+    "sessionIdPushdown": false,
+    "sessionPropertyPreAggregation": false,
+    "sessionTableVersion": "Example sessiontableversion 0215",
+    "sessionsV2JoinMode": "Example sessionsv2joinmode 0216",
+    "timings": null,
+    "useMaterializedViews": true,
+    "usePreaggregatedIntermediateResults": null,
+    "usePreaggregatedTableTransforms": null,
+    "useWebAnalyticsPreAggregatedTables": null
+  },
+  "next_allowed_client_refresh": "2026-04-12T12:05:00Z",
+  "offset": null,
+  "preComputeStale": null,
+  "preComputeStrategy": "Example precomputestrategy 1504",
+  "query_metadata": {
+    "events": [],
+    "updated_at": "2026-04-12T12:00:00Z"
+  },
+  "query_status": null,
+  "resolved_compare_date_range": null,
+  "resolved_date_range": null,
+  "results": [
+    {
+      "good": [
+        {
+          "path": "/launchpad",
+          "value": 1850
+        },
+        {
+          "path": "/docs/start",
+          "value": 1460
+        },
+        {
+          "path": "/pricing",
+          "value": 2120
+        }
+      ],
+      "needs_improvements": [
+        {
+          "path": "/workbench",
+          "value": 3100
+        },
+        {
+          "path": "/catalog",
+          "value": 3550
+        }
+      ],
+      "poor": [
+        {
+          "path": "/checkout",
+          "value": 4920
+        },
+        {
+          "path": "/reports",
+          "value": 4300
+        }
+      ]
+    },
+    {
+      "good": [
+        {
+          "path": "/secondary/guide",
+          "value": 1675
+        }
+      ],
+      "needs_improvements": [
+        {
+          "path": "/secondary/search",
+          "value": 3275
+        }
+      ],
+      "poor": [
+        {
+          "path": "/secondary/export",
+          "value": 4580
+        }
+      ]
+    }
+  ],
+  "samplingRate": null,
+  "timezone": "UTC",
+  "timings": null,
+  "types": null,
+  "used_data_warehouse_sources": null,
+  "warnings": null
+}

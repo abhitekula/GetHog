@@ -1,0 +1,158 @@
+{
+  "holdout": null,
+  "exposure_cohort": null,
+  "excluded_variants": [],
+  "secondary_metrics": [],
+  "saved_metrics": [],
+  "filters": {},
+  "archived": false,
+  "deleted": false,
+  "created_by": {
+    "id": 74101,
+    "uuid": "018f9000-0000-7000-8000-000000000275",
+    "distinct_id": "018f9000-0000-7000-8000-000000000275",
+    "first_name": "Morgan",
+    "last_name": "Sample",
+    "email": "fixture.operator@example.org",
+    "is_email_verified": true
+  },
+  "is_legacy": false,
+  "user_access_level": "editor",
+  "scheduling_config": null,
+  "flag_cleanup_task_id": null,
+  "repository": null,
+  "primary_metrics_ordered_uuids": null,
+  "secondary_metrics_ordered_uuids": null,
+  "only_count_matured_users": false,
+  "id": 71101,
+  "name": "Example cache strategy trial",
+  "description": "Compares fictional cache guidance in the deterministic demo.",
+  "start_date": "2026-01-27T09:14:00.000Z",
+  "end_date": null,
+  "feature_flag_key": "example-cache-strategy",
+  "feature_flag": {
+    "id": 73101,
+    "team_id": 1001,
+    "name": "Example cache strategy trial",
+    "key": "example-cache-strategy",
+    "active": true,
+    "deleted": false,
+    "ensure_experience_continuity": false,
+    "version": 11,
+    "evaluation_runtime": "server_and_client",
+    "evaluation_contexts": [],
+    "filters": {
+      "multivariate": {
+        "variants": [
+          {
+            "key": "reference-cache-71101",
+            "name": "Standard cache",
+            "rollout_percentage": 47
+          },
+          {
+            "key": "guided-cache-71101",
+            "name": "Guided cache",
+            "rollout_percentage": 53
+          },
+          {
+            "key": "synthetic-observer-71101",
+            "name": "Synthetic observer",
+            "rollout_percentage": 0
+          }
+        ]
+      }
+    }
+  },
+  "parameters": {
+    "minimum_detectable_effect": 19,
+    "variant_notes": null
+  },
+  "running_time_calculation": {
+    "minimum_detectable_effect": 19,
+    "recommended_sample_size": 24811,
+    "recommended_running_time": 21,
+    "exposure_estimate_config": null
+  },
+  "metrics_secondary": [
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000269",
+      "metric_type": "mean",
+      "name": "Guided setup actions per account synthetic guardrail",
+      "source": {
+        "kind": "EventsNode",
+        "event": "setup_hint_viewed",
+        "math": "total"
+      }
+    },
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000273",
+      "metric_type": "mean",
+      "name": "Guided setup actions per account",
+      "goal": "Increase fictional setup guidance use",
+      "source": {
+        "kind": "EventsNode",
+        "event": "setup_hint_viewed",
+        "math": "total"
+      }
+    }
+  ],
+  "created_at": "2026-01-23T11:08:00.000Z",
+  "updated_at": "2026-01-31T16:27:00.000Z",
+  "type": "web",
+  "exposure_criteria": {
+    "exposure_config": null,
+    "filterTestAccounts": true,
+    "multiple_variant_handling": "exclude_ambiguous"
+  },
+  "metrics": [
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000268",
+      "metric_type": "funnel",
+      "name": "Cache-ready checkout completion",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "cache_warmed"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "checkout_submitted"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "checkout_submitted"
+        }
+      ]
+    },
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000272",
+      "metric_type": "funnel",
+      "name": "Cache-ready checkout completion synthetic comparison",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "cache_warmed"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "checkout_submitted"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "feature_used"
+        }
+      ]
+    }
+  ],
+  "stats_config": {
+    "method": "bayesian"
+  },
+  "conclusion": null,
+  "conclusion_comment": null,
+  "status": "running",
+  "can_freeze_exposure": true
+}

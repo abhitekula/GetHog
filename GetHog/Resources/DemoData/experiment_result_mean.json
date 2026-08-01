@@ -1,0 +1,68 @@
+{
+  "kind": "ExperimentQuery",
+  "is_cached": true,
+  "timezone": "Pacific/Auckland",
+  "error": null,
+  "warnings": [],
+  "stats_version": 11,
+  "is_precomputed": true,
+  "cache_key": "example-cache-mean-result",
+  "last_refresh": "2026-01-31T16:27:00.000Z",
+  "cache_target_age": "2026-01-31T16:12:00.000Z",
+  "next_allowed_client_refresh": "2026-01-31T16:42:00.000Z",
+  "significant": false,
+  "p_value": null,
+  "probability": {
+    "reference-cache-71101": 0.4461,
+    "guided-cache-71101": 0.5539
+  },
+  "credible_intervals": {
+    "guided-cache-71101": [
+      -0.1163,
+      0.1427
+    ]
+  },
+  "metric": {
+    "kind": "ExperimentMetric",
+    "uuid": "018f9000-0000-7000-8000-000000000269",
+    "metric_type": "mean",
+    "name": "Guided setup actions per account",
+    "source": {
+      "kind": "EventsNode",
+      "event": "setup_hint_viewed",
+      "math": "total"
+    }
+  },
+  "baseline": {
+    "key": "reference-cache-71101",
+    "number_of_samples": 12431,
+    "sum": 5281,
+    "sum_squares": 8913,
+    "validation_failures": []
+  },
+  "variant_results": [
+    {
+      "key": "guided-cache-71101",
+      "method": "bayesian",
+      "number_of_samples": 12587,
+      "sum": 5497,
+      "sum_squares": 9247,
+      "chance_to_win": 0.5539,
+      "credible_interval": [
+        -0.1163,
+        0.1427
+      ],
+      "significant": false,
+      "validation_failures": []
+    },
+    {
+      "key": "synthetic-observer-71101",
+      "method": "bayesian",
+      "number_of_samples": 1,
+      "sum": 0,
+      "sum_squares": 0,
+      "significant": false,
+      "validation_failures": []
+    }
+  ]
+}

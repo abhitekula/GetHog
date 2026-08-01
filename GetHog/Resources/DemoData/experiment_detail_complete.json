@@ -1,0 +1,147 @@
+{
+  "holdout": null,
+  "exposure_cohort": null,
+  "excluded_variants": [],
+  "secondary_metrics": [],
+  "saved_metrics": [],
+  "filters": {},
+  "archived": false,
+  "deleted": false,
+  "created_by": {
+    "id": 74103,
+    "uuid": "018f9000-0000-7000-8000-000000000277",
+    "distinct_id": "018f9000-0000-7000-8000-000000000277",
+    "first_name": "Morgan",
+    "last_name": "Sample",
+    "email": "morgan+exports@example.com",
+    "is_email_verified": true
+  },
+  "is_legacy": false,
+  "user_access_level": "editor",
+  "scheduling_config": null,
+  "flag_cleanup_task_id": null,
+  "repository": null,
+  "primary_metrics_ordered_uuids": null,
+  "secondary_metrics_ordered_uuids": null,
+  "only_count_matured_users": false,
+  "id": 71103,
+  "name": "Example export format trial",
+  "description": "Compares fictional export formats in the deterministic demo.",
+  "start_date": "2026-01-11T10:02:00.000Z",
+  "end_date": "2026-01-24T18:41:00.000Z",
+  "feature_flag_key": "example-export-format",
+  "feature_flag": {
+    "id": 73103,
+    "team_id": 1001,
+    "name": "Example export format trial",
+    "key": "example-export-format",
+    "active": false,
+    "deleted": false,
+    "ensure_experience_continuity": true,
+    "version": 8,
+    "evaluation_runtime": "server_and_client",
+    "evaluation_contexts": [],
+    "filters": {
+      "multivariate": {
+        "variants": [
+          {
+            "key": "reference-export-71103",
+            "name": "Standard export",
+            "rollout_percentage": 46
+          },
+          {
+            "key": "focused-export-71103",
+            "name": "Focused export",
+            "rollout_percentage": 54
+          },
+          {
+            "key": "synthetic-observer-71103",
+            "name": "Synthetic observer",
+            "rollout_percentage": 0
+          }
+        ]
+      }
+    }
+  },
+  "parameters": null,
+  "running_time_calculation": null,
+  "created_at": "2026-01-06T15:33:00.000Z",
+  "updated_at": "2026-01-26T12:52:00.000Z",
+  "type": "web",
+  "exposure_criteria": {
+    "exposure_config": null,
+    "filterTestAccounts": true,
+    "multiple_variant_handling": "exclude_ambiguous"
+  },
+  "metrics": [
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000270",
+      "metric_type": "funnel",
+      "name": "Successful CSV exports",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "export_started"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "export_completed"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "checkout_submitted"
+        }
+      ]
+    },
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000274",
+      "metric_type": "funnel",
+      "name": "Successful CSV exports synthetic comparison",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "export_started"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "export_completed"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "feature_used"
+        }
+      ]
+    }
+  ],
+  "metrics_secondary": [
+    {
+      "kind": "ExperimentMetric",
+      "uuid": "018f9000-0000-7000-8000-000000000271",
+      "metric_type": "funnel",
+      "name": "Successful CSV exports synthetic comparison synthetic guardrail",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "export_started"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "export_completed"
+        },
+        {
+          "kind": "EventsNode",
+          "event": "account_created"
+        }
+      ]
+    }
+  ],
+  "stats_config": {
+    "method": "frequentist"
+  },
+  "conclusion": "won",
+  "conclusion_comment": "Focused export completed the fictional flow more often.",
+  "status": "stopped",
+  "can_freeze_exposure": false
+}

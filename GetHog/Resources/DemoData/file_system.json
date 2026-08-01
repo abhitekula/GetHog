@@ -1,0 +1,28 @@
+{
+  "count": 21,
+  "next": null,
+  "previous": null,
+  "results": [
+    {"id":"demo-file-root","path":"Sandbox","depth":1,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-dashboards","path":"Sandbox/Dashboards","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-insights","path":"Sandbox/Reports","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-flags","path":"Sandbox/Flags","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-surveys","path":"Sandbox/Surveys","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-cohorts","path":"Sandbox/Groups","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-playlists","path":"Sandbox/Replays","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-destinations","path":"Sandbox/Outputs","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-transformations","path":"Sandbox/Transforms","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-folder-notebooks","path":"Sandbox/Notes","depth":2,"type":"folder","ref":null,"href":null,"shortcut":false,"last_viewed_at":null,"user_access_level":null},
+    {"id":"demo-file-dashboard-overview","path":"Sandbox/Dashboards/Orbital operations","depth":3,"type":"dashboard","ref":"725101","href":"/dashboard/725101","shortcut":false,"last_viewed_at":"2026-01-15T11:00:00.000Z","user_access_level":"editor"},
+    {"id":"demo-file-insight-onboarding","path":"Sandbox/Reports/Meteor report opens","depth":3,"type":"insight","ref":"example-meteor-report","href":"/insights/example-meteor-report","shortcut":false,"last_viewed_at":"2026-01-15T12:00:00.000Z","user_access_level":"viewer"},
+    {"id":"demo-file-insight-web","path":"Sandbox/Reports/Nebula export requests","depth":3,"type":"insight","ref":"example-nebula-export","href":"/insights/example-nebula-export","shortcut":false,"last_viewed_at":null,"user_access_level":"viewer"},
+    {"id":"demo-file-flag-navigation","path":"Sandbox/Flags/Observatory navigation","depth":3,"type":"feature_flag","ref":"710301","href":"/feature_flags/710301","shortcut":false,"last_viewed_at":null,"user_access_level":"editor"},
+    {"id":"demo-file-survey-feedback","path":"Sandbox/Surveys/Telescope feedback","depth":3,"type":"survey","ref":"018f9000-0000-7000-8000-000000000107","href":"/surveys/018f9000-0000-7000-8000-000000000107","shortcut":false,"last_viewed_at":null,"user_access_level":"manager"},
+    {"id":"demo-file-cohort-qa","path":"Sandbox/Groups/Observatory \\/ test crew","depth":3,"type":"cohort","ref":"730004","href":"/cohorts/730004","shortcut":false,"last_viewed_at":null,"user_access_level":"viewer"},
+    {"id":"demo-file-playlist-onboarding","path":"Sandbox/Replays/Orbit overview","depth":3,"type":"session_recording_playlist","ref":"example-orbit-overview","href":"/replay/playlists/example-orbit-overview","shortcut":false,"last_viewed_at":null,"user_access_level":"viewer"},
+    {"id":"demo-file-playlist-errors","path":"Sandbox/Replays/Observatory console review","depth":3,"type":"session_recording_playlist","ref":"example-console-observatory","href":"/replay/playlists/example-console-observatory","shortcut":false,"last_viewed_at":null,"user_access_level":"viewer"},
+    {"id":"demo-file-transformation","path":"Sandbox/Transforms/Orbit event normalizer","depth":3,"type":"hog_function/transformation","ref":"example-orbit-normalizer","href":"/pipeline/transformations/example-orbit-normalizer","shortcut":false,"last_viewed_at":null,"user_access_level":"editor"},
+    {"id":"demo-file-destination","path":"Sandbox/Outputs/Observatory archive","depth":3,"type":"hog_function/internal_destination","ref":"example-observatory-archive","href":"/pipeline/destinations/example-observatory-archive","shortcut":false,"last_viewed_at":null,"user_access_level":"editor"},
+    {"id":"demo-file-notebook","path":"Sandbox/Notes/Orbit field log","depth":3,"type":"notebook","ref":"synthetic-id-0050","href":"/notebooks/synthetic-id-0050","shortcut":false,"last_viewed_at":null,"user_access_level":"viewer"}
+  ]
+}

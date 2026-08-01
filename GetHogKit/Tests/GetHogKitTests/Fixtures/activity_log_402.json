@@ -1,0 +1,6 @@
+{
+  "type": "server_error",
+  "code": "SELECT properties.$browser AS browser, uniq(distinct_id) AS people FROM events GROUP BY browser",
+  "detail": "This synthetic request requires a paid PostHog plan.",
+  "attr": null
+}

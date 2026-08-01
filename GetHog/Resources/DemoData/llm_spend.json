@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "date_from": "2026-01-01T00:00:00.000Z",
+    "date_to": "2026-01-28T00:00:00.000Z",
+    "product": "all_products",
+    "total_cost_usd": 11.250001,
+    "event_count": 25,
+    "scoped_cost_usd": 4.5,
+    "scoped_event_count": 9
+  },
+  "by_product": {
+    "items": [
+      {
+        "product": "api_assistant",
+        "event_count": 10,
+        "cost_usd": 5
+      },
+      {
+        "product": "support_summarizer",
+        "event_count": 8,
+        "cost_usd": 3.25
+      },
+      {
+        "product": "documentation_helper",
+        "event_count": 4,
+        "cost_usd": 2
+      },
+      {
+        "product": null,
+        "event_count": 3,
+        "cost_usd": 1
+      }
+    ],
+    "truncated": false
+  },
+  "by_tool": {
+    "items": [],
+    "truncated": false
+  },
+  "by_model": {
+    "items": [],
+    "truncated": false
+  },
+  "by_day": {
+    "items": [],
+    "truncated": false
+  },
+  "top_traces": {
+    "items": [],
+    "truncated": false
+  }
+}
