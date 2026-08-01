@@ -10,8 +10,8 @@ struct SignalGrammarSessionTests {
     func overviewFacts() throws {
         let data = Data(#"""
         [
-          {"id":"a","recording_duration":120,"console_error_count":2,"snapshot_source":"web","start_url":"https://example.test/signup"},
-          {"id":"b","recording_duration":300,"console_error_count":0,"snapshot_source":"mobile","start_url":"https://example.test/home"}
+          {"id":"a","recording_duration":120,"console_error_count":2,"snapshot_source":"web","start_url":"https://example.com/signup"},
+          {"id":"b","recording_duration":300,"console_error_count":0,"snapshot_source":"mobile","start_url":"https://example.com/home"}
         ]
         """#.utf8)
         let recordings = try JSONDecoder().decode([SessionRecording].self, from: data)

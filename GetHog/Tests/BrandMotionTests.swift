@@ -89,10 +89,6 @@ struct BrandMotionTests {
 
     @Test("Confirmation modifier settles once and cancels stale visual state")
     func confirmationModifierLifecycleRenders() async throws {
-        let animationsWereEnabled = UIView.areAnimationsEnabled
-        UIView.setAnimationsEnabled(false)
-        defer { UIView.setAnimationsEnabled(animationsWereEnabled) }
-
         let model = SignalConfirmationHarnessModel()
         let host = UIHostingController(rootView: SignalConfirmationHarness(model: model))
         let scene = try #require(
@@ -101,7 +97,10 @@ struct BrandMotionTests {
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 240, height: 120)
         window.rootViewController = host
-        window.makeKeyAndVisible()
+        // Keep the harness non-key between synchronous render sections so it
+        // never owns shared window or animation state across a suspension.
+        window.isHidden = false
+        window.layoutIfNeeded()
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         defer {
@@ -110,36 +109,36 @@ struct BrandMotionTests {
         }
 
         await waitForRendering()
-        let baseline = try #require(snapshot(of: host.view))
+        let baseline = try #require(snapshot(of: host.view, in: window))
 
-        model.trigger += 1
+        trigger(model, in: host.view, window: window)
         await waitForRendering()
-        #expect(try #require(snapshot(of: host.view)) != baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) != baseline)
 
         model.reduceMotion = true
         await waitForRendering()
-        #expect(try #require(snapshot(of: host.view)) == baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) == baseline)
         model.reduceMotion = false
         await waitForRendering(for: 0.27)
-        #expect(try #require(snapshot(of: host.view)) == baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) == baseline)
 
-        model.trigger += 1
+        trigger(model, in: host.view, window: window)
         await waitForRendering()
-        #expect(try #require(snapshot(of: host.view)) != baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) != baseline)
         await waitForRendering(for: 0.27)
-        #expect(try #require(snapshot(of: host.view)) == baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) == baseline)
         await waitForRendering(for: 0.04)
-        #expect(try #require(snapshot(of: host.view)) == baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) == baseline)
 
-        model.trigger += 1
+        trigger(model, in: host.view, window: window)
         await waitForRendering()
         await waitForRendering(for: 0.12)
-        model.trigger += 1
+        trigger(model, in: host.view, window: window)
         await waitForRendering()
         await waitForRendering(for: 0.13)
-        #expect(try #require(snapshot(of: host.view)) != baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) != baseline)
         await waitForRendering(for: 0.14)
-        #expect(try #require(snapshot(of: host.view)) == baseline)
+        #expect(try #require(snapshot(of: host.view, in: window)) == baseline)
     }
 
     private func waitForRendering(for interval: TimeInterval = 0.03) async {
@@ -148,12 +147,33 @@ struct BrandMotionTests {
         await Task.yield()
     }
 
-    private func snapshot(of view: UIView) -> Data? {
+    private func trigger(
+        _ model: SignalConfirmationHarnessModel,
+        in view: UIView,
+        window: UIWindow
+    ) {
+        model.trigger += 1
+        _ = snapshot(of: view, in: window)
+    }
+
+    private func snapshot(of view: UIView, in window: UIWindow) -> Data? {
+        let previousKeyWindow = window.windowScene?.windows.first(where: \.isKeyWindow)
+        window.makeKey()
+        defer { restore(previousKeyWindow, afterUsing: window) }
+        window.layoutIfNeeded()
         view.setNeedsLayout()
         view.layoutIfNeeded()
         let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
         return renderer.pngData { _ in
             view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    private func restore(_ previousKeyWindow: UIWindow?, afterUsing window: UIWindow) {
+        if let previousKeyWindow {
+            previousKeyWindow.makeKey()
+        } else {
+            window.resignKey()
         }
     }
 
@@ -179,5 +199,6 @@ private struct SignalConfirmationHarness: View {
         .frame(width: 240, height: 120)
         .signalConfirmation(trigger: model.trigger)
         .environment(\.signalConfirmationReduceMotionOverride, model.reduceMotion)
+        .environment(\.signalConfirmationAnimation, nil)
     }
 }

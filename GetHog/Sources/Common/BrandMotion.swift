@@ -51,10 +51,19 @@ private struct SignalConfirmationReduceMotionOverrideKey: EnvironmentKey {
     static let defaultValue: Bool? = nil
 }
 
+private struct SignalConfirmationAnimationKey: EnvironmentKey {
+    static let defaultValue: Animation? = .easeOut(duration: 0.18)
+}
+
 extension EnvironmentValues {
     var signalConfirmationReduceMotionOverride: Bool? {
         get { self[SignalConfirmationReduceMotionOverrideKey.self] }
         set { self[SignalConfirmationReduceMotionOverrideKey.self] = newValue }
+    }
+
+    var signalConfirmationAnimation: Animation? {
+        get { self[SignalConfirmationAnimationKey.self] }
+        set { self[SignalConfirmationAnimationKey.self] = newValue }
     }
 }
 
@@ -62,6 +71,7 @@ private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
     let trigger: Trigger
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.signalConfirmationReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.signalConfirmationAnimation) private var confirmationAnimation
     @State private var lifecycle = SignalConfirmationLifecycle()
     @State private var resetTask: Task<Void, Never>?
 
@@ -86,7 +96,7 @@ private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
                 return
             }
             var generation: Int?
-            withAnimation(.easeOut(duration: 0.18)) {
+            withAnimation(confirmationAnimation) {
                 generation = lifecycle.activate(reduceMotion: false)
             }
             guard let generation else { return }
