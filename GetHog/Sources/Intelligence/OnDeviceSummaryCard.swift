@@ -254,9 +254,8 @@ struct OnDeviceSummaryCard: View {
             //
             // Hyphenation is left on, unlike `SectionLabel` and `StatusPill`,
             // which suppress it with `zxx`. Those carry tokens; this carries
-            // prose that happens to mention identifiers. Rendered at AX5 in a
-            // 320pt column it does break `renderInstanceList` as
-            // `renderIn-stanceList`, which is not pretty — but the alternative
+            // prose that happens to mention identifiers. At large type sizes a
+            // narrow column may break `applyExampleUpdate` across lines, but the alternative
             // is an identifier wider than the column with nothing to break it,
             // and a name running off the edge is worse than a name with a
             // hyphen in it.

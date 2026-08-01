@@ -134,13 +134,9 @@ enum ExportError: Error {
 ///
 /// **`encode` is a closure, and that is the load-bearing part.** The insight
 /// path builds its CSV eagerly, inside a `View` body — `if let csv =
-/// insight.csv` — which is affordable for a retention grid and is not
-/// affordable for a console result. Measured 2026-07-30 against project [REMOVED PRIVATE DATA],
-/// `/query/` applies no row cap of its own and a realistic
-/// `SELECT …, properties FROM events` returns **6,764 bytes per row**: encoding
-/// on every menu render would rebuild a 13 MB file each time the user opened a
-/// menu, on the main actor. Deferring means a menu costs a row count, and the
-/// bytes are built once, when something actually asks for them.
+/// insight.csv` — which is appropriate for small results but not arbitrary
+/// console output. Deferring means a menu costs a row count, and bytes are built
+/// once only when requested.
 struct CSVExport: Sendable {
     let title: String
     let rowCount: Int

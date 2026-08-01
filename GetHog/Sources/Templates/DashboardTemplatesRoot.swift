@@ -45,16 +45,15 @@ final class DashboardTemplatesStore {
 
 /// PostHog's dashboard template library, as a gallery.
 ///
-/// A gallery rather than a table because the data is: 26 templates, most with
-/// real artwork on `posthog.com`, and a name-plus-description list of them is
-/// something nobody would scroll on a phone. The picture is what makes a
-/// template recognisable before its description has been read.
+/// A gallery rather than a table because templates can include artwork, and a
+/// name-plus-description list alone is hard to scan on a phone. The picture is
+/// what makes a template recognisable before its description has been read.
 ///
 /// **Read-only, by decision.** Applying one is
 /// `POST .../dashboards/create_from_template_json/` and needs `dashboard:write`,
 /// which this app does not ask for — the reasoning is written out in full on
-/// `PostHogAPI.dashboardTemplates`. The short version: a template creates 4–47
-/// insights in a production project, this app cannot delete any of them, and
+/// `PostHogAPI.dashboardTemplates`. The short version: a template creates
+/// multiple insights, this app cannot delete any of them, and
 /// most of them are parameterised so applying with the defaults quietly builds
 /// the wrong dashboard.
 struct DashboardTemplatesRoot: View {

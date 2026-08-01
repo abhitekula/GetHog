@@ -45,18 +45,16 @@ public enum TimeSeriesStyle: Sendable, Equatable {
     ///
     /// Only the ones that reach here are handled here; the aggregated and
     /// undrawable ones are diverted by `Insight.renderModel` before this is
-    /// reached. Of what remains, measured against live responses:
+    /// reached. For the remaining public display modes:
     ///
     /// - `Auto`, `ActionsLineGraph` — plain series, a line.
     /// - `ActionsLineGraphCumulative` — the server returns the running total
-    ///   already summed (`[37, 52, 69, …]`), so a line is the right mark.
+    ///   already summed, so a line is the right mark.
     /// - `SlopeGraph` — the server returns exactly two points, the ends of the
     ///   range, which a line between them draws correctly.
-    /// - `Metric` — plain series, but *two* of them (`compare_label` `current`
-    ///   and `previous`) carrying the same `label`. Drawn as two lines.
-    /// - `TwoDimensionalHeatmap` — returns ordinary trends data, byte-identical
-    ///   to the same query with no display set. Drawn as a line, which is what
-    ///   the payload is.
+    /// - `Metric` — comparison series use `compare_label` to remain distinct.
+    /// - `TwoDimensionalHeatmap` — when it reaches this decoder it carries
+    ///   ordinary trends rows, so the fallback is a line.
     init(display: String?) {
         switch display {
         case "ActionsAreaGraph": self = .area

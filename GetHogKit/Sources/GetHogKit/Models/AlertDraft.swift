@@ -36,13 +36,10 @@ import Foundation
 //
 // ## Everything here is source-derived and **none of it has been executed**
 //
-// The key this project develops against is read-only. What is established is the
-// shape of the request. Read out of PostHog's `AlertSerializer`
-// (`products/alerts/backend/api/alert.py`) on master, fetched 2026-07-31, and
-// checked against the live *read* `GET /api/projects/[REMOVED PRIVATE DATA]/alerts/` on the same
-// day — which answered HTTP 200 `{"count":0,"next":null,"previous":null,
-// "results":[]}`. The project has no alerts, so no response to a write in this
-// family has been seen, and neither has a populated row.
+// Only the request shape is established here. It is derived from PostHog's
+// `AlertSerializer` (`products/alerts/backend/api/alert.py`) and covered with
+// deterministic synthetic requests. The test suite does not retain tenant
+// responses or claim that write-response behavior has been observed.
 
 // MARK: - Snoozing
 

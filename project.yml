@@ -163,10 +163,10 @@ targets:
   # reasoned about.
   #
   # A target of its own, and this is the part that needed a project change. A
-  # full sweep is minutes — 47 screens × up to three configurations, each a real
-  # launch — where `GetHogUITests` is the target the project's own
+  # full sweep is minutes — many screens across multiple configurations, each a
+  # real launch — where `GetHogUITests` is the target the project's own
   # verification command runs on every pass
-  # (`xcodebuild test -only-testing:GetHogUITests`, 33 tests). Folding the
+  # (`xcodebuild test -only-testing:GetHogUITests`). Folding the
   # harness into that target would make every verification pass pay for it.
   #
   # Skipping by environment flag was tried first and does not work here:

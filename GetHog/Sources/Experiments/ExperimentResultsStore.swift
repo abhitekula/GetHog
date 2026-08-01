@@ -3,12 +3,8 @@ import SwiftUI
 
 /// Loads everything the detail screen needs to answer "did the test win?".
 ///
-/// Three fetches, because PostHog has no single results endpoint. Measured on
-/// this deployment: `/experiments/{id}/results/`, `/timeseries/`, `/stats/` and
-/// `/exposures/` all return `{"detail":"Endpoint not found."}` — the same body
-/// as a URL that was never routed — while `/experiments/{id}/` returns
-/// `{"detail":"Not found."}`. So the detail route is the only one on the
-/// viewset, and every number comes from `POST /query/`:
+/// PostHog exposes experiment metadata on the detail route and computed numbers
+/// through query nodes, so the screen combines:
 ///
 /// 1. the experiment detail, for `metrics` and `stats_config` (the list
 ///    endpoint's leaner serializer defers both);

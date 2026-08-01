@@ -243,15 +243,10 @@ final class AppModel {
         }
         switch posthogError {
         case .forbidden:
-            // Measured against `us.posthog.com`: a personal API key that is
-            // *scoped to specific projects* answers 403 on every
-            // `/api/organizations/` path with "API keys with scoped projects are
-            // only supported on project-based endpoints", while
-            // `/api/users/@me/` answers 200 for the same key — which is why the
-            // organization can be listed at all and its projects still cannot be
-            // fetched. Both causes are named because nothing in the response
-            // distinguishes them, and guessing one would send the user to the
-            // wrong setting.
+            // Project-scoped personal keys cannot access organization endpoints;
+            // a key without the organization read scope cannot either. Both
+            // causes are named because the refusal does not distinguish them,
+            // and guessing one would send the user to the wrong setting.
             return """
                 Couldn't switch to \(organization.name): PostHog refused the request. \
                 A personal API key scoped to specific projects can't read organizations at all, \

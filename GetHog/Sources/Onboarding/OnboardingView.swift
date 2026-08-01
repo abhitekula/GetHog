@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// The known failure of personal API keys is that scopes are chosen by the user,
 /// so a wrong key produces opaque 403s later. This flow front-loads the exact
-/// scope list, deep-links to the key page, and verifies before letting the user in.
+/// scope list, links directly to the key page, and verifies before letting the user in.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 

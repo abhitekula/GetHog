@@ -7,7 +7,7 @@ import GetHogKit
 /// the workflow people actually do from a phone, and the thing that makes it
 /// slow on a phone is not the writes — those are two taps — it is working out
 /// what the issue *is* from a class name, a message that may be a sentence of
-/// framework prose, and twenty-three frames of somebody else's bundle. All of
+/// framework prose, and a long stack from somebody else's bundle. All of
 /// that is already on the screen, so the summary costs no request at all: the
 /// organisation-wide PostHog rate limit that shapes every other feature here is
 /// untouched by it.
@@ -15,7 +15,7 @@ import GetHogKit
 /// **What is deliberately not in the prompt: numbers.**
 /// `ErrorIssue` carries occurrence, session and user counts, and they are the
 /// three figures at the top of the screen. None of them is given to the model.
-/// A small model handed "12,412 occurrences" will restate it, round it, or
+/// A small model handed an aggregate figure may restate it, round it, or
 /// attach it to the wrong noun, and a restated figure inside generated prose is
 /// exactly the thing this app must never produce — a number that looks like it
 /// came from PostHog and did not. The instructions forbid inventing figures as
@@ -36,27 +36,12 @@ enum IssueSummaryBrief {
     /// How much of one exception message.
     static let messageLimit = 400
 
-    /// The format rule comes first, and it is spelled out in several ways, for a
-    /// measured reason.
-    ///
-    /// The first version of these instructions said "plain prose, no headings,
-    /// no bullet points, no markdown, no code fences" — third paragraph, one
-    /// clause each. Run against the fixture in `ZZRenderProbe`, the model
-    /// answered:
-    ///
-    /// ```
-    /// **ReferenceError** in the `fetchServerAction` function.
-    ///
-    /// **Cause:** The `Instances` property is not defined.
-    ///
-    /// **Location:** `InstanceList.tsx:173:10`
-    /// ```
-    ///
-    /// Rendered through `Text`, which does not interpret markdown, that is
-    /// literal asterisks and backticks on screen — and worse, a labelled
-    /// three-field readout, which is precisely the shape that would be mistaken
-    /// for something PostHog returned. Leading with the constraint, naming the
-    /// characters, and banning field labels by example is what stopped it.
+    /// The format rule comes first and is spelled out in several ways because a
+    /// language model may otherwise return markdown headings and field labels.
+    /// Rendered through `Text`, those markers become literal punctuation and a
+    /// labelled readout that could be mistaken for structured API output.
+    /// Leading with the constraint and naming the forbidden characters keeps
+    /// the format explicit.
     /// `SummaryText.plainProse` cleans up what still gets through, because an
     /// instruction is a request and a sanitiser is not.
     static let instructions = """
@@ -148,11 +133,8 @@ enum IssueSummaryBrief {
 
         return SummaryBrief(
             instructions: instructions,
-            // No imperative preamble. "Summarise this error for a triage list."
-            // sat here first, and the model echoed it back: the observed answer
-            // opened *"Here is a summary of the error for the triage list:"*
-            // before saying anything. The instructions already say what the job
-            // is; the prompt only has to say what the thing is.
+            // No imperative preamble: the instructions already say what the
+            // job is, so the prompt only has to say what the thing is.
             prompt: """
                 The error:
 

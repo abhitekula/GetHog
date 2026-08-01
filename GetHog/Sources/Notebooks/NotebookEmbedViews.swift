@@ -45,18 +45,12 @@ struct NotebookEmbedRow: View {
 
 /// An embedded insight, and the whole rate-limit decision made visible.
 ///
-/// PostHog's limits are **organisation-wide** and shared with whatever else the
-/// user has integrated, so a notebook with twelve embedded insights that fired
-/// twelve `/query/` requests on appear would spend a fifth of a minute's entire
-/// `.query` allowance (60/min) on a screen the reader merely scrolled past — and
-/// spend it against their production budget. That is ruled out. What replaces it
-/// is not a compromise but a consequence of what the API actually offers:
+/// PostHog request limits are shared, so embedded queries do not run merely
+/// because a notebook appears. The policy follows API capabilities:
 ///
 /// **A saved insight is read, not computed.** `GET /insights/?short_id=…&limit=1`
-/// is `.crud` and — measured against project [REMOVED PRIVATE DATA] on 2026-07-30 — never
-/// triggers a computation. Three insights whose results were cold came back in
-/// 0.15–0.28s still `result: null`, `is_cached: false`, with no `query_status`;
-/// a warm one came back with its result populated. So it is safe to issue on
+/// returns the saved definition and any cached result; it does not request a
+/// fresh computation. So it is safe to issue on
 /// appear: it yields either a real chart from the server's own cache or the
 /// honest news that there isn't one, and offers to run it.
 ///
@@ -65,8 +59,7 @@ struct NotebookEmbedRow: View {
 /// the same rule `DashboardDetailStore` follows for re-running a dashboard over
 /// a new range, and `SavedInsightStore` for escalating to `computeInsight`.
 ///
-/// The blocks are independent, so a reader who wants three of the twelve pays
-/// for three.
+/// Blocks are independent, so only requested inline queries run.
 @MainActor
 @Observable
 final class NotebookInsightStore {
@@ -539,10 +532,8 @@ private struct NotebookFormulaBlock: View {
 ///
 /// The source is shown; the *result* is not. These nodes cache their last run in
 /// the notebook itself (`hogqlExecution`, `pythonExecution`, `result`), but this
-/// build has never seen one populated — project [REMOVED PRIVATE DATA] has no notebooks — so
-/// decoding those attributes would be a claim with nothing behind it. Re-running
-/// them is out of scope twice over: a HogQL run costs a `/query/`, and a Python
-/// run needs the notebook's sandbox kernel started.
+/// these attributes are intentionally not decoded. Re-running them is out of
+/// scope: a HogQL run costs a `/query/`, and Python needs the notebook kernel.
 private struct NotebookSourceBlock: View {
     let embed: NotebookEmbed
 

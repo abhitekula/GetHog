@@ -3,50 +3,44 @@ import Foundation
 /// The `$exception_list` property of a `$exception` event: the exception that
 /// was thrown, plus the chain of causes behind it.
 ///
-/// **Where the shape comes from.** Captured live from project [REMOVED PRIVATE DATA] on
-/// 2026-07-30 by selecting `properties.$exception_list` off a `$exception` event
-/// (uuid `019fb135-abed-…`, issue `019f6bdc-…`). One entry, one frame:
+/// The public exception interface permits a resolved source frame to retain the
+/// raw SDK frame that preceded symbolication. This small synthetic example shows
+/// the relationship without carrying any tenant event data:
 ///
 /// ```json
-/// [{"id":"019fb135-ba32-7501-ba77-f6333d2bc003",
+/// [{"id":"018f2000-0000-7000-8000-000000000001",
 ///   "mechanism":{"handled":true,"synthetic":false,"type":"generic"},
 ///   "stacktrace":{"type":"resolved","frames":[
-///     {"column":10,"in_app":true,"lang":"javascript","line":173,
-///      "mangled_name":"M","resolved":true,
-///      "resolved_name":"fetchServerAction",
-///      "source":"webpack://_N_E/../../src/client/components/…/server-action-reducer.ts",
-///      "raw_id":"64527ca5…/0","suspicious":false,"synthetic":false,
-///      "junk_drawer":{"raw_frame":{"chunk_id":"019f3d48-…","colno":162269,
-///        "filename":"https://…/_next/static/chunks/6561-cbe02516aefd3442.js",
-///        "function":"M","in_app":true,"lineno":1,"synthetic":false}}}]},
+///     {"column":8,"in_app":true,"lang":"javascript","line":24,
+///      "mangled_name":"a","resolved":true,"resolved_name":"loadExample",
+///      "source":"webpack://example/src/client.ts","synthetic":false,
+///      "junk_drawer":{"raw_frame":{"colno":320,
+///        "filename":"https://cdn.example.com/static/app.js",
+///        "function":"a","in_app":true,"lineno":1,"synthetic":false}}}]},
 ///   "type":"Error",
-///   "value":"An unexpected response was received from the server."}]
+///   "value":"Synthetic request failed."}]
 /// ```
 ///
 /// Two things in that payload drive most of the design here.
 ///
 /// **The resolved frame and the raw frame are different frames.** `line`/`column`
 /// are positions in the *original source*; `junk_drawer.raw_frame.lineno`/`colno`
-/// are positions in the shipped bundle — 173:10 against 1:162269 for the same
-/// frame above. Reading one pair against the other filename would put a reader
+/// are positions in the shipped bundle — 24:8 against 1:320 in the example.
+/// Reading one pair against the other filename would put a reader
 /// at a position that does not exist. `StackFrame` therefore never mixes them:
 /// `location` is whichever pair matches the file it is printed beside.
 ///
-/// **Resolution fails per frame, not per stack.** The same capture returned a
-/// 23-frame stack whose `stacktrace.type` was `"resolved"` while 22 of its 23
-/// frames carried `"resolved": false` and a `resolve_failure` string. A stack
-/// labelled resolved is not a stack that resolved.
+/// **Resolution fails per frame, not per stack.** A stack may be labelled
+/// resolved while individual frames carry `"resolved": false` and a
+/// `resolve_failure` string. The frame-level field therefore decides what the UI
+/// may present as source.
 public struct ExceptionChain: Sendable, Hashable {
 
     /// As PostHog stores it: **innermost cause first, thrown exception last**.
     ///
-    /// That chains exist is documented — *"In languages that support chained
-    /// exceptions, the list will contain multiple items"* — but the **order** is
-    /// not, and it is *not* verified here: every one of the 358 `$exception`
-    /// events in project [REMOVED PRIVATE DATA] between 2026-05-01 and 2026-07-31 carried
-    /// exactly one entry (measured by `countSubstrings(…, '"mechanism"')`), so no
-    /// chain was available to observe. The assumption is the oldest-first
-    /// ordering the exception-interface format this schema descends from uses.
+    /// Chained exceptions contain multiple items. This model follows the
+    /// exception-interface ordering of oldest cause first and thrown exception
+    /// last.
     ///
     /// `thrown` and `causes` exist so that if it is ever found to be backwards,
     /// one property changes rather than every call site.
@@ -196,8 +190,7 @@ public struct StackTrace: Sendable, Decodable, Hashable {
 
     public let kind: Kind
     /// **Callee first**: the frame the exception was raised in leads the array.
-    /// Confirmed against the 23-frame capture, whose frame 0 was the innermost
-    /// `applyUpdate` caller and whose last frame was the outermost entry point.
+    /// This is the ordering defined by the exception interface.
     public let frames: [StackFrame]
 
     enum CodingKeys: String, CodingKey { case type, frames }
@@ -233,14 +226,11 @@ public struct StackFrame: Sendable, Decodable, Hashable, Identifiable {
 
     /// Whether symbolication produced source for *this* frame.
     ///
-    /// The one field that decides whether the app is allowed to print something
-    /// that looks like source. 22 of 23 frames in the live capture said `false`
-    /// inside a stack whose own `type` said `"resolved"`.
+    /// The field that decides whether the app is allowed to print something
+    /// that looks like source; the stack-level type is not enough.
     public let isResolved: Bool
 
-    /// Why it did not resolve, verbatim from PostHog. Live example:
-    /// `"HTTP error 407 while fetching: HTTP status client error (407 Proxy
-    /// Authentication Required) for url (https://…/_next/static/chunks/….js)"`.
+    /// Why PostHog could not resolve this frame, when supplied.
     public let resolveFailure: String?
 
     /// The demangled function name, present only when `isResolved`.
@@ -376,8 +366,8 @@ public struct StackFrame: Sendable, Decodable, Hashable, Identifiable {
 
     /// `line:column` in whichever coordinate space `fileDescription` is in.
     ///
-    /// The pairing is the point. Resolved frames measured 173:10 in the original
-    /// source and 1:162269 in the bundle for the same call site; printing the
+    /// The pairing is the point. A resolved frame may use one coordinate pair
+    /// while its raw bundle frame uses another; printing the
     /// bundle's column beside the source's filename would be a fabricated
     /// position.
     public var location: (line: Int, column: Int?)? {
@@ -403,8 +393,7 @@ public struct StackFrame: Sendable, Decodable, Hashable, Identifiable {
     /// up as source.
     ///
     /// An unresolved frame with a *demangled-looking* name is still unresolved:
-    /// `applyUpdate` came back unresolved in the live capture purely because the
-    /// bundle behind it 407'd, and its 878:31 is a position in that bundle.
+    /// a readable function name does not prove its coordinates were resolved.
     public var isMinified: Bool { !isResolved }
 }
 
@@ -419,8 +408,7 @@ public struct RawStackFrame: Sendable, Decodable, Hashable {
     public let column: Int?
     public let isInApp: Bool?
     /// The build the bundle came from, when PostHog matched one. Absent on
-    /// frames from a dev server, present on production bundles — both observed
-    /// in the same project.
+    /// frames from a development server and may be present on built bundles.
     public let chunkID: String?
 
     enum CodingKeys: String, CodingKey {
@@ -464,14 +452,8 @@ public struct RawStackFrame: Sendable, Decodable, Hashable {
 /// the exception, each with a `$message`, `$timestamp`, and any custom
 /// properties"*.
 ///
-/// **Not observed in project [REMOVED PRIVATE DATA].** Measured across three months of
-/// `$exception` events — 79 in May, 145 in June, 134 in July — `$exception_steps`
-/// was non-null on **0** of 358, while `$exception_list`,
-/// `$exception_fingerprint`, `$exception_level` and `$exception_handled` were
-/// non-null on 358 of 358. So this is modelled from the documented shape and
-/// rendered only when it is actually there: a "Steps" card that is empty on
-/// every issue would be worse than no card, and inventing a shape to fill it
-/// would be worse still.
+/// This is modelled from the documented shape and rendered only when it is
+/// present. An absent steps array does not create an empty card.
 public struct ExceptionStep: Sendable, Hashable, Identifiable {
     public let id: Int
     public let message: String?
@@ -527,8 +509,7 @@ public struct ExceptionStep: Sendable, Hashable, Identifiable {
 public struct ExceptionOccurrence: Sendable, Hashable, Identifiable {
     public let id: String
     public let timestamp: Date?
-    /// `error`, `warning`, `info` — `$exception_level`. Present on 358/358 of the
-    /// events measured in project [REMOVED PRIVATE DATA].
+    /// `error`, `warning`, `info` — `$exception_level`.
     public let level: String?
     /// `$exception_fingerprint` — what PostHog grouped this event by. Useful when
     /// asking why two issues that look identical are separate.

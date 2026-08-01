@@ -2,25 +2,9 @@ import Foundation
 
 // Experiment reads.
 //
-// Measured against this deployment on 2026-07-30, project [REMOVED PRIVATE DATA]:
-//
-//   GET /api/projects/[REMOVED PRIVATE DATA]/experiments/            → 200, {"count":0,...}
-//   GET /api/projects/[REMOVED PRIVATE DATA]/experiments/999999/     → 404 {"detail":"Not found."}
-//   GET .../experiments/999999/results/              → 404 {"detail":"Endpoint not found."}
-//   GET .../experiments/999999/{timeseries,stats,exposures,secondary_results,metrics}/
-//                                                    → 404 {"detail":"Endpoint not found."}
-//
-// "Not found." is DRF failing to find the *object*; "Endpoint not found." is
-// PostHog's handler for an unrouted URL. So the detail route exists and there
-// are **no results sub-routes on the experiments viewset at all** on this
-// version — results are computed by posting a query node to `/query/`, which is
-// what the two builders below do.
-//
-// `ExperimentQuery` was confirmed reachable: posting `{"kind":"ExperimentQuery"}`
-// returns a pydantic 400 naming `metric` as required, and supplying a valid
-// metric returns `{"detail":"experiment_id is required"}`. That last error is
-// also the wall — with no experiments in the project, no results payload could
-// be observed end to end.
+// Experiment metadata is read from the viewset. Results and exposures are
+// computed by posting the public `ExperimentQuery` and
+// `ExperimentExposureQuery` nodes to `/query/`.
 
 public extension PostHogAPI {
     /// One experiment in full.
@@ -116,13 +100,9 @@ public extension PostHogAPI {
 
     // MARK: - Lifecycle (write)
     //
-    // **Nothing in this section has ever been executed, and this project cannot
-    // execute it.** The paths, bodies and side effects below were read out of
-    // PostHog's server source (`products/experiments/backend/`, master, fetched
-    // 2026-07-31) and its published docs. The key available here is read-only,
-    // *and* project [REMOVED PRIVATE DATA] contains zero experiments — `GET /experiments/`
-    // answers `{"count":0}` — so there is not even an object to write to. Every
-    // sentence below is documentation-derived. None is measured.
+    // The paths, bodies and side effects below follow PostHog's published server
+    // contract and documentation. Tests exercise only synthetic endpoints and
+    // never mutate a remote project.
     //
     // ## The design problem is the word, not the endpoint
     //

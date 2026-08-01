@@ -47,7 +47,7 @@ enum BackgroundRefresh {
         if !registered {
             // Almost always a missing or misspelled Info.plist identifier, which
             // is silent otherwise: the app runs, and simply never refreshes.
-            log.error("Could not register \(taskIdentifier, privacy: .public)")
+            log.error("Could not register the background refresh task.")
         }
     }
 
@@ -76,7 +76,7 @@ enum BackgroundRefresh {
             // Mode, background refresh switched off for the app, a simulator
             // without the entitlement. The app keeps working; it just refreshes
             // when the user opens it.
-            log.notice("Could not submit refresh request: \(error.localizedDescription, privacy: .public)")
+            log.notice("Could not submit a background refresh request.")
         }
     }
 

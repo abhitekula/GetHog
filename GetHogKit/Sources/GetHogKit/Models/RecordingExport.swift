@@ -1,11 +1,8 @@
 import Foundation
 
-// `GET /exports/` is named for chart exports and modelled here as something
-// else, because something else is what it returns. All 56 rows in the project
-// this was built against are `export_format: "video/mp4"` with `dashboard: null`
-// and `insight: null` — they are rendered videos of session recordings, queued
-// from the replay player. A type called `Export` with a `dashboard` on it would
-// describe an API that exists in the docs and not in the responses.
+// `GET /exports/` can return rendered videos of session recordings as well as
+// chart exports. The model therefore keeps the recording render context and the
+// optional dashboard or insight references instead of assuming one export kind.
 //
 // Read-only. GetHog can list and play a render; it cannot queue one.
 
@@ -13,9 +10,9 @@ import Foundation
 
 /// The MIME type of a rendered export.
 ///
-/// Open-ended on purpose. Every observed row is `video/mp4`, but the field would
-/// not exist if that were guaranteed, and `Page` decoding is all-or-nothing: one
-/// unrecognised format thrown on would empty the whole list, not skip a row.
+/// Open-ended on purpose. The API exposes a MIME-type string and may add formats;
+/// `Page` decoding is all-or-nothing, so one unrecognised format must not empty
+/// the whole list.
 public enum ExportFormat: Sendable, Hashable {
     case videoMP4
     case unknown(String)
@@ -158,9 +155,9 @@ public struct ExportRenderContext: Sendable, Decodable, Hashable {
 
 /// Why an export can or cannot be played right now.
 ///
-/// `.failed` and `.pending` both present as `has_content: false` on the wire.
-/// Collapsing them shows a render that crashed hours ago as a spinner that will
-/// never resolve, so they are separate cases here.
+/// `.failed` and `.pending` can both have `has_content: false`. The exception
+/// field distinguishes a permanent failure from work still in progress, so the
+/// states remain separate.
 public enum RecordingExportState: Sendable, Hashable {
     case ready
     case pending
@@ -187,8 +184,8 @@ public struct RecordingExport: Sendable, Decodable, Identifiable, Hashable {
     public let expiresAfter: Date?
     public let userAccessLevel: String?
     public let context: ExportRenderContext?
-    /// Null on every observed row, and kept only so that a genuine chart export
-    /// arriving on this endpoint one day is visibly not a recording render.
+    /// Optional chart references. Their presence distinguishes chart exports
+    /// from session-recording renders.
     public let dashboardID: Int?
     public let insightID: Int?
 

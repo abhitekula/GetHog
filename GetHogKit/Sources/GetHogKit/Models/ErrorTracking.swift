@@ -18,20 +18,10 @@ public struct ErrorTrackingResponse: Sendable, Decodable {
     /// `ErrorTrackingQuery` is a query *node*, not HogQL, so the reasoning on
     /// `QueryResponse.isTruncated` about a caller-written `LIMIT` does not
     /// transfer wholesale — the limit here is a field in the request body rather
-    /// than text in a statement, and PostHog reports it back. Measured, from the
-    /// recorded live response in `Fixtures/error_tracking.json` (project [REMOVED PRIVATE DATA],
-    /// `last_refresh` 2026-07-29; the app ships the same recording as a demo
-    /// fixture): the envelope carries `hasMore: true` and `limit: 5` beside
-    /// **six** results. Both fields were
-    /// being dropped on the floor here until now, so every figure folded out of
-    /// this page — `ErrorsOverview` sums occurrences across it and prints the
-    /// total — was a page's worth of arithmetic presented as the window's.
-    ///
-    /// Six results against a limit of five is also why `ErrorIssueCoverage`
-    /// compares with `>=` rather than `==`. Why the payload carries one row more
-    /// than it was asked for has **not** been established here; the recording is
-    /// the observation, and the comparison is written so it does not depend on
-    /// the explanation.
+    /// than text in a statement, and PostHog reports `hasMore` and `limit` in the
+    /// envelope. Both fields must survive decoding so page arithmetic is never
+    /// presented as a window total. Coverage compares with `>=` because an API
+    /// may return a boundary row while still applying the stated cap.
     public let hasMore: Bool
 
     /// The limit PostHog reports having applied, which is not necessarily the
@@ -77,9 +67,9 @@ public struct ErrorTrackingResponse: Sendable, Decodable {
 /// There is **no denominator to be had** from this query. `ErrorTrackingQuery`
 /// is a fixed query node — nothing here can add a `sum(count()) OVER ()` to it
 /// the way `PostHogAPI.groupEventBreakdown` does, and the envelope carries no
-/// project-wide issue count either — the recorded response's top level is
+/// project-wide issue count either — the response envelope has
 /// `cache_key`, `columns`, `hasMore`, `hogql`, `limit`, `offset`, `results`,
-/// `timezone` and assorted cache and modifier fields, with nothing anywhere
+/// `timezone` and cache and modifier fields, with nothing
 /// stating how many issues the window holds. So the honest remedy is the one
 /// `HeatmapProfile` already takes for the same shape of problem: state exactly
 /// what the figure spans, and never name it as a total.
@@ -127,9 +117,8 @@ public struct ErrorIssue: Sendable, Decodable, Identifiable, Hashable {
     public let status: String
     public let library: String?
     public let function: String?
-    /// The file the error was last raised in, when PostHog resolved one.
-    /// Observed as `/_next/static/chunks/6561-….js` for an unresolved bundle and
-    /// as `webpack://_N_E/…/server-action-reducer.ts` for a resolved one.
+    /// The file the error was last raised in, when PostHog resolved one. The API
+    /// may return either ordinary paths or bundler-style source URLs.
     public let source: String?
     public let firstSeen: Date?
     public let lastSeen: Date?
@@ -239,9 +228,8 @@ public struct ErrorIssue: Sendable, Decodable, Identifiable, Hashable {
 ///
 /// Deliberately narrower than what it returns, and the gap is the point.
 ///
-/// PostHog reports **five** statuses. `ErrorTrackingIssueStatus` in the live
-/// OpenAPI document (`GET https://us.posthog.com/api/schema/?format=json`,
-/// fetched 2026-07-30) lists `archived`, `active`, `resolved`, `pending_release`,
+/// PostHog reports **five** statuses. `ErrorTrackingIssueStatus` in the public
+/// OpenAPI document lists `archived`, `active`, `resolved`, `pending_release`,
 /// `suppressed`, and PostHog's own dashboard-widget documentation offers the same
 /// five as filters. But the **write** enum, `ErrorTrackingIssueWriteStatusEnum`,
 /// lists three, and the PATCH body's own description says why: *"Issue status to
@@ -353,7 +341,7 @@ public struct ErrorIssueAssignee: Sendable, Codable, Hashable, Identifiable {
         }
 
         /// The value as it must appear in a JSON body: an integer stays an
-        /// integer. Sending `"[REMOVED PRIVATE DATA]"` where PostHog expects `[REMOVED PRIVATE DATA]` is the
+        /// integer. Sending `"700101"` where PostHog expects `700101` is the
         /// kind of mismatch that a 200 hides.
         public var jsonValue: Any {
             switch self {

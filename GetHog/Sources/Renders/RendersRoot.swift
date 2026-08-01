@@ -4,10 +4,8 @@ import SwiftUI
 /// The render library: session recordings PostHog has turned into video files.
 ///
 /// The tab says "Renders" rather than "Exports" for the reason `RecordingExport`
-/// records — `GET /exports/` is named for chart exports and returns none. Every
-/// row in the project this was built against is a `video/mp4` render queued from
-/// the replay player, and a screen called "Exports" would promise CSVs and
-/// dashboard PDFs that are not on it.
+/// records — this endpoint represents session-recording videos, not chart CSVs
+/// or dashboard PDFs. A screen called "Exports" would imply the wrong resource.
 ///
 /// Read-only. GetHog lists and plays a render; queuing one is a write this app
 /// does not offer, which is why the empty state points at PostHog rather than at a

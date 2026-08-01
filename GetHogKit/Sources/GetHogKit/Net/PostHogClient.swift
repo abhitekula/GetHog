@@ -154,10 +154,9 @@ public actor PostHogClient {
         // conflict. An unrecognised 409 becomes `.editConflict` rather than being
         // dressed up as an approval.
         //
-        // **Source-derived, never observed.** No 409 has been received from a live
-        // deployment from this machine; the available key is read-only, so no
-        // write could be made and no approval policy provoked. `ApprovalOutcome`
-        // records which parts of the body's shape are guesses.
+        // **Source-derived, never observed by deterministic tests.** Synthetic
+        // envelopes cover the decoder without retaining a tenant response.
+        // `ApprovalOutcome` records which parts of the body's shape are guesses.
         case 409:
             if let outcome = (try? decoder.decode(ApprovalEnvelope.self, from: data))?.outcome {
                 throw PostHogError.approvalRequired(outcome)

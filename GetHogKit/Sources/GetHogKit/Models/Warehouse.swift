@@ -291,9 +291,9 @@ public enum HogFunctionKind: String, Sendable, Hashable, CaseIterable, Identifia
         }
     }
 
-    /// The live API returns `internal_destination` and `site_destination`
+    /// The API may return `internal_destination` and `site_destination`
     /// alongside plain `destination`; matching the literal string would leave
-    /// most real rows ungrouped.
+    /// those rows ungrouped.
     public init(rawType: String) {
         if rawType.contains("transformation") {
             self = .transformation

@@ -50,9 +50,8 @@ public enum PostHogError: Error, Equatable, Sendable {
 
     public var isRetryable: Bool {
         switch self {
-        // Measured against a live project: the same query that timed out
-        // succeeded on 1 run in 5. The condition belongs to the cluster's load,
-        // not to the request, so trying again is a real remedy.
+        // Rate limits, transport failures, and query timeouts are transient
+        // conditions for which retrying can be a real remedy.
         case .rateLimited, .transport, .queryTimeout: true
         case .http(let status, _): status >= 500
         default: false
@@ -163,10 +162,9 @@ extension PostHogError: LocalizedError {
 ///
 /// **Every claim about this payload is source-derived and unverified.** It comes
 /// from PostHog's `@approval_gate` decorator and the `ship_variant` docstring
-/// that describes the same response; the key this project develops against is
-/// read-only, so no approval policy could be provoked and no 409 body has ever
-/// been read from the wire. Two consequences are baked into the decoding below
-/// rather than assumed away:
+/// that describes the same response. Automated tests use synthetic 409 bodies
+/// and do not retain tenant responses. Two consequences are baked into the
+/// decoding below rather than assumed away:
 ///
 /// * `change_request_id` is decoded as a `JSONValue` and rendered as text,
 ///   because nothing establishes whether it is an integer primary key or a uuid

@@ -62,8 +62,8 @@ struct IntentDependencies: Sendable {
     /// Measured rather than reasoned about, because getting it wrong signs a user
     /// out. In the app process, `SecItemAdd` with no `kSecAttrAccessGroup`
     /// followed by a read of the stored attribute returns
-    /// `[REMOVED PRIVATE DATA].app.gethog.shared` — the shared group, not
-    /// `[REMOVED PRIVATE DATA].app.gethog.GetHog`. `KeychainAccessGroupTests` is that
+    /// `<TeamID>.app.gethog.shared` — the shared group, not
+    /// `<TeamID>.app.gethog.GetHog`. `KeychainAccessGroupTests` is that
     /// measurement, kept as a test so a second entry added ahead of this one in
     /// the entitlement — which would silently move every stored credential —
     /// fails the build instead of the user.

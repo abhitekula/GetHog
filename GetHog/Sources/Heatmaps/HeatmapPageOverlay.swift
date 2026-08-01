@@ -16,9 +16,8 @@ import SwiftUI
 /// A decoded page render, plus the dimensions of the image it came from.
 ///
 /// `@unchecked Sendable` because `CGImage` is immutable once created and this
-/// type never hands out a mutable reference — the decode has to happen off the
-/// main actor, and a 12,000 px page is exactly the payload that must not be
-/// decoded during a layout pass.
+/// type never hands out a mutable reference — decoding belongs off the main
+/// actor and never during a layout pass.
 struct PageRender: @unchecked Sendable {
     let image: CGImage
 
@@ -38,17 +37,10 @@ enum PageRenderDecoder {
 
     /// Ceiling on the decoded bitmap, in pixels.
     ///
-    /// A page render has no bounded height — the one saved in project [REMOVED PRIVATE DATA] is
-    /// 375 × 12,327, which is 18 MB once decoded to RGBA, and a long docs page
-    /// would be several times that. Sizing the bitmap from the image would
-    /// therefore make this screen's memory a function of *someone else's page
-    /// length*, so it is capped at a constant instead: ~3 MP, about 12 MB.
-    ///
-    /// The cost is sharpness. At this budget the 375-wide render decodes to
-    /// roughly 300 px across and is drawn at ~400 pt, so it is visibly soft.
-    /// That is the right trade for what the picture is *for*: locating clicks
-    /// against page structure — headers, buttons, sections — not reading body
-    /// copy. The numbers behind it stay exact on the clickmap's other lenses.
+    /// A page render has no bounded height, so decoding at native size would make
+    /// memory depend on page length. The bitmap is capped to a fixed budget. This
+    /// favors locating page structure over reading body copy; click metrics stay
+    /// exact in the clickmap's other lenses.
     static let pixelBudget = 3_000_000
 
     /// Downsamples the JPEG without ever materialising it at full size.

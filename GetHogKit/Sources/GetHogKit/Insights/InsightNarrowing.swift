@@ -7,12 +7,12 @@ import Foundation
 // *split by what* — and neither had an answer on the phone before this. Both are
 // written into the query node `InsightRerun` already re-posts to `/query/`, so
 // they cost exactly what the date rerun costs: **one `.query` request per
-// change, behind an explicit Apply.** Never a live control; the budget is
-// organisation-wide and shared with the user's production integrations.
+// change, behind an explicit Apply.** The control is deliberately explicit so
+// users decide when a rerun is requested.
 //
 // ## The payload shape, and the trap that is *not* the one you expect
 //
-// `PROGRESS.md` correction 14 pins `PropertyGroupFilter` as nested —
+// `PropertyGroupFilter` is nested —
 // `{"type":"AND","values":[{"type":"AND","values":[…filters…]}]}` — and records
 // that the flat form parses far enough to look right and then 400s the moment it
 // carries data. That correction is about **`TraceSpansQuery.filterGroup`**, which
@@ -20,23 +20,15 @@ import Foundation
 // it here would repeat the same mistake in the opposite direction: copying one
 // call site's shape onto a differently-typed field.
 //
-// `properties` on an insight query node is a **union**, and the array arm is the
-// one this project has evidence for. Two independent sources, both checked
-// 2026-07-31:
+// `properties` on an insight query node is a **union**, and the array arm is a
+// documented representation:
 //
 // * PostHog's own schema — `InsightsQueryBase.properties?: AnyPropertyFilter[] |
 //   PropertyGroupFilter` in `frontend/src/queries/schema/schema-general.ts` on
 //   master. A bare array is one of the two declared arms, where on
 //   `filterGroup` it is not an arm at all.
-// * This repository's **recordings** of project [REMOVED PRIVATE DATA]. Every saved insight in
-//   `insights_list.json` and every tile in `dashboard_detail_raw.json` carries
-//   `"query": {"source": {… "properties": [] …}}` — a bare array, written by
-//   PostHog's own console and read back off the wire.
 //
-// So the array form is what the server stores for these nodes, and it is what
-// this file writes. **Unverified**: no request built here has been executed. The
-// key this project develops against is read-only, so what is established is the
-// shape of the request and nothing about the response.
+// This file writes the array form for these nodes.
 //
 // ## Which node can carry what
 //
@@ -158,12 +150,7 @@ public struct InsightBreakdown: Sendable, Hashable, Codable {
         self.property = property
     }
 
-    /// The wire form, matching a **recorded** `breakdownFilter` byte for byte in
-    /// shape.
-    ///
-    /// `insights_list.json` — a verbatim recording of `GET /insights/` on project
-    /// [REMOVED PRIVATE DATA] — carries, on the insight PostHog's console breaks down by
-    /// `method`:
+    /// The wire form used by saved insight breakdowns:
     ///
     ///     "breakdownFilter": {
     ///       "breakdowns": [{"type": "event", "property": "method"}],
@@ -172,9 +159,7 @@ public struct InsightBreakdown: Sendable, Hashable, Codable {
     ///
     /// Both keys, not one. `breakdowns[]` is the current form and
     /// `breakdown_type` the legacy scalar that PostHog still writes beside it;
-    /// this reproduces the pair rather than picking the one that looks
-    /// sufficient, because the recording is the only evidence available for
-    /// which the server actually accepts and it shows both.
+    /// this reproduces the compatibility pair rather than dropping either key.
     var jsonValue: JSONValue {
         .object([
             "breakdowns": .array([
@@ -215,8 +200,7 @@ public enum InsightBreakdownOverride: Sendable, Hashable {
 public struct InsightNarrowing: Sendable, Hashable {
 
     /// Node kinds inheriting `InsightsQueryBase`, which is where `properties`
-    /// comes from. Source-derived from `schema-general.ts` on master, fetched
-    /// 2026-07-31; never executed.
+    /// comes from.
     ///
     /// Six of the seven are a plain `extends InsightsQueryBase`. The seventh,
     /// `StickinessQuery`, is `extends Omit<InsightsQueryBase<…>,

@@ -41,20 +41,8 @@ final class HeatmapsStore {
 
     /// How far the saved-render lookup got.
     ///
-    /// Four states, not three, and the missing fourth is what this type exists
-    /// to carry. `loadSavedRenders` used `try?` and wrote `[]` on failure, so a
-    /// request PostHog never answered became an empty list, and the closing note
-    /// reads an empty list as an observation — printing "this project has none"
-    /// on the strength of an HTTP 404. That is a claim the response does not
-    /// support, and it is the fourth screen in this app to make one: Taxonomy
-    /// asserted the project had no events, Heatmaps' own section placeholders
-    /// reported observations PostHog never made, and now this.
-    ///
-    /// The 404 is real and current: the saved-heatmap collection moved out from
-    /// under `/heatmap_screenshots/` to `/api/projects/:id/saved/`, and
-    /// `PostHogAPI.savedHeatmaps` still asks for the old path. Nothing here
-    /// depends on that being fixed — a screen must survive an endpoint moving
-    /// without inventing facts about the project.
+    /// Four states distinguish a successful empty response from a failed lookup.
+    /// The UI must not infer that no render exists when the request failed.
     enum RenderLookup {
         /// Not asked yet, or still in flight. "There is nothing on this screen"
         /// is a claim rather than an observation until this resolves.
@@ -175,11 +163,8 @@ final class HeatmapsStore {
     /// re-asking on every range change would spend requests to learn the same
     /// answer.
     ///
-    /// A failure used to be swallowed by `try?` on the reasoning that it only
-    /// costs the reader the overlay link. It costs more than that: the closing
-    /// note distinguishes "this project has no saved render" from "checking",
-    /// and an empty list on failure fed it the first sentence. The catch below
-    /// is the whole fix — the failure has to reach the note or the note lies.
+    /// A failure must reach the closing note: an empty list is distinct from an
+    /// unsuccessful lookup, and the UI must preserve that distinction.
     func loadSavedRenders(client: PostHogClient, projectID: Int) async {
         do {
             let page: Page<SavedHeatmap> = try await client.send(
@@ -237,10 +222,9 @@ struct HeatmapsRoot: View {
     @ViewBuilder
     private var content: some View {
         if !model.isAvailable(.events) {
-            // There is no heatmap scope to probe. Both endpoints read captured
-            // autocapture data, the same material the events feed reads, so this
-            // is the closest gate that is actually true — and a key that somehow
-            // has one and not the other still gets the real 403 text below.
+            // Both endpoints use event capture data, so the events capability is
+            // the closest meaningful gate; individual request failures still
+            // retain their server-provided text below.
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
             }
@@ -260,40 +244,8 @@ struct HeatmapsRoot: View {
             EmptyStateView(
                 title: "No clicks recorded",
                 systemImage: "hand.tap",
-                // The clicks half is observed — both queries answered and both
-                // were empty. The renders half may not have been, and this state
-                // replaces the whole screen including the note that would
-                // otherwise have said so, so it has to carry the caveat itself.
-                //
-                // It used to continue: "Heatmap data needs autocapture enabled
-                // in your web SDK." Removed as an unknowable diagnosis, the twin
-                // of the one in `WebAnalyticsRoot.outboundSection` — same shape,
-                // caught later. The app reads no capture setting anywhere
-                // (measured 2026-07-31: every "autocapture" in this repo's
-                // sources is an event name or prose, never a settings read).
-                //
-                // It was also wrong on its own terms, which is why softening it
-                // is not enough. This screen is fed by *two* endpoints gated by
-                // *two* different project switches — `GET /api/projects/:id/`,
-                // read live the same day, carries `heatmaps_opt_in` and
-                // `autocapture_opt_out` as separate fields. Heatmap depth data
-                // hangs off the first; `/elements/stats/` click rows hang off
-                // the second. One sentence naming one switch could not be true
-                // of both halves at once, so a reader who acted on it might
-                // change a setting that had nothing to do with the emptiness.
-                //
-                // Establishing the real cause is possible but not free: one
-                // `.crud` request per visit to a screen that already makes two.
-                // And it would not settle it, which is the part worth recording
-                // because it was measured rather than assumed. On the live
-                // project, `autocapture_opt_out` reads `null` — *not* opted out
-                // — while `read-data-schema` lists no `$autocapture` event in
-                // the project at all (it has `$pageview`, `$dead_click` and
-                // `$rageclick`, but not the one `ElementStats.requestableTypes`
-                // asks for first). So a screen that had fetched the setting
-                // would have concluded "autocapture is on" and still drawn
-                // nothing. The field states an opt-out, not whether any data
-                // exists. Stating the absence costs nothing and is true.
+                // Both click queries answered with no rows. A saved-render lookup
+                // is independent, so its failure remains an explicit caveat.
                 message: "PostHog captured no clicks in the \(window.spokenTitle.lowercased())."
                     + (store.renderLookupFailure.map {
                         " This app also couldn't check whether the project has a saved page render: \(Self.sentence($0))"
@@ -408,10 +360,8 @@ struct HeatmapsRoot: View {
     private var depthFootnote: String {
         var parts = ["Bands are CSS pixels from the top of the document. The axis stays in pixels rather than a percentage of the page, because the response never says how tall any page is."]
         if let overflow = store.profile.overflowBand {
-            // Real pages produce a very long, very thin tail — the live capture
-            // reached 25,872 px on two clicks. Scaling the axis to that turns
-            // every band that matters into a hairline, so the tail is pooled and
-            // the pooling is stated rather than left to be noticed.
+            // Long, sparse tails would compress useful bands, so pooled overflow
+            // is stated rather than left implicit.
             parts.append("The last band pools everything deeper than \(overflow.start.formatted()) px, where clicks are too sparse to band separately.")
         }
         if let height = store.profile.fold?.medianViewportHeight {
@@ -588,12 +538,9 @@ struct HeatmapsRoot: View {
     /// Hand-rolled container rather than `Card`: the proportional bars need to
     /// reach the container's edges, which a card's inner padding would inset.
     ///
-    /// Reaching the edge is also why the container has to *clip* rather than
-    /// merely draw a rounded background — see `WebAnalyticsRoot.breakdownTable`,
-    /// which is the same construction and was measured at 8×: a row bar with a
-    /// 6pt radius painting from x = 0 escapes the container's 16pt corner by
-    /// 4.13pt. The top row's bar is always full width here too, because the
-    /// scale is pinned to it.
+    /// Reaching the edge is also why the container must *clip* rather than only
+    /// draw a rounded background. The top row is full width because the scale is
+    /// pinned to it.
     private var elementList: some View {
         VStack(spacing: 0) {
             ForEach(Array(rankedElements.enumerated()), id: \.offset) { index, stat in
@@ -677,12 +624,8 @@ struct HeatmapsRoot: View {
     private var screenshotNoteText: String {
         let lede = "PostHog's web heatmap paints these clicks over a rendered image of the page. It renders one only for pages saved as a heatmap in the web console"
 
-        // Four states, not two. "This project has none" is a finding, and only
-        // one of these branches has actually made it: the app has to have asked
-        // *and been answered*. Saying it while the request is in flight would be
-        // premature, and saying it after the request failed — which is what
-        // `try?` used to produce, from a live HTTP 404 — is a fact invented out
-        // of an error.
+        // Absence is a finding only after a successful response; a pending or
+        // failed lookup must not be presented as an empty collection.
         switch store.renderLookup {
         case .pending:
             return "\(lede); checking whether this project has any."

@@ -359,8 +359,7 @@ struct SavedInsightDetailView: View {
     /// remedies, and the second is a confident claim about PostHog's cache made
     /// on the strength of a request that never got an answer. The empty-cache
     /// wording is only used when the fetch actually succeeded and came back
-    /// without numbers — which, measured against project [REMOVED PRIVATE DATA], is what all 140
-    /// saved insights do.
+    /// without numbers.
     @ViewBuilder
     private func uncomputedState(for insight: Insight) -> some View {
         if !insight.isDrawableKind {
@@ -408,8 +407,8 @@ struct SavedInsightDetailView: View {
     /// beside its context.
     ///
     /// **The name is not available here, and this screen does not buy it.**
-    /// Measured, because the row used to render `Dashboard [REMOVED PRIVATE DATA]` in the slot
-    /// a name belongs in and it was worth knowing whether that was laziness:
+    /// The row once rendered a raw numeric dashboard id in the slot where a
+    /// name belongs, so the available data is spelled out here:
     ///
     /// - `Insight.dashboards` is `[Int]`, ids only.
     /// - The raw payload has nothing more. `GET /insights/:id/` also returns

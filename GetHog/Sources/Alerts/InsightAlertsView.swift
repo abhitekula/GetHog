@@ -25,11 +25,9 @@ import SwiftUI
 ///
 /// ## What has and has not been seen
 ///
-/// Every write below is **source-derived and unexecuted**: the key this project
-/// develops against is read-only. Project [REMOVED PRIVATE DATA] has no alerts either — `GET
-/// /alerts/` answered `{"count":0}` on 2026-07-31 — so no populated row has been
-/// drawn against live data, and the demo fixture is schema-derived and says so in
-/// its own `_note`.
+/// Every write below is **source-derived and unexecuted**. Tests inspect the
+/// request locally; the deterministic demo fixture supplies populated rows used
+/// to verify presentation without sending a write to PostHog.
 struct InsightAlertsView: View {
     let insight: Insight
 
@@ -128,10 +126,8 @@ struct InsightAlertsView: View {
     private var content: some View {
         if let failure = store.failure {
             // Whatever PostHog said, in PostHog's words. `/alerts/` may be
-            // plan-gated or scope-gated, and this screen must never invent which:
-            // measured on this deployment, `GET /approval_policies/` answers 402
-            // "Approvals requires a paid PostHog plan", which is a sixth spelling
-            // of "no" in this API. `LoadFailure` carries the server's own sentence
+            // plan-gated or scope-gated, and this screen must never invent which.
+            // `LoadFailure` carries the server's own sentence
             // for a 402, a 403 and a 400 access-control wall alike, so the screen
             // reports the wall it actually met rather than the one it expected.
             LoadFailureState(title: "Couldn't load this insight's alerts", failure: failure) {

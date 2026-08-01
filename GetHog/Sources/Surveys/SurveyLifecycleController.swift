@@ -10,13 +10,9 @@ import GetHogKit
 ///
 /// ## The override is over *dates*, because there is no status to override
 ///
-/// A survey carries no `status` field. Measured: `GET /surveys/` returns 37 keys
-/// for each of this project's six surveys and none of them is one. Running means
-/// `start_date` set, `end_date` unset, not archived — PostHog's own
-/// `_should_survey_flags_be_active` is that exact expression, and
-/// `Survey.statusText` derives the same four words the same way. The four words
-/// are the client's invention, and there is no server value for them to disagree
-/// with.
+/// A survey carries no `status` field. Running is derived from a set
+/// `start_date`, an unset `end_date`, and an unarchived survey. The client owns
+/// the resulting status label rather than receiving one from the service.
 ///
 /// So this controller overrides the two dates and lets `Survey.statusText` derive
 /// the word, rather than overriding the word directly. Overriding the word would
@@ -24,9 +20,7 @@ import GetHogKit
 /// dates for surveys the user has not touched, one asserted for surveys they
 /// have — and the two would drift the first time either changed.
 ///
-/// **No request this drives has ever been executed**; the available key is
-/// read-only. See `PostHogAPI+Surveys` for what is source-derived, including the
-/// unmeasured consequence of stopping through the action rather than the PATCH.
+/// See `PostHogAPI+Surveys` for the request shapes and action semantics.
 @MainActor
 @Observable
 final class SurveyLifecycleController {

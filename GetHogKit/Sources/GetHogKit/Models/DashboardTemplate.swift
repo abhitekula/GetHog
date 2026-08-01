@@ -82,8 +82,8 @@ public struct DashboardTemplateTile: Sendable, Decodable, Hashable {
 public struct DashboardTemplateVariable: Sendable, Decodable, Identifiable, Hashable {
     public let id: String
     public let name: String
-    /// `event` on everything observed. Kept as a string because the set is not
-    /// documented and a closed enum would drop a kind rather than show it.
+    /// Kept as a string because the service can add variable kinds; a closed
+    /// enum would drop an unfamiliar kind rather than show it.
     public let type: String?
     public let summary: String?
     public let isRequired: Bool
@@ -104,10 +104,9 @@ public struct DashboardTemplateVariable: Sendable, Decodable, Identifiable, Hash
 
 /// A dashboard template.
 ///
-/// `GET /api/projects/{id}/dashboard_templates/?limit=50` answers 200 with 26
-/// records against the live project, every one `scope: "global"` — PostHog's own
-/// library rather than anything this team wrote. Several carry real artwork on
-/// `posthog.com`, which is what makes the screen a gallery instead of a table.
+/// `GET /api/projects/{id}/dashboard_templates/` exposes PostHog's template
+/// library, including each template's scope and optional artwork. The model
+/// keeps that read-only metadata so the app can present a gallery.
 ///
 /// Read-only here by decision, not by omission: applying a template is
 /// `POST .../dashboards/create_from_template_json/` and needs `dashboard:write`.
@@ -156,9 +155,8 @@ public struct DashboardTemplate: Sendable, Decodable, Identifiable, Hashable {
     /// `nil` means the tiles were not returned, not that there are none.
     public var tileCount: Int? { tiles?.count }
 
-    /// Distinct insight kinds in tile order — what the template builds, in the
-    /// one line a gallery card has room for. Tile counts run 4 to 47 on the live
-    /// library, so listing every tile is never an option.
+    /// Distinct insight kinds in tile order — a compact summary of what the
+    /// template builds for the single line available on a gallery card.
     public var insightKinds: [String] {
         var seen: Set<String> = []
         return (tiles ?? []).compactMap { tile in

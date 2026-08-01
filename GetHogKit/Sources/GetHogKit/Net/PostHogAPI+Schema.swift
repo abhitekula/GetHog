@@ -16,14 +16,9 @@ extension PostHogAPI {
 
     /// Every table the project can select from.
     ///
-    /// **The explicit `LIMIT` is load-bearing, and its absence fails silently.**
-    /// Measured 2026-07-30 against project [REMOVED PRIVATE DATA]: `SELECT table_name FROM
-    /// system.information_schema.tables` with no `LIMIT` returns **100 of 141
-    /// rows**, HTTP 200, with `"hasMore": true` and `"limit": 100` in the
-    /// envelope and no error anywhere — so without the `LIMIT` the browser shows
-    /// 100 tables and claims that is all of them, a wrong answer rather than a
-    /// missing one. With `LIMIT 1000` the same query returns all 141 and
-    /// `hasMore` is absent.
+    /// **The explicit `LIMIT` is load-bearing, and its absence can fail
+    /// silently.** The service may return a default page with truncation
+    /// metadata, so the browser must request an explicit bounded page.
     ///
     /// This used to add that `QueryResponse` "decodes neither field", which
     /// stopped being true in the commit that wrote it: `hasMore` and
@@ -32,9 +27,8 @@ extension PostHogAPI {
     /// the two fields report only a cap **PostHog** applied, never one the query
     /// asked for. Detecting the default is not the same as avoiding it.
     ///
-    /// 1000 against 141 observed: the ceiling exists to bound the response, not
-    /// to be reached. A project with more than 1000 tables would be truncated,
-    /// and `SchemaStore` reports that rather than hiding it.
+    /// The ceiling bounds the response rather than promising completeness.
+    /// `SchemaStore` reports a possibly truncated result rather than hiding it.
     public static func schemaTables(projectID: Int, limit: Int = 1000) -> Endpoint {
         hogql(
             projectID: projectID,
@@ -54,10 +48,8 @@ extension PostHogAPI {
     /// alphabetising it puts `$group_0` first and separates `timestamp` from
     /// `created_at`. The browser's search field is what finds a column by name.
     ///
-    /// The widest table in this project is `events` at 63 columns, so the same
-    /// 100-row default would not in fact have bitten here; the `LIMIT` is
-    /// explicit anyway, because "the widest table happens to fit" is a fact
-    /// about one project and the silent truncation above is a fact about the API.
+    /// The `LIMIT` remains explicit for every table: a current table size is not
+    /// a durable guarantee against silent truncation.
     public static func schemaColumns(projectID: Int, table: String, limit: Int = 1000) -> Endpoint {
         hogql(
             projectID: projectID,

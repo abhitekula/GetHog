@@ -48,8 +48,8 @@ struct GroupsRoot: View {
     ///
     /// This screen is one of `AppTab.secondary`: hosted by a sidebar `Tab` above
     /// the size-class boundary and by the search stack below it. Measured with
-    /// "[REMOVED PRIVATE DATA]" open, dragging the window 834 → 375 → 834 → 375 → 834pt:
-    /// `navigationBars` went `["[REMOVED PRIVATE DATA]"]` → `["Groups"]` and stayed there for
+    /// "Accounts" open, dragging the window 834 → 375 → 834 → 375 → 834pt:
+    /// `navigationBars` went `["Accounts"]` → `["Groups"]` and stayed there for
     /// all four crossings.
     ///
     /// This is the one screen that nests, so it uses two slots: the group *type*

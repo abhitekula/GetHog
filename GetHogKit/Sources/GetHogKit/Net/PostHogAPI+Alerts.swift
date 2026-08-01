@@ -2,12 +2,10 @@ import Foundation
 
 /// Writes to PostHog's own insight alerts.
 ///
-/// **Never executed.** Read out of PostHog's `AlertSerializer` and `AlertViewSet`
-/// (`products/alerts/backend/api/alert.py`) on master, fetched 2026-07-31, and
-/// checked against the live *read* of `GET /api/projects/[REMOVED PRIVATE DATA]/alerts/` the same
-/// day — HTTP 200, `{"count":0,…,"results":[]}`. The key available here is
-/// read-only; no request in this family has been sent from this machine, so the
-/// shape of the request is all this project's tests can establish.
+/// **Never executed by deterministic tests.** This is derived from PostHog's
+/// `AlertSerializer` and `AlertViewSet`
+/// (`products/alerts/backend/api/alert.py`). Automated coverage establishes the
+/// request shape with synthetic values and does not retain tenant responses.
 ///
 /// ## The request budget, which is the argument for building it
 ///
@@ -90,7 +88,7 @@ public extension PostHogAPI {
     /// that was read does not block, and this builder does not pre-empt a refusal
     /// it cannot predict. If a create is refused for a plan reason the response
     /// says so and `WriteFailure` prints PostHog's own sentence. **Neither claim
-    /// has been executed** — the key is read-only and this project has no alerts.
+    /// is asserted from tenant data**; tests cover only synthetic responses.
     static func createAlert(projectID: Int, draft: AlertDraft) -> Endpoint? {
         guard let payload = draft.jsonValue,
               let body = try? JSONEncoder().encode(payload)

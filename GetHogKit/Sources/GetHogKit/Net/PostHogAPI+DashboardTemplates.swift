@@ -4,9 +4,8 @@ public extension PostHogAPI {
 
     /// PostHog's dashboard template library.
     ///
-    /// 26 records against the live project, all `scope: "global"`, several with
-    /// real artwork on `posthog.com`. Static reference material that computes
-    /// nothing, so it belongs to the CRUD budget.
+    /// Static reference material, including optional artwork, that computes
+    /// nothing and therefore belongs to the CRUD budget.
     ///
     /// ## Why there is no `apply`
     ///
@@ -18,11 +17,10 @@ public extension PostHogAPI {
     ///
     /// - **Reversible with the same control.** A flag flipped by mistake is
     ///   flipped back from the same row. Applying a template creates a dashboard
-    ///   and 4–47 insights in somebody's production project, and this app has no
-    ///   way to delete any of them — the mess would have to be cleaned up
-    ///   somewhere else.
-    /// - **Complete on a phone.** A flag toggle is one boolean. The live
-    ///   templates are *parameterised*: `"series": ["{DAILY_ACTIVE_USER}"]` is a
+    ///   and multiple insights, and this app has no way to delete any of them —
+    ///   the mess would have to be cleaned up somewhere else.
+    /// - **Complete on a phone.** A flag toggle is one boolean. Templates are
+    ///   *parameterised*: `"series": ["{DAILY_ACTIVE_USER}"]` is a
     ///   placeholder, and applying one properly means answering for every
     ///   variable it declares. Applying with the defaults silently builds a
     ///   dashboard measuring `$pageview` for a team whose product is an app.

@@ -12,15 +12,12 @@ public extension PostHogAPI {
 
     /// The Inbox.
     ///
-    /// Every task in the project this was built against was filed by an agent —
-    /// half by a scout, half from a signal report. The list embeds `latest_run`,
-    /// so run state costs no extra request per row.
+    /// Tasks may be filed by agents or signal reports. The list embeds
+    /// `latest_run`, so run state costs no extra request per row.
     ///
-    /// Archived tasks are **not** reachable here. The live list returns
-    /// `archived: false` for every row while the web console shows an Archive
-    /// tab with its own count, so there is a parameter this client has not
-    /// found. Rather than ship a tab that would always read empty, the app
-    /// shows the active queue and says so.
+    /// Archived tasks are **not** reachable here because this client does not
+    /// have a documented archive-listing parameter. Rather than ship a tab that
+    /// would always read empty, the app shows the active queue and says so.
     static func tasks(projectID: Int, limit: Int = 50) -> Endpoint {
         Endpoint(
             path: "/api/projects/\(projectID)/tasks/",

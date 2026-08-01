@@ -159,8 +159,8 @@ enum WriteFailure {
             // constant hardcoded at each call site. That was wrong in the worst
             // available direction: `missingScope` is nil *precisely when* the
             // 403 is not about a scope, so the sentence was most confident
-            // exactly where it was least applicable. Measured against the two
-            // 403s README.md already documents — neither detail matches
+            // exactly where it was least applicable. The two supported 403
+            // examples below do not match
             // `PostHogErrorEnvelope.missingScope`'s `/([a-z_]+:(?:read|write))/`,
             // because neither contains a `scope:verb` pair at all:
             //
@@ -175,13 +175,11 @@ enum WriteFailure {
             // Classification is delegated rather than rewritten. `ResourceAccessState`
             // is the kit's existing reader of this exact payload — the only
             // place that knows a "personal API key" detail is a category
-            // refusal and a "feature flag" detail is PostHog-side. It records
-            // that those four walls came from probing the live API for the read
-            // screens; that provenance is inherited here, not re-verified, and
-            // a write 403 of any kind remains unobserved because the key this
-            // project develops against is read-only. Sharing it means a fifth
+            // refusal and a "feature flag" detail is PostHog-side. Sharing that
+            // classifier means a new wall understood by the read path is also
+            // understood by every write without duplicating the switch. A fifth
             // wall discovered on a read is understood by every write for free,
-            // which is the whole reason not to hand-roll a fourth copy of this
+            // which is the reason not to hand-roll another copy of this
             // switch. Only the *sentences* are write-shaped; `ResourceCopy`'s
             // read phrasing ("re-check") does not fit here.
             let wall = ResourceAccessState(
@@ -231,9 +229,8 @@ enum WriteFailure {
                 // control to some objects, whose 403 is about the user's
                 // organisation role rather than the key — a remedy this app
                 // cannot distinguish from here, and would previously have
-                // hidden behind "edit your key". **Unverified**: provoking that
-                // needs a key holding the scope and lacking the role, which the
-                // read-only key this project develops against cannot produce.
+                // hidden behind "edit your key". **Unverified**: safely producing
+                // that permission combination is outside deterministic unit tests.
                 let said = detail.map { " PostHog said: \($0)" } ?? ""
                 return WriteOutcomeMessage(
                     kind: .failure,

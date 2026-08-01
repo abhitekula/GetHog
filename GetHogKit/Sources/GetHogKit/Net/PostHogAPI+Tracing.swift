@@ -5,13 +5,8 @@ import Foundation
 /// Every one of these is a `/query/` node, so they all bill against the `.query`
 /// budget rather than `.crud`.
 ///
-/// **`TraceSpansQuery` is the only tracing kind the API still has.** Measured
-/// 2026-07-30 against project [REMOVED PRIVATE DATA]: `TraceSpansTreeQuery` and
-/// `TraceSpansAttributeBreakdownQuery` both answer HTTP 400 `"Unsupported query
-/// kind: …"` — not a permission wall, an endpoint that no longer exists for
-/// anyone — so their builders are gone and the call tree and the service facet
-/// are derived from the spans instead. See `TraceSpan.tree(from:)` and
-/// `TraceSpan.serviceNames(from:)`.
+/// `TraceSpansQuery` is the supported tracing kind. The call tree and service
+/// facet are derived from spans rather than separate query kinds.
 ///
 /// What `TraceSpansQuery` returns still cannot be seen from here: this
 /// organisation has no `viewer` access to the `tracing` resource, and PostHog
@@ -59,14 +54,8 @@ public extension PostHogAPI {
             ])
         }
 
-        // A `PropertyGroupFilter`: an object, and one whose `values` are
-        // themselves groups rather than bare filters. Measured 2026-07-30
-        // against project [REMOVED PRIVATE DATA], sending this exact body — a bare array is
-        // rejected with `"Input should be a valid dictionary or instance of
-        // PropertyGroupFilter"`, and filters placed flat inside `values` are
-        // rejected with `"Input should be 'AND' or 'OR'"`. Only the nested form
-        // parses far enough to reach the access-control check. The bare array
-        // shipped once, so `TracingEndpointTests` pins this shape.
+        // A `PropertyGroupFilter` is an object whose `values` are groups rather
+        // than bare filters. `TracingEndpointTests` pins the nested shape.
         var groups: [[String: Any]] = []
         if !filters.isEmpty {
             groups.append(["type": "AND", "values": filters])

@@ -3,9 +3,8 @@ import Foundation
 /// Drilling from a chart to the people behind it.
 ///
 /// This is the web console's single most-used interaction — click a funnel step,
-/// see who dropped out — and everything here is shaped by what
-/// `us.posthog.com` actually accepts, measured against project [REMOVED PRIVATE DATA] rather
-/// than inferred from PostHog's TypeScript.
+/// see who dropped out — and everything here follows the public `ActorsQuery`
+/// request and response contracts.
 ///
 /// ## The request
 ///
@@ -92,11 +91,9 @@ public enum InsightActors {
 
         case .funnelStep(let step, let outcome):
             inner["kind"] = .string("FunnelsActorsQuery")
-            // 1-based, and signed. Measured against a live three-step funnel of
-            // 14 / 13 / 0: `+1 → 14`, `+2 → 13`, `+3 → 0`, so a positive step is
-            // "reached step n". `-2 → 1` and `-3 → 13`, which are exactly
-            // `count[n-2] - count[n-1]`, so a negative step is "reached the step
-            // before and not this one".
+            // 1-based and signed by the API contract. A positive step means
+            // "reached step n"; a negative step means "reached the preceding
+            // step and not this one".
             //
             // `-1` is not merely empty — it is **HTTP 500**. Nobody can drop off
             // before the first step, and PostHog does not defend against being
@@ -128,8 +125,7 @@ public enum InsightActors {
 /// claims there are.
 ///
 /// `expectedCount` is carried so the screen can be honest *before* the request
-/// returns — and so it can say so when the two disagree. Every count in this
-/// type was reconciled against a live response; see `InsightDrillKind`.
+/// returns — and so it can say so when the two disagree.
 public struct InsightDrill: Sendable, Equatable, Hashable, Identifiable {
     public let kind: InsightDrillKind
     /// What the user tapped, in their own words — "26 Jul · Returning".
@@ -147,20 +143,15 @@ public struct InsightDrill: Sendable, Equatable, Hashable, Identifiable {
 }
 
 public enum InsightDrillKind: Sendable, Equatable, Hashable {
-    /// A point on a trends line, by series index and the day label PostHog's own
-    /// result carried. Measured: series 0, day `2026-07-28` returned 19 actors
-    /// against a charted 19.
+    /// A point on a trends line, by series index and the day label in the result.
     case trendsPoint(series: Int, day: String)
 
-    /// One breakdown value of an aggregated trends display — a bar, a pie slice,
-    /// a table row, a country on a world map. Measured: `breakdown: "US"`
-    /// returned 35 against a charted `aggregated_value` of 35.
+    /// One breakdown value of an aggregated trends display — a bar, pie slice,
+    /// table row, or country on a world map.
     case breakdown(series: Int, value: String)
 
-    /// One lifecycle band on one day. Measured across all four statuses and all
-    /// five weeks of a live weekly lifecycle insight: 18 of 18 exact, including
-    /// the dormant band, whose charted value is negative and whose actor count
-    /// is its magnitude.
+    /// One lifecycle band on one day. A negative chart value represents a
+    /// magnitude when constructing its actors query.
     case lifecycleBand(status: String, day: String)
 
     /// A funnel step, and whether the tap meant the people who got through it or
@@ -170,7 +161,6 @@ public enum InsightDrillKind: Sendable, Equatable, Hashable {
     case funnelStep(step: Int, outcome: FunnelDrillOutcome)
 
     /// One stickiness bucket — "the people who were active on exactly n days".
-    /// Measured: 1 → 292, 2 → 10, 3 → 2, against charted 292 / 10 / 2.
     case stickinessBucket(series: Int, intervals: Int)
 }
 
@@ -217,8 +207,7 @@ public extension InsightDrill {
 /// query rather than from the result: an affordance that appears and then fails
 /// is worse than one that was never offered.
 public enum InsightDrillAxis: String, Sendable, Equatable, Hashable {
-    /// Pick a series and a day. A trends drill *requires* a day — measured, a
-    /// `series`-only trends actors query returns zero rows, not the whole range.
+    /// Pick a series and a day. A trends drill requires both dimensions.
     case trendsPoint
     /// Pick a breakdown value.
     case breakdown
@@ -368,16 +357,15 @@ extension ActorsPage: Decodable {
 
 /// One person behind a chart.
 ///
-/// Live responses carry **two different person shapes** in the same `results`
-/// array, and conflating them is how a list ends up with blank rows:
+/// The API response permits **two different person shapes** in the same
+/// `results` array, and conflating them is how a list ends up with blank rows:
 ///
 ///     resolved    { id, distinct_ids, created_at, last_seen_at,
 ///                   is_identified, properties }
 ///     unresolved  { id, distinct_ids, is_unresolved: true }
 ///
 /// The second has no `properties` at all — no name, no email — because the
-/// person row no longer exists behind the event. Three of the first five rows of
-/// a live trends drill were this shape.
+/// person row no longer exists behind the event.
 public struct InsightActor: Sendable, Equatable, Hashable, Identifiable {
     public let id: String
     public let distinctIDs: [String]

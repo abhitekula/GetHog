@@ -109,26 +109,10 @@ public enum PostHogAPI {
     ///
     /// `within` is required and has no default, for the reason the events feed
     /// learned the hard way: an unbounded `FROM events` denies ClickHouse
-    /// partition pruning on a shared table, and measured against a live project
-    /// that ran 8.5s and failed one time in five under load, against ~1s and no
-    /// failures for *any* bound — even a two-year one. Filtering on
-    /// `$session_id` does not help; the scan still has to find the rows.
-    ///
-    /// Measured live while I was here, and it moved the filter too. Three
-    /// variants, three runs each, against one real session returning 5 rows:
-    ///
-    ///     properties.$session_id + bound   38.66s / 5.45s / failed
-    ///     $session_id       + bound        failed / 10.17s / 1.35s
-    ///     $session_id       , no bound     failed / failed / failed
-    ///
-    /// `properties.$session_id` is a JSON extraction run over every row in the
-    /// window; `$session_id` is the materialised column, and HogQL returns the
-    /// identical rows for it. Unbounded fails outright regardless of which one
-    /// filters, which is why the window is required rather than advisory.
-    ///
-    /// The absolute numbers are not stable — the cluster was visibly loaded,
-    /// and the same query ran 1.30s in an idle window earlier. The *ordering*
-    /// held across every run, and that is what the change rests on.
+    /// partition pruning on a shared table. Filtering on `$session_id` does not
+    /// establish a time partition by itself; the scan still has to find the
+    /// rows. The materialised `$session_id` column also avoids JSON extraction
+    /// over every row in the window.
     ///
     /// The window is padded because the bound is a safety rail, not a filter:
     /// `$session_id` already decides membership. Event timestamps are stamped
@@ -214,13 +198,12 @@ public enum PostHogAPI {
     //     link: </api/projects/{id}/session_recordings/{id}/snapshots>;
     //           rel="successor-version"
     //
-    // Verified before switching: the `/api/projects/` form returns byte-identical
-    // data — same `application/jsonl` stream, same `cv:"2024-10"` gzip-in-string
-    // encoding — and carries no deprecation headers. The OpenAPI document lists
-    // 141 project-scoped families and none under `/api/environments/` at all.
+    // The successor `/api/projects/` form preserves the JSONL snapshot contract,
+    // including the versioned gzip-in-string records. Keeping only the supported
+    // project-scoped path avoids depending on the deprecated alias.
     //
-    // Caught by a routine research pass one day before the sunset date, not by a
-    // failure. Nothing in the app would have said why playback had stopped.
+    // Treat the response header as the source of truth for the migration rather
+    // than waiting for playback to fail without an actionable explanation.
 
     public static func snapshotSources(projectID: Int, recordingID: String) -> Endpoint {
         Endpoint(
@@ -277,10 +260,7 @@ public enum PostHogAPI {
 
     /// One web-stats table, broken down by one dimension.
     ///
-    /// `breakdownBy` is a **closed enum server-side**, and sending a value
-    /// outside it is how you find out what it is: PostHog answers HTTP 400 and
-    /// enumerates every accepted value in the pydantic error. Sent
-    /// `"NotARealDimension"` live, it named these thirty-three, in this order:
+    /// `breakdownBy` is a closed enum in PostHog's public query contract:
     ///
     ///     Page  InitialPage  ExitPage  ExitClick  PreviousPage  ScreenName
     ///     InitialChannelType  InitialReferringDomain  InitialReferringURL
@@ -293,10 +273,7 @@ public enum PostHogAPI {
     ///     Browser  OS  Viewport  DeviceType  Country  Region  City
     ///     Timezone  Language  FrustrationMetrics
     ///
-    /// All thirty-three were then sent for real against project [REMOVED PRIVATE DATA] over 90
-    /// days and all thirty-three answered 200, so acceptance is not the axis
-    /// that separates them — what they *return* is. Two things a caller has to
-    /// know before offering one:
+    /// Two response-shape differences matter to callers:
     ///
     /// - The breakdown value is not always a string. `Timezone` is a bare
     ///   number, `Viewport` is `[width, height]`, `Region` and `City` are
@@ -310,9 +287,7 @@ public enum PostHogAPI {
     ///   and its dead clicks "views" — numbers that are not merely wrong but
     ///   confidently mislabelled. `WebStatsDimension` does not offer it.
     ///
-    /// One more measured oddity, harmless here but worth not rediscovering:
-    /// `Language` rows carry **four** values while `columns` still advertises
-    /// five — `ui_fill_fraction` is simply absent, so `cross_sell` sits at the
+    /// `Language` rows may omit `ui_fill_fraction`, so `cross_sell` sits at the
     /// index it would occupy. Nothing in the app reads index 3, and the two
     /// figures it does read are at 1 and 2 for every dimension.
     public static func webStats(
@@ -420,20 +395,17 @@ public enum PostHogAPI {
 
     /// - Parameter cohort: restrict to members of one cohort.
     ///
-    /// **`?cohort=` on `/persons/`, not `GET /cohorts/:id/persons/`.** Both exist
-    /// and both were exercised against the live project on 30 Jul 2026; both
-    /// answer 200 with the identical row shape (`CohortPersonResult` in the
-    /// served OpenAPI document — `id`, `uuid`, `distinct_ids`, `properties`,
+    /// **`?cohort=` on `/persons/`, not `GET /cohorts/:id/persons/`.** Both
+    /// documented paths use the `CohortPersonResult` row shape — `id`, `uuid`,
+    /// `distinct_ids`, `properties`,
     /// `is_identified`, `created_at`, plus `matched_recordings` and
     /// `value_at_data_point`, which are `ActorsQuery` residue and unused here).
     /// This spelling is preferred because it is the *same path* an unfiltered
     /// person list uses, so one decoder, one cache key shape, one demo route and
     /// one rate-limit category serve both.
     ///
-    /// **Neither spelling returns `count`.** Measured: the body is
-    /// `{results, next, previous}` with no total, unlike the unfiltered
-    /// `/persons/` response — and the OpenAPI document agrees, declaring exactly
-    /// those three keys as required on `CohortPersonsResponse`. So the number of
+    /// **Neither spelling returns `count`.** The public `CohortPersonsResponse`
+    /// contract requires `{results, next, previous}` without a total. So the number of
     /// members cannot come from here; it comes from the cohort's own `count`
     /// field, which is what the members section says it is showing "of".
     public static func persons(
@@ -480,29 +452,13 @@ public enum PostHogAPI {
     ///
     /// Filtering and paging are **server-side on every axis**, which is not the
     /// arrangement the rest of this app uses and is deliberate here. The project
-    /// index behind the search screen fetches once and filters in memory because
-    /// it is 200 small rows; an insights page is not — each row carries the
-    /// insight's whole saved `query` subtree, and the 140 rows in the project
-    /// this was measured against are 375,505 bytes. Pulling all of them on every
-    /// launch to answer a question one query parameter already answers is the
-    /// trade the search screen can afford and this one cannot.
+    /// index behind the search screen can filter small rows in memory; insight
+    /// rows carry the entire saved query subtree, so paging, search, kind and
+    /// favorite filters stay server-side. `InsightKind` remains closed because
+    /// an unknown kind can look like a legitimate empty result.
     ///
-    /// Measured against project [REMOVED PRIVATE DATA] on `us.posthog.com`:
-    /// - `?limit=&offset=` pages cleanly; `count` is 140 and `next` goes null on
-    ///   the last page.
-    /// - `?search=` matches names server-side (`search=task` → 1 of 140).
-    /// - `?insight=TRENDS` → 128, `FUNNELS` → 2, `SQL` → 5, `LIFECYCLE` → 3,
-    ///   `RETENTION` → 1, `PATHS` → 1, `STICKINESS` → 0. They sum to 140, so the
-    ///   filter partitions the collection rather than overlapping it.
-    /// - `?insight=GARBAGE` → 0 rather than an error, which is why `InsightKind`
-    ///   is a closed enum: an unrecognised value fails silently and empty.
-    /// - `?favorited=true` → 0 here. The field is real and per-user; this
-    ///   project simply has no starred insights, so the app must not treat an
-    ///   empty favourites section as a bug.
-    ///
-    /// `basic=true` is *not* sent, and that is a cost knowingly paid: measured at
-    /// `limit=50` it returns 79,266 bytes against the full row's 119,389, a 34%
-    /// saving. What it drops is `deleted` and `is_cached`. Neither is decorative
+    /// `basic=true` is not sent because it drops `deleted` and `is_cached`.
+    /// Neither is decorative
     /// here — `deleted` is what stops a tombstone being offered as a row, and
     /// `is_cached` is half of what `FreshnessLabel` states — and the alternative
     /// is one `Insight` type whose fields are populated or empty depending on
@@ -555,9 +511,7 @@ public enum PostHogAPI {
     /// null `result` and expects the caller to poll — right for an App Intent
     /// that can come back later, wrong for a screen the user is looking at.
     ///
-    /// `blocking` waits and returns the numbers. Measured against project [REMOVED PRIVATE DATA]:
-    /// `GET /insights/[REMOVED PRIVATE DATA]/?refresh=blocking` returned a populated `result`
-    /// in 0.75s where `force_cache` had returned `null`. It is charged to the
+    /// `blocking` waits for a computed result. It is charged to the
     /// organisation-wide budget, so it is only ever reached from an explicit user
     /// action — never from opening a screen.
     public static func computeInsight(projectID: Int, insightID: Int) -> Endpoint {
@@ -571,10 +525,8 @@ public enum PostHogAPI {
     /// One insight named by its console handle rather than its numeric id.
     ///
     /// A collection request filtered to one row, not `/insights/<short_id>/`.
-    /// The path form does work — verified live, `/insights/COaW8hFP/` returns
-    /// the same object as `/insights/[REMOVED PRIVATE DATA]/` and a bogus handle 404s — but the
-    /// filter is the documented spelling, and the numeric path is the one this
-    /// app already depends on. Overloading a single path segment with two id
+    /// The collection filter is the documented spelling, while the detail path
+    /// uses numeric identifiers. Overloading a single path segment with two id
     /// namespaces would mean a short id that happened to be all digits silently
     /// selecting a different insight.
     ///

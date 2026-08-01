@@ -25,10 +25,9 @@ import GetHogKit
 /// Face ID in front of that would train people to authenticate reflexively, which
 /// is what makes the gate on the flag screen worth having.
 ///
-/// **Nothing here has been executed.** The key this project develops against is
-/// read-only, and project [REMOVED PRIVATE DATA] has no alerts at all — `GET /alerts/` answered
-/// `{"count":0}` on 2026-07-31. The requests are unit-tested; the responses are
-/// not, and the demo routes are the only thing that has ever answered one.
+/// **Nothing here is exercised against a tenant by the test suite.** Requests
+/// are unit-tested with deterministic synthetic data, and demo routes provide
+/// the only response shapes used by automated tests.
 @MainActor
 @Observable
 final class AlertWriteController {

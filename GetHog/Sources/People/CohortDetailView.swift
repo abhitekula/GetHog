@@ -22,9 +22,8 @@ final class CohortMembersStore {
 
     /// Deliberately not a total.
     ///
-    /// Measured against the live project: `/persons/?cohort=` answers
-    /// `{results, next, previous}` and **no `count`** — unlike the unfiltered
-    /// person list, which carries one. So "showing N of M" cannot be built from
+    /// The documented `/persons/?cohort=` response contains
+    /// `{results, next, previous}` and no `count`. So "showing N of M" cannot be built from
     /// this response; `M` is the cohort's own `count`, which is a different
     /// number computed at a different time, and the section footer says so
     /// rather than presenting the two as one measurement.
@@ -90,7 +89,7 @@ struct CohortDetailView: View {
     let cohort: Cohort
     /// Names for nested-cohort references, from the list this screen was opened
     /// from. PostHog sends only an id on those conditions, and "is in cohort
-    /// #[REMOVED PRIVATE DATA]" is not a definition — resolving it from cohorts already fetched
+    /// #730101" is not a definition — resolving it from cohorts already fetched
     /// costs no request where `GET /cohorts/:id/` per reference would.
     let cohortNames: [Int: String]
 
@@ -297,9 +296,8 @@ struct CohortDetailView: View {
         }
     }
 
-    /// **Never "showing 50 of 1,284".** The members request answers with no
-    /// total at all — measured on the live project, `{results, next, previous}`
-    /// and nothing else — and the cohort's `count` is a *separately calculated*
+    /// The members request answers with no total — only
+    /// `{results, next, previous}` — and the cohort's `count` is a *separately calculated*
     /// number from a *different* moment. Presenting the two as one fraction
     /// would be arithmetic across two measurements, and on a cohort that is
     /// recalculating the fraction could exceed one.

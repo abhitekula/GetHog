@@ -508,7 +508,7 @@ struct InsightActorRow: View {
             // Nothing here is prose. A person is identified by an email or a
             // distinct id, and SwiftUI's default typesetting language inherits
             // the app locale — whose English hyphenation dictionary rendered
-            // `nina.castellano@example.-com` at accessibility sizes. A hyphen
+            // sample.user@example.org` at accessibility sizes. A hyphen
             // inside an address changes what the address *is*, so this is a
             // wrong string rather than an ugly one.
             .typesettingLanguage(Locale.Language(identifier: "zxx"))

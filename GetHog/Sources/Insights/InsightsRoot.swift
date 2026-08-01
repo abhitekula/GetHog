@@ -3,11 +3,9 @@ import SwiftUI
 
 /// The saved-insight library.
 ///
-/// The largest collection in a typical project and, until now, the one this app
-/// could only see through a dashboard: the project this was built against holds
-/// **140 saved insights against 14 dashboards**, and an insight saved from the
-/// console's own editor belongs to no dashboard at all, so it had no route into
-/// the app whatsoever.
+/// Often one of the largest collections in a project and, until now, one this
+/// app could only see through a dashboard. An insight saved from the console's
+/// own editor can belong to no dashboard at all, so it had no route into the app.
 ///
 /// It is a `NavigationSplitView` for the same reason Errors and People are — a
 /// list whose rows have a substantial detail — and it collapses to a plain push
@@ -364,10 +362,8 @@ struct InsightsRoot: View {
 
     /// Kind and freshness, in that order.
     ///
-    /// `lastModifiedAt` rather than `lastRefresh`: measured against project
-    /// [REMOVED PRIVATE DATA], `last_refresh` is null on all 140 saved insights, so a row built
-    /// on it would print nothing at all for every insight in the project. When
-    /// the definition last changed is a fact every row actually has.
+    /// `lastModifiedAt` rather than optional cache freshness: when the definition
+    /// last changed is a durable fact even when no result has been refreshed.
     private func footnote(for insight: Insight) -> String? {
         var parts = [insight.kind?.title ?? insight.sourceKind.replacingOccurrences(of: "Query", with: "")]
         if let modified = insight.lastModifiedAt {

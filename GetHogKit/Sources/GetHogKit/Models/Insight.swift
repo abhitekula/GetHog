@@ -6,7 +6,7 @@ public struct Insight: Sendable, Decodable, Identifiable {
     public let derivedName: String?
     public let query: InsightQuery?
 
-    /// PostHog's own 8-character handle, e.g. `COaW8hFP`.
+    /// PostHog's own 8-character handle, e.g. `demo0001`.
     ///
     /// The console's URLs are built on this rather than on `id` — `/insights/id`
     /// works too, but every link a user is given carries the short id — and so is
@@ -14,9 +14,8 @@ public struct Insight: Sendable, Decodable, Identifiable {
     /// in a dashboard response is not guaranteed to carry one.
     public let shortID: String?
 
-    /// The author's own one-line explanation. Present on 95 of this project's
-    /// 140 insights, and the only thing on a list row that says what a chart is
-    /// *for* rather than what it draws.
+    /// The author's own one-line explanation, and the only thing on a list row
+    /// that says what a chart is *for* rather than what it draws.
     public let description: String?
 
     /// PostHog's per-user star.
@@ -27,9 +26,8 @@ public struct Insight: Sendable, Decodable, Identifiable {
     public let favorited: Bool
 
     /// When the insight's *definition* last changed, which is not when its data
-    /// was last computed. The list sorts on this because it is the only one of
-    /// the two that every row has: `lastRefresh` is null on all 140 insights in
-    /// the project this was measured against.
+    /// was last computed. The list sorts on this because every row has it while
+    /// `lastRefresh` may be absent.
     public let lastModifiedAt: Date?
     public let createdAt: Date?
 
@@ -56,7 +54,7 @@ public struct Insight: Sendable, Decodable, Identifiable {
     /// type. Rebuilding a request from that would drop the series definitions,
     /// property filters and breakdowns, and return a different insight's numbers
     /// under the user's title. Re-running over a new date range therefore edits
-    /// this verbatim copy instead.
+    /// the stored query object instead.
     public let rawQuery: JSONValue?
 
     /// Raw, shape-tolerant result payload. All polymorphism lives here so the
@@ -157,11 +155,9 @@ public struct Insight: Sendable, Decodable, Identifiable {
             // `aggregated_value` and `data` is empty.
             //
             // `WorldMap` is one of these and belongs here, not in `default`.
-            // Measured against this project's three WorldMap insights, a tile
-            // returns exactly the bar-value shape — `data: []`, `days: []`,
-            // `aggregated_value: 35`, `label: "US"`, `breakdown_value: "US"` —
-            // so falling through to `TimeSeriesStyle(display:)` drew a line
-            // chart with no points. Not an unsupported card: a *broken* one.
+            // It returns the bar-value shape: empty time-series arrays plus an
+            // aggregate, label and breakdown value. Falling through to
+            // `TimeSeriesStyle(display:)` would draw a line chart with no points.
             //
             // It is drawn as bars rather than as a map on purpose. The data is
             // already `country code → count`; MapKit does annotations well and
@@ -169,8 +165,7 @@ public struct Insight: Sendable, Decodable, Identifiable {
             // unreadable even when it renders, and shipping country geometry to
             // draw it would cost megabytes. The bar list also *gains* something
             // the map would not: each row is a breakdown value, and a breakdown
-            // value is drillable to the people behind it — verified exact,
-            // `breakdown: "US"` returns 35 people against a charted 35.
+            // value is drillable to the people behind it.
             case "ActionsBarValue", "ActionsPie", "ActionsTable", "WorldMap":
                 return .barValue(result.seriesDTOs.map(\.asBarValue))
             case "BoldNumber":
@@ -230,10 +225,8 @@ public extension Insight {
     /// The handle the console builds its URLs from, falling back to the numeric
     /// id, which the console also resolves.
     ///
-    /// Both forms are live-verified against `us.posthog.com`: `/insights/COaW8hFP/`
-    /// and `/insights/[REMOVED PRIVATE DATA]/` return the same object. The short id is preferred
-    /// because it is what every link a user is *given* contains, so a link this
-    /// app generates matches one they already have.
+    /// The short id is preferred because it is what shared console links use;
+    /// the numeric id remains the fallback for rows without one.
     var linkID: String { shortID ?? String(id) }
 }
 
@@ -244,10 +237,8 @@ public extension Insight {
 /// what the query itself calls `HogQLQuery` — and a screen should not have to
 /// know that to name a segment.
 ///
-/// Verified against project [REMOVED PRIVATE DATA], whose 140 insights partition exactly:
-/// TRENDS 128, SQL 5, LIFECYCLE 3, FUNNELS 2, RETENTION 1, PATHS 1,
-/// STICKINESS 0. `STICKINESS` is kept despite being empty there — an empty
-/// filter is a fact about one project, not about the API.
+/// `STICKINESS` remains a supported kind even when a collection has no matching
+/// items; an empty result is not evidence that the API vocabulary is smaller.
 public enum InsightKind: String, Sendable, CaseIterable, Identifiable, Hashable {
     case trends, funnels, retention, paths, lifecycle, stickiness, sql
 
@@ -537,12 +528,9 @@ struct FunnelStepDTO: Sendable, Decodable {
 
 /// PostHog's sentinel for "this breakdown had no value".
 ///
-/// It arrives as a literal label, not as null: a live WorldMap insight returns
-/// two rows, `"US"` with 35 and `"$$_posthog_breakdown_null_$$"` with 537 — the
-/// second being every user with no geoip country. Drawn verbatim it is a bar
-/// labelled `$$_posthog_breakdown_null_$$`, which is both unreadable and the
-/// *largest* bar on that chart. This affects every breakdown display, not only
-/// world maps.
+/// It arrives as a literal label rather than null. Rendering it verbatim would
+/// produce an unreadable breakdown label, so it is mapped for every breakdown
+/// display, not only world maps.
 ///
 /// The raw form is kept for the drill-down: `breakdown` in an actors query has
 /// to be the sentinel PostHog sent, not the words shown to a person.

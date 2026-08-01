@@ -73,8 +73,8 @@ struct ErrorsOverview: View {
     /// The file header already said, correctly, that every figure here is folded
     /// out of the page the list is holding — and then the screen printed them as
     /// "Issues" and "Occurrences" with nothing on it naming the page. The query
-    /// asks for the 50 issues with the most people affected, and the recorded
-    /// live response carries `hasMore: true`; on a project past that cut,
+    /// asks for a capped page of issues with the most people affected. When the
+    /// envelope reports more rows,
     /// "Occurrences" is not a partial answer to how many occurrences there were,
     /// it is the sum over a ranked prefix. `ErrorIssueCoverage` explains why the
     /// better remedy — a denominator inside the query, the way

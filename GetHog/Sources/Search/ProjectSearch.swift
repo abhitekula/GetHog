@@ -4,12 +4,11 @@ import GetHogKit
 
 // Search across the whole project, backed by `GET /file_system/`.
 //
-// PostHog's own object index is the only endpoint that answers "what is in this
-// project" without one request per resource — 200 rows in the project this was
-// built against, spanning insights, dashboards, flags, surveys, cohorts, replay
-// playlists and pipeline functions. On a phone that is worth more than any one
-// product screen: it is the only field that reaches everything without the user
-// first knowing which tab an object lives in.
+// PostHog's own object index answers "what is in this project" without one
+// request per resource, spanning insights, dashboards, flags, surveys, cohorts,
+// replay playlists and pipeline functions. On a phone that is worth more than
+// any one product screen: it reaches everything without the user first knowing
+// which tab an object lives in.
 //
 // Everything below the request is deliberately pure. Filtering, grouping and the
 // decision about where a row goes are the parts that can be wrong in a way a
@@ -33,8 +32,8 @@ enum ProjectSearchRoute: Hashable {
     /// largest thing on this screen leaving the app: insights are 140 of the 200
     /// rows PostHog's index returns for this project. `ref` on an insight row is
     /// the `short_id` — verified against both the live index and the demo
-    /// fixture, where every insight row reads `"ref": "COaW8hFP"` beside
-    /// `"href": "/insights/COaW8hFP"` — which is exactly what
+    /// fixture, where every insight row reads `"ref": "demo0001"` beside
+    /// `"href": "/insights/demo0001"` — which is exactly what
     /// `SavedInsightDetailView` resolves from.
     case insight(shortID: String)
     case featureFlag(id: Int)

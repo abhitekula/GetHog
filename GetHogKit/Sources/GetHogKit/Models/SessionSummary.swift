@@ -48,9 +48,8 @@ public struct SessionOutcome: Sendable, Decodable, Hashable {
 
 /// How the session felt, in the model's own vocabulary.
 ///
-/// `successful`, `friction` and `frustrated` are the three values observed
-/// across the live capture. Open-ended because the summariser's prompt is
-/// PostHog's to change and a fourth word must not blank the row that carries it.
+/// Known cases provide tailored presentation, while unknown values remain
+/// displayable if the service vocabulary expands.
 public enum SessionSentimentOutcome: Sendable, Hashable {
     case successful
     case friction
@@ -91,9 +90,8 @@ public enum SessionSentimentOutcome: Sendable, Hashable {
 
 /// The kind of thing that went wrong in a moment of the session.
 ///
-/// Every value below was observed live: `abandonment`, `confusion_loop`,
-/// `dead_click`, `rage_click`, `repeated_error`, `error_cascade`,
-/// `backtracking`, `long_pause`. The list is the model's, so it grows.
+/// Known values receive tailored presentation. Unknown values remain readable
+/// so additions to the service vocabulary do not blank the row.
 public enum SessionSignalKind: Sendable, Hashable {
     case abandonment
     case confusionLoop
@@ -159,8 +157,7 @@ public struct SessionSentimentSignal: Sendable, Decodable, Hashable, Identifiabl
     /// The model's own sentence. Shown verbatim: it is the only part of this
     /// record that says what actually happened.
     public let detail: String
-    /// Observed from 0.3 to 0.9. Clamped for the same reason as
-    /// `frustrationScore` — nothing documents a bound.
+    /// Clamped to the display range for the same reason as `frustrationScore`.
     public let intensity: Double?
     /// Which chapter it happened in, so the signal can be shown against it.
     public let segmentIndex: Int?
@@ -187,10 +184,8 @@ public struct SessionSentiment: Sendable, Decodable, Hashable {
     /// `nil` when the model did not classify the session, which is different
     /// from classifying it as successful.
     public let outcome: SessionSentimentOutcome?
-    /// Observed values across the live capture: 0.0, 0.4, 0.6, 0.7 — a 0…1
-    /// reading at one decimal place. **PostHog documents no bound for it**, so
-    /// this clamps rather than trusting the range: an unclamped 70 would drive a
-    /// proportion meter seventy times past its own track and read as 7000%.
+    /// A normalized score used by a proportion meter. Clamp defensively so an
+    /// unexpected service value cannot draw outside the meter's track.
     public let frustrationScore: Double?
     public let signals: [SessionSentimentSignal]
 
@@ -644,9 +639,7 @@ public struct SessionSummaryDetail: Sendable, Decodable, Identifiable, Hashable 
     public var chapters: [SessionSummaryChapter] {
         guard let summary else { return [] }
 
-        // `event_id` is only an eight-character prefix, so this index is checked
-        // first and the segment index is the fallback. On every session captured
-        // the two agreed.
+        // Event IDs can be abbreviated, so the segment index remains a fallback.
         var eventsByID: [String: SessionSummaryKeyEvent] = [:]
         for action in summary.keyActions {
             for event in action.events where event.eventID != nil {
@@ -729,9 +722,8 @@ enum SessionSummaryText {
         return first.uppercased() + words.dropFirst()
     }
 
-    /// Nothing documents a bound for `frustration_score` or a signal's
-    /// `intensity`; the observed values all sit in 0…1. Clamping keeps a meter
-    /// inside its own track whichever way PostHog changes the scale.
+    /// Clamping keeps proportion meters inside their tracks when service values
+    /// fall outside the supported display range.
     static func clampToUnitRange(_ value: Double) -> Double {
         guard value.isFinite else { return 0 }
         return min(1, max(0, value))

@@ -6,7 +6,7 @@ public struct MeResponse: Sendable, Decodable {
     /// The numeric user id, which is what PostHog means by a *user* assignee.
     ///
     /// Distinct from `distinctID` (an analytics identifier) and from `uuid`.
-    /// Error-tracking assignment sends `{"id": [REMOVED PRIVATE DATA], "type": "user"}`, and this
+    /// Error-tracking assignment sends `{"id": 700101, "type": "user"}`, and this
     /// is the only place the app already knows that number — so "assign to me"
     /// costs no extra request.
     public let userID: Int?
@@ -59,10 +59,10 @@ public struct MeResponse: Sendable, Decodable {
     /// Every organization this credential can see, with the current one
     /// guaranteed present and first.
     ///
-    /// Measured live, `organizations` *does* include the current organization,
-    /// so the merge below is normally a no-op. It is here because the switcher
-    /// is the one control in the app that must never be wrong about where you
-    /// are: if a future response ever omitted it, the alternative is a menu
+    /// The documented response normally includes the current organization, so
+    /// the merge below is usually a no-op. It is here because the switcher is the
+    /// one control in the app that must never be wrong about where you are: if a
+    /// future response ever omitted it, the alternative is a menu
     /// listing organizations that does not list the one whose numbers are on
     /// screen. Identity comes from `organization`, which is the object that
     /// actually carries the projects being displayed.
@@ -115,10 +115,9 @@ public struct Organization: Sendable, Decodable, Identifiable, Hashable {
 
 /// One entry of `/api/users/@me/`'s `organizations` array.
 ///
-/// Deliberately just the two fields. Measured live, the array carries nine —
-/// `slug`, `logo_media_id`, `membership_level`, `is_active` and the rest — and
-/// none of them says anything a switcher needs. What it conspicuously does *not*
-/// carry is `teams`; see `MeResponse.projects`.
+/// Deliberately just the two fields the switcher needs. Other documented
+/// organization metadata is ignored, and `teams` is intentionally absent; see
+/// `MeResponse.projects`.
 public struct OrganizationSummary: Sendable, Decodable, Identifiable, Hashable {
     public let id: String
     public let name: String

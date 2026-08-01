@@ -2,8 +2,8 @@ import Foundation
 
 /// What a comment is for.
 ///
-/// PostHog's serializer documents two values. The live API ships at least a
-/// third — `emoji_reaction` — so an unrecognised type is quarantined rather than
+/// PostHog's serializer may add values such as `emoji_reaction`, so an
+/// unrecognised type is quarantined rather than
 /// dropped: it is still something a colleague wrote, and hiding it makes a
 /// thread read as though replies are missing.
 public enum CommentType: Sendable, Hashable {

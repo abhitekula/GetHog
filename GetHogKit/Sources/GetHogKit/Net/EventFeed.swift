@@ -1,38 +1,13 @@
 import Foundation
 
-// Paging for the events feed.
-//
-// Both types here exist because of one measurement against a live project
-// ([REMOVED PRIVATE DATA], ~91k events, 2026-07-30). The feed's query was:
-//
-//     SELECT … FROM events ORDER BY timestamp DESC LIMIT 50
-//
-// with no lower bound on `timestamp`. Timed cold-cache, five runs each:
-//
-//     no bound, all columns          median 8.53s   succeeded 1/5
-//     no bound, without properties   median 9.38s   succeeded 1/5
-//     7-day bound, all columns       median 0.97s   succeeded 5/5
-//     7-day bound, without properties median 0.78s  succeeded 5/5
-//     24-hour bound, all columns      median 0.55s  succeeded 5/5
-//
-// The failures were PostHog's "Query has hit the max execution time" 504 — the
-// reported symptom exactly. Two conclusions the code below is built on:
-//
-// 1. The lower bound is the entire fix, and dropping the `properties` map is
-//    not part of it: unbounded and lean was, if anything, worse. Width is not
-//    the problem either — even a 730-day bound ran in 2.06s, 3/3. What costs
-//    8s is the *absence* of a bound, which leaves ClickHouse unable to prune
-//    partitions and forces it across the whole retention window.
-// 2. Because the bound is what matters, `properties` stays selected, and the
-//    event detail view keeps working with no second request. The 0.19s it
-//    would save does not buy a round trip per event opened.
+// Paging for the events feed. Every query has a time lower bound so ClickHouse
+// can prune partitions, while retaining `properties` for the detail screen.
 
 /// Where the next page of the events feed resumes.
 ///
-/// The timestamp alone is not a key. Measured on live data, three events share
-/// the microsecond `2026-07-29 21:21:30.322000`; paging with `timestamp < cursor`
-/// across a page boundary that cut that group silently dropped its third row,
-/// and no part of the app would have said a row was missing.
+/// The timestamp alone is not a key: multiple events can share one timestamp.
+/// The UUID is the stable tiebreaker that prevents a boundary from dropping a
+/// row.
 public struct EventCursor: Sendable, Equatable, Hashable {
     public let timestamp: Date
     public let uuid: String

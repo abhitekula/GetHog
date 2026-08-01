@@ -108,13 +108,11 @@ final class SavedInsightStore {
     /// That it is spent *at all* on merely opening a screen is a departure from
     /// the dashboard grid, which stops at the cache. The difference is arity: a
     /// dashboard opens 5–20 insights at once and this opens the one the user
-    /// asked for by name. It is also not hypothetical — measured against project
-    /// [REMOVED PRIVATE DATA], `last_refresh` is null and `result` is null on **all 140** saved
-    /// insights, so a screen that stopped at the cache would draw an empty chart
-    /// every single time.
+    /// asked for by name. A saved definition may have no cached result, so the
+    /// detail screen performs one explicit computation in that case.
     ///
-    /// Nothing is escalated for a kind this app cannot draw. Five of that
-    /// project's insights are `HogQLQuery`, which has no render shape here; a
+    /// Nothing is escalated for a kind this app cannot draw. `HogQLQuery` has no
+    /// render shape here; a
     /// blocking query would buy a card that already says so.
     func loadResults(client: PostHogClient, projectID: Int) async {
         guard let insight, !insight.hasDrawableResult else { return }

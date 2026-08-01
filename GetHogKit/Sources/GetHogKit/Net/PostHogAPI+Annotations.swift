@@ -13,13 +13,9 @@ public extension PostHogAPI {
     // write; see `AnnotationComposer` for the confirmation and the optimistic
     // apply. Nothing in this file asks the user anything.
     //
-    // **Never executed.** The paths and the body below were read out of
-    // PostHog's own OpenAPI document (`GET https://us.posthog.com/api/schema/
-    // ?format=json`, fetched 2026-07-30) and checked against the live *read*
-    // endpoint's response. No POST in this family has been sent from this
-    // machine: the only key available is read-only against a real project, and
-    // confirming a create by sending one is not a test — it is a note written
-    // onto somebody's charts that nothing in this app can then delete.
+    // The paths and body below follow PostHog's OpenAPI document. Tests inspect
+    // the request locally and never send it: confirming a create by sending one
+    // would write a note onto somebody's charts that this app cannot then delete.
 
     /// Creates a dated note that PostHog draws on charts.
     ///
@@ -40,7 +36,7 @@ public extension PostHogAPI {
     /// not "an item on a dashboard". Worse, the *field* that carries the
     /// insight's id is also called `dashboard_item`, while the dashboard's id
     /// goes in `dashboard_id` — so an insight-scoped annotation sends
-    /// `{"scope": "dashboard_item", "dashboard_item": [REMOVED PRIVATE DATA]}` and a
+    /// `{"scope": "dashboard_item", "dashboard_item": 720101}` and a
     /// dashboard-scoped one sends `{"scope": "dashboard", "dashboard_id": …}`.
     /// Reading either name as English gets it backwards.
     ///

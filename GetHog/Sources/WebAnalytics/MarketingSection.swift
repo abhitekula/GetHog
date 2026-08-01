@@ -3,12 +3,9 @@ import SwiftUI
 
 /// One row of the marketing table, already flattened to display strings.
 ///
-/// Kept generic on purpose. `MarketingAnalyticsTableQuery` returns whatever
-/// columns the project's connected ad sources produce, and this project has
-/// none connected — so there is no verified column list to model against.
-/// Naming columns that were never observed would be a guess dressed up as a
-/// schema; rendering the response's own `columns` array is the honest option
-/// and cannot silently mislabel a figure.
+/// Kept generic on purpose. `MarketingAnalyticsTableQuery` returns columns from
+/// connected ad sources, so rendering the response's own `columns` array avoids
+/// guesses and cannot silently mislabel a figure.
 struct MarketingRow: Identifiable, Hashable {
     let id: Int
     let cells: [String]
@@ -45,11 +42,8 @@ enum MarketingTable {
 
 /// Campaign performance, when there is any.
 ///
-/// Verified against project [REMOVED PRIVATE DATA]: the marketing cost table holds zero rows and
-/// no advertising source is connected, so this renders its empty state there.
-/// That state names the actual precondition rather than saying "no data" — the
-/// difference between "you have no campaigns" and "you have not connected an ad
-/// account" is the difference between a shrug and a next step.
+/// The empty state names the relevant precondition rather than merely saying
+/// "no data", giving the reader a useful next step.
 struct MarketingSection: View {
     let columns: [String]
     let rows: [MarketingRow]

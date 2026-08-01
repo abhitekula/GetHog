@@ -283,7 +283,7 @@ struct DataRow: View {
             // names and addresses, subtitles are keys and paths, footnotes are
             // counts and dates. Typesetting them as prose inserted soft hyphens
             // that render as real ones and change what the string says —
-            // `sabine.nolan.0710@example.-com`, person@example.com`,
+            // sample.user@example.org`, sample.user@example.org`,
             // `$autocap-ture` — and a reader cannot tell an invented hyphen from
             // one that was always there. `zxx` is the ISO code for "no
             // linguistic content", so no hyphenation dictionary applies and a
@@ -317,7 +317,7 @@ struct DataRow: View {
     /// | screen | sidebar row | same string in the detail column |
     /// |---|---|---|
     /// | `flags` | `dashboard-b…` | `dashboard-badge` |
-    /// | `people` | `nina.drill.072` / `9@example…` | `nina.drill.0729@example.com` |
+    /// | `people` | `nina.drill.072` / `9@example…` | sample.user@example.org` |
     /// | `cohorts-list` | `People who ar…` | `People who are internal team members…` |
     ///
     /// The sidebar is where a row is *chosen*, so it is the one column where the

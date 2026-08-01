@@ -39,12 +39,12 @@ final class RenderPlaybackController {
     /// picks a row.
     func play(export: RecordingExport, credential: StoredCredential, projectID: Int) async {
         #if DEBUG
-        // Demo mode drives the UI from recorded JSON. The fixtures carry a
+        // Demo mode drives the UI from synthetic JSON. The fixtures carry a
         // render's metadata but no video file, and the demo credential is the
         // literal string "demo" — resolving would send it to PostHog and come
         // back with an auth error that says nothing true about this screen.
         if DemoTransport.isEnabled {
-            failure = "Playback isn't available in demo mode: the recorded responses "
+            failure = "Playback isn't available in demo mode: the demo fixtures "
                 + "carry each render's metadata but no video file."
             return
         }

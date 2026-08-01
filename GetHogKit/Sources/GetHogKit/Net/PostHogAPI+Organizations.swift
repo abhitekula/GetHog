@@ -8,13 +8,9 @@ public extension PostHogAPI {
     ///
     /// `GET /api/organizations/:organization_id/projects/`. Needed because
     /// `/api/users/@me/` hydrates the teams of **one** organization only: its
-    /// `organization` object carries a full `teams` array, while its
-    /// `organizations` array carries summaries — measured live against
-    /// `us.posthog.com`, an entry is exactly
-    /// `{id, name, slug, logo_media_id, membership_level,
-    /// members_can_use_personal_api_keys, is_active, is_not_active_reason,
-    /// is_pending_deletion}` and no projects at all. So a user in two
-    /// organizations could reach the projects of one until this existed.
+    /// `organization` object carries a full `teams` array, while its documented
+    /// `organizations` array carries summaries without projects. So a user in
+    /// two organizations needs this endpoint to reach the second one's projects.
     ///
     /// Returns a `Page<Project>`. The document's item schema is
     /// `ProjectBackwardCompatBasic` — `{access_control, api_token,
@@ -30,16 +26,9 @@ public extension PostHogAPI {
     /// else the user has integrated.
     ///
     /// **A project-scoped personal API key cannot call this, and that is not a
-    /// bug to route around.** Measured live, all three of
-    /// `/api/organizations/`, `/api/organizations/:id/projects/` and
-    /// `/api/projects/` answer HTTP **403** with
-    ///
-    ///     {"type": "authentication_error", "code": "permission_denied",
-    ///      "detail": "API keys with scoped projects are only supported on
-    ///                 project-based endpoints."}
-    ///
-    /// while `/api/users/@me/` answers 200 for the same key. So the failure is
-    /// a property of the *key*, not of the request, and no amount of retrying
+    /// bug to route around.** Organization endpoints reject project-scoped keys,
+    /// so the failure is a property of the key rather than a transient request
+    /// failure, and no amount of retrying
     /// or falling back changes it. `AppModel` says so in those words rather
     /// than showing an organization whose projects it then lists as empty —
     /// this app treats showing the wrong project's numbers as a correctness

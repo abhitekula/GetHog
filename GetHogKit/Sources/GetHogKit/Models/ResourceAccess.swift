@@ -10,16 +10,15 @@ import Foundation
 /// The cases are separated by **remedy**, not by HTTP status, because the
 /// remedies genuinely differ and pointing someone at the wrong one wastes their
 /// time. Editing an API key cannot grant an organisation role. Nothing at all
-/// fixes an endpoint that refuses personal keys as a category. Probing the live
-/// API turned up four distinct walls where the app previously modelled two.
+/// fixes an endpoint that refuses personal keys as a category. The service can
+/// report four distinct access walls, each with a different remedy.
 public enum ResourceAccessState: Sendable, Equatable {
     case loading
 
     /// PostHog denied a named resource. Fixed by an organisation admin granting
     /// role access, *not* by editing the API key.
     ///
-    /// Note this arrives as HTTP **400**, not 403 — verified against the live
-    /// API for both `logs` and `tracing`.
+    /// The service reports this condition as HTTP **400**, not 403.
     case denied(resource: String)
 
     /// The personal API key lacks a scope. Fixed by the user editing their key,

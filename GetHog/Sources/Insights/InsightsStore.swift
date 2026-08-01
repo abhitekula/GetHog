@@ -4,10 +4,9 @@ import GetHogKit
 
 /// The saved-insight library's data.
 ///
-/// Paged, and paged *properly*, because this is the first list in the app where
-/// one page is not the whole thing: the project this was built against holds 140
-/// saved insights against 14 dashboards, and `limit=100` — the app's default
-/// everywhere else — silently loses 40 of them.
+/// Paged, and paged *properly*, because a project's saved insights can exceed
+/// `limit=100` — the app's default everywhere else — and stopping after one
+/// page silently loses the rest.
 ///
 /// Everything that narrows the list is a server round trip rather than a local
 /// filter, which is the opposite of `ProjectSearchStore` next door. The reason is
@@ -153,9 +152,8 @@ final class InsightsStore {
     /// inside each half. It is stable across pages for the same reason: a row
     /// keeps its place when the page after it arrives.
     ///
-    /// The project this was measured against has **zero** favourites, so this
-    /// section is empty there and the screen must not read as broken because of
-    /// it — which is why the heading only appears when it has rows under it.
+    /// A project can have no favourites, so this section must not read as broken
+    /// when it is empty. The heading therefore appears only with rows under it.
     var favourites: [Insight] { insights.filter(\.favorited) }
     var others: [Insight] { insights.filter { !$0.favorited } }
 

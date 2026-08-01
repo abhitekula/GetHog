@@ -37,7 +37,7 @@ enum PostHogLink: Hashable, Sendable {
     /// A saved insight, named the way the console names it.
     ///
     /// The payload is `shortID` because that is what a console URL carries — an
-    /// 8-character handle like `COaW8hFP`, which is also `file_system`'s `ref`
+    /// 8-character handle like `demo0001`, which is also `file_system`'s `ref`
     /// for an insight row. It is a `String` rather than an `Int` for the same
     /// reason a session id is: it is not a number and parsing it as one would
     /// drop every real link.

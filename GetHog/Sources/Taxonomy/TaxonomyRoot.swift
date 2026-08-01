@@ -42,11 +42,8 @@ final class TaxonomyStore {
     /// Event *property* definitions, loaded only when that half of the screen is
     /// asked for.
     ///
-    /// Not folded into `load`: this project has 386 property definitions against
-    /// 75 events, and paying for them on every visit to a screen most people open
-    /// to look at events spends an organisation-wide budget on a list nobody
-    /// asked to see. The rate limit here is shared with the user's production
-    /// pipeline, so "fetch it in case" is not free.
+    /// Not folded into `load`: property definitions are fetched only when their
+    /// screen is requested, avoiding unnecessary network work.
     var properties: [PropertyDefinitionSummary] = []
     /// The project's true property total, which is not `properties.count` —
     /// the request is limited and this is the figure the page envelope reported.
@@ -96,12 +93,8 @@ final class TaxonomyStore {
 
     /// Event property definitions, in the order PostHog returns them.
     ///
-    /// `type` is left at its default. Measured, and confirmed against the
-    /// instance's own OpenAPI document, that default is `event` — the parameter
-    /// has `"default": "event"` there and the count with it and without it is the
-    /// same 386. Person, group and session properties are a different table and
-    /// a different question; `PropertyScope` exists for when this screen grows
-    /// them, and pretending one list covers all four would mislabel every row.
+    /// `type` is left at its documented `event` default. Person, group, and
+    /// session properties are separate resources and must not be mislabeled.
     ///
     /// `exclude_hidden` is likewise left off, and that is the load-bearing
     /// choice: it is declared `"default": false`, so hidden definitions **are**
@@ -136,8 +129,7 @@ final class TaxonomyStore {
     }
 }
 
-/// What data this project actually has: events ranked by volume, and what a
-/// human has curated on top of them.
+/// Events ranked by volume, alongside their curation state.
 ///
 /// Two totals appear here on purpose. PostHog's taxonomy query counts events
 /// received in the **last 30 days**; the event definitions list counts every
@@ -164,10 +156,8 @@ struct TaxonomyRoot: View {
     ///
     /// This screen is one of `AppTab.secondary`, so it is hosted by a sidebar
     /// `Tab` above the size-class boundary and by the search stack below it. A
-    /// `NavigationLink(value:)` appended to whichever stack the host provided,
-    /// and that stack stops existing when the host does: measured with an event
-    /// open, dragging the window 834 → 375 → 834pt collapsed `navigationBars`
-    /// to `["Taxonomy"]` and it stayed there.
+    /// `NavigationLink(value:)` attaches to whichever host stack is active, and
+    /// that stack can be replaced across a size-class transition.
     private var selection: Binding<TaxonomyEvent?> {
         Binding(
             get: { openDetails[.taxonomy] as? TaxonomyEvent },
@@ -545,13 +535,8 @@ struct TaxonomySummaryCard: View {
 
     /// Side by side normally, one above the other at accessibility sizes.
     ///
-    /// The same reflow as `FunnelStepRow` and `InsightLegend`, measured here at
-    /// AX5: two columns of half a phone left each tile a strip a few characters
-    /// wide, so `DEFINED` was set as `DE-` / `FINED` and the window under
-    /// `ACTIVE` read `last 30` / `days`. A stat whose own label has to be
-    /// reassembled by the reader is not a stat. `SectionLabel` no longer lets
-    /// the hyphen in; this is the other half, and it is the half that gives
-    /// each figure a line wide enough to be read as one.
+    /// At accessibility sizes, each statistic takes its own line so labels and
+    /// window text remain readable.
     @ViewBuilder
     private var stats: some View {
         let active = stat(
@@ -673,17 +658,15 @@ struct TaxonomyPropertyDefinitionRowView: View {
     }
 
     /// Verified and hidden are mutually exclusive in PostHog, so this reads as
-    /// one state rather than two flags — and an ordinary property gets no pill,
-    /// because "not verified" on 380 of 386 rows is noise.
+    /// one state rather than two flags; ordinary properties get no noisy pill.
     private var curationAccessory: RowAccessory {
         if definition.isHidden { return .pill("Hidden", .secondary) }
         if definition.isVerified { return .pill("Verified", Theme.Status.good) }
         return .none
     }
 
-    /// A property PostHog has not typed says so. Measured: 57 of this project's
-    /// 386 come back with `property_type: null`, and printing "Unknown" for them
-    /// would be a claim the API never made.
+    /// A property the service has not typed says so; "Unknown" would claim more
+    /// than the API supplied.
     private var typeText: String {
         guard let type = definition.propertyType else { return "Not typed by PostHog" }
         return definition.isNumerical ? "\(type) · numerical" : type

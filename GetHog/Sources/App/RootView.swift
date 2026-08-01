@@ -5,12 +5,10 @@ enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     /// The saved-insight library.
     ///
-    /// A screen of its own rather than a corner of Dashboards, because the two
-    /// collections are not the same size and never were: the project this was
-    /// built against holds 140 saved insights against 14 dashboards, and an
-    /// insight saved from the console's own editor belongs to no dashboard at
-    /// all — so before this tab existed, the app could not reach it by any
-    /// route.
+    /// A screen of its own rather than a corner of Dashboards, because saved
+    /// insights and dashboards are different collections. An insight saved from
+    /// the console's own editor can belong to no dashboard at all, so before
+    /// this tab existed the app could not reach it by any route.
     case insights
     case webAnalytics, clickmap, people, sql
     case errorTracking, sessionSummaries, tracing, logs
@@ -29,16 +27,8 @@ enum AppTab: String, Hashable, CaseIterable {
     /// has to be the way to every screen in `AppTab.secondary` — Settings
     /// included, since the index is the only route to it on a phone.
     ///
-    /// Named rather than counted, here and below, and that is a correction:
-    /// this said "the other 26 screens" while `secondary` held 30. A count
-    /// written into prose goes stale the first time a screen is added and
-    /// nothing fails when it does, so the two sentences that stated one now
-    /// point at the array instead.
-    ///
-    /// Declaring search as a sixth `Tab` — even with `TabRole.search`, which
-    /// reads as though it sits outside the bar — simply did not appear on
-    /// iPhone 17 running iOS 26: the bar drew
-    /// `Dashboards · Events · Sessions · Flags · More` and search was nowhere.
+    /// Screens are named through the array rather than counted in prose, so the
+    /// explanation stays current as screens are added.
     ///
     /// So they are one surface. The index already had a search field over the
     /// screen names; it now searches the project's objects in the same breath,
@@ -123,10 +113,8 @@ enum AppTab: String, Hashable, CaseIterable {
         case .events: "bolt"
         case .sessions: "rectangle.stack"
         case .flags: "flag"
-        // The same glyph a line-chart tile carries in `TileStyle`, which is what
-        // 48 of this project's 128 trends insights render as. Checked against
-        // `UIImage(systemName:)` by `SymbolNameTests`, like every other name
-        // here — this switch is where three invented symbol names once shipped.
+        // The same glyph used for line-chart tiles and verified by
+        // `SymbolNameTests`.
         case .insights: "chart.xyaxis.line"
         case .webAnalytics: "globe"
         case .clickmap: "cursorarrow.click.2"
@@ -178,7 +166,7 @@ enum AppTab: String, Hashable, CaseIterable {
     ///
     /// The presentation is hoisted because a sheet **cannot** be driven from
     /// inside a secondary screen across the size-class boundary. See
-    /// `RootView.presentedDetail` for what was measured.
+    /// `RootView.presentedDetail` for the shared presentation rationale.
     var presentsDetailAsSheet: Bool {
         switch self {
         case .llm, .pipelines, .experiments, .surveys: true
@@ -355,14 +343,10 @@ struct TabRootView: View {
 /// `TabRootView` — and every `@State` in the screen underneath it — from
 /// scratch.
 ///
-/// Measured on Errors, iPad Pro 11 M5, by dragging the iPadOS 26 window
-/// grabber: with "ReferenceError" open, `navigationBars` went
-/// `["ReferenceError", "Errors"]` at 834pt → `["Errors"]` at 375pt → back to an
-/// unnamed detail at 834pt. The open issue was gone in both directions and the
-/// list row was no longer `Selected`. Dashboards — a *primary* tab, one host at
-/// both widths — kept `["My App Dashboard", "Dashboards"]` across the identical
-/// resize, which is what localises the fault to the double hosting rather than
-/// to anything about split views.
+/// Moving between size classes rebuilds the secondary host. Without shared
+/// state, the open detail disappears in both directions while primary tabs,
+/// which retain one host, keep their selection. That localises the fault to the
+/// double-hosting boundary rather than to split-view navigation itself.
 ///
 /// This object is owned by `RootView`, which straddles the boundary, so the two
 /// hosts can hand the open detail to each other. `AnyHashable` because every
@@ -375,11 +359,8 @@ struct TabRootView: View {
 /// * A screen that *pushes* presents it itself, with
 ///   `navigationDestination(item:)` bound to this box. The destination lives in
 ///   whichever stack currently hosts the screen, and it is rebuilt from the
-///   value on the far side of a resize. Measured, and it is the fact the whole
-///   arrangement rests on: tearing a stack down does **not** write `nil` back
-///   through an item binding, so the value survives the swap. Support,
-///   Taxonomy, Summaries, Renders, Templates and Groups each held their open
-///   detail through four crossings at 834 ⇄ 375pt.
+///   value on the far side of a resize. Tearing down the stack does **not** write
+///   `nil` through the item binding, so the value survives the host swap.
 /// * A screen that shows a **sheet** cannot present it itself. A sheet is a
 ///   presented view controller, its dismissal is a real event, and the resize
 ///   dismisses it — writing `nil` back through whatever drove it and destroying
@@ -538,19 +519,10 @@ struct RootView: View {
                 // never rebuilds, rather than inside the four screens that own
                 // these details. See `presentedDetail`.
                 //
-                // The two lifecycle controllers are injected **outside** this, at
-                // the end of the chain, and the ordering is the whole of it —
-                // measured, from a crash. `.environment(_:)` supplies its own
-                // subtree, and a `.sheet` attached *outside* an `.environment` is
-                // not in that subtree: the presented content inherits the
-                // environment as it stood where the sheet modifier sits. With the
-                // injections placed here, before `.sheet`, `ExperimentDetailSheet`
-                // read an absent `ExperimentLifecycleController` and SwiftUI's
-                // `EnvironmentValues` subscript trapped — the app died on
-                // presentation, with no GetHog frame on the stack because the
-                // lookup happens in `DynamicBody.updateValue` before any body
-                // runs. `AppModel` never showed this because it is injected above
-                // `RootView` entirely.
+                // The lifecycle controllers are injected before `.sheet` because
+                // a presented view inherits the environment at the modifier site.
+                // Attaching the sheet outside those injections would leave its
+                // content without the required lifecycle controllers.
                 .sheet(item: presentedDetail) { DetailSheetView(presented: $0) }
                 .onAppear {
                     restorePushedTab()
@@ -678,8 +650,7 @@ struct RootView: View {
         }
     }
 
-    /// The fifth tab, at both widths: an ordinary `Tab`, because that is the only
-    /// arrangement observed to actually draw on iPhone.
+    /// The index tab uses an ordinary `Tab` at both widths.
     ///
     /// It owns the stack, our list, our chrome. SwiftUI's generated "More" list
     /// is what this replaces; `ScreenIndexSections` records what that list cost.
@@ -731,8 +702,7 @@ struct RootView: View {
     /// The stack a screen navigates in.
     ///
     /// Ownership sits here rather than in the roots because a root that carried
-    /// its own stack drew a second navigation bar the moment anything pushed it —
-    /// which is what "More" did to 24 screens on iPhone.
+    /// its own stack would draw a redundant navigation bar when content pushed.
     @ViewBuilder
     private func container(for tab: AppTab) -> some View {
         if tab.ownsNavigationContainer {
@@ -753,18 +723,8 @@ struct RootView: View {
     /// the screen: `navigationDestination(item:)` reads `OpenDetails`, and when
     /// the size class swaps hosts the destination is simply rebuilt from the
     /// value on the other side. A sheet cannot be driven that way, and two
-    /// attempts to do it were measured failing:
-    ///
-    /// 1. `.sheet(item:)` inside the screen, bound straight to `OpenDetails`.
-    ///    Survived one crossing and failed the next: the resize dismisses the
-    ///    presented controller, and the dismissal writes `nil` back through the
-    ///    binding — into the very box that was supposed to carry the record
-    ///    across.
-    /// 2. The same, mirrored into `@State` and cleared from `onDismiss`. Passed
-    ///    a three-stage 834 → 375 → 834 triple and failed on the **fourth**
-    ///    crossing, in the worst possible way: the sheet was still on screen at
-    ///    834pt with its backing value already cleared, so the next thing to
-    ///    read `OpenDetails` found nothing behind a visible screen.
+    /// nested presentation would clear its state when the host sheet is
+    /// dismissed during a size-class transition.
     ///
     /// Both failures are the same fact — a sheet's teardown is indistinguishable
     /// from a user dismissing it, and the teardown happens on a beat the screen
@@ -772,12 +732,6 @@ struct RootView: View {
     /// never tears down. `RootView` straddles the boundary; only the *content*
     /// of its `TabView` changes shape when the size class does. Nothing dismisses
     /// this sheet but a user, and a user's dismissal is the only `nil` it writes.
-    ///
-    /// Measured after the move, on iPad Pro 11" portrait: with "30-Day NPS"
-    /// open, four crossings — 834 → 375 → 834 → 375 → 834pt — left
-    /// `navigationBars` at `["30-Day NPS", "Surveys"]` at every stage, and again
-    /// five seconds after each resize had settled. The late re-read is the point:
-    /// attempt 2 above looked correct the instant a drag ended.
     ///
     /// Keyed on `selectedTab` because that is what names the showing screen at
     /// both widths — the sidebar selects it in regular width and the search
@@ -934,10 +888,9 @@ struct RootView: View {
     /// Goes where a link points, or explains why it can't.
     ///
     /// The project is settled before the object, and a project this key cannot
-    /// see stops the whole thing. Resolving the object id against whichever
-    /// project happened to be selected would draw one project's dashboard 128
-    /// from another project's data — which is the reason the project switcher is
-    /// on every screen in the first place.
+    /// see stops the whole thing. Resolving an object ID against a different
+    /// project would draw unrelated data, so the project switcher is available
+    /// on every screen.
     ///
     /// A *successful* switch says nothing. The project's name is the navigation
     /// subtitle of every screen in this app, so an alert announcing it would
@@ -1040,11 +993,8 @@ struct ProjectSwitcher: ToolbarContent {
     /// It used to be a plain `Text` after a `Divider`, which is the shape a menu
     /// uses for a second group of *commands* — same size, same weight, same
     /// leading inset as the project row above it, with only a missing checkmark
-    /// to say it was not selectable. Captured on a phone, the menu read
-    /// "✓ Default project / ——— / Example Org", which is a menu offering two
-    /// projects. This app treats showing the wrong project's numbers as a
-    /// correctness bug, so a switcher that appears to offer a project that does
-    /// not exist is the one place that misreading is expensive.
+    /// to say it was not selectable. A heading styled like an entry can appear
+    /// to be another selectable project, which risks showing the wrong data.
     ///
     /// A titled `Section` is the system's own vocabulary for "these items belong
     /// to this": drawn smaller and grey, above the selectable run rather than

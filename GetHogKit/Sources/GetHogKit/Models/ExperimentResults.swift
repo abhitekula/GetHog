@@ -2,19 +2,15 @@ import Foundation
 
 // Experiment readout models.
 //
-// Shapes here are taken from the OpenAPI document this deployment publishes at
-// `GET /api/schema/` — `ExperimentQueryResponse`, `ExperimentExposureQueryResponse`,
+// Shapes here are taken from PostHog's OpenAPI document —
+// `ExperimentQueryResponse`, `ExperimentExposureQueryResponse`,
 // `ExperimentVariantResultBayesian`, `ExperimentVariantResultFrequentist`,
 // `ExperimentStatsBaseValidated` and their enums. That document is the server
 // describing itself, so it is a measurement rather than prose documentation.
 //
-// What could *not* be measured: project [REMOVED PRIVATE DATA] has zero experiments, and
-// `ExperimentQuery` rejects a request without `experiment_id` ("experiment_id is
-// required", HTTP 400), so no live results payload was ever observed. The
-// fixtures are built to the published schema and are labelled as such. Every
-// field below is therefore decoded defensively: absent is never a decode error,
-// and an unrecognised enum value degrades to a stated unknown rather than
-// throwing.
+// The published schema defines the supported response shape. Every field below
+// is decoded defensively: absent is never a decode error, and an unrecognised
+// enum value degrades to a stated unknown rather than throwing.
 
 // MARK: - Statistical method
 

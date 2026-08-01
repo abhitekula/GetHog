@@ -15,19 +15,13 @@ import Foundation
 // at the point of use says the answer is old. `SavedQuery.isServingStaleData`
 // is the whole reason this type exists.
 //
-// **Field provenance.** Project [REMOVED PRIVATE DATA] has zero saved queries and zero jobs, so
-// no populated payload was available to record. Every field, every nullability
-// and every enum member below was read from the contract this deployment
-// publishes at `GET https://us.posthog.com/api/schema/?format=json` — the
+// Every field, nullability rule and enum member below comes from the public API
+// schema — the
 // `DataWarehouseSavedQueryMinimal`, `DataWarehouseSavedQuery`, `DataModelingJob`,
 // `SavedQueryStatusEnum`, `DataModelingJobStatusEnum` and
-// `SavedQuerySyncFrequencyEnum` components — and cross-checked against the
-// column list the live `system.data_modeling_views` and `system.data_modeling_jobs`
-// tables report (measured 2026-07-30; both answered HTTP 200 with the columns
-// named here and zero rows). What that pins is the *contract*, not the server's
-// real emission: a divergence between the two would not be caught here. Every
-// decode below is therefore lenient — an unrecognised status degrades to
-// `.unknown` rather than failing the page.
+// `SavedQuerySyncFrequencyEnum` components. The contract, rather than any
+// particular server response, guides these models, so every decode remains
+// lenient: an unrecognised status degrades to `.unknown` rather than failing.
 
 // MARK: - Saved query status
 
@@ -325,8 +319,7 @@ public struct SavedQuery: Sendable, Decodable, Identifiable, Hashable {
         }
         // Contract says `array of object, additionalProperties: true` — the
         // members are not pinned there, so this is the one field in this type
-        // whose inner shape is genuinely unknown, on top of the general caveat
-        // that none of it has been seen live. `WarehouseColumn` already accepts
+        // whose inner shape is genuinely unknown. `WarehouseColumn` accepts
         // either `key` or `name` and defaults the rest, so a column list in an
         // unexpected shape yields placeholder entries rather than an
         // undecodable page. If it turns out to differ, this is where it shows.
@@ -536,9 +529,8 @@ extension SavedQuery {
     /// newest job row still records a failure. When they disagree the job is the
     /// primary record — it is the thing that either produced rows or did not.
     ///
-    /// Unverifiable against this deployment: project [REMOVED PRIVATE DATA] has zero saved
-    /// queries and zero jobs, so the disagreement has never been observed here.
-    /// It is reported as a caveat on screen, not as a diagnosis.
+    /// The two records may disagree while a job is transitioning. It is reported
+    /// as a caveat on screen, not as a diagnosis.
     public func disagreesWith(latestJob: DataModelingJob?) -> Bool {
         guard let latestJob, isMaterialized else { return false }
         return latestJob.didFail && !isServingStaleData

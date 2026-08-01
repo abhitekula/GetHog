@@ -116,7 +116,7 @@ struct PeopleRoot: View {
     /// stack below it — see `OpenDetails`. Crossing the boundary rebuilds the
     /// screen in the other host, which threw `@State` away: measured at
     /// 834→375→834pt on iPad Pro 11 M5 with a person open, `navigationBars` went
-    /// `["nina.drill.0729@example.com", "People"]` → `["People"]` → an *unnamed*
+    /// `["sample.user@example.org", "People"]` → `["People"]` → an *unnamed*
     /// detail, against Dashboards — a primary tab, one host at both widths —
     /// holding `["My App Dashboard", "Dashboards"]` across the identical drag.
     private var selection: Binding<PersonSummary?> {
@@ -506,7 +506,7 @@ struct PersonRowView: View {
             )
         )
         // Nothing in this row is prose, and typesetting it as if it were put a
-        // hyphen inside an address: person@example.com` wrapped onto a
+        // hyphen inside an address: sample.user@example.org` wrapped onto a
         // second line reads as a different domain, which on a screen whose whole
         // job is identifying people is a lie rather than a blemish. `zxx` is the
         // code for "no linguistic content", so no hyphenation dictionary applies

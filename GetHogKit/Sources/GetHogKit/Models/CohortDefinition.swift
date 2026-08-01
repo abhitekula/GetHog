@@ -3,24 +3,17 @@ import Foundation
 /// What a cohort *means*: the tree of conditions PostHog evaluates to decide who
 /// is in it.
 ///
-/// **Where the shape came from.** `GET /api/projects/:id/cohorts/` on the live
-/// project, and the OpenAPI document the same host serves at `/api/schema/` —
-/// which turned out to define this precisely, under `CohortFilters`,
+/// **Where the shape comes from.** PostHog's public OpenAPI schema defines it
+/// under `CohortFilters`,
 /// `CohortFilterGroup`, `PersonFilter`, `PersonMetadataFilter`, `BehavioralFilter`
-/// and `CohortFilter`. Both were read on 30 Jul 2026. The observed cohort is
-/// reproduced in `GetHog/Resources/DemoData/cohorts.json` with its values
-/// scrubbed; what it exercises is nesting, `AND`/`OR` mixing, `icontains`,
-/// `exact`, and an array-valued condition.
+/// and `CohortFilter`. The deterministic example in
+/// `GetHog/Resources/DemoData/cohorts.json` exercises nesting, `AND`/`OR`
+/// mixing, `icontains`, `exact`, and an array-valued condition.
 ///
-/// **What was *not* observed, and is therefore built from the schema alone.** The
-/// project this was written against holds exactly one cohort, and it is
-/// person-property only. No behavioural condition, no nested-cohort reference,
-/// no static cohort and no cohort mid-calculation existed to record. Those
-/// branches are decoded and phrased from `BehavioralFilter` and `CohortFilter` in
-/// the served schema, and they are unit-tested against payloads built to that
-/// schema — which is a weaker claim than the property branch's and is why it is
-/// written here rather than left for a reader to assume. If one of those
-/// branches is wrong, the failure it produces is the *renderable* one:
+/// Behavioural conditions, nested-cohort references, static cohorts, and
+/// recalculation states are decoded from that schema and tested with fictional
+/// payloads. If one of those branches is wrong, the failure it produces is the
+/// *renderable* one:
 /// `CohortCondition.unrenderable` and `CohortDefinition.unrenderableTypes`, not a
 /// confident sentence about the wrong thing.
 ///
@@ -254,9 +247,8 @@ public struct CohortPropertyCondition: Sendable, Hashable, Identifiable {
 
 /// A condition on what the person has *done*.
 ///
-/// Decoded and phrased from the `BehavioralFilter` schema the live host serves;
-/// see the note on `CohortDefinition` for why that is a weaker provenance than
-/// the property branch's and what happens when it is wrong.
+/// Decoded and phrased from PostHog's public `BehavioralFilter` schema. Unknown
+/// cases remain renderable as unsupported data instead of being mislabelled.
 public struct CohortBehaviouralCondition: Sendable, Hashable, Identifiable {
 
     public let id: String
@@ -346,8 +338,8 @@ public struct CohortBehaviouralCondition: Sendable, Hashable, Identifiable {
         case "performed_event_multiple":
             // `countPhrase`, not `phrase`. The property phrasing reads "is at
             // least", which is right beside a property name and wrong inside a
-            // sentence: "has performed event vendor viewed **is at least** 5
-            // times" — photographed exactly like that before this split existed.
+            // sentence: "has performed event checkout completed **is at least**
+            // 5 times". The count-specific phrase keeps the sentence grammatical.
             let times = operatorValue.map {
                 "\(CohortOperatorPhrase.countPhrase(for: rawOperator)) \($0) \($0 == 1 ? "time" : "times")"
             }

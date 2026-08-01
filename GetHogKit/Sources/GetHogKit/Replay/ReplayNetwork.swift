@@ -109,8 +109,7 @@ public struct ReplayNetworkEntry: Sendable, Hashable, Identifiable {
 
 extension ReplayNetworkEntry {
 
-    /// rrweb's network plugin name, as PostHog emits it. Verified against
-    /// captured `blob_v2` data rather than taken from the rrweb docs.
+    /// rrweb's network plugin name, exercised by deterministic replay fixtures.
     static let pluginName = "rrweb/network@1"
 
     /// Builds an entry from one element of `data.payload.requests`.
@@ -120,14 +119,13 @@ extension ReplayNetworkEntry {
     ///
     /// - **`entryType: "serverTiming"`.** PostHog flattens a resource's
     ///   `serverTiming` sub-entries into the same array as its parent. They
-    ///   carry a bare token for a name — `cfEdge`, `cfOrigin`, `cfWorker` — and
-    ///   in one captured recording there were 170 of them against 273 real
-    ///   requests. Rendered, they are waterfall rows for things that were never
-    ///   fetched.
+    ///   carry a bare token for a name — such as a server-timing metric — rather
+    ///   than a fetched URL. Rendered, they would be waterfall rows for things
+    ///   that were never fetched.
     /// - **A name that is not a URL.** Belt and braces for the same class of
     ///   entry, and cheap.
     ///
-    /// The three producers observed in real data:
+    /// The producer shapes supported by the replay payload:
     ///
     /// | | `entryType` | `method` | status field | sizes |
     /// |---|---|---|---|---|
@@ -136,8 +134,8 @@ extension ReplayNetworkEntry {
     /// | fetch/XHR wrapper | *absent* | yes | `status` | no |
     /// | merged XHR | `resource` | yes | both | yes |
     ///
-    /// `status` and `responseStatus` were never observed to disagree; `status`
-    /// is preferred because the wrapper is the only producer that has it.
+    /// `status` is preferred because the wrapper is the only producer that has
+    /// it; resource and navigation entries fall back to `responseStatus`.
     static func make(entry: JSONValue, id: String) -> ReplayNetworkEntry? {
         guard entry["entryType"]?.stringValue != "serverTiming" else { return nil }
         guard let url = entry["name"]?.stringValue, url.contains("://") else { return nil }
@@ -176,13 +174,11 @@ extension ReplayNetworkEntry {
 
     /// Milliseconds the request took.
     ///
-    /// `duration` is preferred, but a navigation entry reports `0` for it even
-    /// when the document took four seconds —
+    /// `duration` is preferred, but an in-progress navigation entry can report
+    /// `0` for it even when `endTime` is already later —
     /// `PerformanceNavigationTiming.duration` is measured to `loadEventEnd`,
-    /// which is still zero while the page is loading. Measured on real captured
-    /// data: `duration: 0` beside `endTime: 3863`. Trusting `duration` there
-    /// draws the document as instantaneous, which is exactly the row a person
-    /// opened the waterfall to look at.
+    /// which is still zero while the page is loading. Trusting that zero would
+    /// draw a non-instantaneous document request as instantaneous.
     private static func duration(_ entry: JSONValue) -> Double {
         if let reported = entry["duration"]?.doubleValue, reported.isFinite, reported > 0 {
             return reported

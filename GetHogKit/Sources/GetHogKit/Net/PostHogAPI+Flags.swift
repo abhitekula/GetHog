@@ -3,12 +3,10 @@ import Foundation
 /// The one edit GetHog makes to a feature flag's `filters`, expressed as a
 /// transformation of the verbatim JSON rather than of a decoded model.
 ///
-/// **Never executed.** Read out of PostHog's `FeatureFlagSerializer`
-/// (`validate_filters`, `update`) on master, fetched 2026-07-31, and checked
-/// against the live *read* of flag [REMOVED PRIVATE DATA] on the same day. The key available here
-/// is read-only; no PATCH in this family has been sent from this machine, so
-/// everything below is documentation-derived and the shape of the request is all
-/// that this project's tests can establish.
+/// **Never executed by the deterministic test suite.** This is derived from
+/// PostHog's `FeatureFlagSerializer` (`validate_filters`, `update`) and exercised
+/// only with synthetic request and response shapes. No private tenant values are
+/// required to establish the transformation below.
 ///
 /// ## Why this is a JSON transformation and not a model encode
 ///
@@ -19,7 +17,7 @@ import Foundation
 /// `Decodable`-only and models a strict subset, missing at minimum `payloads`,
 /// `early_exit`, `aggregation_group_type_index`, per-group `variant`, per-group
 /// `aggregation_group_type_index`, property `group_type_index` and property
-/// `cohort_name`. Two of those were present on the one flag read live.
+/// `cohort_name`. Synthetic fixtures preserve representative unknown keys.
 ///
 /// Widening the model would not fix it. The failure mode is *unknown* keys, and a
 /// type cannot enumerate the keys PostHog adds next year. Carrying the bytes can.

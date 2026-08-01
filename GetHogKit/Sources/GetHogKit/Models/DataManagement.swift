@@ -3,9 +3,8 @@ import Foundation
 // The two data-management resources a phone can usefully read: actions (saved
 // event definitions) and annotations (dated notes drawn on charts).
 //
-// Project [REMOVED PRIVATE DATA] has neither, so unlike the rest of the kit these decoders are
-// written against PostHog's documented response shape rather than a capture.
-// Everything optional is treated as genuinely optional for that reason.
+// These decoders follow PostHog's documented response shape. Everything optional
+// is treated as genuinely optional.
 
 // MARK: - Author
 

@@ -22,21 +22,15 @@ public struct QueryResponse: Decodable, Sendable {
     public let rows: [QueryRow]
     /// Whether PostHog is holding rows back.
     ///
-    /// **A HogQL query with no `LIMIT` of its own is silently capped at 100.**
-    /// Measured: a `system.information_schema.tables` scan of a 141-table
-    /// project returned 100 rows, HTTP 200, no error and no warning — the only
-    /// evidence anywhere in the payload is this flag and `appliedLimit` below.
-    /// Until they were decoded, nothing in this client could tell a complete
-    /// answer from the first hundredth of one, and every caller that omitted a
-    /// `LIMIT` was free to present a prefix as the whole set.
+    /// A HogQL query with no `LIMIT` of its own can be capped by PostHog. The
+    /// envelope's flag and `appliedLimit` are the only completeness signals.
     ///
     /// `false` when absent, which is the safe reading **provided the caller
     /// remembers what absence means**: PostHog omits both fields entirely for a
     /// query that wrote its own `LIMIT`, reached it or not — so `false` here is
     /// routinely "no cap of mine applied" rather than "there was no more". See
     /// `isTruncated`, which carries the measurement and what to do about it. A
-    /// `nil` would have to be handled at every call site to mean anything, and a
-    /// caller that ignores it is worse off than one told plainly there is more.
+    /// Callers that write their own limit compare it with the raw row count.
     public let hasMore: Bool
     /// The cap PostHog actually applied, whether or not this query asked for one.
     public let appliedLimit: Int?
@@ -49,14 +43,7 @@ public struct QueryResponse: Decodable, Sendable {
     /// reporting any count or total. That overstates it in the direction that
     /// matters: `false` here does not mean the result is complete.
     ///
-    /// Measured on this deployment, and recorded at greater length on
-    /// `PostHogAPI.groupEventBreakdown`. The same query, three ways:
-    ///
-    ///     no LIMIT,  63 rows of 63    hasMore: false, limit: 100
-    ///     no LIMIT, 100 rows of 423   hasMore: true,  limit: 100
-    ///     LIMIT 200, 200 rows of 423  neither field present
-    ///
-    /// The third line is the whole point. PostHog reports only the cap *it*
+    /// PostHog reports only the cap *it*
     /// applied; a `LIMIT` the caller wrote is the caller's business and the
     /// envelope says nothing about it, **even when that limit was reached and
     /// rows were genuinely withheld**. Most builders in this package write an
@@ -78,23 +65,8 @@ public struct QueryResponse: Decodable, Sendable {
     /// - **A total, a mean or a share** — neither signal is sufficient. Have the
     ///   query carry its own denominators: `sum(count()) OVER ()` is evaluated
     ///   before `LIMIT`, so the screen knows the real total instead of inferring
-    ///   one. `PostHogAPI.groupEventBreakdown` measured this against a property
-    ///   with 423 distinct values, where `LIMIT 5` still reported the true 3320.
-    ///   Deriving a figure from a truncated set produces a number that is wrong
-    ///   rather than merely partial — the failure this project has already hit
-    ///   twice, once where `/heatmaps/` returned 500 rows against its own
-    ///   `total_count` of 899, and once where a survey mean read 5.00 against a
-    ///   true 2.75.
-    ///
-    /// One observation is **not reconciled** and is recorded rather than
-    /// smoothed over: `InsightCSV` documents `SELECT number FROM numbers(50000)`
-    /// with no `LIMIT` returning all 50,000 rows on the same deployment and the
-    /// same day the 100-row cap was measured. Whether the default applies to
-    /// generator functions, or the two measurements differ in some other way, has
-    /// not been established here. Nothing in this package depends on the answer —
-    /// every rule above is about what the *envelope* says, not about when the cap
-    /// fires — but a caller reasoning about "the 100-row default" as universal
-    /// should know it has a counter-example.
+    ///   one. Deriving a figure from a truncated set produces a wrong number,
+    ///   not merely a partial list.
     public var isTruncated: Bool { hasMore }
 
     enum CodingKeys: String, CodingKey {

@@ -26,9 +26,9 @@ public struct FeatureFlag: Sendable, Decodable, Identifiable, Hashable {
     /// write mutates exactly one path in this value and sends it back whole; see
     /// `FlagRollout.filters(_:settingGroup:toPercentage:)`.
     ///
-    /// `early_exit: false` and a group-level `aggregation_group_type_index: null`
-    /// were both present on flag [REMOVED PRIVATE DATA] when it was read live on 2026-07-31, and
-    /// neither exists on `FlagFilters` — so this is not a hypothetical.
+    /// Synthetic fixtures exercise keys such as `early_exit` and group-level
+    /// `aggregation_group_type_index`, neither of which exists on `FlagFilters`.
+    /// That keeps the unknown-key preservation requirement deterministic.
     public let filtersRaw: JSONValue?
 
     /// The row's version, for the serializer's optimistic-concurrency check.
@@ -76,9 +76,10 @@ public struct FeatureFlag: Sendable, Decodable, Identifiable, Hashable {
     /// ellipsis so the flags list would keep even row heights — a layout
     /// decision taken in a type that cannot see a screen, and one every consumer
     /// inherited whether or not it was laying anything out. The flags row's
-    /// `accessibilityLabel` was one of them, so VoiceOver read the `deep-links`
-    /// flag as "…copy-link buttons on vendor/guest/gift/member/eve…", and
-    /// Spotlight indexed the same stub. Truncation now happens in `FlagRowView`,
+    /// `accessibilityLabel` was one of them, so a fictional
+    /// `example-observatory-label` flag was spoken as "…coordinate the sample
+    /// telescope calibration across every portable display…", and Spotlight
+    /// indexed the same stub. Truncation now happens in `FlagRowView`,
     /// where the layout is.
     public var displayName: String {
         guard let name, !name.isEmpty else { return key }

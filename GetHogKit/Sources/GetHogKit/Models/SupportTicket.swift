@@ -11,19 +11,16 @@ import Foundation
 //
 // Everything in this file was derived from PostHog's OpenAPI document — the
 // `Ticket`, `TicketPerson`, `TicketAssignment` and `TicketMessage` components,
-// and the query parameters documented on the list operation. None of it has been
-// seen come back populated: the project this was built against holds zero
-// tickets. Where the schema is loose the model is loose, and every enum a value
-// could arrive in keeps the raw string it could not place.
+// and the query parameters documented on the list operation. Where the schema
+// is loose the model is loose, and every enum keeps an unknown raw string.
 
 // MARK: - Status
 
 /// Where a ticket is in its life.
 ///
 /// `TicketStatusEnum` documents five members. They are quarantined rather than
-/// defaulted because not one of them has been observed on the wire from this
-/// project, so "documented" is the strongest claim available — and a status
-/// silently folded into `.open` would be an inbox lying about what it is holding.
+/// defaulted because the service can extend its vocabulary; silently folding an
+/// unfamiliar status into `.open` would misrepresent what the inbox is holding.
 public enum TicketStatus: Sendable, Hashable {
     case new
     case open
@@ -356,8 +353,8 @@ public struct TicketPerson: Sendable, Decodable, Identifiable, Hashable {
 /// which names its keys: "AI support pipeline triage and outcome (status,
 /// result, ticket_type, confidence, attempts, etc.)." Those key names therefore
 /// come from PostHog's own documentation of the field rather than from an
-/// observed payload, and every one of them is optional here because "etc."
-/// is not a contract.
+/// fixed payload contract, and every one of them is optional here because
+/// "etc." is not a contract.
 public struct TicketAITriage: Sendable, Decodable, Hashable {
     public let status: String?
     public let result: String?

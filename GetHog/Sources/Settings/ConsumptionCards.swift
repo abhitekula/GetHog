@@ -6,9 +6,8 @@ import SwiftUI
 /// What the project is consuming, and what it is being charged for.
 ///
 /// The question this answers is "are we about to blow the quota", asked away
-/// from a desk. The live response carries eighteen metered resources and
-/// seventeen of them sit at or near zero, so an alphabetical table of eighteen
-/// rows would answer it slower than nothing at all. The card leads with the one
+/// from a desk. Quota payloads can contain many mostly quiet resources, so an
+/// alphabetical table makes the answer harder to find. The card leads with the one
 /// resource nearest its limit and files the rest behind a disclosure, which is
 /// where `QuotaLimits` already splits them.
 ///
@@ -186,10 +185,8 @@ struct QuotaSpendCard: View {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 SectionLabel(text: "Where the AI spend went", systemImage: "dollarsign.circle")
 
-                // Capped, and the cap is above the whole observed breakdown —
-                // four products, one of them the unattributed row. It exists so
-                // an organisation billing across a dozen products cannot turn a
-                // Settings row into a page; it is not hiding anything today.
+                // Capped so an organisation billing across many products cannot
+                // turn a Settings row into a page.
                 ForEach(spend.byProduct.prefix(6)) { product in
                     DataRow(
                         glyph: "sparkles",
@@ -200,11 +197,9 @@ struct QuotaSpendCard: View {
                     )
                 }
 
-                // Stated rather than implied. The four rows above sum to a
-                // hair less than the total on the strip — [REMOVED PRIVATE DATA] against
-                // [REMOVED PRIVATE DATA] on the observed response — and nothing here adds
-                // them up to check, because six decimal places of floating
-                // point are not a price.
+                // The server summary is authoritative and rows may differ in
+                // scope or precision; the UI rounds both as currency instead of
+                // recomputing the headline.
                 Text("Costs are PostHog's, rounded to the cent for display.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

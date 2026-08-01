@@ -33,15 +33,8 @@ struct DashboardsRoot: View {
     @State private var store = DashboardsStore()
     @State private var selection: DashboardSummary?
     @State private var search = ""
-    // `.all`, not `.automatic`. Measured on an iPad Pro 11-inch in portrait:
-    // a bound `.automatic` resolved to detail-only, so the Dashboards tab drew
-    // `ProjectOverview` edge to edge with no list column — and with the split
-    // view's own toggle removed below there was no way to summon one, leaving 8
-    // of this project's 10 dashboards unreachable. Landscape resolved the same
-    // binding to both columns, which is why the tab looked correct there. The
-    // other five split-view roots pass no binding at all and show both columns
-    // in portrait; this states that outcome rather than re-deriving it per
-    // orientation.
+    // `.all`, not `.automatic`: explicit visibility preserves the list column
+    // when the split view's own toggle is removed below.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -90,13 +83,8 @@ struct DashboardsRoot: View {
                 ProjectOverview(dashboards: store.dashboards)
             }
         }
-        // The sidebar and the insight panel cannot both be afforded on an
-        // 11-inch iPad — together they left the grid a strip of clipped titles.
-        // The list is what you stop needing once you are reading one chart, so
-        // it yields, and comes back when the panel closes — to `.all` rather
-        // than `.automatic`, because this is the only way back to the list now
-        // that the split view's toggle is gone, so it has to name the state it
-        // wants instead of asking the platform to resolve one.
+        // The insight panel temporarily yields the list column, then restores it
+        // explicitly when the panel closes.
         .onPreferenceChange(InsightPanelOpenKey.self) { isOpen in
             withAnimation(.snappy(duration: 0.25)) {
                 columnVisibility = isOpen ? .detailOnly : .all

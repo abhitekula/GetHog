@@ -635,11 +635,9 @@ struct GroupRecordingRowView: View {
 
 /// How a share is written, in the one place both screens read it from.
 ///
-/// Exists because of a rendered defect rather than a theory: `$browser` on the
-/// live project has a value with 4 of 28,966 events, and
-/// `.percent.precision(.fractionLength(0...1))` typeset that as **`0%`** — a
-/// share that is not zero, printed as zero, next to a bar that is visibly not
-/// empty. Four events being 0% of anything is a claim the data does not make.
+/// Very small non-zero shares can round to `0%` with the ordinary formatter,
+/// contradicting the visible bar. Preserve the distinction between tiny and
+/// genuinely zero values.
 ///
 /// Anything below the smallest figure the format can show becomes `<0.1%`, and
 /// a genuine zero still prints `0%`.

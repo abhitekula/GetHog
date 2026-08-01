@@ -2,8 +2,8 @@ import Foundation
 
 /// Server-side outcome filter for `/single_session_summaries/`.
 ///
-/// Three values, all verified against the live endpoint. `failure` is the one
-/// that earns this screen's existence: it is a ready-made "sessions worth
+/// Three server-side values. `failure` is the one that earns this screen's
+/// existence: it is a ready-made "sessions worth
 /// watching" list, which is the hardest thing to produce on a phone.
 public enum SessionSummaryOutcomeFilter: String, Sendable, CaseIterable, Identifiable {
     case success
@@ -24,7 +24,7 @@ public enum SessionSummaryOutcomeFilter: String, Sendable, CaseIterable, Identif
 
 /// AI session summaries.
 ///
-/// **Read-only, deliberately.** Generation is a write
+/// Generation is a write
 /// (`POST /session_summaries/create_session_summaries/`) and
 /// `/session_summaries/config/` is PAT-incompatible, so a phone can never do
 /// the whole loop. What it *can* do is read what someone else generated, which

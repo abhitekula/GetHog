@@ -5,11 +5,9 @@ import Foundation
 //
 //   * `EndpointsUsageOverviewQuery` answers with *objects* keyed by name, the
 //     same envelope `WebOverviewQuery` uses, so it decodes directly.
-//   * `EndpointsUsageTableQuery` answers with the ordinary positional
-//     `/query/` rows, and its columns could not be observed: the project this
-//     was built against defines **no endpoints at all**, so every table comes
-//     back with zero rows. The row type below therefore takes its labels from
-//     the response's own `columns` array rather than from a guessed schema.
+//   * `EndpointsUsageTableQuery` answers with ordinary positional `/query/`
+//     rows. The row type below takes its labels from the response's own
+//     `columns` array because the query defines its columns at runtime.
 
 /// The dimension a usage table is broken down by.
 ///
@@ -73,8 +71,8 @@ public enum EndpointUsageReading: Sendable, Equatable {
 public struct EndpointUsageMetric: Sendable, Decodable, Identifiable, Hashable {
     public let key: String
     public let value: Double?
-    /// The same metric over the preceding window. Genuinely **null** in this
-    /// project, which is not the same as zero — see `hasComparison`.
+    /// The same metric over the preceding window. Null means no comparison was
+    /// supplied, which is not the same as zero — see `hasComparison`.
     public let previous: Double?
     public let changeFromPreviousPct: Double?
 
@@ -136,10 +134,9 @@ public struct EndpointUsageOverview: Sendable, Decodable {
 
 /// One row of `EndpointsUsageTableQuery`, labelled from the response itself.
 ///
-/// Deliberately schema-free. The columns of this query could not be verified
-/// against live data — there is no endpoint in the project to generate a row —
-/// so hard-coding names would risk printing a confident wrong label over a real
-/// number. Reading them back off `columns` cannot mislabel anything.
+/// Deliberately schema-free. This query's columns are response-defined, so
+/// hard-coding names would risk printing a confident wrong label over a number.
+/// Reading them back from `columns` cannot mislabel anything.
 public struct EndpointUsageBreakdownRow: Sendable, Identifiable, Hashable {
     public struct Measure: Sendable, Hashable {
         public let name: String

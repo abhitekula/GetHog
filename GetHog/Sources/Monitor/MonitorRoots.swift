@@ -5,9 +5,8 @@ import SwiftUI
 
 /// Agent-filed work, newest first.
 ///
-/// Framed as a triage queue rather than a to-do list because that is what the
-/// data is: every task in the project this was built against was filed by an
-/// agent — half by a scout, half from a signal report, none by hand. Read-only,
+/// Framed as a triage queue rather than a to-do list because these tasks can be
+/// filed by automated agents and signal reports as well as by people. Read-only,
 /// like the rest of the app.
 struct InboxRoot: View {
     @Environment(AppModel.self) private var model

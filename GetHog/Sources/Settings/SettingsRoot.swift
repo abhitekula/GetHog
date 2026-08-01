@@ -87,7 +87,7 @@ struct SettingsRoot: View {
             // address, an organisation or a region — and a `LabeledContent`
             // stacks its value under its label at accessibility sizes, so at AX5
             // the value wraps and the hyphenation dictionary gets its chance.
-            // Measured here: person@example.com`, which is not this user's
+            // Measured here: sample.user@example.org`, which is not this user's
             // address. A reader cannot tell an invented hyphen from one that was
             // always there, and an address is the field where that distinction
             // decides whether the string is true. `zxx` is the ISO code for "no

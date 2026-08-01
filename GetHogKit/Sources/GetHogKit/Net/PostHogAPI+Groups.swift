@@ -75,33 +75,11 @@ public extension PostHogAPI {
 
     /// The values of **named** properties on one event.
     ///
-    /// The same query kind as the discovery form above, and a materially
-    /// different answer. Measured against project [REMOVED PRIVATE DATA] on 2026-07-30:
-    ///
-    ///     EventTaxonomyQuery event=$pageview properties=[$current_url]
-    ///       → sample_count 424
-    ///     HogQL  SELECT uniq(properties.$current_url) FROM events
-    ///            WHERE event = '$pageview' AND timestamp > now() - INTERVAL 30 DAY
-    ///       → 424
-    ///
-    /// Exact, not a sample of a hundred rows — naming the properties makes the
-    /// runner aggregate the whole 30-day window instead of slicing the most
-    /// recent events. `sample_values` is that window's top values **ordered by
-    /// frequency**: `$browser` came back Chrome, Mobile Safari, Safari, Firefox,
-    /// Chrome iOS, Microsoft Edge, Samsung Internet, Firefox iOS, against a
-    /// HogQL `GROUP BY … ORDER BY count() DESC` of 2621 / 334 / 218 / 62 / 50 /
-    /// 27 / 7 / 1. The counts themselves are not in the payload — the ordering
-    /// is the only magnitude information there is, which is why the value
-    /// *distribution* is a HogQL query and not this one.
-    ///
-    /// `sample_count` counts non-null values only: the same browser query has a
-    /// ninth HogQL group for `NULL`, and PostHog reports 8.
-    ///
-    /// Two shapes this does not answer, both measured the same day:
-    ///
-    /// * Omitting `event` — asking for a property across every event — is
-    ///   **HTTP 500**, not an empty result. Nothing here may call it.
-    /// * The response rows carry no `property` key. They are positional and
+    /// The same query kind as the discovery form above, but naming properties
+    /// returns positional `sample_count` and frequency-ordered `sample_values`
+    /// for the event window. Counts per value are not included, which is why a
+    /// value distribution uses HogQL instead. The response rows carry no
+    /// `property` key: they are positional and
     ///   parallel to the `properties` array that was sent, and a property with
     ///   nothing recorded holds its place as `{"sample_count": 0,
     ///   "sample_values": []}` rather than being dropped — so the caller zips by
@@ -124,13 +102,8 @@ public extension PostHogAPI {
     ///
     /// The actor-side counterpart to `eventTaxonomy`, and the only thing that
     /// answers for a property that lives on a person or a group rather than on
-    /// an event. Measured shape, project [REMOVED PRIVATE DATA]:
-    ///
-    ///     {"results": [{"sample_count": 51, "sample_values": ["…", "…"]}]}
-    ///
-    /// Positional and parallel to `properties`, exactly like the event form, and
-    /// with the same "held place" behaviour — a second property with nothing
-    /// recorded came back `{"sample_count": 0, "sample_values": []}`.
+    /// an event. Results are positional and parallel to `properties`, exactly
+    /// like the event form; an empty property holds its place with zero samples.
     ///
     /// **The group index is `groupTypeIndex`, camel-cased**, where `GroupsQuery`
     /// three functions up spells the same concept `group_type_index`. Sending
@@ -173,13 +146,10 @@ public extension PostHogAPI {
     /// with `event_names` + `filter_by_event_names` rather than by name — that
     /// keeps one event's join to a single short request instead of paging the
     /// project's several hundred properties.
-    /// - Parameter scope: which table's properties to list. Measured counts for
-    ///   project [REMOVED PRIVATE DATA] on 2026-07-30: `.event` 386 (the same 386 the parameter
-    ///   returns when omitted, so `.event` is the server's default and not a
-    ///   guess), `.person` 121, `.group` index 0 four, `.session` **zero** —
-    ///   session properties exist and are queryable, but this endpoint does not
-    ///   enumerate them, so an empty answer there is the endpoint's limit rather
-    ///   than the project's.
+    /// - Parameter scope: which table's properties to list. `.event` is the API
+    ///   default; person and group scopes use their respective tables. Session
+    ///   properties may be queryable even when this endpoint does not enumerate
+    ///   them.
     static func propertyDefinitions(
         projectID: Int,
         eventNames: [String] = [],
@@ -219,11 +189,9 @@ public extension PostHogAPI {
     /// Every event carries a key per group type in `$group_0` … `$group_4`, and
     /// that column — not a join — is how anything gets scoped to one group.
     ///
-    /// Established before the screens were designed, rather than from the shape
-    /// of PostHog's own group page. Measured on project [REMOVED PRIVATE DATA]: `$group_0` is a
-    /// plain `String` column on `events` holding the group key, empty for events
-    /// that belong to no group of that type, and `$group_1` behaves identically
-    /// for the project's second type. Five indices exist because PostHog caps a
+    /// `$group_0` through `$group_4` are string columns on `events` holding each
+    /// group key and empty when an event has no group of that type. Five indices
+    /// exist because PostHog caps a
     /// project at five group types.
     ///
     /// Insights take `aggregation_group_type_index` instead, which changes what
@@ -236,24 +204,16 @@ public extension PostHogAPI {
     ///
     /// One request, and it carries its own denominators. `sum(count()) OVER ()`
     /// and `uniqExact(event) OVER ()` are evaluated across every group the
-    /// `GROUP BY` produced, **before** `LIMIT` — verified against a property
-    /// with 423 distinct values where a `LIMIT 5` still reported a 3320 total
-    /// matching an independent `count()`. So a screen can show the top handful
+    /// `GROUP BY` produced, **before** `LIMIT`. So a screen can show the top handful
     /// and still say truthfully how many events and how many distinct event
     /// names there were.
     ///
-    /// That matters more than usual here, because `QueryResponse.isTruncated`
-    /// **cannot** help: measured, `hasMore` and `limit` appear in a HogQL
-    /// response only when PostHog applied its own cap. A query with no `LIMIT`
-    /// came back `hasMore: false, limit: 100` over 63 rows and `hasMore: true,
-    /// limit: 100` over 423; the identical query at `LIMIT 200` came back with
-    /// **neither field**, 200 rows of 423. Any HogQL here that writes its own
-    /// `LIMIT` therefore has to carry its own evidence of truncation, and these
-    /// window totals are it.
+    /// `QueryResponse.isTruncated` only reports a service-applied cap, not an
+    /// explicit query limit. These window totals provide truncation evidence for
+    /// the query's own `LIMIT`.
     ///
-    /// `since` is required for the reason the events feed documents at length:
-    /// an unbounded scan of a shared `events` table denies partition pruning.
-    /// Measured at 8.4s for a 30-day window on the project's busiest group.
+    /// `since` is required because an unbounded scan of a shared `events` table
+    /// denies partition pruning.
     static func groupEventBreakdown(
         projectID: Int,
         groupTypeIndex: Int,
@@ -347,19 +307,8 @@ public extension PostHogAPI {
     /// Session recordings from sessions that touched one group.
     ///
     /// The recording list narrows on `$group_N` as an ordinary **event**
-    /// property, which was not obvious and is the shape that was measured to
-    /// work. Two neighbours that do not:
-    ///
-    /// * `{"type": "group", "group_type_index": 0}` filters the *group's own
-    ///   properties*, not its key, and returned nothing for any key tried.
-    /// * Omitting `date_from` returned **0 recordings for a group with 20+**.
-    ///   The list defaults to a three-day window: measured 2026-07-30, the
-    ///   unfiltered list with no `date_from` returned 48 rows spanning
-    ///   2026-07-28 → 2026-07-30 and `has_next: false` — exhausted, not paged —
-    ///   while the same call at `date_from=-30d` returned a full page of 50 and
-    ///   `has_next: true`. So a group-scoped call without an explicit window
-    ///   reports "no recordings" for a group that simply has none this week. The
-    ///   window is required here for that reason, and the screen names it.
+    /// property. It always supplies an explicit date window so a default window
+    /// cannot make an active group appear to have no recordings.
     ///
     /// Proven to filter rather than to be ignored: the same call with a real key
     /// returned five recordings whose session ids matched an independent HogQL
@@ -432,14 +381,9 @@ public extension PostHogAPI {
     /// and can draw each row as a share of the real total rather than of the
     /// visible ten.
     ///
-    /// Verified against an independent `count()`: top 5 of `$current_url` on
-    /// `$pageview` reported `total_occurrences` 3320 and `distinct_values` 423,
-    /// and `SELECT count() … JSONHas(properties, '$current_url')` returned 3320.
-    ///
     /// The key is read with bracket syntax rather than as a `properties.foo`
-    /// path, because a property key is arbitrary text — `utm_source (old)` and
-    /// keys with spaces are both real in this project — and only the bracket
-    /// form takes one as a string literal.
+    /// path because property keys are arbitrary text, and bracket syntax takes
+    /// one as a string literal.
     ///
     /// - Parameter event: narrows to one event name. `nil` asks across every
     ///   event, which is a real question — "what does `$browser` look like

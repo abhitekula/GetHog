@@ -2,28 +2,17 @@ import Foundation
 
 /// Server-side narrowing for the session-recording list.
 ///
-/// ## What the API actually accepts
+/// ## What the API accepts
 ///
-/// Measured against a live project rather than read off the web console's
-/// feature list. Two transports exist and they validate against the **same**
-/// pydantic model — sending an unknown key to either is a 400 naming the key,
-/// so there is no such thing as a silently ignored filter here:
+/// Two transports validate against the same public filter model:
 ///
 ///     GET  /api/projects/:id/session_recordings/     ← used
 ///     POST /api/projects/:id/query/  {"kind":"RecordingsQuery"}
 ///
-/// The GET form was chosen for three measured reasons:
+/// The GET form is used because it hydrates the person row, participates in the
+/// analytics request budget, and pages using the list's existing offset model.
 ///
-/// 1. It hydrates `person` on every row. The `/query/` form returns
-///    `"person": null, "email": null`, which would reduce every row in the
-///    list to a distinct id.
-/// 2. It is on the `analytics` budget (180/min here) rather than `query`
-///    (60/min). The list is the screen a phone refreshes most.
-/// 3. It pages on `offset`, which is what the list already does. `/query/`
-///    returns a `next_cursor`, but rejects `cursor` as an input field — the
-///    cursor is only usable through its own client.
-///
-/// Fields the model accepts (anything else is a 400):
+/// Fields represented by the model:
 ///
 ///     date_from, date_to, events, actions, properties, console_log_filters,
 ///     having_predicates, filter_test_accounts, operand, session_ids,
@@ -37,12 +26,7 @@ import Foundation
 ///
 /// ## The operand trap
 ///
-/// `operand` is documented nowhere and is **global**. Measured:
-/// `operand=OR` with an events clause and a deliberately impossible person
-/// clause returned the full unfiltered events result — the person clause was
-/// OR'd away. `having_predicates` and `date_from`/`date_to` survive it; the
-/// whole filter group (events, actions, properties, console_log_filters) does
-/// not.
+/// `operand` applies to the complete filter group rather than one signal.
 ///
 /// So this type offers no OR at all, and `signal` is single-valued. A phone UI
 /// that let you tick "rage clicks" *and* "dead clicks" would have to send OR,
@@ -79,8 +63,8 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
     ///   `gte` would run a filter one recording wider than the one whose name
     ///   is on the screen, so the stored operator is carried through.
     ///
-    /// Measured: the API's operator enum accepts both, along with `lt`, `lte`,
-    /// `exact`, `between` and twenty-odd others.
+    /// The API accepts both values; this UI intentionally exposes only the two
+    /// comparisons it can explain clearly.
     public enum DurationComparison: String, Sendable, Hashable, CaseIterable, Codable {
         case atLeast = "gte"
         case greaterThan = "gt"

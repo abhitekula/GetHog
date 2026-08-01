@@ -173,11 +173,9 @@ public enum FileSystemItemType: Sendable, Hashable {
 ///
 /// - Note: The list envelope carries a top-level `users` array alongside
 ///   `results` — a deduplicated directory of the users named by the rows'
-///   `created_by`. `Page` ignores it, which is the right outcome here: every row
-///   on this endpoint in the project this was built against has `created_by:
-///   null`, so the array is always empty and a bespoke envelope would model a
-///   field that never carries anything. If author attribution is ever wanted,
-///   that is the moment to introduce one — not before.
+///   `created_by`. `Page` currently ignores it because this model does not expose
+///   author attribution. If attribution is added, introduce a dedicated envelope
+///   instead of silently relying on the sidecar array.
 public struct FileSystemEntry: Sendable, Decodable, Identifiable, Hashable {
     public let id: String
     /// The raw path, escapes intact. Read it through `segments`, `name` or
@@ -187,11 +185,11 @@ public struct FileSystemEntry: Sendable, Decodable, Identifiable, Hashable {
     /// split, which is what makes a naive one detectably wrong.
     public let depth: Int?
     public let type: FileSystemItemType
-    /// The underlying object's own id — `[REMOVED PRIVATE DATA]` for a cohort, a short id for an
+    /// The underlying object's own id — `730101` for a cohort, a short id for an
     /// insight, a UUID for a survey. Paired with `type` it is enough to fetch
     /// the object itself.
     public let ref: String?
-    /// A deep link the console already built, e.g. `/cohorts/[REMOVED PRIVATE DATA]`. Preferred
+    /// A deep link the console already built, e.g. `/cohorts/730101`. Preferred
     /// over reconstructing one from `type` and `ref`: PostHog owns its own URL
     /// scheme and has changed it before.
     public let href: String?
@@ -223,8 +221,8 @@ public struct FileSystemEntry: Sendable, Decodable, Identifiable, Hashable {
         path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
         depth = try c.decodeIfPresent(Int.self, forKey: .depth)
         type = FileSystemItemType(raw: try c.decodeIfPresent(String.self, forKey: .type))
-        // `ref` is a string on every observed row, but it holds numeric ids for
-        // flags and cohorts, so an integer form is not implausible.
+        // The contract permits references to resources with either string or
+        // numeric identifiers, so both forms are accepted.
         if let string = (try? c.decodeIfPresent(String.self, forKey: .ref)) ?? nil {
             ref = string
         } else if let number = (try? c.decodeIfPresent(Int.self, forKey: .ref)) ?? nil {

@@ -12,8 +12,8 @@ import SwiftUI
 /// The scope choice is offered rather than assumed, but only two of the five
 /// values are: `project` and `organization`. `dashboard_item` — which means
 /// *insight*, not "an item on a dashboard" — and `dashboard` both need an id, and
-/// choosing one would mean picking an insight out of the 140 this project holds
-/// before you can write "we deployed". If an annotation is ever composed from an
+/// choosing one would mean picking a specific insight before you can write
+/// "we deployed". If an annotation is ever composed from an
 /// insight's own screen, that screen already knows the id and passes it in as
 /// `AnnotationTarget.insight`; this sheet is the standing-in-a-corridor case.
 struct AnnotationComposerView: View {

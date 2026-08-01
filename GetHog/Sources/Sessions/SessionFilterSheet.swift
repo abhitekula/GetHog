@@ -171,8 +171,7 @@ struct SessionFilterSheet: View {
         } header: {
             Text("How long").foregroundStyle(Theme.Ink.secondary)
         } footer: {
-            // These are genuinely different numbers and the gap is large: a
-            // 34-minute recording in this project holds 40 seconds of activity.
+            // These are genuinely different numbers and can be minutes apart.
             // The old picker filtered on wall-clock time without saying so.
             Text("Total length is wall-clock time from first event to last. Active time counts only the parts somebody was interacting — they are often minutes apart.")
                 .foregroundStyle(Theme.Ink.secondary)

@@ -122,12 +122,10 @@ enum IntentDonations {
     private static func donate(_ intent: some AppIntent, _ what: String) {
         Task.detached(priority: .utility) {
             do {
-                let id = try await intent.donate()
-                log.debug("Donated \(what, privacy: .public) as \(String(describing: id), privacy: .public).")
+                _ = try await intent.donate()
+                log.debug("Donated an app intent.")
             } catch {
-                log.error(
-                    "Could not donate \(what, privacy: .public) — \(error.localizedDescription, privacy: .public)"
-                )
+                log.error("Could not donate an app intent.")
             }
         }
     }

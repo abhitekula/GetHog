@@ -47,8 +47,8 @@ public struct HeatmapPoint: Sendable, Decodable, Hashable {
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         count = try c.decodeIfPresent(Int.self, forKey: .count) ?? 0
-        // Decoded as a Double first: the values observed are integral, but a
-        // sub-pixel y from a scaled viewport would otherwise fail the whole page.
+        // Decode as a Double first so scaled-viewport values do not fail the
+        // entire response.
         pointerY = try c.decodeIfPresent(Double.self, forKey: .pointerY).map { Int($0.rounded()) } ?? 0
         pointerRelativeX = try c.decodeIfPresent(Double.self, forKey: .pointerRelativeX) ?? 0
         isTargetFixed = try c.decodeIfPresent(Bool.self, forKey: .pointerTargetFixed) ?? false
@@ -61,10 +61,8 @@ public struct HeatmapPoint: Sendable, Decodable, Hashable {
 ///
 /// **Everything here counts positions, not clicks.** A result row is one (x, y)
 /// position carrying a `count` of the clicks recorded at it, and `fold` is a
-/// summary over positions: on the captured project `total_count` is 900 while
-/// the 500 returned positions carry 1,354 clicks between them. Reading
-/// `total_count` as a click total understates reality by a factor of one and a
-/// half and contradicts the rows on the same screen.
+/// summary over positions. `total_count` must not be presented as a click total:
+/// the returned rows can combine more clicks than there are positions.
 public struct HeatmapFold: Sendable, Decodable, Hashable {
     /// Distinct click **positions** recorded in the window, including the ones
     /// `limit` kept out of `results`.
@@ -73,15 +71,10 @@ public struct HeatmapFold: Sendable, Decodable, Hashable {
     /// Positions that sit below the fold.
     public let belowFoldCount: Int
 
-    /// Share of **positions** below the fold, as a percentage (PostHog sends
-    /// `33.1`, not `0.331`); `below_fold_count / total_count`.
+    /// Share of **positions** below the fold, expressed as a percentage.
     ///
-    /// This cannot be recomputed from `results`, and must not be: rows come back
-    /// hottest-first, and hot positions cluster above the fold. On the captured
-    /// project only 12.8% of the *returned* positions are below the fold against
-    /// 33.1% across all of them — so deriving the share from the sample would
-    /// understate it nearly threefold. That sampling bias is presumably why
-    /// PostHog ships this block separately at all.
+    /// This cannot be recomputed from `results`: returned rows can be a
+    /// hottest-first sample and therefore need not represent the full set.
     public let pctBelowFold: Double
 
     /// Median viewport height in CSS pixels. A **median**: half of visitors saw
@@ -353,11 +346,9 @@ public struct HeatmapProfile: Sendable, Hashable {
 
     /// How far down the axis reaches.
     ///
-    /// Not the deepest click. Real pages produce a long, thin tail — the live
-    /// capture ran to 25,872 px on two clicks — and scaling an axis to that
-    /// squeezes every band that matters into 700 px steps of empty space. So the
-    /// axis is cut at the depth covering `coverage` of the clicks, and anything
-    /// past it is aggregated into one labelled overflow band rather than dropped.
+    /// Not the deepest click. Long, sparse tails would otherwise compress the
+    /// useful bands. The axis therefore covers `coverage` of clicks and aggregates
+    /// the remainder into one labelled overflow band rather than dropping it.
     ///
     /// It still reaches the fold when the fold is deeper: "every click was above
     /// the fold" is a finding about the page, and an axis stopping short of the

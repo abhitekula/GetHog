@@ -7,11 +7,10 @@ import Foundation
 // nodes, each with optional `attrs`, optional `content`, and for text nodes a
 // `text` string and a `marks` array.
 //
-// Everything below treats that structure as the *only* guarantee. Project [REMOVED PRIVATE DATA]
-// has zero notebooks, so no part of this could be pinned to a captured response
-// the way the rest of this directory is; the node vocabulary instead came from
-// the deployed console's own JavaScript, which registers each node with its
-// exact attribute map. That is good evidence for what exists and no evidence at
+// Everything below treats that structure as the *only* guarantee. The node
+// vocabulary comes from PostHog's public console implementation, which
+// registers each node with its attribute map. That is good evidence for what
+// exists and no evidence at
 // all for what does not, which is why the walk below is written so that an
 // unrecognised node is a *result*, never a failure.
 
@@ -19,8 +18,7 @@ import Foundation
 
 /// A notebook node type PostHog's console registers.
 ///
-/// The raw values are the node-type strings read off the deployed editor bundle
-/// (`app-static-prod.posthog.com/static/[REMOVED PRIVATE DATA]`, 2026-07-30).
+/// The raw values match the public editor's node-type strings.
 /// `NotebookContentTests.vocabulary` pins the set, so adding a case here is a
 /// deliberate edit rather than a silent divergence — the same role
 /// `DisplayTypeCoverageTests` plays for insight display types.
@@ -670,21 +668,14 @@ public struct NotebookRequestCost: Sendable, Hashable {
 ///
 /// This is the rate-limit decision, made in the model so it cannot be quietly
 /// undone in a view. PostHog's limits are organisation-wide and shared with
-/// whatever else the user has integrated, so a notebook with twelve embedded
-/// insights firing twelve `/query/` requests the moment it opens would spend a
-/// fifth of a minute's entire `.query` allowance (60/min) on a screen the reader
-/// merely scrolled past — and it would do it against their production budget.
+/// whatever else the user has integrated, so automatically running embedded
+/// queries as a notebook opens would spend request budget without reader intent.
 ///
 /// The two cases are not a preference, they are what the API makes possible:
 ///
-/// - **A saved insight can be read without computing anything.** Measured
-///   against project [REMOVED PRIVATE DATA] on 2026-07-30: `GET /insights/?short_id=…&limit=1`
-///   — the `.crud` builder this app already has — returned in 0.15–0.28s for
-///   three insights whose results were cold, each still `result: null`,
-///   `is_cached: false`, with no `query_status`; a warm one returned its
-///   populated `result`. The request never triggers a computation, so it is safe
-///   on appear: it yields either a real chart from the server's existing cache
-///   or the honest news that there is not one, and offers to run it.
+/// - **A saved insight can be read without computing anything.** The collection
+///   request retrieves the definition and any existing cached result without
+///   requesting a fresh computation, so it can load on appear.
 ///
 /// - **An inline query has no cache anywhere.** Nothing has ever computed it
 ///   under that identity, so drawing it *requires* a `POST /query/`. That is
@@ -727,11 +718,9 @@ public extension Notebook {
     /// `GET /notebooks/{short_id}/` does not return at all — only
     /// `/notebooks/{short_id}/sql_v2/state/` does.
     ///
-    /// This build does not parse that generation, and the reason is specific:
-    /// project [REMOVED PRIVATE DATA] has no notebooks, so the wrapper node's type string could
-    /// not be read off any live response, and writing a parser against a guessed
-    /// node name is exactly the kind of unverified claim this codebase treats as
-    /// a bug. What it does instead needs no guess and no name — a document that
+    /// This build does not parse that generation because the detail contract
+    /// does not include the markdown source or specify a stable wrapper node.
+    /// What it does instead needs no guess and no name — a document that
     /// yielded nothing readable, beside a non-empty `text_content`, is a body in
     /// a shape this build cannot walk. The screen shows the text PostHog already
     /// serialised and says that is what it is doing.

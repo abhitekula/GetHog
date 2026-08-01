@@ -38,11 +38,8 @@ enum SessionOutcomeStyle {
 
 /// The frustration score, banded.
 ///
-/// **The range is not documented.** Across the live capture the score took the
-/// values 0.0, 0.4, 0.6 and 0.7, and the signal intensities behind it ran 0.3 to
-/// 0.9 — a 0…1 reading at one decimal place. `SessionSentiment` clamps to that
-/// range for safety, and this states the number as well as the band so a reader
-/// is never left interpreting a bar on its own.
+/// `SessionSentiment` clamps scores to the supported display range. This view
+/// states both the numeric value and band so the meter is not color-only.
 enum FrustrationBand {
     static func title(_ score: Double) -> String {
         switch score {
@@ -125,19 +122,8 @@ struct SessionSummaryCard: View {
 
     /// The label and the model that wrote it, side by side until they cannot be.
     ///
-    /// Both halves are text and both are elastic, so a row divides one phone
-    /// between them: photographed at AX5 with this card at the top of the summary
-    /// screen, `AI SUMMARY` was set as `AI` / `SUM` / `MAR` / `Y` beside a model
-    /// name truncated to `gemini-3…`. That is the label naming what the card is
-    /// and the stamp saying a model wrote it, and neither survived. Past the
-    /// accessibility threshold they take a line each — the same reflow
-    /// `FunnelStepRow` and `InsightLegend` make, and the one `factsCard` on the
-    /// same screen makes for its own heading and badge.
-    ///
-    /// The line cap goes with it. `gemini-3-flash-preview` on one line is what
-    /// keeps the stamp from taking three lines of a card it is only annotating;
-    /// on a line of its own at these sizes, truncating it to `gemini-3…` names no
-    /// model at all.
+    /// Both labels must remain legible at accessibility sizes, so they reflow
+    /// onto separate lines instead of competing for a narrow row.
     @ViewBuilder
     private var header: some View {
         if dynamicTypeSize.isAccessibilitySize {
@@ -169,10 +155,8 @@ struct SessionSummaryCard: View {
                 // linguistic content", so the name cannot acquire a hyphen it
                 // does not contain.
                 .typesettingLanguage(Locale.Language(identifier: "zxx"))
-                // Measured 1.72:1 on `.tertiary` against this white card. A
-                // provenance stamp nobody can read is the same as no stamp,
-                // and this is the line that stops a model's reading of the
-                // session being mistaken for a measurement of it.
+                // The provenance stamp must remain legible so a model reading is
+                // not mistaken for a measured product fact.
                 .foregroundStyle(Theme.Ink.secondary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
         }
@@ -279,8 +263,7 @@ struct SessionSummaryCard: View {
                 if canSeek {
                     Text("Tap a chapter to play it")
                         .font(.caption2)
-                        // Measured 1.72:1 on `.tertiary`. This is the only thing
-                        // that discloses the rows are tappable at all.
+                        // This label is the only indication that rows are tappable.
                         .foregroundStyle(Theme.Ink.secondary)
                 }
             }
@@ -385,13 +368,8 @@ struct SentimentRow: View {
             Text(score.formatted(.number.precision(.fractionLength(1))))
                 .font(.caption.monospacedDigit().weight(.medium))
                 .foregroundStyle(FrustrationBand.tint(score))
-            // The fill is clipped by the track, not left to its own capsule.
-            // A `Capsule` takes its radius from half the *smaller* side, so a
-            // low score makes the fill narrower than it is tall and it rounds
-            // tighter than the track it sits in — then paints past the track's
-            // leading cap. Rendered at 8× against the clipped version at score
-            // 0.05: 1.00pt outside at the default text size and 2.88pt at AX5,
-            // where the meter is 145 × 13 rather than 44 × 4.
+            // Clip the fill to the track: an independently rounded capsule can
+            // paint past the leading cap at very low scores.
             Capsule()
                 .fill(Color.secondary.opacity(0.2))
                 .frame(width: meterWidth, height: meterHeight)
@@ -466,13 +444,8 @@ struct SessionChapterRow: View {
     /// A gutter, a numbered rail and the chapter — until the gutter costs more
     /// than the chapter is worth.
     ///
-    /// The same measurement as `TimelineRowView`, which this row is deliberately
-    /// shaped like: `offsetWidth` is 54pt at the default size and **206pt at
-    /// AX5**, and with the rail beside it the chapter title was left a column
-    /// narrower than its own longest word. The row then reported a width past
-    /// the phone, and because every card on the session screen shares one stack,
-    /// the whole page went with it — measured at 447pt in a 393pt window, which
-    /// is why this was the only screen whose background went white at AX5.
+    /// The timeline layout becomes too narrow at accessibility sizes. Stacking
+    /// the badge and offset keeps the chapter content within the card.
     ///
     /// Stacked, the badge and the time share one short line and the chapter gets
     /// the card's full width. The connecting line goes with the stack: it drew a
@@ -603,11 +576,7 @@ struct SessionChapterRow: View {
         }
     }
 
-    /// Measured at **16.0 × 16.0pt** through XCUITest on iPhone 17, against a
-    /// 44 × 44 floor. Same button, same omission and same fix as
-    /// `TimelineRowView.seekButton`, which carries the long form of the reasoning
-    /// — including why the modifier goes inside the label closure and why the
-    /// 44pt box has to be centred on the baseline rather than resting on it.
+    /// Use the shared minimum target so replay seeking remains tappable.
     @ViewBuilder
     private var seekButton: some View {
         if canSeek, let offset, let onSeek {

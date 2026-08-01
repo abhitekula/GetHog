@@ -99,13 +99,9 @@ final class LogsStore {
     /// cap applied below it — the pattern `SessionTimelineStore` and
     /// `SchemaStore` are the worked examples of.
     ///
-    /// **Not observed on this deployment.** `LogsQuery` is a query *node* rather
-    /// than HogQL, the measurements behind `QueryResponse.isTruncated` were all
-    /// taken on `HogQLQuery`, and this project has ingested no logs — demo mode
-    /// carries no logs fixture either, which is why the rotor below is tested
-    /// through a separately-applied modifier. So whether this kind populates
-    /// `hasMore` at all is unverified here; the row comparison does not depend
-    /// on the answer, and the flag costs nothing if the field never arrives.
+    /// `LogsQuery` is a query node rather than HogQL and may omit `hasMore`.
+    /// Comparing the row count with the requested ceiling remains conservative,
+    /// while an envelope flag is honored whenever it arrives.
     private(set) var isTruncated = false
 
     // Held here rather than in the view so a project switch or a pull-to-refresh

@@ -716,9 +716,8 @@ struct TimeSeriesChart: View {
 
     /// One drill per series at the scrubbed day.
     ///
-    /// The day is required, not optional: measured against a live project, a
-    /// trends actors query given `series` and no `day` returns **zero** rows —
-    /// it does not fall back to the whole range. Which is why this affordance
+    /// The day is required, not optional: the trends-actors contract does not
+    /// interpret a missing day as the whole range. That is why this affordance
     /// hangs off the scrub readout at all. The plot region belongs to
     /// `chartXSelection`, and a tap gesture there would fight the scrub for the
     /// same pixels; the readout is a separate view that only exists once a day
@@ -1547,4 +1546,3 @@ extension Comparable {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }
-

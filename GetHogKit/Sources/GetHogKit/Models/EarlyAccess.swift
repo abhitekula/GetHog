@@ -4,7 +4,7 @@ import Foundation
 ///
 /// The full choice list from PostHog's `EarlyAccessFeature.Stage`. `draft` is
 /// easy to overlook — it is the stage a freshly created feature sits in, so
-/// omitting it would send the most recent row on a real project to `.unknown`.
+/// omitting it would classify valid rows as `.unknown`.
 public enum EarlyAccessStage: String, Sendable, Hashable, CaseIterable, Identifiable {
     case draft
     case concept

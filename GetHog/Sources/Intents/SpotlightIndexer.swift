@@ -77,7 +77,7 @@ enum SpotlightIndexer {
         do {
             return try await body()
         } catch {
-            log.error("Spotlight: could not load \(label, privacy: .public) — \(error.localizedDescription, privacy: .public)")
+            log.error("Spotlight entity fetch failed.")
             return nil
         }
     }
@@ -87,7 +87,7 @@ enum SpotlightIndexer {
         do {
             try await CSSearchableIndex.default().indexAppEntities(entities)
         } catch {
-            log.error("Spotlight: could not index \(entities.count) items — \(error.localizedDescription, privacy: .public)")
+            log.error("Spotlight indexing failed.")
         }
     }
 
@@ -95,7 +95,7 @@ enum SpotlightIndexer {
         do {
             try await CSSearchableIndex.default().deleteAppEntities(ofType: type)
         } catch {
-            log.error("Spotlight: could not clear \(String(describing: type), privacy: .public) — \(error.localizedDescription, privacy: .public)")
+            log.error("Spotlight cleanup failed.")
         }
     }
 }

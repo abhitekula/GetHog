@@ -4,41 +4,19 @@ import Foundation
 //
 // # Why `system.information_schema.*` and not `DatabaseSchemaQuery`
 //
-// Both work against this deployment. Measured 2026-07-30 against project
-// [REMOVED PRIVATE DATA], `POST /api/projects/:id/query/`:
-//
-//   {"query":{"kind":"DatabaseSchemaQuery"}}
-//       200, 253,030 bytes, 0.48s — 136 tables, 1,469 fields, in one response.
-//
-//   HogQLQuery over system.information_schema.tables
-//       200,  29,351 bytes, 0.56s — 141 tables.
-//   HogQLQuery over system.information_schema.columns, one table
-//       200,   7,901 bytes, 0.21s — 63 rows for `events`, the widest table here.
-//
-// `DatabaseSchemaQuery` loses on three counts and wins on one.
-//
-//  1. **It carries no descriptions at all.** `information_schema` does: 139 of
-//     141 tables and a large fraction of columns have prose. On a phone that is
-//     the whole feature — the reason to open a schema browser at a desk is to
-//     check a *name*, and the reason to open one on a phone is that you cannot
-//     alt-tab to find out what the name *means*.
-//  2. 253KB decoded up front, to browse a list, on a device where the console
-//     may already be holding a large result set. `information_schema` splits
-//     along the navigation: 29KB to list tables, ~8KB when a table is opened.
-//     A reader who opens two tables pays 45KB rather than 253KB.
-//  3. `information_schema` types tables more finely — `posthog` (70), `system`
-//     (65), `information_schema` (4), `data_warehouse` (2), against
-//     `DatabaseSchemaQuery`'s three.
+// Both query shapes are public. `DatabaseSchemaQuery` returns the full schema in
+// one response but omits descriptions. `information_schema` supports a smaller
+// table list followed by columns for the table a reader opens, and includes the
+// descriptive text that makes a phone-sized schema browser useful.
 //
 // What `DatabaseSchemaQuery` uniquely offers is `hogql_value`: each field's name
 // already correctly backtick-quoted. That is genuinely useful — see
 // `HogQLIdentifier` — but it is reproducible locally, and verified so against
-// every field it returns rather than assumed.
+// representative public identifier shapes rather than assumed.
 //
-// **Not carried over, and deliberately:** `DatabaseSchemaQuery` reports a
-// `row_count` (81) and a sync status for data-warehouse tables, and
-// `information_schema.tables.row_count` is `NULL` for every one of the 141 rows
-// — checked, not presumed. Those belong to the Warehouse screen, which is where
+// **Not carried over, and deliberately:** `DatabaseSchemaQuery` can report row
+// counts and sync status for data-warehouse tables. Those belong to the
+// Warehouse screen, which is where
 // somebody asks whether a sync is healthy; the console asks what it can select
 // from.
 
@@ -49,14 +27,11 @@ public enum HogQLIdentifier {
     ///
     /// PostHog's own `DatabaseSchemaQuery` returns this per field as
     /// `hogql_value`, which is the authority. This reproduces it locally so the
-    /// console does not have to spend a second 253KB request to learn how to
+    /// console does not have to spend a second schema request to learn how to
     /// spell a column it already has the name of.
     ///
-    /// The rule was **derived from that response and then checked against all
-    /// 1,469 fields of it — 0 mismatches**, rather than inferred from the
-    /// handful of `$`-prefixed names that motivated it. If PostHog changes its
-    /// quoting, that check is what will catch it; `HogQLIdentifierTests` keeps
-    /// the sample that proved it.
+    /// `HogQLIdentifierTests` covers plain, reserved, punctuated and
+    /// `$`-prefixed names so a quoting change fails at the public boundary.
     ///
     /// This matters more on a phone than the rule's triviality suggests: a
     /// backtick is two keyboard switches away on iOS, and the names that need

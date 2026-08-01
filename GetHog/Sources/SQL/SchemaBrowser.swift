@@ -19,9 +19,8 @@ import SwiftUI
 final class SchemaStore {
 
     private(set) var tables: [SchemaTable] = []
-    /// Columns by table name, filled in as tables are opened. Nothing evicts
-    /// them: the whole schema is ~1,710 columns across 141 tables, and a reader
-    /// who somehow opened every one would be holding a few hundred KB.
+    /// Columns by table name, filled in as tables are opened. The bounded schema
+    /// response is retained for the lifetime of the screen.
     private(set) var columns: [String: [SchemaColumn]] = [:]
 
     var isLoadingTables = false
@@ -37,19 +36,9 @@ final class SchemaStore {
     /// Two independent pieces of evidence, and both are needed because they
     /// cover disjoint cases.
     ///
-    /// `QueryResponse.isTruncated` covers a cap **PostHog** applied. This
-    /// previously read that the flag was the one thing unavailable —
-    /// "`QueryResponse` decodes neither `hasMore` nor `limit`" — which was false
-    /// when it was written: the commit that added this file also added the
-    /// decoding. `PostHogAPI+Schema.swift` records the measurement behind it,
-    /// 100 of 141 tables at HTTP 200 with `hasMore: true` in the envelope.
-    ///
-    /// The row count still matters, and is not redundant with it. Measured and
-    /// recorded in `PostHogAPI+Groups.swift`: `hasMore` and `limit` appear only
-    /// when PostHog capped the query itself. The same query written `LIMIT 200`
-    /// came back with **neither field** while holding 200 rows of 423 — so for
-    /// any query that writes its own `LIMIT`, and `schemaTables` writes
-    /// `LIMIT 1000`, the flag is silent exactly when the ceiling is reached.
+    /// `QueryResponse.isTruncated` covers a service-applied cap. The row count
+    /// also matters because a query-level limit can leave truncation metadata
+    /// absent when the ceiling is reached.
     ///
     /// Counting `response.rows` rather than the decoded `tables` is deliberate
     /// for the same reason `SessionTimelineStore` was corrected to: one row that
@@ -124,9 +113,7 @@ final class SchemaStore {
     /// Matches the name *and* the description.
     ///
     /// Searching descriptions is most of the value on a phone: somebody who
-    /// remembers "the table with the bounce rate" and not `web_pre_aggregated_bounces`
-    /// finds it, and PostHog wrote a description for 139 of this project's 141
-    /// tables.
+    /// remembers a concept rather than a table identifier can still find it.
     private func filtered(_ search: String) -> [SchemaTable] {
         let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty else { return tables }
@@ -480,13 +467,8 @@ private struct SchemaColumnRow: View {
                 // alone is unreadable to a third of the people this app is for,
                 // and a filled circle against an empty one is legible without it.
                 // No `.accessibilityHidden(true)` on this glyph. The row is
-                // marked `.combine` below, and this codebase has already
-                // measured that `accessibilityHidden` is silently ignored inside
-                // a container vending its own accessibility — the hidden and
-                // unhidden trees come out byte-identical, so it would be a
-                // modifier asserting an effect it does not have. The selection
-                // state reaches VoiceOver through `accessibilityValue` instead,
-                // which is where a reader expects it.
+                // marked `.combine` below. The selection state reaches VoiceOver
+                // through `accessibilityValue`, where a reader expects it.
                 Image(systemName: mark)
                     .font(.body)
                     .foregroundStyle(isPicked ? Theme.accent : Color.secondary)
@@ -501,13 +483,8 @@ private struct SchemaColumnRow: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    // **No line limit, deliberately**, and this was measured
-                    // rather than assumed. It was `.lineLimit(3)`; rendered at
-                    // `accessibility3` the descriptions came out as
-                    // "Event name, e.g. '$pageview' or 'purchase'. Autocapt…"
-                    // and "JSON map of event properties. Access nested keys
-                    // with `pr…" — clipped exactly where they start being
-                    // useful.
+                    // **No line limit, deliberately**: column descriptions can
+                    // contain the detail needed to select a field correctly.
                     //
                     // The description is this row's payload, not its supporting
                     // detail: it is the reason to open a schema browser on a
@@ -516,9 +493,8 @@ private struct SchemaColumnRow: View {
                     // distinction `DataRow.subtitleLineLimit` exists for, where
                     // Logs is the surface whose subtitle *is* the message.
                     //
-                    // Affordable because these are short: across the recorded
-                    // schemas the longest description is 95 characters and the
-                    // median 80 — about three lines at standard sizes.
+                    // Descriptions are concise enough to remain practical in the
+                    // list while preserving their useful detail.
                     if let summary = column.summary {
                         Text(summary)
                             .font(.caption)
@@ -555,8 +531,8 @@ private struct SchemaColumnRow: View {
     }
 
     /// The type, plus only the facts that are not already the default. A line
-    /// reading `String · not null · not an array · column` for every one of 63
-    /// rows says nothing; the exceptions are the information.
+    /// reading every default property repeatedly says nothing; exceptions are
+    /// the useful information.
     private var typeLine: String {
         var parts = [column.dataType]
         if column.isArray { parts.append("array") }

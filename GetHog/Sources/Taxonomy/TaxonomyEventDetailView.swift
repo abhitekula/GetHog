@@ -87,7 +87,7 @@ struct TaxonomyEventDetailView: View {
                     Text(event.name)
                         .font(.caption.monospaced())
                         // An event name, not prose — `$autocapture`,
-                        // `[REMOVED PRIVATE DATA]`. A `LabeledContent` value sits
+                        // `checkout_completed`. A `LabeledContent` value sits
                         // in a right-hand column, so at accessibility sizes it is
                         // the narrowest text on the screen and the likeliest to
                         // be broken; `zxx` is the ISO code for "no linguistic

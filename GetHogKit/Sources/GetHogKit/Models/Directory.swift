@@ -57,13 +57,10 @@ public struct Cohort: Sendable, Decodable, Identifiable, Hashable {
 
     /// The filter tree, when there is one this build can read.
     ///
-    /// **It arrives on the list response.** `GET /cohorts/` returns every
-    /// cohort's whole `filters` object, not a summary — verified against the live
-    /// project on 30 Jul 2026 — so showing a cohort's definition costs no request
-    /// beyond the list the screen already fetches. That is not a small detail
-    /// here: the rate-limit budget is organisation-wide, and the obvious design,
-    /// one `GET /cohorts/:id/` per cohort opened, would have spent one request
-    /// per tap for data already in hand.
+    /// **It arrives on the list response.** `GET /cohorts/` includes the cohort's
+    /// `filters` object, so showing a definition requires no detail request beyond
+    /// the list the screen already fetched. Avoiding one `GET /cohorts/:id/` per
+    /// opened cohort also preserves the shared request budget.
     public let definition: CohortDefinition?
 
     /// PostHog is re-evaluating membership right now, so `count` is the previous
@@ -87,10 +84,9 @@ public struct Cohort: Sendable, Decodable, Identifiable, Hashable {
 
     /// The legacy pre-`filters` representation.
     ///
-    /// PostHog migrated cohorts from `groups` to `filters` and still echoes
-    /// `groups` back — as `[]` on every cohort in the project this was built
-    /// against. A cohort old enough to have never been migrated would arrive with
-    /// this populated and `filters` absent, and that is a definition this build
+    /// PostHog migrated cohorts from `groups` to `filters` and still echoes the
+    /// legacy field. A cohort old enough to have never been migrated can arrive
+    /// with this populated and `filters` absent; that is a definition this build
     /// cannot render rather than a cohort without one.
     public let hasLegacyGroups: Bool
 
@@ -274,10 +270,10 @@ public struct SurveyQuestion: Sendable, Decodable, Hashable {
     ///
     /// Load-bearing far beyond drawing an axis. A rating question is the only
     /// thing an NPS or CSAT template is built out of — PostHog has no distinct
-    /// "nps" question type — so the bucketing of an NPS score can only come
-    /// from here. Two surveys in the project this was built against are *named*
-    /// NPS and declare `scale: 5`; scoring them with the 9–10 promoter rule
-    /// would be arithmetic on the wrong scale. See `SurveyRatingScale`.
+    /// "nps" question type — so the bucketing of a score can only come from
+    /// here. A survey named NPS can still declare `scale: 5`; scoring it with
+    /// the 9–10 promoter rule would be arithmetic on the wrong scale. See
+    /// `SurveyRatingScale`.
     public let scale: Int?
 
     /// `number`, `emoji`, or `label` — how the survey rendered the scale.
@@ -372,7 +368,7 @@ public enum SurveyQuestionKind: Sendable, Hashable {
 
 /// An experiment's lifecycle state, as the API reports it.
 ///
-/// `ExperimentStatusEnum` in the schema this deployment publishes. Two of the
+/// `ExperimentStatusEnum` in the public API schema. Two of the
 /// five are documented there as *virtual* — `paused` is derived from
 /// `feature_flag.active` and `exposure_frozen` from the flag's release groups —
 /// which matters because neither can be inferred from `start_date`/`end_date`,
@@ -492,8 +488,8 @@ public struct Experiment: Sendable, Decodable, Identifiable, Hashable {
     public let archived: Bool
 
     /// The API's own lifecycle state. Optional only because it is absent from
-    /// captures taken before the field existed; when present it always wins over
-    /// the date-derived guess below.
+    /// older responses from before the field existed; when present it always
+    /// wins over the date-derived guess below.
     public let status: ExperimentStatus?
     public let conclusion: ExperimentConclusion?
     public let conclusionComment: String?

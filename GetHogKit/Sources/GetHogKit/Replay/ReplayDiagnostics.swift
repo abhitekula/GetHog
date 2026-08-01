@@ -36,10 +36,10 @@ public enum ReplayCaptureStatus: Sendable, Hashable {
 ///   what was asked for, not what ran — so it is only consulted when the
 ///   startup event was not seen.
 ///
-/// Neither is guaranteed to be there. The recorder emits them once, at startup,
-/// and a recording that continues an already-running recorder never emits them
-/// again: measured on a real captured session (`[REMOVED PRIVATE DATA]…`) whose blobs held 49
-/// console entries and no config event at all.
+/// Neither is guaranteed to be there. The recorder emits them once at startup,
+/// and a recording that continues an already-running recorder may not include
+/// either event. Existing entries therefore remain stronger evidence than an
+/// absent configuration signal.
 public struct ReplayCaptureConfig: Sendable, Hashable {
     /// True once `$session_options` has been seen, which is what makes
     /// `activePlugins` trustworthy as a negative.

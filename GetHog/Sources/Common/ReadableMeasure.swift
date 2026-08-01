@@ -14,7 +14,7 @@ import SwiftUI
 /// | `settings` | Email → `analyst@example.com` | ~600pt |
 /// | `taxonomy-event-detail` | Name → `$pageview` | ~600pt |
 /// | `support-ticket-detail` | Status → `Open` | ~640pt |
-/// | `error-issue-detail` | Function → `[REMOVED PRIVATE DATA]` | ~560pt |
+/// | `error-issue-detail` | Function → `retryCheckout` | ~560pt |
 ///
 /// Nothing there is a rendering bug. `LabeledContent` in a `Form`, and the
 /// hand-rolled `HStack { label; Spacer(); value }` that four screens wrote

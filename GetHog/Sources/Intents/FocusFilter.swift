@@ -3,9 +3,8 @@ import Foundation
 
 /// Binds GetHog's active project to a Focus mode.
 ///
-/// The use it exists for: a Work Focus pins the production project, a Personal
-/// Focus pins the side project, and nobody has to remember which one the app was
-/// last left on. iOS runs this when the Focus changes, so the switch has to
+/// A Focus can pin a chosen project so nobody has to remember which one the app
+/// was last left on. iOS runs this when the Focus changes, so the switch has to
 /// happen through shared storage rather than through `AppModel`, which may not
 /// exist at that moment.
 struct ProjectFocusFilter: SetFocusFilterIntent {

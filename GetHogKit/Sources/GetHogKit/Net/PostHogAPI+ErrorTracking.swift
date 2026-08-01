@@ -8,22 +8,15 @@ public extension PostHogAPI {
     /// `$exception_list`.
     ///
     /// **Why a HogQL query and not the issue endpoint.** `GET
-    /// /api/projects/:id/error_tracking/issues/:issue_id/` returns exactly the
-    /// eight fields the list already has — measured live against issue
-    /// `[REMOVED PRIVATE DATA]-…`, which answered `{id, status, name, description, first_seen,
-    /// assignee, external_issues, cohort}` and no frames at all. Frames live on
-    /// the events, so the events are what this asks for.
+    /// /api/projects/:id/error_tracking/issues/:issue_id/` returns issue
+    /// metadata, not exception frames. Frames live on the events, so the events
+    /// are what this asks for.
     ///
     /// **Why `within` is required and has no default.** Same rule the events feed
     /// and the session timeline both had to learn: an unbounded `FROM events`
-    /// denies ClickHouse partition pruning on a shared table. Measured here
-    /// while writing this, against project [REMOVED PRIVATE DATA]:
-    ///
-    ///     issue filter + 50-day bound     0.14s / 0.15s / 1.64s (cold)
-    ///     no filter,   365-day scan       max-execution-time error, every run
-    ///
-    /// The issue filter alone does not save it — the scan still has to find the
-    /// rows — so the window is part of the signature rather than an option on it.
+    /// denies ClickHouse partition pruning on a shared table. The issue filter
+    /// alone does not bound the scan, so the window is part of the signature
+    /// rather than an option on it.
     ///
     /// Callers pass the issue's own `firstSeen…lastSeen`; the padding below is a
     /// safety rail for client clocks that disagree with the server's, exactly as
@@ -45,9 +38,8 @@ public extension PostHogAPI {
         // `$exception_list`, and a `QueryRow` lookup keyed on a `$`-prefixed
         // string is a lot easier to typo than to notice.
         //
-        // `$exception_steps` is selected even though it was non-null on 0 of the
-        // 358 exception events measured in this project. It costs nothing when
-        // absent, and the alternative — a second query the first time an SDK
+        // `$exception_steps` is selected even though it is optional. It costs
+        // nothing when absent, and the alternative — a second query when an SDK
         // starts emitting breadcrumbs — costs a round trip on the screen that
         // most needs to be fast.
         let sql = """
@@ -77,9 +69,8 @@ public extension PostHogAPI {
     // asks the user anything; see `ErrorTriageController`.
     //
     // The paths and body shapes below were read out of PostHog's own OpenAPI
-    // document (`GET https://us.posthog.com/api/schema/?format=json`, fetched
-    // 2026-07-30), not guessed and **not** probed — no request in this family
-    // has ever been sent from this machine.
+    // document (`GET https://us.posthog.com/api/schema/?format=json`), not
+    // guessed or inferred from tenant responses.
 
     /// Resolve, suppress, or reopen an issue.
     ///
@@ -114,20 +105,19 @@ public extension PostHogAPI {
     /// `assignee` is `{"id": …, "type": "user"|"role"}`, or JSON `null` to
     /// unassign.
     ///
-    /// The id keeps its JSON type: a user id is the integer `[REMOVED PRIVATE DATA]`, a role id
-    /// is a uuid string. `ErrorTrackingIssueAssignee.id` is `anyOf: [string,
+    /// The id keeps its JSON type: a user id is an integer and a role id is a
+    /// UUID string. `ErrorTrackingIssueAssignee.id` is `anyOf: [string,
     /// integer]` in the schema, and `ErrorTrackingQuery` splits the same fact
     /// across two columns — `assignee_user_id` and `assignee_role_id`.
     ///
-    /// **Unverified against the live API.** The `assign` action is a DRF
-    /// `@action`, and drf-spectacular documents its body with the *read*
+    /// The `assign` action is a DRF `@action`, and drf-spectacular documents its
+    /// body with the *read*
     /// serializer — `PatchedErrorTrackingIssueRead`, whose `assignee` is
     /// `readOnly` — which cannot be what it accepts. The `{id, type}` shape here
     /// is taken from `ErrorTrackingIssueAssignee`, the schema PostHog defines
     /// for exactly this object and does not use anywhere in a read response. It
-    /// has not been exercised: the only key available is read-only against a
-    /// real project, and confirming the body by sending one is not a test, it is
-    /// an edit to somebody's issue.
+    /// is therefore encoded using the dedicated assignee schema rather than the
+    /// read serializer.
     static func assignErrorIssue(
         projectID: Int,
         issueID: String,

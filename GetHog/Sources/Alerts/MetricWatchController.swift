@@ -80,7 +80,7 @@ enum MetricAlertDelivery {
             do {
                 try await center.add(request)
             } catch {
-                log.notice("Could not post metric alert: \(error.localizedDescription, privacy: .public)")
+                log.notice("Could not post a metric alert.")
             }
         }
     }

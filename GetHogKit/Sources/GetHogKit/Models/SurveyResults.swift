@@ -7,26 +7,13 @@ import Foundation
 // `survey abandoned` — carrying the answers in their properties, so everything
 // here is HogQL over `events` and arithmetic in Swift.
 //
-// Two things in this file exist only to stop a plausible-looking wrong number
-// from being drawn, and both were checked against project [REMOVED PRIVATE DATA] on 2026-07-30:
+// Two constraints prevent plausible-looking wrong numbers:
 //
-// 1. **Submissions, not events.** PostHog can split one person's answers across
-//    several events that share a `$survey_submission_id` — a `survey sent` per
-//    answered question, `$survey_completed` false until the last. Counting rows
-//    would then count one person several times. Every count here is over
-//    distinct submission ids. In that project's data the fan-out does not occur
-//    (four submission ids across four events, one apiece, and `$survey_completed`
-//    is never false), so the dedupe is currently a no-op there — but it is the
-//    difference between a right and a wrong number the day it isn't.
-//
-// 2. **Answers arrive on dismissals too.** Three of that project's four
-//    submissions came in on `survey dismissed` with `$survey_partially_completed:
-//    true`, carrying a rating and two answers each. Aggregating only `survey
-//    sent` would have shown that rating question as a single answer of 5 —
-//    a mean of 5.0 — where the four real answers are 5, 2, 2, 2 and mean 2.75.
-//    So question breakdowns read every submission that carries an answer, and
-//    the summary reports completed and partial separately rather than blending
-//    them into one "responses" figure.
+// 1. **Submissions, not events.** A person's answers may span multiple events
+//    sharing `$survey_submission_id`, so counts are over distinct submission IDs.
+// 2. **Answers arrive on dismissals too.** Question breakdowns read every
+//    answer-bearing submission and report completed and partial responses
+//    separately rather than blending them into one figure.
 
 // MARK: - Rating scale
 
@@ -296,12 +283,8 @@ public struct SurveyTextAnswer: Sendable, Hashable, Identifiable {
     /// which made the synthesised memberwise initialiser's internal default a
     /// silent hole rather than a decision.
     ///
-    /// `isPartial` has no default. A partial answer comes from a `survey
-    /// dismissed` event carrying `$survey_partially_completed`, and this
-    /// project has already measured what conflating the two costs: one rating
-    /// question's mean reads 5.00 counting completions alone against 2.75
-    /// counting every answer-bearing submission. A caller that has not decided
-    /// which it holds should not be handed a default that decides for it.
+    /// `isPartial` has no default. A caller must explicitly distinguish a
+    /// partial answer from a completed response.
     public init(id: String, text: String, date: Date?, isPartial: Bool) {
         self.id = id
         self.text = text
@@ -340,18 +323,11 @@ public struct SurveyQuestionResults: Sendable, Hashable, Identifiable {
 ///
 /// Every figure on the results screen below the funnel is *derived* — a mean, a
 /// share, an NPS score — and a derived figure over a truncated set is wrong
-/// rather than merely partial. This project has already paid for that once at
-/// the top of this file: counting completions alone read a rating mean of 5.00
-/// where the four answer-bearing submissions give 2.75.
+/// rather than merely partial.
 ///
-/// **Why the row count, and why the flag as well.** `answersSQL` writes its own
-/// `LIMIT 500`, and the `/query/` envelope says nothing about a limit the caller
-/// wrote — measured and recorded on `QueryResponse.isTruncated`: the same query
-/// at `LIMIT 200` came back with **neither** `hasMore` nor `limit` while holding
-/// 200 rows of 423. So at the ceiling the flag is silent and the row count is
-/// the only evidence; if PostHog ever caps *below* 500 the count cannot see it
-/// and the flag is the only evidence. Neither subsumes the other, which is the
-/// same conclusion `SessionTimelineStore` and `SchemaStore` reached.
+/// **Why the row count, and why the flag as well.** `answersSQL` has a query
+/// limit, and query-level limits can omit truncation metadata at the ceiling.
+/// The row count catches that case; `isTruncated` catches a lower service cap.
 ///
 /// **Why the denominator does not have to be guessed at.** `summarySQL` writes
 /// no `LIMIT` at all and is a single aggregate row, so its counters run over
@@ -372,11 +348,8 @@ public struct SurveyAnswerCoverage: Sendable, Hashable {
     /// Rows the answers query returned.
     ///
     /// **`QueryResponse.rows.count`, never the submissions that survived
-    /// decoding.** `SessionTimelineStore` documents the measured version of this
-    /// trap: one undecodable row in a full page puts the decoded count one under
-    /// the ceiling and retires the notice exactly when the data is least
-    /// trustworthy. Here it would be worse than a lost notice, because the rows
-    /// that fail to decode are also the answers missing from the mean.
+    /// decoding.** A malformed row must not hide a full-page result; it is also
+    /// an answer missing from derived figures.
     public let rowsReturned: Int
 
     /// The ceiling those rows met: PostHog's own cap when it applied one,

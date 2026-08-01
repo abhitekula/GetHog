@@ -75,8 +75,7 @@ public struct ReplayConsoleEntry: Sendable, Hashable, Identifiable {
 
 extension ReplayConsoleEntry {
 
-    /// rrweb's console plugin name, as PostHog emits it. Verified against
-    /// captured `blob_v2` data rather than taken from the rrweb docs.
+    /// rrweb's console plugin name, exercised by deterministic replay fixtures.
     static let pluginName = "rrweb/console@1"
 
     /// Builds an entry from one `type: 6` plugin event's `data.payload`.
@@ -108,9 +107,8 @@ extension ReplayConsoleEntry {
     /// rrweb stringifies every argument before it ships, so a logged *string*
     /// arrives already JSON-encoded: `console.error("boom")` becomes the six
     /// characters `"boom"`, quote marks included, and any newline inside it is
-    /// a literal backslash-n. Printing that raw puts the quoting on screen —
-    /// measured on real captured data, where the common shape is
-    /// `"\"TypeError: Failed to fetch\\n    at M (…)\""`.
+    /// a literal backslash-n. Printing that raw puts the quoting on screen, so
+    /// scalar JSON strings are decoded before display.
     ///
     /// An object or array argument is *already* the JSON text a reader wants,
     /// so it is returned untouched rather than re-serialised through a

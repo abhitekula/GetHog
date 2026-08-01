@@ -6,24 +6,18 @@ import Foundation
 // and a parallel `columns` array, so each type reads itself out of a `QueryRow`
 // by name rather than by index.
 //
-// A warning that shaped the whole file: the organisation these were built
-// against has **no `viewer` access to the `tracing` resource**, and PostHog
-// reports that as an HTTP **400**, not a 403. Nothing below has been seen
-// against real spans. The decoders follow the column list PostHog documents for
-// each kind, and where a column could plausibly arrive in two spellings they
-// read both rather than pick one and be silently wrong.
+// The decoders follow the documented column list for each kind. Where a column
+// can plausibly arrive in two spellings, both are read rather than guessing.
 //
 // There is exactly **one** decoder, because `TraceSpansQuery` is the only
-// tracing kind the API still answers: the tree and attribute-breakdown kinds
-// return 400 `"Unsupported query kind"` (measured 2026-07-30 against project
-// [REMOVED PRIVATE DATA]). Everything those kinds used to be asked for is derived here from the
+// tracing kind the API supports. Everything those kinds used to be asked for is derived here from the
 // spans instead — the call tree from `parentSpanID`/`spanID`, the service facet
 // from `serviceName`, both of which arrive on every span.
 
 // MARK: - Span
 
-/// An OTel span status. PostHog filters accept both the numeric code and the
-/// word, and the returned column has not been observed, so both are read.
+/// An OTel span status. PostHog filters accept both numeric codes and words, so
+/// deterministic decoding supports both forms.
 public enum SpanStatus: Sendable, Hashable {
     case unset
     case ok
@@ -114,9 +108,7 @@ public struct TraceSpan: Sendable, Identifiable, Hashable {
 
     /// The services present in a span list, for the explorer's filter.
     ///
-    /// Derived rather than asked for: the query kind that answered this
-    /// server-side is gone (400 `"Unsupported query kind"`, measured
-    /// 2026-07-30), and `service_name` is on every span anyway.
+    /// Derived rather than asked for: `service_name` is already present on spans.
     ///
     /// This names the services **in this result**, not every service in the
     /// project — a page is capped by `limit`, and a page fetched *with* a

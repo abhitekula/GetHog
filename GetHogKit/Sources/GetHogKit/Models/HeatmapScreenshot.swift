@@ -6,9 +6,7 @@ import Foundation
 // fetchable — which is what makes a real overlay possible on a phone.
 //
 // The catch is coverage, not capability: a render exists only where a person
-// explicitly asked for one. Project [REMOVED PRIVATE DATA] has exactly one. So everything here
-// is built to answer "is there an image for this page, at a width I can use?"
-// with a plain no most of the time.
+// explicitly asked for one. Everything here therefore handles absent renders.
 
 /// One rendered width of a saved heatmap.
 public struct SavedHeatmapSnapshot: Sendable, Decodable, Hashable {

@@ -41,12 +41,9 @@ struct WebNotableChangeRow: View {
     /// The absence is drawn as its own state rather than left as a blank gap, so
     /// a row with nothing to compare reads as answered rather than unfinished.
     ///
-    /// One limitation to know about: `DeltaOrAbsence` tints purely by direction,
-    /// so it would paint a rising bounce rate green. That is latent rather than
-    /// live — PostHog returns a zero previous value on every row today, so the
-    /// badge never renders — but it is why the spoken summary below derives its
-    /// verdict from `isImprovement`, which does account for metrics that improve
-    /// by falling.
+    /// `DeltaOrAbsence` tints purely by direction, so the spoken summary derives
+    /// its verdict from `isImprovement`, which handles metrics that improve by
+    /// falling.
     private var comparison: some View {
         DeltaOrAbsence(
             current: change.currentValue,
@@ -65,9 +62,8 @@ struct WebNotableChangeRow: View {
     /// spelled out in the row's footnote.
     ///
     /// `Device` is the exception, and it is a correction: the dimension's own
-    /// glyph was a phone, so the ranking's `Desktop` row — the second entry in
-    /// the demo capture, and routinely the largest in a real project — drew a
-    /// phone next to the word "Desktop". Every other dimension here names a
+    /// glyph was a phone, so a `Desktop` row drew a phone next to its label.
+    /// Every other dimension here names a
     /// thing no symbol can state (a path, a domain, a country), so its glyph
     /// stays a label for the *type*; a device value is a form factor and the
     /// glyph has to agree with it. Shared with the breakdown table's rows rather

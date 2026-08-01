@@ -170,10 +170,9 @@ public struct QuotaResource: Sendable, Hashable, Identifiable {
 
 /// `GET /api/projects/{id}/quota_limits/`.
 ///
-/// Eighteen resources on the project this was built against, seventeen of them
-/// at or near zero. That distribution is the design constraint: the question
-/// someone asks away from a desk is "are we about to blow the quota", and an
-/// alphabetical table of eighteen rows answers it slower than no table at all.
+/// Quota payloads can contain many mostly quiet resources. The question someone
+/// asks away from a desk is "are we about to blow the quota", and an
+/// alphabetical table answers it slower than a pressure-ranked summary.
 /// So the resources arrive **already ranked** by how close each is to its limit,
 /// and the split between `pressing` and `quiet` is made here rather than left to
 /// each view to reinvent.
@@ -262,8 +261,8 @@ public struct QuotaLimits: Sendable, Decodable, Hashable {
 
 /// Money, formatted once.
 ///
-/// Every cost on the wire is a `Double` with six decimal places
-/// (`[REMOVED PRIVATE DATA]`), which is not a price and cannot be compared for equality.
+/// Costs arrive as `Double` values with sub-cent precision, which are not
+/// display-ready prices and should not be compared for exact equality.
 /// Currency style is the only arithmetic performed on one: it rounds to the
 /// cent for display and nothing downstream re-derives a total from parts.
 enum Money {
@@ -274,8 +273,8 @@ enum Money {
 
 /// One product's share of the LLM bill.
 public struct LLMProductSpend: Sendable, Decodable, Hashable, Identifiable {
-    /// **Nullable, and null is a real row.** The live breakdown carries 426
-    /// events and $[REMOVED PRIVATE DATA] of genuine spend under `product: null`.
+    /// **Nullable, and null is a real row.** An unattributed row still represents
+    /// spend and must remain visible.
     public let product: String?
     public let costUSD: Double
     public let eventCount: Int
@@ -349,10 +348,9 @@ public struct LLMSpend: Sendable, Decodable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let summary = try c.decodeIfPresent(Summary.self, forKey: .summary)
 
-        // The server's own total, taken verbatim. On the observed response the
-        // four product rows sum to [REMOVED PRIVATE DATA] against a stated [REMOVED PRIVATE DATA] — a
-        // 1e-6 disagreement no rounding rule reconciles — so re-adding the parts
-        // would put a number on screen that PostHog's own console does not show.
+        // The server's own total is authoritative. A breakdown can cover a
+        // different scope or precision, so re-adding its rows can disagree with
+        // the summary shown by PostHog.
         totalCostUSD = summary?.totalCostUSD ?? 0
         eventCount = summary?.eventCount ?? 0
         product = summary?.product

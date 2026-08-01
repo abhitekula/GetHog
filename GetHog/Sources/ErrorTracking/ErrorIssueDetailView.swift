@@ -119,34 +119,18 @@ struct ErrorIssueDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(issue.name)
                         .font(.title3.monospaced().weight(.semibold))
-                        // An exception type, not prose — and this is the screen
-                        // where the defect is visible. Rendered in this exact
-                        // configuration at AX5, without `zxx`:
-                        //
-                        //   UnhandledRejection → `Unhan-` `dled-` `Rejec-` `tion`
-                        //   ReferenceError     → `Refer-` `enceEr-` `ror`
-                        //
-                        // — three and two invented hyphens. With it:
-                        //
-                        //   UnhandledRejection → `Unhandl` `edRejec` `tion`
-                        //   ReferenceError     → `Referen` `ceError`
-                        //
-                        // which is uglier and *true*. Confirmed on the captured
-                        // screen as well, not only in a renderer: `ax5/
-                        // error-issue-detail.png` now sets the fixture's
-                        // `ReferenceError` as `Refer` / `enceE` / `rror`.
+                        // An exception type, not prose. Without `zxx`, text
+                        // layout may insert language-aware hyphens inside an
+                        // identifier; with it, the line may still wrap but does
+                        // not invent characters.
                         //
                         // The text is selectable, which is what makes this worse
                         // than cosmetic — a reader copying the type out would
                         // carry the invented hyphen with them into a search.
                         // `zxx` is the ISO code for "no linguistic content".
                         //
-                        // The limit of the idiom, measured on the People list
-                        // rather than assumed: it suppresses *invented* hyphens
-                        // only. `nina.drill.0729@example.com` breaks identically
-                        // with and without it — an orphaned trailing character is
-                        // a width problem wearing the same costume, and `zxx`
-                        // does not touch it.
+                        // It suppresses invented hyphens only; ordinary wrapping
+                        // remains a separate width constraint.
                         .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .textSelection(.enabled)
                     Spacer(minLength: 8)
@@ -358,13 +342,9 @@ struct ErrorIssueDetailView: View {
 
             // The honest limit, stated where it bites rather than hidden behind
             // an empty picker. PostHog assigns to users *or* roles, and both are
-            // organisation-level resources: measured against this project's key,
-            // `GET /api/organizations/@current/members/` answers 403 and
-            // `…/roles/` answers *"API keys with scoped projects are only
-            // supported on project-based endpoints."* A project-scoped key —
-            // which is what onboarding asks for — cannot enumerate either, so the
-            // app offers the one target it can always name and points elsewhere
-            // for the rest.
+            // organisation-level resources. Project-scoped keys cannot enumerate
+            // either through project endpoints, so the app offers the one target
+            // it can always name and points elsewhere for the rest.
             if model.me?.userID != nil {
                 Text("Assigning to a teammate or a role needs the organisation member list, which a project-scoped API key can't read. Use the web console for those.")
                     .font(.caption2)
@@ -381,7 +361,7 @@ struct ErrorIssueDetailView: View {
 
     /// Names the assignee as precisely as the data allows.
     ///
-    /// PostHog returns an id and a kind, never a name — `{"id": [REMOVED PRIVATE DATA], "type":
+    /// PostHog returns an id and a kind, never a name — `{"id": 700101, "type":
     /// "user"}` — so anyone but the signed-in user can only be identified by
     /// number. Printing a bare id as if it were a person would be worse than
     /// saying which kind of thing it is.

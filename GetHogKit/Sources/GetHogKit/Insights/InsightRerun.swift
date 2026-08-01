@@ -2,15 +2,9 @@ import Foundation
 
 /// Re-running a saved insight over a different time range.
 ///
-/// **The dashboard endpoint cannot do this.** `GET /dashboards/:id/?date_from=…`
-/// returns HTTP 200 and *silently ignores* the parameter — verified against a
-/// live project, where `-7d`, `-90d` and no parameter at all returned the same
-/// 31 points. A picker built on it would appear to work and never change a
-/// number, which is the worst kind of broken.
-///
-/// What does work is re-posting each insight's own query to `/query/` with the
-/// date range replaced: verified live, `-7d` returned 8 points and `-90d`
-/// returned 91.
+/// The dashboard detail endpoint returns saved tiles; it does not re-run every
+/// tile for a new date range. Re-running therefore posts each insight's own
+/// query to `/query/` with the date range replaced.
 ///
 /// The cost is one request per tile per change, against a budget shared with the
 /// user's production integrations — so this belongs behind a deliberate user

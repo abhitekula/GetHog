@@ -49,7 +49,7 @@ public enum DashboardCreationMode: String, Sendable, Hashable {
 /// Summary row from `GET /dashboards/`.
 ///
 /// Deliberately does **not** carry a tile count: the list endpoint does not
-/// return `tiles`, verified against the live API, and counting them would cost
+/// return `tiles`, and counting them would cost
 /// one request per row. Freshness and provenance are what this row can honestly
 /// show instead.
 public struct DashboardSummary: Sendable, Decodable, Identifiable, Hashable {

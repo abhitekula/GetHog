@@ -82,11 +82,8 @@ extension ErrorIssue {
     ///
     /// Shorter than `ErrorIssueRow`'s own label, which reads the full impact
     /// line: a rotor entry is heard while scanning, and the decision being made
-    /// is "is this the one". Four of this project's six issues are titled
-    /// "Error", so the name alone identifies nothing — the message is what
-    /// separates them, exactly as it does in the drawn row. The user count comes
-    /// last because it is what the list is ranked by, so it is how a listener
-    /// knows they are still near the top.
+    /// is "is this the one". Messages distinguish issues with generic names;
+    /// the user count comes last because it reflects the list ordering.
     var rotorLabel: String {
         var parts = [name]
         if let issueDescription, !issueDescription.isEmpty {
@@ -114,9 +111,8 @@ final class ErrorTrackingStore {
     /// `ErrorsOverview` sums occurrences across `issues` and prints the result
     /// beside an issue count and a status split — four figures derived from one
     /// ranked, capped page and labelled as if they described the window. Nothing
-    /// said so, and nothing *could*: `ErrorTrackingResponse` decoded `results`
-    /// and dropped `hasMore` and `limit` on the floor, even though the recorded
-    /// live response in `error_tracking.json` carries both. See
+    /// said so. `ErrorTrackingResponse` preserves the envelope's `hasMore` and
+    /// `limit` fields. See
     /// `ErrorIssueCoverage`, which also records why there is no denominator to
     /// be had from this query and what is done instead.
     var coverage: ErrorIssueCoverage?
@@ -163,21 +159,18 @@ struct ErrorTrackingRoot: View {
     /// thrown away mid-write. Holding it here also means the list row reflects a
     /// change the moment it lands, rather than at the next refresh.
     @State private var triage = ErrorTriageController()
-    // Ranked by people hurt, not by noise: an error hitting 200 users matters
-    // more than one firing 50,000 times in a single retry loop.
+    // Ranked by people affected, not by repeated noise from one retry loop.
     @State private var order: ErrorIssueOrder = .users
     @State private var filter: ErrorIssueFilter = .all
     @State private var window: AnalyticsWindow = .week
 
     /// The open issue, and deliberately **not** `@State`.
     ///
-    /// This screen is one of the 27 reached through the search tab, which means
+    /// This screen is reached through the search tab, which means
     /// it is hosted by a sidebar `Tab` above the size-class boundary and by the
     /// search stack below it — see `OpenDetails`. Crossing the boundary rebuilds
-    /// the screen in the other host, so `@State` here was thrown away: measured
-    /// at 834→375pt with "ReferenceError" open, `navigationBars` fell from
-    /// `["ReferenceError", "Errors"]` to `["Errors"]`, and widening again did
-    /// not bring the issue back.
+    /// the screen in the other host. Local `@State` would be thrown away during
+    /// that transition and would not restore the selected issue.
     private var selection: Binding<ErrorIssue?> {
         Binding(
             get: { openDetails[.errorTracking] as? ErrorIssue },
@@ -185,13 +178,8 @@ struct ErrorTrackingRoot: View {
         )
     }
 
-    // In compact width the index behind "More" owns the navigation stack (see
-    // `RootView`). A `NavigationSplitView` here collapses into a stack of its
-    // own inside that one and draws a second navigation bar above it — measured
-    // on this screen: a bar carrying only a back chevron, then a second bar with
-    // the project switcher and the sort menu, before any error was visible.
-    // There is no second column at phone width anyway, so there is nothing to
-    // collapse.
+    // In compact width the enclosing navigation stack owns navigation. A nested
+    // split view would add a redundant navigation bar without a second column.
     var body: some View {
         if sizeClass == .compact {
             issueList
@@ -210,13 +198,8 @@ struct ErrorTrackingRoot: View {
         } else {
             NavigationSplitView {
                 issueList
-                    // The widest list column in the app, and it is earned. Left
-                    // to itself the sidebar took ~320pt, of which the glyph, the
-                    // status pill and the row insets ate ~170 — so every row
-                    // truncated ("An unexpecte…", "Connection c…") and the
-                    // footnote "4 users · 7 sessions · 14 occurrences" needs
-                    // ~240pt on its own. The 4-segment status picker above the
-                    // list clipped to "Suppre…" at the same width.
+                    // This list needs sufficient width for status, message, and
+                    // impact information to remain readable.
                     .navigationSplitViewColumnWidth(min: 320, ideal: 400, max: 460)
                     // The tab sidebar already puts a toggle in this bar; the
                     // split view added a second one beside it, two identical
@@ -350,9 +333,8 @@ struct ErrorTrackingRoot: View {
     /// compact width in exactly that state — binding kept, the
     /// `NavigationSplitView` that had been displaying it gone — and tapping an
     /// issue did nothing at all. Compact width has a display again:
-    /// `navigationDestination(item:)` in `body`. Measured at 375pt, tapping
-    /// "ReferenceError" pushes a bar titled `ReferenceError` over a back button
-    /// reading `Errors`, and coming back leaves no row selected.
+    /// `navigationDestination(item:)` in `body`. Tapping an issue pushes its
+    /// titled detail over a back button and clears selection on return.
     private var list: some View {
         List(selection: selection) {
             if visibleIssues.isEmpty {
@@ -446,14 +428,8 @@ struct ErrorTrackingRoot: View {
         // Text size is the one already handled: segmented labels stop being
         // readable at accessibility sizes.
         //
-        // Width is the one measured afterwards on an iPad. The split view hands
-        // this list its *minimum* column width rather than its ideal, and four
-        // segments in ~320pt clipped the last one to `Suppre…` — a truncated
-        // control label, which is worse than a truncated row, because the user
-        // cannot tell what they would be selecting. `ViewThatFits` asks the
-        // segmented form whether it actually fits the column it was given and
-        // falls back to a menu when it does not, which is width the view can
-        // measure and a threshold it would otherwise have to guess.
+        // `ViewThatFits` uses the segmented form only when it fits the available
+        // width, otherwise falling back to a menu without guessed thresholds.
         return Group {
             if dynamicTypeSize.isAccessibilitySize {
                 picker.pickerStyle(.menu)
@@ -464,12 +440,7 @@ struct ErrorTrackingRoot: View {
                 }
             }
         }
-        // Claims the bar's width and sits at its leading edge. The bar hugs its
-        // content, so whenever the menu form wins the whole thing collapsed to a
-        // pill centred in the screen with dead space either side — measured on
-        // iPhone, where every neighbouring filter bar starts at the leading
-        // margin. A segmented picker already fills the width, so this changes
-        // nothing in the case that fits.
+        // Claim the bar width so the menu form aligns with adjacent controls.
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -503,10 +474,7 @@ struct ErrorIssueRow: View {
             subtitle: issue.issueDescription,
             footnote: impactLine,
             isSubtitleMonospaced: true,
-            // Two lines, against the one-line default. Four of the six issues in
-            // this project are titled "Error", so the message is the only thing
-            // telling the rows apart — and it was exactly what the narrow column
-            // cut, leaving "An unexpecte…" beside "Connection c…".
+            // Generic issue names need their message visible to distinguish rows.
             subtitleLineLimit: 2,
             // Unconditional now that the glyph is tinted by status: resolved and
             // suppressed must never be carried by colour alone.

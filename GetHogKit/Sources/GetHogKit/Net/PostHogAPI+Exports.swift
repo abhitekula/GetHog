@@ -2,9 +2,8 @@ import Foundation
 
 /// Rendered session-recording videos.
 ///
-/// Despite the resource name, this is not the chart-export API: every row in the
-/// project this was built against is a `video/mp4` render queued from the replay
-/// player, with `dashboard` and `insight` null. See `RecordingExport`.
+/// Despite the resource name, this is not the chart-export API: it lists video
+/// renders queued from the replay player. See `RecordingExport`.
 ///
 /// Read-only here. Queuing a render is a write this app does not offer.
 public extension PostHogAPI {

@@ -7,9 +7,7 @@ import Foundation
 /// exposed so tests can pin the exact text — a query this app builds from a
 /// server payload is a query that can silently drift.
 ///
-/// Both were run against project [REMOVED PRIVATE DATA] on 2026-07-30 before any of this was
-/// written; the shapes they returned are recorded in
-/// `Fixtures/survey_results_summary.json` and `Fixtures/survey_answers.json`.
+/// The query shapes follow the documented events and survey schemas.
 public struct SurveyResultsQuery: Sendable {
     public let survey: Survey
 
@@ -46,18 +44,15 @@ public struct SurveyResultsQuery: Sendable {
     //
     // Be careful about how much that is worth. It is a failure to find the
     // mechanism, **not evidence against it**: it comes from reading source, not
-    // from stopping a real survey, relaunching it and re-reading `start_date` —
-    // which is a write, and the key this project develops against is read-only.
+    // from exercising a tenant write and re-reading `start_date`.
     // A caller who extended `end_date` into the future first would get past
     // `/launch/`'s guard and would rewrite `start_date`, so the claim is not
     // even excluded, merely unreached by the path the app offers. It is recorded
     // as unconfirmed rather than asserted in either direction, and nothing above
     // depends on it — the asymmetry is the whole argument on its own.
 
-    /// Every event that can carry a survey outcome. `survey abandoned` is newer
-    /// than the SDK this was measured against and never appears in that
-    /// project's data — it is here so a project on a newer SDK is not silently
-    /// under-counted.
+    /// Every event that can carry a survey outcome. `survey abandoned` is
+    /// included so newer SDKs are not silently under-counted.
     static let outcomeEvents = ["survey sent", "survey dismissed", "survey abandoned"]
 
     public init(survey: Survey) {
@@ -158,16 +153,14 @@ public extension PostHogAPI {
 
     // MARK: - Lifecycle (write)
     //
-    // **Never executed.** Read out of PostHog's server source
-    // (`products/surveys/backend/api/survey.py`, master, fetched 2026-07-31) and
-    // its published docs; the key this project develops against is read-only, so
-    // no write in this family has been sent and none of what follows is measured.
+    // **Never executed by deterministic tests.** Derived from PostHog's server
+    // source (`products/surveys/backend/api/survey.py`) and published docs; no
+    // tenant write or response is retained in the repository.
     //
     // ## There is no survey status field, so there is no status to write
     //
-    // Measured (this part *is* measured, and it is a read): `GET /surveys/`
-    // returns 37 keys for each of this project's six surveys and not one of them
-    // is `status`. Running means `start_date` set, `end_date` unset, not
+    // The documented API shape has no `status` field. Running means `start_date`
+    // set and `end_date` unset, not
     // archived — PostHog's own `_should_survey_flags_be_active` is literally that
     // expression, and `Survey.statusText` derives the same four words the same
     // way. The four words are this app's invention; there is no server value for
@@ -194,10 +187,8 @@ public extension PostHogAPI {
     // The price is stated rather than hidden: because `stop/` skips the
     // serializer, a stopped survey's `survey-targeting-*` flags may be left
     // reading `active: true`, where the PATCH would have deactivated them.
-    // **This has not been measured and cannot be without performing a write.**
-    // Corroborating read only: in this project the one launched survey has
-    // `internal_targeting_flag.active: true` and all five drafts have it `false`,
-    // so the mirror is real and observable — what `stop/` leaves behind is not.
+    // The post-stop flag state is intentionally not asserted without performing
+    // a write; callers treat it as unconfirmed.
     //
     // Both actions require `survey:write`.
 

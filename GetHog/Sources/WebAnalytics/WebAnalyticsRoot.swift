@@ -215,12 +215,10 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
 
     /// What to call the bucket PostHog returns as JSON `null`.
     ///
-    /// Every UTM dimension has one and it is routinely the **largest row** —
-    /// 1,194 of ~1,400 visitors for `InitialUTMSource` in the project this was
-    /// measured against. It is not missing data: it is everyone who arrived
-    /// without a campaign on the link, which is the number a marketer is
-    /// comparing the campaigns *against*. Calling it "(not set)" would be true
-    /// and useless; naming it is what makes the table readable.
+    /// This is not necessarily missing data: it represents visitors who arrived
+    /// without a campaign on the link, which is the baseline marketers compare
+    /// campaigns against. Calling it "(not set)" would be true and useless;
+    /// naming it is what makes the table readable.
     private var unsetLabel: String {
         switch group {
         case .campaign: "No campaign"
@@ -231,8 +229,7 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     /// Turns one raw breakdown value into the text a row shows.
     ///
     /// Only the caller knows that `["US", "Newark"]` is a city and `-4.0` is an
-    /// hour offset, which is why this lives here and not in the kit. Every
-    /// non-string shape below was measured against project [REMOVED PRIVATE DATA] — see
+    /// hour offset, which is why this lives here and not in the kit. See
     /// `WebStatsRow.rows(from:label:)` for the table.
     func label(for value: JSONValue) -> String {
         switch value {
@@ -268,11 +265,8 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
 
     /// The three dimensions that break down by a tuple.
     ///
-    /// Measured shapes, in the API's own order:
-    ///
-    ///     Viewport   [1919.0, 992.0]              width, height
-    ///     Region     ["US", "NJ", "New Jersey"]   country, code, name
-    ///     City       ["US", "Newark"]             country, city
+    /// API tuple shapes, in order: viewport width/height, region country/code/
+    /// name, and city country/city.
     ///
     /// Region and City are read most-specific-first because that is how a person
     /// says an address, and the country is kept on the end rather than dropped:
@@ -280,9 +274,8 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     /// them could sit next to each other. `Region` deliberately skips its middle
     /// element — "New Jersey, NJ, US" says New Jersey twice.
     ///
-    /// The country-only rows (`["US", null, null]`, `["US", null]`) are real and
-    /// large — 877 of ~1,560 visitors for Region — and are geo-lookups that got
-    /// as far as a country and no further. They keep the country and say what is
+    /// Country-only rows are geo-lookups that got no further. They keep the
+    /// country and say what is
     /// missing, so they stay distinguishable from the resolved rows below them
     /// rather than collapsing onto the same label and colliding as list ids.
     private func arrayLabel(_ parts: [JSONValue]) -> String {
@@ -318,11 +311,8 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     ///   against every other dimension's `[…, visitors, views, …]`. A stats
     ///   table would print its rage clicks under "visitors". It deserves a
     ///   section of its own with its own columns, not a slot in this picker.
-    /// - The eight `FirstPageview*` dimensions duplicate the `Initial*` ones.
-    ///   Measured side by side over 90 days: `FirstPageviewChannelType` 741
-    ///   visitors against `InitialChannelType` 740; `FirstPageviewReferringDomain`
-    ///   769 against `InitialReferringDomain` 769. Offering both would nearly
-    ///   double the menu to express a distinction the data does not show.
+    /// - The eight `FirstPageview*` dimensions duplicate the `Initial*` ones,
+    ///   so offering both would nearly double the menu without useful distinction.
     /// - `InitialUTMSourceMediumCampaign` and its `FirstPageview` twin are the
     ///   three UTM fields glued together, and the glue shows: the top value
     ///   comes back as `"referrer:$direct / (none) / (none)"`. The three
@@ -335,10 +325,8 @@ enum WebStatsDimension: String, CaseIterable, Identifiable, Hashable {
     /// - `PreviousPage` mixes kinds within one column: its top value is
     ///   `$direct`, a session start rather than a page, so the ranking is not a
     ///   ranking of pages.
-    /// - `ScreenName` is the mobile-SDK `$screen` equivalent of `Page` and
-    ///   returned zero rows here. It is not wrong, it is simply not web, and
-    ///   this screen is called Web. The first mobile-heavy project to want it is
-    ///   a better reason to add it than symmetry is.
+    /// - `ScreenName` is the mobile-SDK `$screen` equivalent of `Page`. It is
+    ///   not a web dimension, so this screen does not offer it.
     static let omitted = [
         "FrustrationMetrics", "ExitClick", "PreviousPage", "ScreenName",
         "InitialUTMSourceMediumCampaign", "FirstPageviewUTMSourceMediumCampaign",
@@ -367,10 +355,8 @@ final class WebAnalyticsStore {
     /// whole answer.** `webExternalClicks` sends no `limit` of its own, so what
     /// comes back is capped by PostHog and reported in the envelope — the shape
     /// the flag was decoded for, and the only shape it is reliable in. The
-    /// recorded response in `web_external_clicks.json` shows the fields present
-    /// and the cap in force: `hasMore: false`, `limit: 100`, two results. That
-    /// recording is *not* truncated; the point is that the envelope is speaking,
-    /// and this screen was not listening.
+    /// synthetic fixture exercises both envelope fields. The envelope, not a
+    /// locally chosen row count, decides whether the server withheld results.
     var externalClicksAreTruncated = false
     /// The cap PostHog applied, which for this query is PostHog's own default
     /// rather than anything the app chose.
@@ -444,12 +430,7 @@ final class WebAnalyticsStore {
             // city is "Newark, US", an absent UTM is "No campaign". Nothing else
             // knows that, and the kit deliberately does not.
             rows = WebStatsRow.rows(from: response, label: dimension.label(for:))
-            // Recorded, because the table has always been a *top N* and never
-            // said so. The captured `web_stats.json` is 50 rows with
-            // `hasMore: true` and `limit: 50` beside them, so this has been true
-            // since the screen shipped — it simply mattered less when the only
-            // dimensions offered were five with few values. `City`, `Language`
-            // and both page dimensions routinely have hundreds.
+            // The table is a top-N result when the response reports truncation.
             rowsAreTruncated = response.isTruncated
             rowLimit = response.appliedLimit
             loadedAt = Date()
@@ -804,14 +785,8 @@ struct WebAnalyticsRoot: View {
     /// Wraps to as many rows as the width needs, rather than running off the
     /// edge.
     ///
-    /// Measured on iPhone at default text size: three captioned tiles do not fit
-    /// 402pt, so the horizontal strip cut the third one's caption to
-    /// "No prior p…" — and with the scroll indicators hidden, nothing said the
-    /// remaining stats were there at all. Wrapping keeps every figure present
-    /// and comparable; showing fewer in compact would hide the numbers the
-    /// screen exists for. The widest arrangement that fits wins, so iPad keeps
-    /// its single row of five, and accessibility sizes fall all the way to one
-    /// tile per row instead of squeezing a metric until it truncates.
+    /// Wrapping keeps every figure present and comparable rather than truncating
+    /// captions in a horizontal strip. The widest fitting arrangement wins.
     private var overviewFigures: some View {
         ViewThatFits(in: .horizontal) {
             metricGrid(columns: store.metrics.count)
@@ -913,11 +888,8 @@ struct WebAnalyticsRoot: View {
 
     /// Says the table is a top N whenever PostHog said there were more.
     ///
-    /// Not decoration. Ranked rows with nothing under them read as *the whole
-    /// list*, and on this table that reading is wrong on almost every dimension
-    /// — the recording that ships in the demo is 50 rows with `hasMore: true`
-    /// beside them. Someone comparing "how many countries" against PostHog's own
-    /// UI would have found the app quietly answering 50.
+    /// Not decoration. Ranked rows without a note can read as the whole list,
+    /// so truncation is made explicit whenever the response reports it.
     ///
     /// Only ever states the limit **the server applied**, which is the one the
     /// envelope carries, not the one the request asked for. A query that sends no
@@ -995,10 +967,7 @@ struct WebAnalyticsRoot: View {
             )
 
             if let error = store.clicksError, store.externalClicks.isEmpty {
-                // A failed request must not read as a finding about the project.
-                // That was one of two defects here and it is the one that got
-                // fixed; the other survived directly below it for a while, with
-                // this comment describing it in the past tense.
+                // A failed request must not read as a finding about the data.
                 sectionFailure(error) { Task { await loadExternalClicks() } }
             } else if topExternalClicks.isEmpty && !store.isLoadingClicks {
                 // States the absence and stops. It used to continue: "PostHog
@@ -1006,19 +975,11 @@ struct WebAnalyticsRoot: View {
                 // on." — a *diagnosis*, and one this app has no way to reach.
                 //
                 // Empty is a fact; why it is empty is a claim. The app reads no
-                // capture configuration anywhere — measured, 2026-07-31: the
-                // only occurrences of "autocapture" across `GetHog/Sources`
-                // and `GetHogKit/Sources` are event *names* (`$autocapture`)
-                // and prose, never a settings read.
+                // capture configuration anywhere: the relevant source paths
+                // contain event names and explanatory prose, not a settings read.
                 //
-                // Nor could it easily start. `GET /api/projects/:id/` was
-                // called against the live project the same day and **carries no
-                // external-link-tracking field at all** — it exposes
-                // `autocapture_opt_out`, `autocapture_exceptions_opt_in`,
-                // `autocapture_web_vitals_opt_in`, `heatmaps_opt_in`,
-                // `capture_dead_clicks`, `capture_console_log_opt_in`,
-                // `session_recording_opt_in` and `surveys_opt_in`, and nothing
-                // resembling this one. PostHog's own docs describe outbound
+                // PostHog's public project model has no external-link-tracking
+                // field. Its docs describe outbound
                 // link capture as a client-side SDK config option, so there may
                 // be no server-side switch to read. A quiet week produces this
                 // identical result either way.
@@ -1055,7 +1016,7 @@ struct WebAnalyticsRoot: View {
     ///
     /// Two independent cuts sit between PostHog's answer and these rows, and
     /// neither was on screen. The query sends no `limit`, so PostHog applies its
-    /// own — the recorded response carries `limit: 100` — and then
+    /// own cap — reported in the response envelope — and then
     /// `topExternalClicks` keeps the 25 busiest of whatever arrived. Ranked rows
     /// with nothing under them read as the whole list, which is the same defect
     /// the breakdown table's `truncationNote` above exists for; this section
@@ -1276,15 +1237,8 @@ struct WebKPITile: View {
             if metric.isIncreaseBad == true {
                 Text("Lower is better")
                     .font(.caption2)
-                    // Measured on the page ground: `.tertiary` sampled
-                    // `#BCBAB8` on `#F2EFE9` for **1.69:1** in light and
-                    // `#555456` on `#151413` for **2.44:1** in dark, against a
-                    // 4.5:1 floor. This is the only thing on the tile that stops
-                    // a green downward arrow reading as a bug, and it was the
-                    // least legible text on the screen. `Ink.secondary` rather
-                    // than `Ink.tertiary` for the reason `FreshnessLabel` gives:
-                    // this is caption2, the smallest type the app sets, and
-                    // small type needs the most contrast.
+                    // Caption text needs sufficient contrast so a green downward
+                    // arrow is not mistaken for a bug.
                     .foregroundStyle(Theme.Ink.secondary)
             }
         }

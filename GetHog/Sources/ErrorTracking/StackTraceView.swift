@@ -7,25 +7,17 @@ import SwiftUI
 /// actually contains rather than from what a stack trace is supposed to look
 /// like.
 ///
-/// **1. Collapsed to in-app frames.** The one live stack with real depth was 23
-/// frames, 22 of them in-app — but the ratio is the wrong reason to collapse.
-/// The right one is that a phone shows about six frames without scrolling, and
-/// the frames a reader wants are the ones they can edit. Framework frames stay
-/// one tap away, never further, and the count is stated so nobody has to wonder
-/// whether the trace was truncated.
+/// **1. Collapsed to in-app frames.** A phone can show only a few frames without
+/// scrolling, and the editable frames are usually most useful. Framework frames
+/// remain one tap away, and the visible count makes the choice explicit.
 ///
 /// **2. The top frame is the headline.** It gets its own block above the list,
 /// because on a narrow screen the difference between "the first row" and "the
 /// thing that threw" is not visible, and it is the only row most triage needs.
 ///
-/// **3. Unresolved frames say so.** This is the one that had to be got right.
-/// Of the 23 frames in the deepest live capture, 22 failed symbolication inside
-/// a stacktrace whose own `type` field said `"resolved"`. Those frames still
-/// carry a filename and a line number — of the *shipped bundle*, not the source
-/// — so rendering them like the resolved ones would put a reader at
-/// `f77ff_next_dist_compiled_a731fec6._.js:878:31` while implying it was their
-/// code. Every such frame is labelled, tinted differently, and can state
-/// PostHog's own reason verbatim.
+/// **3. Unresolved frames say so.** A minified frame can still carry a filename
+/// and line number from the shipped bundle rather than source. Each such frame
+/// is labelled, tinted differently, and can state the service reason verbatim.
 struct StackTraceView: View {
     let occurrence: ExceptionOccurrence
 
@@ -76,8 +68,7 @@ struct ExceptionEntryView: View {
     ///
     /// Falls back to the whole stack when nothing is marked in-app — a trace
     /// where every frame is third-party is still the only trace there is, and
-    /// collapsing it to nothing would report "no frames" about an exception that
-    /// has 23 of them.
+    /// collapsing it to nothing would incorrectly report no frames.
     private var visibleFrames: [StackFrame] {
         if showsAllFrames || inApp.isEmpty { return frames }
         return inApp
@@ -176,11 +167,8 @@ struct ExceptionEntryView: View {
 
     /// The trace, top frame first.
     ///
-    /// The top frame used to get a duplicate block of its own above this list.
-    /// Rendered against the real 23-frame capture that read as a defect: the same
-    /// function, file and position printed twice with a divider between them.
-    /// Prominence now comes from the row itself — a "Top frame" caption, a filled
-    /// marker and semibold type — which is emphasis without a second copy.
+    /// The top frame is emphasized in its row rather than duplicated in a
+    /// separate block.
     private var frameList: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             HStack(alignment: .firstTextBaseline) {
@@ -235,19 +223,8 @@ struct ExceptionEntryView: View {
 
     /// The distinct reasons symbolication failed.
     ///
-    /// Deduplicated because in practice a handful of reasons are repeated across
-    /// every frame. Counted in the live capture the demo now serves
-    /// (`exception_unresolved_frames.json`): 22 unresolved frames carrying **3**
-    /// distinct strings — the same 407 Proxy Authentication Required against
-    /// three different bundles, 15 frames on one and 5 and 2 on the others. This
-    /// sentence used to sit on every row, and rendered against that payload it
-    /// filled the card: the same fourteen words, 22 times, between the frames
-    /// somebody was trying to read.
-    ///
-    /// The count is also why the disclosure's label is plural-aware. Rendered on
-    /// screen against this capture it reads "Why PostHog couldn't resolve them
-    /// (3 reasons)"; a fixture where the reasons collapsed to one would have left
-    /// that branch of the copy unseen.
+    /// Deduplicated because a reason can repeat across many frames. The
+    /// disclosure label is plural-aware so the list stays concise and clear.
     private var resolveFailures: [String] {
         var seen = Set<String>()
         return minified.compactMap { frame -> String? in
@@ -258,11 +235,9 @@ struct ExceptionEntryView: View {
 
     /// Said once, above the trace, rather than on each row.
     ///
-    /// It has to be said *somewhere*: an unresolved frame still carries a file
-    /// and a line number, and without this the reader would take
-    /// `f77ff_next_dist_compiled_a731fec6._.js:878:31` for a position in their
-    /// own source. Each row still carries its own "Minified" pill, so the note
-    /// says why and the rows say which.
+    /// It has to be said *somewhere*: an unresolved frame can resemble a source
+    /// position. Each row still carries its own "Minified" pill, so the note says
+    /// why and the rows say which.
     @ViewBuilder
     private var minifiedNote: some View {
         if !minified.isEmpty {
@@ -326,11 +301,8 @@ struct ExceptionEntryView: View {
 /// proportional type makes `l`, `1` and `I` the same glyph.
 ///
 /// Deliberately two lines and no prose. An earlier version explained the
-/// minified coordinate space on the row; rendered against the real 23-frame
-/// capture, that put the same fourteen words between every pair of frames and
-/// made the card 2,476pt tall. The explanation moved up to the card, said once;
-/// the row keeps the pill, which is what tells the reader *which* frames it
-/// applies to.
+/// minified coordinate space on the row. The explanation belongs once above the
+/// list; the row keeps the pill identifying which frames it applies to.
 struct StackFrameRow: View {
     let frame: StackFrame
     var isTop = false
@@ -380,9 +352,8 @@ struct StackFrameRow: View {
     /// Speech gets the caveat on every frame it applies to.
     ///
     /// The visual design says it once above the list because a sighted reader
-    /// takes the whole card in at a glance. VoiceOver does not: it arrives at
-    /// one row at a time, and a row read as "applyUpdate, chunk.js line 878"
-    /// with no qualifier is the exact misreading the pill prevents on screen.
+    /// takes the whole card in at a glance. VoiceOver arrives one row at a time,
+    /// so the qualifier stays in each applicable accessibility label.
     private var spokenFrame: String {
         var parts: [String] = []
         if isTop { parts.append("Top frame") }
@@ -399,10 +370,8 @@ struct StackFrameRow: View {
 
 /// Breadcrumbs, when the SDK sent any.
 ///
-/// Rendered from `$exception_steps`, which was **absent on all 358** exception
-/// events measured in project [REMOVED PRIVATE DATA] across May, June and July 2026. So this is
-/// built to the documented shape and shown only when the data is really there —
-/// an always-empty "Steps" card would be worse than no card.
+/// Built to the documented shape and shown only when the data is present; an
+/// always-empty "Steps" card would be worse than no card.
 struct ExceptionStepsView: View {
     let steps: [ExceptionStep]
 

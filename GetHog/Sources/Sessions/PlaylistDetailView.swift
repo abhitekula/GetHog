@@ -5,8 +5,7 @@ import SwiftUI
 ///
 /// ## The two kinds are fetched by completely different means
 ///
-/// Measured against a live project, and this is the whole reason the screen
-/// exists rather than a list tapping through to nothing:
+/// The two public resource shapes require different loading paths:
 ///
 /// * A **collection** is static — the recordings somebody pinned. They come
 ///   from `GET /session_recording_playlists/{short_id}/recordings/`, which
@@ -18,9 +17,8 @@ import SwiftUI
 ///   Its contents come from replaying its stored `filters` blob against the
 ///   recordings endpoint instead.
 ///
-/// PostHog's own built-in playlists — Watch history, Frustration signals,
-/// Expiring soon — are all typed `collection` and all answer the pinned
-/// sub-resource with real rows, so they take the collection path too.
+/// Built-in playlists typed as `collection` take the pinned sub-resource path
+/// too.
 struct PlaylistDetailView: View {
     let playlist: SessionRecordingPlaylist
     /// Hands the saved filter back to the sessions list. `nil` when this screen

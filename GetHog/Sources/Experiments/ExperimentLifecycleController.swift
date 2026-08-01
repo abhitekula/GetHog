@@ -42,8 +42,8 @@ import GetHogKit
 /// front of both would make the gate mean nothing, which is `ErrorTriageController`'s
 /// argument for having none at all.
 ///
-/// **No request this drives has ever been executed.** The available key is
-/// read-only and project [REMOVED PRIVATE DATA] has zero experiments; see `PostHogAPI+Experiments`.
+/// Request shapes are defined in `PostHogAPI+Experiments` and covered with
+/// deterministic test data.
 @MainActor
 @Observable
 final class ExperimentLifecycleController {
