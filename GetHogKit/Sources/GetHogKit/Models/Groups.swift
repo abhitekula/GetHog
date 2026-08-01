@@ -1,7 +1,8 @@
 import Foundation
 
 // PostHog's B2B group analytics. A group is an account-like entity — a company,
-// a workspace, a example product — that events are attributed to alongside the person
+// a workspace, or a subscription — that events are attributed to alongside the
+// person
 // who triggered them. A project defines up to five group *types*, and each type
 // holds its own set of groups.
 
@@ -51,7 +52,7 @@ public struct GroupType: Sendable, Decodable, Identifiable, Hashable, Comparable
     }
 
     /// Sentence-case for a heading. The raw type is left exactly as stored,
-    /// because `wedding_subdomain` is an identifier the user chose and titlecasing
+    /// because `account_slug` is an identifier the user chose and titlecasing
     /// it would misrepresent what they have to type into a filter.
     public var singularName: String { rawSingular.map(Self.sentenceCased) ?? groupType }
     public var pluralName: String { rawPlural.map(Self.sentenceCased) ?? groupType }
@@ -134,8 +135,8 @@ public struct GroupRow: Sendable, Identifiable, Hashable {
 //
 // Everything below is scoped by the `$group_N` column on `events`, which is
 // what group attribution actually is in the store — see
-// `PostHogAPI.groupColumn(index:)` for what was measured and what was ruled
-// out. All of it is therefore *observed over a window* rather than read from a
+// `PostHogAPI.groupColumn(index:)` for the indexed-column mapping.
+// All of it is therefore *observed over a window* rather than read from a
 // membership record, and every type here carries the totals needed to say so.
 
 /// One event name inside one group, with the group's own totals attached.

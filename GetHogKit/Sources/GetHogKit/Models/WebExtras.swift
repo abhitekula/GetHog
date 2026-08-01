@@ -106,13 +106,9 @@ public struct WebNotableChange: Sendable, Identifiable, Hashable {
     /// The API's `percent_change`, surfaced only when a previous period exists to
     /// compare against.
     ///
-    /// PostHog returns a constant `percent_change` of 10.0 against a
-    /// `previous_value` of 0 on every row, at every date range tried from -7d to
-    /// -180d. A single percentage repeated across eight unrelated dimensions,
-    /// measured against zero, is a placeholder rather than a measurement, and
-    /// printing it would present a sentinel as a finding. Recomputing the change
-    /// from `currentValue / previousValue` is not an escape either — that divides
-    /// by zero and yields an infinity.
+    /// A percentage paired with a zero previous value has no meaningful
+    /// denominator. Printing it would present a sentinel as a finding, while
+    /// recomputing from `currentValue / previousValue` would yield infinity.
     public var comparablePercentChange: Double? {
         guard let previousValue, previousValue != 0, let reportedPercentChange else { return nil }
         return reportedPercentChange
@@ -127,7 +123,7 @@ public struct WebNotableChange: Sendable, Identifiable, Hashable {
         return lowered.contains("bounce") || lowered.contains("exit rate")
     }
 
-    /// Nil when there is nothing to compare — which is every row, today.
+    /// Nil when the response does not carry a meaningful previous period.
     public var isImprovement: Bool? {
         guard let change = comparablePercentChange, change != 0 else { return nil }
         return (change > 0) != isIncreaseBad

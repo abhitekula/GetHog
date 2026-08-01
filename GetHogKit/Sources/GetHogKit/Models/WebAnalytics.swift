@@ -94,32 +94,24 @@ public struct WebStatsRow: Sendable, Identifiable, Hashable {
 
     /// Builds rows from the generic column-oriented query response.
     ///
-    /// **A breakdown value is not always a string, and used to be dropped when
-    /// it wasn't.** This read `row.values.first?.stringValue` and returned `nil`
-    /// otherwise, which was correct for the five dimensions the app offered and
-    /// silently wrong for most of the twenty-eight it did not. Measured against
-    /// project [REMOVED PRIVATE DATA] over 90 days, `WebStatsTableQuery` returns the breakdown
-    /// value as:
+    /// **A breakdown value is not always a string.** Depending on the selected
+    /// dimension, `WebStatsTableQuery` can return a string, number, array, or
+    /// null in the first column:
     ///
-    ///     Page, Browser, Country, OS, Language, …   "en-US"            string
-    ///     InitialUTMSource and every UTM sibling    null               null
-    ///     Timezone                                  -4.0, 5.5          number
-    ///     Viewport                                  [1919.0, 992.0]    array
-    ///     Region                                    ["US","NJ","New Jersey"]
-    ///     City                                      ["US","Newark"]
+    ///     Page or browser                           "sample"           string
+    ///     Unset campaign property                   null               null
+    ///     Timezone                                  numeric offset     number
+    ///     Viewport or location                      ordered parts      array
     ///
-    /// `JSONValue.stringValue` is `nil` for `.null` and `.array`, so Viewport,
-    /// Region and City produced **zero** rows — a table that says "PostHog
-    /// returned no regions" about a project with five. The `null` case is worse
-    /// than empty: for `InitialUTMSource` that row is 1,194 of ~1,400 visitors,
-    /// the "arrived without a campaign" bucket, so dropping it hid 85% of the
-    /// traffic *and* left the remaining rows' proportion bars scaled against a
-    /// peak that was no longer in the table.
+    /// `JSONValue.stringValue` is `nil` for `.null` and `.array`. Using it as a
+    /// row gate would therefore discard valid compound dimensions and the
+    /// meaningful "not set" bucket, distorting both the list and its proportions.
     ///
     /// So nothing is dropped now, and the label is the caller's decision.
     /// `label` defaults to `plainLabel`, which is faithful but generic; the app
     /// passes `WebStatsDimension.label(for:)`, because only the caller knows
-    /// that `["US", "Newark"]` is a city and `-4.0` is an hour offset. Keeping
+    /// that an ordered string pair is a location and a number is an hour offset.
+    /// Keeping
     /// that knowledge out of here is the same rule `InsightRenderModel` follows:
     /// the kit decodes shapes, the app names them.
     public static func rows(
