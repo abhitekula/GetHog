@@ -38,6 +38,7 @@ enum DemoLaunch {
     static func launch(
         tab: String? = nil,
         openURL: String? = nil,
+        environment: [String: String] = [:],
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> XCUIApplication {
@@ -50,6 +51,9 @@ enum DemoLaunch {
         app.launchArguments = ["-GetHogDemo"]
         if let tab { app.launchEnvironment["GETHOG_TAB"] = tab }
         if let openURL { app.launchEnvironment["GETHOG_OPEN_URL"] = openURL }
+        for (key, value) in environment {
+            app.launchEnvironment[key] = value
+        }
         app.launch()
 
         if !waitForScreen(app) {

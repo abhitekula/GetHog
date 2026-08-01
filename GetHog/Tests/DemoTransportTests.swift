@@ -69,6 +69,33 @@ struct DemoTransportTests {
     private static let healthySavedQueryID = "018f9000-0000-7000-8000-000000000243"
     private static let plainSavedQueryID = "018f9000-0000-7000-8000-000000000014"
 
+    @Test(
+        "the visual-verification seam empties its requested collection",
+        arguments: [
+            (DemoTransport.EmptyCollection.dashboards, PostHogAPI.dashboards(projectID: Self.projectID)),
+            (.insights, PostHogAPI.insights(projectID: Self.projectID)),
+            (.sessions, PostHogAPI.sessionRecordings(projectID: Self.projectID)),
+            (.experiments, PostHogAPI.experiments(projectID: Self.projectID)),
+            (.errorTracking, PostHogAPI.errorTrackingIssues(projectID: Self.projectID)),
+        ]
+    )
+    func forcedEmptyCollection(
+        collection: DemoTransport.EmptyCollection,
+        endpoint: Endpoint
+    ) async throws {
+        var components = URLComponents(string: "https://app.example.com" + endpoint.path)!
+        if !endpoint.query.isEmpty {
+            components.queryItems = endpoint.query
+        }
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = endpoint.method
+        request.httpBody = endpoint.body
+        let (data, response) = try await DemoTransport(emptyCollection: collection).send(request)
+        #expect(response.statusCode == 200)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect((object["results"] as? [Any])?.isEmpty == true)
+    }
+
     /// The exact shape `AppModel.publish` asks for, trailing slash and all.
     @Test("a collection path serves its fixture page, not an empty one")
     func collectionPathsResolve() async throws {

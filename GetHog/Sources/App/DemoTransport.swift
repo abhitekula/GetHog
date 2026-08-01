@@ -11,6 +11,34 @@ struct DemoTransport: HTTPTransport {
 
     static let launchArgument = "-GetHogDemo"
     static let dashboardID = 725_101
+    static let emptyCollectionEnvironment = "GETHOG_DEMO_EMPTY_COLLECTION"
+
+    enum EmptyCollection: String, CaseIterable {
+        case dashboards
+        case insights
+        case sessions
+        case experiments
+        case errorTracking
+
+        func matches(path: String, body: String) -> Bool {
+            switch self {
+            case .dashboards: path.hasSuffix("/dashboards/")
+            case .insights: path.hasSuffix("/insights/")
+            case .sessions: path.hasSuffix("/session_recordings/")
+            case .experiments: path.hasSuffix("/experiments/")
+            case .errorTracking:
+                path.hasSuffix("/query/") && body.contains("ErrorTrackingQuery")
+            }
+        }
+    }
+
+    private let emptyCollection: EmptyCollection?
+
+    init(emptyCollection: EmptyCollection? = nil) {
+        self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
+            Self.emptyCollectionEnvironment
+        ].flatMap(EmptyCollection.init(rawValue:))
+    }
 
     static var isEnabled: Bool {
         ProcessInfo.processInfo.arguments.contains(launchArgument)
@@ -51,7 +79,13 @@ struct DemoTransport: HTTPTransport {
             return (write.data, response)
         }
 
-        let reply = Self.fixture(for: path, body: body, query: query)
+        let reply = if let emptyCollection,
+                       emptyCollection.matches(path: path, body: body)
+        {
+            Reply(Self.emptyPage)
+        } else {
+            Self.fixture(for: path, body: body, query: query)
+        }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: reply.status,
