@@ -416,11 +416,15 @@ struct SectionLabel: View {
     let text: String
     var systemImage: String?
     var brandEmblem: BrandEmblem? = nil
+    var productMark: BrandProductMark? = nil
 
     var body: some View {
         HStack(spacing: Theme.Space.xs) {
             if let brandEmblem {
                 BrandEmblemView(emblem: brandEmblem)
+                    .accessibilityHidden(true)
+            } else if let productMark {
+                BrandProductMarkView(mark: productMark)
                     .accessibilityHidden(true)
             } else if let systemImage {
                 // Same face as the text beside it. A fixed 10pt glyph stayed put
@@ -462,6 +466,7 @@ struct CardHeader: View {
     let title: String
     var systemImage: String?
     var subtitle: String?
+    var showsBrandStitch = false
 
     /// The glyph's column, which has to grow with the glyph in it.
     ///
@@ -502,6 +507,9 @@ struct CardHeader: View {
                 }
             }
             Spacer(minLength: 0)
+            if showsBrandStitch && !typeSize.isAccessibilitySize {
+                BrandQuillStitch(size: 14)
+            }
         }
         // The symbol is chrome — it names nothing the title beside it does not
         // already say — so it must not be a VoiceOver stop. It used to carry

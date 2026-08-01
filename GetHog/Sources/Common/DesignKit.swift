@@ -194,18 +194,25 @@ struct PageScaffold<Content: View>: View {
 /// that does not exist, and would break the rule that colour identifies data.
 struct RowGlyph: View {
     let systemName: String
+    var brandGlyph: BrandObjectGlyph? = nil
     var tint: Color = Theme.accent
     var size: CGFloat = 32
 
     var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: size * 0.44, weight: .semibold))
-            .foregroundStyle(tint)
-            .frame(width: size, height: size)
-            .background(tint.opacity(0.13), in: .rect(cornerRadius: size * 0.29, style: .continuous))
-            // Decorative: the row's own label already says what this is, and a
-            // VoiceOver user does not benefit from hearing the icon named too.
-            .accessibilityHidden(true)
+        Group {
+            if let brandGlyph {
+                BrandObjectGlyphView(glyph: brandGlyph, size: size * 0.62, tint: tint)
+            } else {
+                Image(systemName: systemName)
+                    .font(.system(size: size * 0.44, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+        }
+        .frame(width: size, height: size)
+        .background(tint.opacity(0.13), in: .rect(cornerRadius: size * 0.29, style: .continuous))
+        // Decorative: the row's own label already says what this is, and a
+        // VoiceOver user does not benefit from hearing the icon named too.
+        .accessibilityHidden(true)
     }
 }
 
@@ -242,6 +249,7 @@ struct DataRow: View {
     @State private var width: CGFloat = .greatestFiniteMagnitude
 
     let glyph: String
+    var brandGlyph: BrandObjectGlyph? = nil
     var tint: Color = Theme.accent
     let title: String
     var subtitle: String?
@@ -341,7 +349,7 @@ struct DataRow: View {
         if isStacked {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 HStack(alignment: .top, spacing: Theme.Space.m) {
-                    RowGlyph(systemName: glyph, tint: tint)
+                    RowGlyph(systemName: glyph, brandGlyph: brandGlyph, tint: tint)
                     titleText
                 }
 
@@ -351,7 +359,7 @@ struct DataRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             HStack(spacing: Theme.Space.m) {
-                RowGlyph(systemName: glyph, tint: tint)
+                RowGlyph(systemName: glyph, brandGlyph: brandGlyph, tint: tint)
 
                 VStack(alignment: .leading, spacing: 2) {
                     titleText
