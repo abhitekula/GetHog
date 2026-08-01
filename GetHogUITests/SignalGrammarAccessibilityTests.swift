@@ -13,9 +13,9 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         XCTAssertTrue(switcher.exists)
         XCTAssertTrue(switcher.isHittable)
         switcher.tap()
-        let menuProject = app.descendants(matching: .any).matching(
+        let menuProject = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Starling Metrics Lab")
         ).firstMatch
-        XCTAssertTrue(menuProject.exists)
+        XCTAssertTrue(menuProject.waitForExistence(timeout: 3))
     }
 }
