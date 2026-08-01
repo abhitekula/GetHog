@@ -332,7 +332,7 @@ struct FlagDetailView: View {
                 }
                 .disabled(isBusy || draftRollout == (controller.effectiveRollout(flag, group: editedGroup) ?? 100))
             } header: {
-                SectionLabel(text: "Rollout", systemImage: "dial.medium")
+                SectionLabel(text: "Rollout", productMark: .flag)
             } footer: {
                 Text(rolloutFooter)
             }
@@ -407,7 +407,7 @@ struct FlagDetailView: View {
                 VariantRow(index: index, variant: variant)
             }
         } header: {
-            SectionLabel(text: "Variants", systemImage: "arrow.triangle.branch")
+            SectionLabel(text: "Variants", productMark: .flag)
         }
     }
 

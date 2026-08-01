@@ -4,7 +4,7 @@ import TipKit
 
 /// How a flag is filed in the list. Archived wins over on/off, because an
 /// archived flag isn't something you reason about as "currently live".
-enum FlagStatusGroup: String, CaseIterable, Identifiable {
+enum FlagStatusGroup: String, CaseIterable, Identifiable, Hashable {
     case enabled, disabled, archived
 
     var id: String { rawValue }
@@ -227,7 +227,7 @@ struct FlagsRoot: View {
                             .listRowSeparator(.hidden)
                         }
                     } header: {
-                        SectionLabel(text: group.title, systemImage: group.symbol)
+                        SectionLabel(text: group.title, productMark: .flag)
                     }
                 }
             }
@@ -267,6 +267,10 @@ struct FlagRowView: View {
     var body: some View {
         DataRow(
             glyph: glyph,
+            brandGlyph: FlagBrandAppearance.glyph(
+                isMultivariate: flag.isMultivariate,
+                isArchived: group == .archived
+            ),
             tint: tint,
             title: name ?? flag.key,
             // The key is what developers copy verbatim, so it takes the

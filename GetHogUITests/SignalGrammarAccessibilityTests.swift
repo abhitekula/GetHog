@@ -2,6 +2,38 @@ import XCTest
 
 @MainActor
 final class SignalGrammarAccessibilityTests: XCTestCase {
+    func testCoreFourOverviewScenesAreSingularOnIPad() throws {
+        let device = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(device.lowercased().contains("ipad"))
+
+        let cases = [
+            (tab: "dashboards", heading: "Project signal"),
+            (tab: "events", heading: "Event signal"),
+            (tab: "sessions", heading: "Replay signal"),
+            (tab: "flags", heading: "Rollout signal"),
+        ]
+
+        for item in cases {
+            let app = DemoLaunch.launch(tab: item.tab)
+            DemoLaunch.settle(app)
+            // The initial identifier contract reported 19/4/4/6 matches because
+            // SwiftUI inherited each outer identifier onto scene descendants.
+            // Those descendants expose sibling frames rather than one stable
+            // container frame, so frame grouping was no more truthful. The
+            // user-facing heading is the stable singular landmark: a second
+            // rendered summary necessarily renders a second heading.
+            let headings = app.staticTexts.matching(
+                NSPredicate(format: "label == %@", item.heading)
+            )
+            XCTAssertEqual(
+                headings.count,
+                1,
+                "\(item.tab) must expose one \(item.heading) heading"
+            )
+            app.terminate()
+        }
+    }
+
     func testSessionsSummaryUsesLinearAccessibilityLayoutOnIPad() throws {
         let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
         guard deviceName.localizedCaseInsensitiveContains("iPad") else {

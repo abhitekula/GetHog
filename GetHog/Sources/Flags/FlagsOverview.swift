@@ -22,8 +22,7 @@ struct FlagsOverview: View {
 
     var body: some View {
         PageScaffold(spacing: Theme.Space.xl) {
-            header
-            statusSection
+            summaryScene
             rolloutSection
             multivariateSection
             FreshnessLabel(date: store.loadedAt)
@@ -32,20 +31,39 @@ struct FlagsOverview: View {
 
     // MARK: - Sections
 
-    private var header: some View {
+    private var facts: FlagOverviewFacts { FlagOverviewFacts(store: store) }
+
+    private var summaryScene: some View {
+        Card(accent: Theme.SignalChrome.ink) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Theme.Space.xxl) {
+                    flagIdentity
+                    flagStateSummary.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                VStack(alignment: .leading, spacing: Theme.Space.l) {
+                    flagIdentity
+                    SignalRule(mark: .flag)
+                    flagStateSummary
+                }
+            }
+        }
+        .accessibilityIdentifier("gethog.signal-summary.flags")
+    }
+
+    private var flagIdentity: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            SectionLabel(text: "Feature flags", systemImage: "flag")
+            SectionLabel(text: "Rollout signal", productMark: .flag)
 
             Text(model.selectedProject?.name ?? "PostHog")
                 .font(.largeTitle.weight(.semibold))
 
             StatStrip {
-                MetricTile(label: "Flags", value: "\(store.flags.count)", compact: true)
-                MetricTile(label: "Enabled", value: "\(count(of: .enabled))", compact: true)
-                if !multivariate.isEmpty {
+                MetricTile(label: "Flags", value: "\(facts.flagCount)", compact: true)
+                MetricTile(label: "Enabled", value: "\(facts.enabledCount)", compact: true)
+                if facts.multivariateCount > 0 {
                     MetricTile(
                         label: "Multivariate",
-                        value: "\(multivariate.count)",
+                        value: "\(facts.multivariateCount)",
                         compact: true
                     )
                 }
@@ -54,29 +72,28 @@ struct FlagsOverview: View {
         }
     }
 
-    private var statusSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
-            SectionLabel(text: "By status", systemImage: "circle.lefthalf.filled")
-
-            Card {
-                HStack(alignment: .top, spacing: Theme.Space.l) {
-                    ForEach(FlagStatusGroup.allCases) { group in
-                        // The word is carried by the pill, never the tint alone
-                        // — disabled and archived share a colour on purpose, and
-                        // only the label separates them.
-                        VStack(alignment: .leading, spacing: Theme.Space.s) {
-                            StatusPill(text: group.title, tint: group.tint)
-                            Text("\(count(of: group))")
-                                .font(Theme.Typography.metricSmall)
-                                .foregroundStyle(.primary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(count(of: group)) \(group.title.lowercased())")
-                    }
-                }
+    private var flagStateSummary: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: Theme.Space.l) {
+                ForEach(FlagStatusGroup.allCases) { statusCell($0) }
+            }
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                ForEach(FlagStatusGroup.allCases) { statusCell($0) }
             }
         }
+    }
+
+    private func statusCell(_ group: FlagStatusGroup) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            StatusPill(text: group.title, tint: group.tint)
+            Text("\(facts.statusCounts[group, default: 0])")
+                .font(Theme.Typography.metricSmall)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(facts.statusCounts[group, default: 0]) \(group.title.lowercased())"
+        )
     }
 
     @ViewBuilder
@@ -90,7 +107,7 @@ struct FlagsOverview: View {
                 // section simply disappears.
                 Card {
                     Label(
-                        count(of: .enabled) == 0
+                        facts.enabledCount == 0
                             ? "No flag is enabled, so nothing is rolling out."
                             : "Every enabled flag is released to everyone it targets.",
                         systemImage: "checkmark.circle"
@@ -153,6 +170,10 @@ struct FlagsOverview: View {
             Card(padding: Theme.Space.m) {
                 DataRow(
                     glyph: flag.isMultivariate ? "arrow.triangle.branch" : "flag.fill",
+                    brandGlyph: FlagBrandAppearance.glyph(
+                        isMultivariate: flag.isMultivariate,
+                        isArchived: group == .archived
+                    ),
                     tint: flag.isMultivariate ? Theme.accentWarm : Theme.accent,
                     title: flag.displayName,
                     // The key is what a developer copies verbatim, so it takes
@@ -172,22 +193,8 @@ struct FlagsOverview: View {
 
     // MARK: - Data
 
-    private func count(of group: FlagStatusGroup) -> Int {
-        store.flags.filter { store.group(for: $0) == group }.count
-    }
-
-    /// Enabled flags whose highest release condition is below 100%.
-    ///
-    /// Archived flags are excluded even when they carry a percentage: an
-    /// archived flag is not something anyone is currently rolling out.
     private var partialRollouts: [FeatureFlag] {
-        Array(
-            store.flags
-                .filter { store.group(for: $0) == .enabled }
-                .filter { ($0.rolloutPercentage ?? 100) < 100 }
-                .sorted { ($0.rolloutPercentage ?? 0) < ($1.rolloutPercentage ?? 0) }
-                .prefix(6)
-        )
+        facts.partialRollouts
     }
 
     private var multivariate: [FeatureFlag] {
