@@ -497,18 +497,33 @@ struct MetricTile: View {
 /// squeezed until it truncates has stopped being a metric.
 struct StatStrip<Content: View>: View {
     var compact: Bool = true
+    /// Overview summaries can opt into a reading-order stack at accessibility
+    /// sizes. The default remains a horizontal strip for dense data surfaces
+    /// where scrolling is the established interaction.
+    var stacksAtAccessibilitySizes: Bool = false
     @ViewBuilder var content: Content
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    @ViewBuilder
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: Theme.Space.xl) {
+        if stacksAtAccessibilitySizes && dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Space.l) {
                 content
             }
             .padding(.horizontal, Theme.Space.l)
             .padding(.vertical, Theme.Space.m)
+        } else {
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: Theme.Space.xl) {
+                    content
+                }
+                .padding(.horizontal, Theme.Space.l)
+                .padding(.vertical, Theme.Space.m)
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
     }
 }
 

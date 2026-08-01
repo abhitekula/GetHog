@@ -83,16 +83,17 @@ enum Screenshot {
     ///   element hides — a bar tint that matched the background was one of the
     ///   defects `ImageRenderer` found — so paying nothing for it is worth more
     ///   than the disk.
-    /// * **ax5** — accessibility XXXL, iPhone only, light only. This is the one
-    ///   configuration that needs its own launch, because
+    /// * **ax5** — accessibility XXXL, iPhone matrix plus explicit iPad overview
+    ///   cases, light only. This is the one configuration that needs its own launch, because
     ///   `-UIPreferredContentSizeCategoryName` is read once at start-up.
     ///
-    /// **Why ax5 is iPhone-only.** The defect class it exists to find is text
+    /// **Why the general ax5 matrix is iPhone-only.** The defect class it exists to find is text
     /// that clips or overflows when it grows, and that is strictly harder in the
     /// narrower container: an iPad running the same screen at the same type size
     /// has 390pt more width to absorb it. iPad's own risk is the sidebar and the
-    /// two-column split, which is a *default*-size layout question and is covered
-    /// by the light and dark passes there.
+    /// two-column split. The Core Four overview scenes are the exception: they
+    /// only render in that split detail pane, so their dedicated iPad AX5 tests
+    /// call `captureRootAX5OnIPad` without broadening every screenshot case.
     ///
     /// **Why ax5 rather than a middle accessibility size.** Worst case finds
     /// most. AX5 is the largest the system offers, and a layout that survives it
@@ -514,6 +515,31 @@ class ScreenshotCase: XCTestCase {
         capture(
             launching: { Screenshot.launch($0, tab: tab) },
             steps: [ScreenshotStep(tab) { DemoLaunch.wait(for: $0.navigationBars[title]) }],
+            file: file,
+            line: line
+        )
+    }
+
+    /// Captures the regular-width detail pane at AX5 without turning the whole
+    /// iPad screenshot matrix into a third pass. These overview scenes do not
+    /// exist on compact roots, so phone AX5 cannot exercise their composition.
+    func captureRootAX5OnIPad(
+        _ tab: String,
+        titled title: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        try XCTSkipUnless(
+            Screenshot.isPad,
+            "This capture exists for the regular-width iPad detail pane."
+        )
+        guard ExclusiveRun.claim(file: file, line: line) else { return }
+        run(
+            [ScreenshotStep(tab) { DemoLaunch.wait(for: $0.navigationBars[title]) }],
+            launching: { configuration in
+                Screenshot.launch(configuration, tab: tab)
+            },
+            capturing: [.ax5],
             file: file,
             line: line
         )

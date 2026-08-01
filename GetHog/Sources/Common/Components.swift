@@ -483,32 +483,24 @@ struct CardHeader: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-            if let systemImage {
-                Image(systemName: systemImage)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: glyphWidth)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    // Uncapped at accessibility sizes, the same trade `DataRow`
-                    // makes: the caps keep a column of cards an even height,
-                    // which is a scanning concern, and two lines of `.subheadline`
-                    // at AX5 is three or four words — so the cap that tidies the
-                    // page is the thing deleting the card's name from it.
-                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(Theme.Ink.secondary)
-                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
-                }
-            }
-            Spacer(minLength: 0)
+        Group {
             if showsBrandStitch && !typeSize.isAccessibilitySize {
-                BrandQuillStitch(size: 14)
+                // A decoration is eligible only when the useful header reaches
+                // its ideal horizontal size beside it. `HStack` compression is
+                // not evidence that both fit: the old row always kept the 14pt
+                // stitch and paid for it by narrowing or truncating the title.
+                // `ViewThatFits` measures this first candidate without allowing
+                // that compression, then renders the identical useful header
+                // without decoration when it cannot fit. This is deliberately
+                // conservative — a stitch may disappear before it strictly has
+                // to, but a title never disappears for a stitch.
+                ViewThatFits(in: .horizontal) {
+                    headerRow(includingBrandStitch: true)
+                        .fixedSize(horizontal: true, vertical: false)
+                    headerRow(includingBrandStitch: false)
+                }
+            } else {
+                headerRow(includingBrandStitch: false)
             }
         }
         // The symbol is chrome — it names nothing the title beside it does not
@@ -551,6 +543,38 @@ struct CardHeader: View {
                 }
             } else {
                 Text(title)
+            }
+        }
+    }
+
+    private func headerRow(includingBrandStitch: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: glyphWidth)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    // Uncapped at accessibility sizes, the same trade `DataRow`
+                    // makes: the caps keep a column of cards an even height,
+                    // which is a scanning concern, and two lines of `.subheadline`
+                    // at AX5 is three or four words — so the cap that tidies the
+                    // page is the thing deleting the card's name from it.
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Theme.Ink.secondary)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                }
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+            if includingBrandStitch {
+                BrandQuillStitch(size: 14)
             }
         }
     }

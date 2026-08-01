@@ -92,7 +92,7 @@ struct ProjectOverview: View {
             Text(model.selectedProject?.name ?? "PostHog")
                 .font(.largeTitle.weight(.semibold))
 
-            StatStrip {
+            StatStrip(stacksAtAccessibilitySizes: true) {
                 MetricTile(
                     label: "Dashboards",
                     value: "\(facts.dashboardCount)",

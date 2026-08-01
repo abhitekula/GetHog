@@ -58,7 +58,7 @@ struct FlagsOverview: View {
             Text(model.selectedProject?.name ?? "PostHog")
                 .font(.largeTitle.weight(.semibold))
 
-            StatStrip {
+            StatStrip(stacksAtAccessibilitySizes: true) {
                 MetricTile(label: "Flags", value: "\(facts.flagCount)", compact: true)
                 MetricTile(label: "Enabled", value: "\(facts.enabledCount)", compact: true)
                 if facts.multivariateCount > 0 {

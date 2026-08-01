@@ -19,6 +19,22 @@ final class RootScreenshotTests: ScreenshotCase {
     func testSessions() { captureRoot("sessions", titled: "Sessions") }
     func testFlags() { captureRoot("flags", titled: "Flags") }
 
+    /// These three summary scenes live only in a regular-width detail pane.
+    /// The ordinary iPad matrix renders them at default type; these dedicated
+    /// cases preserve the AX5 evidence without duplicating Sessions' accepted
+    /// AX5 topology coverage or adding AX5 to every secondary product screen.
+    func testDashboardsAX5OnIPad() throws {
+        try captureRootAX5OnIPad("dashboards", titled: "Dashboards")
+    }
+
+    func testEventsAX5OnIPad() throws {
+        try captureRootAX5OnIPad("events", titled: "Events")
+    }
+
+    func testFlagsAX5OnIPad() throws {
+        try captureRootAX5OnIPad("flags", titled: "Flags")
+    }
+
     // MARK: Search — the fifth tab, and the index of everything below
 
     func testSearch() { captureRoot("search", titled: "Search") }

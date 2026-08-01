@@ -92,7 +92,7 @@ struct EventsOverview: View {
     }
 
     private var eventMetrics: some View {
-        StatStrip {
+        StatStrip(stacksAtAccessibilitySizes: true) {
             MetricTile(label: "Events", value: "\(facts.eventCount)", compact: true)
             MetricTile(label: "Kinds", value: "\(facts.kindCount)", compact: true)
             MetricTile(label: "People", value: "\(facts.peopleCount)", compact: true)
