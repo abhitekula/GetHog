@@ -21,16 +21,42 @@ struct BrandMotionValues: Equatable {
     }
 }
 
+struct SignalConfirmationLifecycle: Equatable {
+    private(set) var active = false
+    private(set) var generation = 0
+
+    mutating func activate(reduceMotion: Bool) -> Int? {
+        guard !reduceMotion else {
+            settleImmediately()
+            return nil
+        }
+
+        generation += 1
+        active = true
+        return generation
+    }
+
+    mutating func settle(generation: Int) {
+        guard generation == self.generation else { return }
+        active = false
+    }
+
+    mutating func settleImmediately() {
+        generation += 1
+        active = false
+    }
+}
+
 private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
     let trigger: Trigger
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var active = false
+    @State private var lifecycle = SignalConfirmationLifecycle()
     @State private var resetTask: Task<Void, Never>?
 
     func body(content: Content) -> some View {
         let values = BrandMotionValues.confirmation(
             reduceMotion: reduceMotion,
-            active: active
+            active: lifecycle.active
         )
         content.overlay(alignment: .topTrailing) {
             BrandQuillStitch(size: 14)
@@ -41,16 +67,31 @@ private struct SignalConfirmationModifier<Trigger: Equatable>: ViewModifier {
                 .allowsHitTesting(false)
         }
         .onChange(of: trigger) { _, _ in
-            guard !reduceMotion else { return }
             resetTask?.cancel()
-            withAnimation(.easeOut(duration: 0.18)) { active = true }
+            guard !reduceMotion else {
+                lifecycle.settleImmediately()
+                return
+            }
+            var generation: Int?
+            withAnimation(.easeOut(duration: 0.18)) {
+                generation = lifecycle.activate(reduceMotion: false)
+            }
+            guard let generation else { return }
             resetTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(220))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.18)) { active = false }
+                lifecycle.settle(generation: generation)
             }
         }
-        .onDisappear { resetTask?.cancel() }
+        .onChange(of: reduceMotion) { _, enabled in
+            guard enabled else { return }
+            resetTask?.cancel()
+            lifecycle.settleImmediately()
+        }
+        .onDisappear {
+            resetTask?.cancel()
+            lifecycle.settleImmediately()
+        }
     }
 }
 

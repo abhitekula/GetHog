@@ -1,7 +1,9 @@
+import SwiftUI
 import Testing
 @testable import GetHog
 
 @Suite("Brand motion")
+@MainActor
 struct BrandMotionTests {
     @Test("Reduced motion always uses the settled illustration values")
     func reducedMotionSettlesImmediately() {
@@ -38,5 +40,57 @@ struct BrandMotionTests {
         #expect(active.y == -2)
         #expect(active.scale == 1.04)
         #expect(BrandMotionValues.confirmation(reduceMotion: false, active: false) == .settled)
+    }
+
+    @Test("Confirmation triggers activate only when Reduce Motion is disabled")
+    func triggerRespectsReduceMotion() {
+        var lifecycle = SignalConfirmationLifecycle()
+
+        #expect(lifecycle.activate(reduceMotion: true) == nil)
+        #expect(!lifecycle.active)
+        #expect(lifecycle.activate(reduceMotion: false) == 2)
+        #expect(lifecycle.active)
+    }
+
+    @Test("A replacement trigger invalidates the prior timeout")
+    func replacementTriggerInvalidatesPriorTimeout() {
+        var lifecycle = SignalConfirmationLifecycle()
+        let firstGeneration = lifecycle.activate(reduceMotion: false)
+        let secondGeneration = lifecycle.activate(reduceMotion: false)
+
+        #expect(firstGeneration == 1)
+        #expect(secondGeneration == 2)
+        lifecycle.settle(generation: firstGeneration ?? 0)
+        #expect(lifecycle.active)
+    }
+
+    @Test("Only the current confirmation timeout can settle the overlay")
+    func currentTimeoutSettlesOverlay() {
+        var lifecycle = SignalConfirmationLifecycle()
+        _ = lifecycle.activate(reduceMotion: false)
+        let currentGeneration = lifecycle.activate(reduceMotion: false)
+
+        lifecycle.settle(generation: currentGeneration ?? 0)
+        #expect(!lifecycle.active)
+    }
+
+    @Test("Enabling Reduce Motion immediately invalidates and settles confirmation")
+    func reduceMotionInvalidatesActiveConfirmation() {
+        var lifecycle = SignalConfirmationLifecycle()
+        let activeGeneration = lifecycle.activate(reduceMotion: false)
+
+        lifecycle.settleImmediately()
+        #expect(!lifecycle.active)
+        lifecycle.settle(generation: activeGeneration ?? 0)
+        #expect(!lifecycle.active)
+    }
+
+    @Test("Confirmation modifier renders around real summary content")
+    func confirmationModifierRendersContent() {
+        let renderer = ImageRenderer(
+            content: Text("Summary").signalConfirmation(trigger: 0)
+        )
+
+        #expect(renderer.uiImage != nil)
     }
 }
