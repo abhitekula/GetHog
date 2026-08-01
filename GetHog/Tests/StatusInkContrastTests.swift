@@ -103,6 +103,22 @@ struct StatusInkContrastTests {
             }
         }
     }
+
+    @Test("Signal chrome clears the 3:1 non-text floor")
+    func signalChromeClearsNonTextFloor() {
+        for tint in Theme.SignalChrome.all {
+            for (surfaceName, surface) in Self.surfaces {
+                for style in Self.appearances {
+                    let ground = Pixel(surface, style)
+                    let mark = Pixel(tint, style).over(ground)
+                    #expect(
+                        mark.contrast(with: ground) >= 3.0,
+                        "signal chrome on \(surfaceName) in \(style)"
+                    )
+                }
+            }
+        }
+    }
 }
 
 /// One resolved sRGB sample, so a colour's contrast can be measured in the

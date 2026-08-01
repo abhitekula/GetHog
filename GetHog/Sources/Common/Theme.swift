@@ -154,6 +154,18 @@ enum Theme {
         dark: Color(hex: 0xEA8C4F)
     )
 
+    enum SignalChrome {
+        static let teal = Theme.accent
+        static let coral = Theme.accentWarm
+        static let clay = Color(
+            light: Color(hex: 0x865A3B),
+            dark: Color(hex: 0xD6A178)
+        )
+        static let ink = Theme.Ink.tertiary
+
+        static let all = [teal, coral, clay, ink]
+    }
+
     /// Glass tint for a control in its **selected** state.
     ///
     /// The only tint the app applies to glass, and it carries meaning: this
