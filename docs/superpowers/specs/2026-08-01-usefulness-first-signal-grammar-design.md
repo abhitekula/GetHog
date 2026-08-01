@@ -14,7 +14,7 @@ The approved direction is **Signal Grammar** with a strict **usefulness-first** 
 
 > Brand the interface, not the space above it.
 
-GetHog keeps its current navigation, information architecture, data density, controls, charts, and task flow. Brand identity comes from a small vocabulary of original product marks, quill-derived details, semantic card anatomy, and restrained state transitions integrated into components that already exist.
+GetHog keeps its current navigation, information architecture, controls, charts, and task flow. Brand identity comes from a small vocabulary of original product marks, quill-derived details, semantic card anatomy, useful summary compositions, and restrained state transitions. Layout and density may change when the change makes project state easier to understand; they are not frozen merely to preserve the current footprint.
 
 The Core Four receive the richest populated-state treatment:
 
@@ -27,9 +27,11 @@ Dashboard work is the implementation pilot, not a higher visual tier. Events, Se
 
 ## Governing Principles
 
-### Data owns the first screenful
+### Useful information owns the first screenful
 
-No populated root or detail view gains a hero, portal, masthead, summary scene, duplicated metric strip, or introductory paragraph. The first useful control or data object stays at its current position.
+A populated root or overview may lead with a designed summary scene when it answers an immediate product question with real, correctly scoped data. Dense detail and execution screens still lead with their primary control or data object. No screen gains an ornamental hero, portal, masthead, duplicated metric strip, or invented introductory copy.
+
+The test is whether the added footprint reduces cognitive work. A useful synthesis may move the first list or card lower; branding alone may not.
 
 ### Brand details must have a job
 
@@ -60,18 +62,35 @@ System controls retain familiar shape, labels, focus behavior, pointer behavior,
 
 The system uses a repeated, hand-tuned vocabulary instead of generated-looking novelty. It explicitly avoids arbitrary blobs, decorative gradients, glass-on-glass layering, pill-shaped containers for ordinary text, floating cards without hierarchy, fake editorial copy, excessive rounding, and one-off icon styles.
 
-## Zero-Footprint Contract
+## Earned-Footprint Contract
 
-Signal Grammar adds no required vertical region to populated compact layouts.
+Signal Grammar may change layout, vertical rhythm, and the amount of space devoted to hierarchy when that space earns its place through synthesis, orientation, or a clearer next decision.
 
 - Existing navigation titles and subtitles remain the project and screen context.
-- Existing toolbars, search bars, filters, segmented controls, and live controls retain their order and size.
+- Existing toolbars, search bars, filters, segmented controls, and live controls retain their behavior and prominence, though their surrounding composition may be tuned responsively.
 - Existing sections may replace a generic passive symbol with a brand mark, but do not gain a second header.
 - Existing cards may refine their current spine or header chrome, but do not become nested cards.
-- Existing rows may replace a decorative leading SF Symbol with a semantic brand glyph, but keep current row height and trailing information.
+- Existing rows may replace a decorative leading SF Symbol with a semantic brand glyph. Row rhythm may be tuned when it improves scanning, but useful trailing information and touch targets remain intact.
 - Existing charts, axes, legends, series colors, value labels, and interaction targets are never covered by brand decoration.
 
-If a proposed treatment creates additional scrolling, displaces a value, shortens a useful label, or competes with a chart, the treatment is removed at that size.
+Additional footprint is acceptable only when it presents unique, truthful information or creates a materially clearer hierarchy. If a proposed treatment merely restates a value, shortens a useful label, competes with a chart, or adds scrolling without reducing cognitive work, it is removed at that size.
+
+## Signal Summary Scenes
+
+A Signal Summary Scene is a branded composition of real project information, not an illustration placed above the product. It may recompose an existing overview header, `StatStrip`, scope note, and one high-value finding into a more distinctive whole.
+
+Summary scenes are eligible when all of the following are true:
+
+- the screen is a root overview, regular-width empty detail selection, or meaningful project landing state;
+- all displayed values are already loaded or deliberately fetched under the screen's existing cost contract;
+- every value is correctly scoped and labeled;
+- the composition helps answer “what is happening here?” or “what deserves attention?”;
+- the same information is not repeated immediately below;
+- the scene adapts into a tighter linear composition at compact widths and accessibility sizes.
+
+A summary scene may use product marks, Signal Rules, asymmetrical grouping, oversized truthful figures, a small chart or diagram derived from actual data, and direct navigation into the most relevant existing item. It may not use decorative fake data, generic motivational copy, remote artwork, looping motion, or a mascot performing an unrelated activity.
+
+The current `ProjectOverview`, `EventsOverview`, `SessionsOverview`, and `FlagsOverview` are the preferred first placements. Their existing summaries already establish data scope and cost, so the redesign should recompose those useful facts rather than add a second summary layer.
 
 ## Visual Language
 
@@ -152,7 +171,8 @@ The following budget prevents the system from becoming noisy:
 ### Populated compact screens
 
 - no full mascot illustration;
-- no branded hero or additional summary region;
+- one useful summary scene is permitted on a root or overview when it replaces scattered summary content rather than duplicating it;
+- dense detail screens keep the primary control or data object ahead of brand expression;
 - one Core Four mark per visible section header at most;
 - one semantic leading glyph per data row where the row already reserves that space;
 - one optional quill stitch per primary working card;
@@ -161,7 +181,7 @@ The following budget prevents the system from becoming noisy:
 
 ### Populated regular-width screens
 
-Regular width may preserve more whitespace around the same useful content but does not unlock a hero. A passive product mark may appear in an existing empty detail column or overview structure. It cannot reduce the number of useful columns or change selection behavior.
+Regular width may use a more expressive summary composition because the overview is already the useful content of the unselected detail pane. It may combine scoped figures, one real finding or preview, and a passive product mark into an asymmetric scene. It cannot reduce the number of useful working columns after selection or change selection behavior.
 
 ### Empty, all-clear, and onboarding states
 
@@ -185,6 +205,7 @@ Keep unchanged:
 
 Add selectively:
 
+- a Signal Summary Scene in `ProjectOverview` that recomposes the existing project identity, dashboard/computed/generated counts, and pinned-dashboard preview without repeating them below;
 - the dashboard product mark in existing dashboard section labels and passive overview structure;
 - semantic accent spines using existing insight-kind chrome colors, never data series colors;
 - an optional quill stitch in `CardHeader` trailing space when no useful accessory occupies it;
@@ -204,6 +225,7 @@ Keep unchanged:
 
 Add selectively:
 
+- a Signal Summary Scene in `EventsOverview` using the already-loaded events, kinds, people, reach, and feed scope; the most useful frequency finding may be promoted when it is not repeated below;
 - the event pulse mark inside existing time-bucket or section-header space;
 - stable object glyph variants for a small closed set of event kinds such as screen, exception, feature-flag call, and general capture;
 - the Signal Rule only where it replaces an existing divider rather than adding one.
@@ -222,6 +244,7 @@ Keep unchanged:
 
 Add selectively:
 
+- a Signal Summary Scene in `SessionsOverview` using the already-loaded recording count, errors, total time, not-playable count, and explicit page scope;
 - the session reel mark inside existing section labels;
 - a restrained chapter rhythm derived from the reel mark where the current session timeline already exists;
 - a session product glyph for non-interactive row identification without replacing the play control;
@@ -240,6 +263,7 @@ Keep unchanged:
 
 Add selectively:
 
+- a Signal Summary Scene in `FlagsOverview` using true project totals for flags, enabled state, multivariate flags, and one rollout finding derived from the existing store;
 - the branching flag mark inside existing rollout and status section labels;
 - a custom flag object glyph where a leading row glyph already exists;
 - quill-derived branch geometry in passive overview diagrams or existing progress chrome.
@@ -251,7 +275,8 @@ The branch motif cannot replace a numerical rollout, variant label, condition, s
 | Surface | Treatment | Richness |
 | --- | --- | --- |
 | Project switcher | Project Stamp inside existing menu label | low, universal |
-| Core Four populated roots/details | product marks, object glyphs, Signal Rule, working-surface details | highest populated tier |
+| Core Four overview states | useful Signal Summary Scenes built from existing scoped data | highest expressive tier |
+| Core Four populated roots/details | product marks, object glyphs, Signal Rule, working-surface details | highest working tier |
 | Search family sections | existing passive family emblems aligned to Signal Grammar stroke and optical rules | medium |
 | Approved empty/all-clear states | existing Signal Hog vignettes | story tier |
 | Connecting and onboarding | existing restrained quill and mascot motion | story/accent tier |
@@ -285,6 +310,12 @@ Add a closed glyph source that supports the existing system image path and the n
 
 Add an optional passive signature slot with a default of absent. The signature is hidden when the header has an existing useful trailing accessory or when measured width cannot preserve the title and subtitle. Existing callers render identically until they opt in.
 
+### Summary composition ownership
+
+Do not build one generic “branded hero” and feed four sets of labels into it. Each overview continues to own its semantic content, scope language, loading cost, ordering, and navigation. A small shared `SignalSummaryLayout` may provide adaptive spacing, alignment, product-mark placement, and compact/regular-width reflow, but it contains no metrics, copy, or business logic.
+
+`ProjectOverview`, `EventsOverview`, `SessionsOverview`, and `FlagsOverview` each compose their own scene from existing data and reusable primitives such as `MetricTile`, `FreshnessLabel`, product marks, and real preview content. This preserves consistency without making the four products look templated.
+
 ### `ProjectSwitcher`
 
 Change only the visible menu-label artwork from `building.2` to `BrandProductMarkView(.projectStamp)`. Preserve `spokenLabel`, hint, menu content, toolbar placement, tap target, and multi-organization behavior verbatim.
@@ -302,6 +333,8 @@ Motion is applied by the view that already observes the relevant state change. B
 - Differentiate Without Color remains satisfied because brand color never carries state alone.
 - At accessibility sizes, decoration disappears before text wraps poorly or controls shrink.
 - At narrow widths, trailing stitches disappear before a title is truncated.
+- Summary scenes reflow into a logical linear reading order; the visual and accessibility orders remain identical.
+- Oversized figures scale down before labels clip, and scope notes remain adjacent to the values they qualify.
 - Large Content Viewer, pointer, keyboard, Voice Control, Switch Control, and VoiceOver behavior remain owned by the existing control.
 - Reduce Motion resolves every transition to a static final state.
 - Light and dark appearances use `Theme` tokens; vectors do not embed appearance-specific literal colors.
@@ -329,9 +362,9 @@ The marks must remain independent from PostHog trademark geometry. Do not reprod
 Implementation follows four bounded checkpoints after this design and its implementation plan are approved:
 
 1. Shared vector contract, optical tests, Project Stamp, and backward-compatible component hooks.
-2. Dashboard pilot: populated detail, dashboard collections, responsive and chart-integrity verification.
-3. Events treatment: time buckets and event object kinds, followed by Sessions treatment: replay grouping and timeline integrity.
-4. Flags treatment, app-wide low-richness placements, motion/accessibility sweep, and visual consistency cleanup.
+2. Dashboard pilot: `ProjectOverview` summary composition, populated detail, dashboard collections, responsive and chart-integrity verification.
+3. Events treatment: `EventsOverview`, time buckets, and event object kinds, followed by Sessions treatment: `SessionsOverview`, replay grouping, and timeline integrity.
+4. `FlagsOverview` and populated Flags treatment, app-wide low-richness placements, motion/accessibility sweep, and visual consistency cleanup.
 
 Each checkpoint must build and pass focused tests before the next begins. If the Dashboard pilot reveals that a primitive reduces clarity or density, revise the primitive before propagating it rather than compensating screen by screen.
 
@@ -342,10 +375,10 @@ Before completion:
 1. Add behavior-focused contract tests for every `BrandProductMark` case and object-glyph mapping.
 2. Verify existing `SectionLabel`, `RowGlyph`, `CardHeader`, and `ProjectSwitcher` call sites render and behave unchanged without opt-in.
 3. Test the ProjectSwitcher accessibility label, hint, menu action, and multi-organization context.
-4. Test Core Four rows and headers at compact width, regular width, and accessibility Dynamic Type sizes.
+4. Test Core Four summary compositions, rows, and headers at compact width, regular width, and accessibility Dynamic Type sizes.
 5. Verify status and data meaning do not depend on color or decoration.
 6. Render representative Core Four screenshots in light and dark appearances, standard and accessibility text sizes, and Reduce Motion.
-7. Visually compare populated first screenfuls before and after; useful controls and data must retain their position and prominence.
+7. Visually compare populated first screenfuls before and after. Any added footprint must expose unique synthesis or clearer hierarchy, and the primary working path must remain obvious in a squint test.
 8. Confirm charts, axes, legends, series colors, replay timelines, event ordering, and flag rollouts remain semantically accurate.
 9. Regenerate `GetHog.xcodeproj` from authoritative `project.yml` if files are added.
 10. Run `swift test --package-path GetHogKit` where package scope changes.
@@ -358,8 +391,9 @@ All retained screenshots, fixtures, examples, and demo states remain determinist
 
 The design is complete when:
 
-- a user reaches the same useful data with no additional navigation or scrolling;
-- populated compact screens contain no full mascot or branded opening;
+- a user reaches the same useful data with no additional navigation, and any added scrolling is justified by unique synthesis rather than decoration;
+- populated compact screens contain no full mascot or purely ornamental branded opening;
+- each overview summary scene answers an immediate product question with correctly scoped real data and does not repeat the same summary below;
 - Dashboards, Events, Sessions, and Flags each feel distinct in a task-appropriate way while sharing one visual grammar;
 - brand additions never obscure controls, charts, timestamps, state words, or values;
 - empty and error semantics remain correct;
