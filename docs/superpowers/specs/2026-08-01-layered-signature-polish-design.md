@@ -97,9 +97,9 @@ When a branded illustration first appears, it fades from zero to full opacity wh
 
 The app's initial `Connecting…` phase keeps its native `ProgressView` and label. A small three-quill accent rises by 4 points in a staggered 1.2-second ease-in-out loop while that already-existing loading phase is active. The accent cannot delay the phase, replace progress semantics, or own animation state that outlives the view.
 
-### Onboarding Success
+### Onboarding Brand Moment
 
-The existing onboarding success moment gives the brand mark one short spring from 0.96 to full scale. Navigation and button availability remain driven by the current onboarding state, not animation completion.
+The welcome screen's existing brand mark gives one short spring from 0.96 to full scale when it first appears. Onboarding has no success screen—the app transitions directly to ready after a valid key—so this pass does not invent a delayed success step or overlay. Navigation and button availability remain driven by the current onboarding state, not animation completion.
 
 ### Motion Accessibility
 
@@ -179,7 +179,7 @@ Implement in four bounded checkpoints within the same polish pass:
 1. Shared illustration contract and the three primary vignettes for Dashboards, Insights, and Sessions.
 2. Experiment, Workspace, and All Clear vignettes at explicitly eligible states.
 3. Five product-family emblems in passive headings.
-4. Connecting and onboarding motion, followed by the full visual and accessibility sweep.
+4. Connecting and welcome-screen motion, followed by the full visual and accessibility sweep.
 
 Each checkpoint must compile and pass its focused tests before the next begins. Asset generation may happen together to preserve character consistency, but code integration follows the checkpoints above.
 
