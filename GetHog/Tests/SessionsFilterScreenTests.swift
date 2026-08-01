@@ -127,12 +127,14 @@ struct SessionsFilterScreenTests {
         store.filter.signal = .rageClick
         store.filter.minimumDuration = 60
         store.filter.dateWindow = .last7Days
+        store.filter.filterTestAccounts = true
         await store.load(client: client(transport), projectID: 1)
 
         let items = await transport.items(0)
         #expect(items["date_from"] == "-7d")
         #expect(items["events"]?.contains("$rageclick") == true)
         #expect(items["having_predicates"]?.contains("\"duration\"") == true)
+        #expect(items["filter_test_accounts"] == "true")
     }
 
     // MARK: - Replace, never append
@@ -256,6 +258,11 @@ struct SessionsFilterScreenTests {
         #expect(store.requestSignature != narrowed)
         store.filter.order = .startTime
         #expect(store.requestSignature == narrowed)
+
+        let testAccountsStore = SessionsStore()
+        let includesTestUsers = testAccountsStore.requestSignature
+        testAccountsStore.filter.filterTestAccounts = true
+        #expect(testAccountsStore.requestSignature != includesTestUsers)
     }
 
     // MARK: - What the list says about itself

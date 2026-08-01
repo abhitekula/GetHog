@@ -225,6 +225,8 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
     public var durationComparison: DurationComparison = .atLeast
     public var signal: Signal?
     public var source: Source?
+    /// Whether PostHog should apply the project's internal and test-user filters.
+    public var filterTestAccounts = false
     /// Free text matched against the person's email, case-insensitively.
     ///
     /// Email only. Matching email *or* name would need `operand=OR`, which —
@@ -254,6 +256,10 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
 
         if let date = dateWindow.relativeDate {
             items.append(URLQueryItem(name: "date_from", value: date))
+        }
+
+        if filterTestAccounts {
+            items.append(URLQueryItem(name: "filter_test_accounts", value: "true"))
         }
 
         // Duration floor and recorder are both HAVING clauses and share one
@@ -371,6 +377,7 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
         if let minimumDuration, minimumDuration > 0 { count += 1 }
         if signal != nil { count += 1 }
         if source != nil { count += 1 }
+        if filterTestAccounts { count += 1 }
         if trimmedPersonSearch != nil { count += 1 }
         if trimmedURLSearch != nil { count += 1 }
         if !distinctIDs.isEmpty { count += 1 }

@@ -20,8 +20,24 @@ struct SessionRecordingFilterTests {
     func emptyFilterIsSilent() {
         let filter = SessionRecordingFilter()
         #expect(filter.queryItems.isEmpty)
+        #expect(!filter.filterTestAccounts)
         #expect(!filter.isNarrowed)
         #expect(filter.activeCount == 0)
+    }
+
+    @Test("test users are excluded only when the server-side option is enabled")
+    func filterTestAccountsEncodes() {
+        var filter = SessionRecordingFilter()
+        #expect(items(filter)["filter_test_accounts"] == nil)
+
+        filter.filterTestAccounts = true
+        #expect(items(filter)["filter_test_accounts"] == "true")
+        #expect(filter.activeCount == 1)
+        #expect(filter.isNarrowed)
+
+        filter.clear()
+        #expect(!filter.filterTestAccounts)
+        #expect(items(filter)["filter_test_accounts"] == nil)
     }
 
     @Test("the default order is not sent either — PostHog's own default is start_time")
