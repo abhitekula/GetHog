@@ -30,7 +30,7 @@ secrets.json
 # Local probes and generated screenshots
 .probes/
 probes/
-screenshots/
+/screenshots/
 build/Screenshots/
 
 # Keep recovery bundles outside the repository. These patterns protect local
