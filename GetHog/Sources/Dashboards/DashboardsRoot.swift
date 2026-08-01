@@ -140,14 +140,14 @@ struct DashboardsRoot: View {
                 Section {
                     ForEach(filtered(store.pinned), id: \.self) { row($0) }
                 } header: {
-                    SectionLabel(text: "Pinned", systemImage: "pin.fill")
+                    SectionLabel(text: "Pinned", productMark: .dashboard)
                 }
             }
             Section {
                 ForEach(filtered(store.others), id: \.self) { row($0) }
             } header: {
                 if !filtered(store.pinned).isEmpty {
-                    SectionLabel(text: "All dashboards")
+                    SectionLabel(text: "All dashboards", productMark: .dashboard)
                 }
             }
             if let loadedAt = store.loadedAt {
@@ -164,6 +164,7 @@ struct DashboardsRoot: View {
         NavigationLink(value: dashboard) {
             DataRow(
                 glyph: dashboard.creationMode == .template ? "wand.and.stars" : "square.grid.2x2",
+                brandGlyph: DashboardBrandAppearance.glyph(for: dashboard.creationMode),
                 // Generated dashboards are tinted with the warm secondary
                 // rather than the app accent: they are real, but half this
                 // project's list is feature-flag exhaust and it should not

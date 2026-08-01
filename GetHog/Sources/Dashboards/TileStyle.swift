@@ -29,20 +29,15 @@ enum TileStyle {
         }
     }
 
-    /// Spine colour. Drawn from the validated series palette so it is already
-    /// colourblind-safe and dark-mode-correct, but assigned by kind rather than
-    /// by series index, so it never implies the tile's first series.
+    /// Spine colour. Chrome stays distinct from the series palette so it never
+    /// implies a relationship to the data inside the tile.
     static func accent(for model: InsightRenderModel) -> Color {
         switch model {
-        case .timeSeries: SeriesPalette.color(at: 0)   // blue
-        case .barValue: SeriesPalette.color(at: 6)     // violet
-        case .bigNumber: SeriesPalette.color(at: 2)    // aqua
-        case .funnel: SeriesPalette.color(at: 1)       // orange
-        case .lifecycle: SeriesPalette.color(at: 5)    // green
-        case .retention: SeriesPalette.color(at: 4)    // magenta
-        case .stickiness: SeriesPalette.color(at: 3)   // yellow
-        case .paths: SeriesPalette.color(at: 7)        // red
-        case .unsupported: Color.secondary
+        case .timeSeries, .bigNumber: Theme.SignalChrome.teal
+        case .barValue, .retention: Theme.SignalChrome.clay
+        case .funnel, .paths: Theme.SignalChrome.coral
+        case .lifecycle, .stickiness: Theme.SignalChrome.ink
+        case .unsupported: Theme.Ink.tertiary
         }
     }
 

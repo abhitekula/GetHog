@@ -476,7 +476,8 @@ struct TileCard: View {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 CardHeader(
                     title: tile.title,
-                    systemImage: TileStyle.symbol(for: model)
+                    systemImage: TileStyle.symbol(for: model),
+                    showsBrandStitch: true
                 )
 
                 InsightChartView(

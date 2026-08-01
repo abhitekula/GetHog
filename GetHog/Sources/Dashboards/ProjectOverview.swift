@@ -20,45 +20,59 @@ struct ProjectOverview: View {
     @State private var pinnedDetail: Dashboard?
     @State private var isLoadingPinned = false
 
-    private var pinned: DashboardSummary? { dashboards.first(where: \.pinned) }
-
-    /// Dashboards whose results have actually been computed, newest first.
-    ///
-    /// Deliberately not "recently created": a dashboard nobody has ever opened
-    /// is not a useful shortcut, and most of this project's list has never been
-    /// computed at all.
-    private var recentlyComputed: [DashboardSummary] {
-        dashboards
-            .compactMap { summary in summary.lastRefresh.map { (summary, $0) } }
-            .sorted { $0.1 > $1.1 }
-            .prefix(5)
-            .map(\.0)
-    }
-
-    private var generatedCount: Int {
-        dashboards.filter { $0.creationMode == .template }.count
+    private var facts: DashboardOverviewFacts {
+        DashboardOverviewFacts(dashboards: dashboards)
     }
 
     var body: some View {
         PageScaffold(spacing: Theme.Space.xl) {
-            header
+            summaryScene
 
-            if let pinned {
-                pinnedSection(pinned)
-            }
-
-            if !recentlyComputed.isEmpty {
+            if !facts.recentlyComputed.isEmpty {
                 recentSection
             }
         }
-        .task(id: pinned?.id) { await loadPinned() }
+        .task(id: facts.pinned?.id) { await loadPinned() }
     }
 
     // MARK: - Sections
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            SectionLabel(text: "Project", systemImage: "building.2")
+    private var summaryScene: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.l) {
+            SignalRule(mark: .dashboard)
+            if facts.pinned != nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: Theme.Space.xxl) {
+                        projectSummary.frame(
+                            minWidth: 320,
+                            idealWidth: 360,
+                            maxWidth: 360,
+                            alignment: .leading
+                        )
+                        pinnedPreview.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.xl) {
+                        projectSummary
+                        pinnedPreview
+                    }
+                }
+            } else {
+                projectSummary
+            }
+        }
+        .padding(.leading, Theme.Space.m)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Theme.SignalChrome.teal)
+                .frame(width: 3)
+                .accessibilityHidden(true)
+        }
+        .accessibilityIdentifier("gethog.signal-summary.dashboard")
+    }
+
+    private var projectSummary: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            SectionLabel(text: "Project signal", productMark: .dashboard)
 
             Text(model.selectedProject?.name ?? "PostHog")
                 .font(.largeTitle.weight(.semibold))
@@ -66,21 +80,21 @@ struct ProjectOverview: View {
             StatStrip {
                 MetricTile(
                     label: "Dashboards",
-                    value: "\(dashboards.count)",
+                    value: "\(facts.dashboardCount)",
                     compact: true
                 )
                 MetricTile(
                     label: "Computed",
-                    value: "\(recentlyComputed.count)",
+                    value: "\(facts.computedCount)",
                     compact: true
                 )
                 // Named rather than hidden: half this project's dashboards are
                 // feature-flag by-products, and a count of 10 that is really
                 // 5 real ones plus 5 artefacts misrepresents the project.
-                if generatedCount > 0 {
+                if facts.generatedCount > 0 {
                     MetricTile(
                         label: "Generated",
-                        value: "\(generatedCount)",
+                        value: "\(facts.generatedCount)",
                         compact: true
                     )
                 }
@@ -89,27 +103,25 @@ struct ProjectOverview: View {
         }
     }
 
-    private func pinnedSection(_ summary: DashboardSummary) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
-            SectionLabel(text: "Pinned", systemImage: "pin.fill")
-
-            if let pinnedDetail {
-                // Two columns of real tiles. Capped at four: this is a preview
-                // that should invite a tap, not a second copy of the dashboard
-                // one tap away.
-                MasonryLayout(columns: 2, spacing: Theme.Space.l) {
-                    ForEach(Array(orderedTiles(pinnedDetail).prefix(4))) { tile in
-                        TileCard(tile: tile, model: tile.renderModel)
-                            .allowsHitTesting(false)
+    @ViewBuilder
+    private var pinnedPreview: some View {
+        if let pinned = facts.pinned {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                SectionLabel(text: "Pinned", productMark: .dashboard)
+                if let pinnedDetail {
+                    // Two columns of real tiles. Capped at four: this is a preview
+                    // that should invite a tap, not a second copy of the dashboard
+                    // one tap away.
+                    MasonryLayout(columns: 2, spacing: Theme.Space.l) {
+                        ForEach(Array(orderedTiles(pinnedDetail).prefix(4))) { tile in
+                            TileCard(tile: tile, model: tile.renderModel)
+                                .allowsHitTesting(false)
+                        }
                     }
-                }
-            } else if isLoadingPinned {
-                Card {
+                } else if isLoadingPinned {
                     HStack(spacing: Theme.Space.m) {
                         ProgressView()
-                        Text("Loading \(summary.title)…")
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(.secondary)
+                        Text("Loading \(pinned.title)…")
                     }
                 }
             }
@@ -121,11 +133,14 @@ struct ProjectOverview: View {
             SectionLabel(text: "Recently computed", systemImage: "clock.arrow.circlepath")
 
             VStack(spacing: Theme.Space.s) {
-                ForEach(recentlyComputed) { summary in
+                ForEach(facts.recentlyComputed) { summary in
                     Card(padding: Theme.Space.m) {
                         DataRow(
                             glyph: summary.creationMode == .template
                                 ? "wand.and.stars" : "square.grid.2x2",
+                            brandGlyph: DashboardBrandAppearance.glyph(
+                                for: summary.creationMode
+                            ),
                             tint: summary.creationMode == .template
                                 ? Theme.accentWarm : Theme.accent,
                             title: summary.title,
@@ -147,7 +162,10 @@ struct ProjectOverview: View {
     }
 
     private func loadPinned() async {
-        guard let pinned, let client = model.client, let projectID = model.projectID else { return }
+        guard let pinned = facts.pinned,
+              let client = model.client,
+              let projectID = model.projectID
+        else { return }
         isLoadingPinned = true
         defer { isLoadingPinned = false }
         // `refresh: false` so this reads the cache and never escalates to
