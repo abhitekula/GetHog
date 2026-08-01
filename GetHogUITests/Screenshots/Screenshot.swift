@@ -190,7 +190,8 @@ enum Screenshot {
         tab: String? = nil,
         openURL: String? = nil,
         environment: [String: String] = [:],
-        demo: Bool = true
+        demo: Bool = true,
+        extraArguments: [String] = []
     ) -> XCUIApplication {
         precondition(tab == nil || openURL == nil, "GETHOG_TAB overrules GETHOG_OPEN_URL.")
 
@@ -214,6 +215,7 @@ enum Screenshot {
         if configuration.appearance == .dark {
             app.launchArguments += ["-UIUserInterfaceStyle", "Dark"]
         }
+        app.launchArguments += extraArguments
         if let tab { app.launchEnvironment["GETHOG_TAB"] = tab }
         if let openURL { app.launchEnvironment["GETHOG_OPEN_URL"] = openURL }
         for (key, value) in environment { app.launchEnvironment[key] = value }

@@ -26,6 +26,7 @@ import XCTest
 /// this: `DemoTransport` still has no `/pipeline` route and
 /// `GetHog/Resources/DemoData/` still holds no pipelines fixture, so the
 /// pipelines half of the old sentence stands.
+@MainActor
 final class StateScreenshotTests: ScreenshotCase {
 
     /// The deterministic dashboard-detail fixture.
@@ -37,6 +38,156 @@ final class StateScreenshotTests: ScreenshotCase {
     /// `error_tracking.json`, first synthetic row: `HarborRenderFault`, status active — so
     /// the triage buttons drawn are "Resolve" and "Suppress".
     private static let errorIssue = "018f3300-0000-7000-8000-000000000901"
+
+    // MARK: - Brand states
+
+    func testBrandedEmptyDashboards() {
+        captureBrandState(
+            tab: "dashboards",
+            title: "No dashboards",
+            name: "brand-empty-dashboards",
+            emptyCollection: "dashboards"
+        )
+    }
+
+    func testBrandedEmptyInsights() {
+        captureBrandState(
+            tab: "insights",
+            title: "No saved insights",
+            name: "brand-empty-insights",
+            emptyCollection: "insights"
+        )
+    }
+
+    func testBrandedEmptySessions() {
+        captureBrandState(
+            tab: "sessions",
+            title: "No sessions",
+            name: "brand-empty-sessions",
+            emptyCollection: "sessions"
+        )
+    }
+
+    func testBrandedEmptyExperiments() {
+        captureBrandState(
+            tab: "experiments",
+            title: "No experiments",
+            name: "brand-empty-experiments",
+            emptyCollection: "experiments"
+        )
+    }
+
+    func testBrandedAllClearErrors() {
+        captureBrandState(
+            tab: "errorTracking",
+            title: "No errors in this period",
+            name: "brand-all-clear-errors",
+            emptyCollection: "errorTracking"
+        )
+    }
+
+    func testBrandedWorkspace() {
+        captureBrandState(
+            tab: "annotations",
+            title: "No annotations",
+            name: "brand-empty-workspace"
+        )
+    }
+
+    func testBrandFamilyEmblems() {
+        captureBrandState(
+            tab: "search",
+            title: "Search",
+            name: "brand-family-emblems"
+        )
+    }
+
+    func testBrandFamilyEmblemData() {
+        captureBrandEmblem(
+            query: "Actions",
+            result: "Actions",
+            name: "brand-family-emblem-data"
+        )
+    }
+
+    func testBrandFamilyEmblemExperiment() {
+        captureBrandEmblem(
+            query: "Experiments",
+            result: "Experiments",
+            name: "brand-family-emblem-experiment"
+        )
+    }
+
+    func testBrandFamilyEmblemWorkspace() {
+        captureBrandEmblem(
+            query: "Notebooks",
+            result: "Notebooks",
+            name: "brand-family-emblem-workspace"
+        )
+    }
+
+    func testBrandedEmptyDashboardReduceMotion() {
+        captureBrandState(
+            tab: "dashboards",
+            title: "No dashboards",
+            name: "brand-empty-dashboards-reduce-motion",
+            emptyCollection: "dashboards",
+            extraArguments: ["-UIAccessibilityReduceMotionEnabled", "YES"]
+        )
+    }
+
+    private func captureBrandState(
+        tab: String,
+        title: String,
+        name: String,
+        emptyCollection: String? = nil,
+        extraArguments: [String] = []
+    ) {
+        var environment: [String: String] = [:]
+        if let emptyCollection {
+            environment["GETHOG_DEMO_EMPTY_COLLECTION"] = emptyCollection
+        }
+
+        capture(
+            launching: {
+                Screenshot.launch(
+                    $0,
+                    tab: tab,
+                    environment: environment,
+                    extraArguments: extraArguments
+                )
+            },
+            steps: [
+                ScreenshotStep(name) { app in
+                    self.waitUntil {
+                        app.staticTexts[title].exists || app.navigationBars[title].exists
+                    }
+                }
+            ]
+        )
+    }
+
+    private func captureBrandEmblem(query: String, result: String, name: String) {
+        capture(
+            launching: { Screenshot.launch($0, tab: "search") },
+            steps: [
+                ScreenshotStep(name) { app in
+                    guard self.waitUntil({ app.navigationBars["Search"].exists }) else {
+                        return false
+                    }
+                    let field = app.searchFields.firstMatch
+                    guard DemoLaunch.wait(for: field) else { return false }
+                    field.tap()
+                    field.typeText(query)
+                    return self.waitUntil {
+                        app.buttons.matching(
+                            NSPredicate(format: "label BEGINSWITH %@", result)
+                        ).firstMatch.exists
+                    }
+                }
+            ]
+        )
+    }
 
     // MARK: - Dashboards
 

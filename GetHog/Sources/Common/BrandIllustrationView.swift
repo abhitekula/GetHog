@@ -44,10 +44,14 @@ struct BrandIllustrationView: View {
             .fill(Theme.accent.opacity(0.12))
             .rotationEffect(.degrees(-3))
 
-            Image(illustration.assetName)
+            Image(decorative: illustration.assetName)
                 .resizable()
                 .scaledToFit()
                 .padding(size * 0.04)
+                // SwiftUI may publish a resizable asset as its own accessibility
+                // element even when the surrounding composition is hidden.
+                // Suppress it at the source so the asset filename is never read.
+                .accessibilityHidden(true)
         }
         .frame(width: size, height: size * 0.84)
         .opacity(motion.opacity)
