@@ -379,6 +379,10 @@ struct ReplayPlayerView: View {
     /// view, which cannot resolve a SwiftUI dynamic colour on its own.
     @Environment(\.colorScheme) private var colorScheme
     @State private var pendingSeek: TimeInterval?
+    @State private var isExpanded = false
+    @State private var expandedStartPosition: TimeInterval = 0
+    @State private var expandedEndPosition: TimeInterval = 0
+    @State private var resumeAfterExpansion = false
 
     /// The recording's own duration is the honest total. The other two are
     /// fallbacks for the rare recording that reports no duration: the player and
@@ -416,6 +420,20 @@ struct ReplayPlayerView: View {
             guard let target = pendingSeek, buffered >= target else { return }
             pendingSeek = nil
             controller.seek(to: target)
+        }
+        .fullScreenCover(isPresented: $isExpanded) {
+            ExpandedReplayView(
+                recording: recording,
+                loader: loader,
+                initialPosition: expandedStartPosition,
+                initialSpeed: controller.speed,
+                markers: markers,
+                onClose: { expandedEndPosition = $0 }
+            )
+        }
+        .onChange(of: isExpanded) { wasExpanded, expanded in
+            guard wasExpanded, !expanded else { return }
+            controller.seek(to: expandedEndPosition, resume: resumeAfterExpansion)
         }
     }
 
@@ -514,6 +532,14 @@ struct ReplayPlayerView: View {
             if loader.isFetching {
                 ProgressView().controlSize(.small)
             }
+            Button {
+                expand()
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .minimumHitTarget()
+            }
+            .disabled(!controller.isReady)
+            .accessibilityLabel("Expand replay")
             if let onOpenInPostHog {
                 Button(action: onOpenInPostHog) {
                     // Caption type in a hand-built header row brings no control
@@ -535,8 +561,14 @@ struct ReplayPlayerView: View {
             .background(Color.black.opacity(0.9))
             .clipShape(.rect(cornerRadius: 10))
             .overlay {
-                if !controller.isReady {
-                    ProgressView().tint(.white)
+                ZStack {
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(.rect)
+                        .onTapGesture(perform: expand)
+                    if !controller.isReady {
+                        ProgressView().tint(.white)
+                    }
                 }
             }
             // A recording is a picture of a page that has already happened. Its
@@ -555,9 +587,9 @@ struct ReplayPlayerView: View {
             // the leak is unbounded — a bigger recorded page contributes
             // arbitrarily more of somebody else's navigation.
             .accessibilityRepresentation {
-                Rectangle()
-                    .accessibilityLabel("Session replay")
-                    .accessibilityHint("Playback is controlled by the buttons below.")
+                Button("Session replay", action: expand)
+                    .accessibilityHint("Opens the replay full screen.")
+                    .disabled(!controller.isReady)
             }
     }
 
@@ -669,6 +701,15 @@ struct ReplayPlayerView: View {
         let batch = loader.drainPending()
         guard !batch.isEmpty else { return }
         controller.submit(events: batch, reduceMotion: reduceMotion, colorScheme: colorScheme)
+    }
+
+    private func expand() {
+        guard controller.isReady, !isExpanded else { return }
+        expandedStartPosition = controller.currentTime
+        expandedEndPosition = controller.currentTime
+        resumeAfterExpansion = controller.isPlaying
+        controller.pause()
+        isExpanded = true
     }
 
     /// Seeks within the buffer immediately and pulls the rest in behind it.
