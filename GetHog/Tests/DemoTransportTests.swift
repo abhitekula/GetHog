@@ -96,6 +96,40 @@ struct DemoTransportTests {
         #expect(store.detail?.chapters.count == 2)
     }
 
+    @Test("a multi-session generation request does not store the canonical summary")
+    @MainActor
+    func multiSessionGenerationDoesNotChangeDemoSummary() async throws {
+        let transport = DemoTransport(summaryInitiallyAbsent: true)
+        let canonicalSessionID = "018f1000-0000-7000-8000-000000000001"
+        let endpoint = Endpoint(
+            path: "/api/projects/\(Self.projectID)/session_summaries/"
+                + "create_session_summaries_individually/",
+            method: "POST",
+            body: try JSONSerialization.data(
+                withJSONObject: ["session_ids": [canonicalSessionID, "other"]]
+            ),
+            category: .query
+        )
+        var request = URLRequest(url: URL(string: "https://app.example.com" + endpoint.path)!)
+        request.httpMethod = endpoint.method
+        request.httpBody = endpoint.body
+
+        let (_, response) = try await transport.send(request)
+        #expect(response.statusCode == 501)
+
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
+            transport: transport
+        )
+        let store = SessionSummaryStore()
+        await store.load(
+            client: client,
+            projectID: Self.projectID,
+            sessionID: canonicalSessionID
+        )
+        #expect(store.state == .absent)
+    }
+
     @Test(
         "the visual-verification seam empties its requested collection",
         arguments: [

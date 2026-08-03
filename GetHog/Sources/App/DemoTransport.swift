@@ -85,7 +85,7 @@ struct DemoTransport: HTTPTransport {
 
         if request.httpMethod == "POST",
            path.hasSuffix("/create_session_summaries_individually/"),
-           body.contains(Self.summarisedDemoSession) {
+           Self.isCanonicalSummaryGenerationRequest(request.httpBody) {
             await summaryGeneration.markGenerated()
             return Self.jsonReply(
                 url: request.url!, data: Data(#"{}"#.utf8), status: 200
@@ -160,6 +160,15 @@ struct DemoTransport: HTTPTransport {
     /// The session the demo summary fixture describes — and the one the demo
     /// player actually plays, so its chapters seek to real frames.
     private static let summarisedDemoSession = "018f1000-0000-7000-8000-000000000001"
+
+    private static func isCanonicalSummaryGenerationRequest(_ body: Data?) -> Bool {
+        guard let body,
+              let payload = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let sessionIDs = payload["session_ids"] as? [String]
+        else { return false }
+
+        return sessionIDs == [summarisedDemoSession]
+    }
 
     /// Only the replay timeline builder owns `session_events.json`. A bare
     /// `$session_id` predicate is valid SQL-console input too, so claiming on the
