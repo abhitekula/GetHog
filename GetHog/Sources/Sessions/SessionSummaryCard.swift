@@ -87,6 +87,7 @@ struct SessionSummaryCard: View {
     var seed: SessionOutcome?
     var canSeek = false
     var onSeek: ((TimeInterval) -> Void)?
+    var onGenerate: (() -> Void)? = nil
     var onRetry: (() -> Void)?
 
     /// Read because the provenance line changes shape rather than shrinking;
@@ -104,7 +105,27 @@ struct SessionSummaryCard: View {
                 case .idle, .loading:
                     loading
                 case .absent:
-                    absent
+                    SectionEmptyState(
+                        text: "No AI summary has been generated for this session.",
+                        systemImage: "text.badge.xmark",
+                        actionTitle: onGenerate == nil ? nil : "Generate AI summary",
+                        action: onGenerate
+                    )
+                case .generating:
+                    HStack(spacing: Theme.Space.s) {
+                        ProgressView().controlSize(.small)
+                        Text("PostHog is generating this session's AI summary…")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.Ink.secondary)
+                    }
+                case .generationFailed(let message):
+                    SectionEmptyState(
+                        text: "Couldn't generate the summary.",
+                        systemImage: "exclamationmark.triangle",
+                        detail: message,
+                        actionTitle: onGenerate == nil ? nil : "Try again",
+                        action: onGenerate
+                    )
                 case .failed(let message):
                     SectionEmptyState(
                         text: "Couldn't load the summary for this session.",
@@ -194,18 +215,6 @@ struct SessionSummaryCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .redacted(reason: .placeholder)
         }
-    }
-
-    /// Not an error, and it must not look like one.
-    ///
-    /// Summaries are generated elsewhere — this client only reads them — so most
-    /// sessions have none, and the API says so with a plain 404. A red card here
-    /// would misreport the ordinary case on the majority of session screens.
-    private var absent: some View {
-        SectionEmptyState(
-            text: "No AI summary has been generated for this session.",
-            systemImage: "text.badge.xmark"
-        )
     }
 
     @ViewBuilder

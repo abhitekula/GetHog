@@ -12,6 +12,7 @@ struct SessionDetailView: View {
     @State private var loader = ReplayLoader()
     @State private var player = ReplayPlayerController()
     @State private var webLink: WebLink?
+    @State private var summaryGenerationTask: Task<Void, Never>?
 
     private var replayWebURL: URL? {
         model.webURL(path: "replay/\(recording.id)")
@@ -66,6 +67,10 @@ struct SessionDetailView: View {
                     origin: loader.replayStart ?? recording.startTime,
                     canSeek: player.isReady,
                     onSeek: { offset in player.seek(to: offset, resume: true) },
+                    onGenerate: {
+                        summaryGenerationTask?.cancel()
+                        summaryGenerationTask = Task { await generateSummary() }
+                    },
                     onRetry: { Task { await loadSummary() } }
                 )
                 .padding(.horizontal, Theme.Space.l)
@@ -112,6 +117,10 @@ struct SessionDetailView: View {
         // summary and answer 404, which the store reads as absence rather than
         // as failure — so this costs the screen nothing when there is nothing.
         .task(id: recording.id) { await loadSummary() }
+        .onDisappear {
+            summaryGenerationTask?.cancel()
+            summaryGenerationTask = nil
+        }
         // Both in flight at once: they are different endpoints against different
         // rate-limit categories, and serialising them would double how long a
         // pull-to-refresh spins for no benefit.
@@ -203,6 +212,15 @@ struct SessionDetailView: View {
         // Keyed by the session id, which is what `SessionRecording.id` already
         // is — no lookup, and no second identifier to keep in step.
         await summary.load(client: client, projectID: projectID, sessionID: recording.id)
+    }
+
+    private func generateSummary() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await summary.generate(
+            client: client,
+            projectID: projectID,
+            sessionID: recording.id
+        )
     }
 
     private func startReplay() async {

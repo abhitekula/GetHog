@@ -5,6 +5,63 @@ import UIKit
 
 @testable import GetHog
 
+private actor SummaryGenerationTransport: HTTPTransport {
+    private var generated = false
+    private var generationStatuses: [Int]
+    private let storedSummary = DemoTransport()
+
+    init(generationStatuses: [Int] = [200]) {
+        self.generationStatuses = generationStatuses
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let path = request.url?.path(percentEncoded: false) ?? ""
+
+        if request.httpMethod == "POST",
+           path.hasSuffix("/create_session_summaries_individually/") {
+            try? await Task.sleep(for: .milliseconds(30))
+            let generationStatus = generationStatuses.count > 1
+                ? generationStatuses.removeFirst()
+                : (generationStatuses.first ?? 200)
+            generated = generationStatus == 200
+            let data = generationStatus == 200
+                ? Data(#"{}"#.utf8)
+                : Data(
+                    generationStatus == 429
+                        ? #"{"detail":"Synthetic generation rate limit"}"#.utf8
+                        : #"{"detail":"Missing session recording read scope"}"#.utf8
+                )
+            return response(for: request, status: generationStatus, data: data)
+        }
+
+        if path.contains("/single_session_summaries/"), !generated {
+            return response(
+                for: request,
+                status: 404,
+                data: Data(
+                    #"{"detail":"No stored summary found for this session."}"#.utf8
+                )
+            )
+        }
+
+        return try await storedSummary.send(request)
+    }
+
+    private func response(
+        for request: URLRequest,
+        status: Int,
+        data: Data
+    ) -> (Data, HTTPURLResponse) {
+        (
+            data,
+            HTTPURLResponse(
+                url: request.url!, statusCode: status, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+        )
+    }
+}
+
 /// The session-summary screens, end to end over the demo fixtures.
 ///
 /// The kit tests cover decoding and the chapter join in isolation. What is left
@@ -70,6 +127,95 @@ struct SessionSummaryScreenTests {
         #expect(detail.outcome?.succeeded == true)
         #expect(detail.chapters.count == 2)
         #expect(detail.sentiment?.frustrationScore == 0.2)
+    }
+
+    @Test("generation transitions an absent summary through generating to loaded")
+    @MainActor
+    func generationLoadsCanonicalSummary() async throws {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
+            transport: SummaryGenerationTransport()
+        )
+        let store = SessionSummaryStore()
+
+        await store.load(client: client, projectID: 1_001, sessionID: Self.summarised)
+        #expect(store.state == .absent)
+
+        let generation = Task {
+            await store.generate(
+                client: client, projectID: 1_001, sessionID: Self.summarised
+            )
+        }
+        try await Task.sleep(for: .milliseconds(5))
+        #expect(store.state == .generating)
+        await generation.value
+        #expect(store.detail?.id == Self.summarised)
+        #expect(store.loadedAt != nil)
+    }
+
+    @Test("a generation failure remains retryable and distinct from load failure")
+    @MainActor
+    func generationFailureIsDistinct() async {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
+            transport: SummaryGenerationTransport(generationStatuses: [403])
+        )
+        let store = SessionSummaryStore()
+
+        await store.generate(client: client, projectID: 1_001, sessionID: Self.summarised)
+        guard case .generationFailed(let message) = store.state else {
+            Issue.record("expected a generation-specific failure")
+            return
+        }
+        #expect(message.localizedCaseInsensitiveContains("scope"))
+    }
+
+    @Test("a rate limit is reported as generation failure")
+    @MainActor
+    func generationRateLimitIsVisible() async {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
+            transport: SummaryGenerationTransport(generationStatuses: [429])
+        )
+        let store = SessionSummaryStore()
+
+        await store.generate(client: client, projectID: 1_001, sessionID: Self.summarised)
+        guard case .generationFailed(let message) = store.state else {
+            Issue.record("expected a generation-specific failure")
+            return
+        }
+        #expect(message.localizedCaseInsensitiveContains("rate"))
+    }
+
+    @Test("retry can recover a failed generation")
+    @MainActor
+    func generationRetryLoadsSummary() async {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
+            transport: SummaryGenerationTransport(generationStatuses: [403, 200])
+        )
+        let store = SessionSummaryStore()
+
+        await store.generate(client: client, projectID: 1_001, sessionID: Self.summarised)
+        guard case .generationFailed = store.state else {
+            Issue.record("expected the first generation to fail")
+            return
+        }
+
+        await store.generate(client: client, projectID: 1_001, sessionID: Self.summarised)
+        #expect(store.detail?.id == Self.summarised)
+    }
+
+    @Test("generation never replaces an already loaded summary")
+    @MainActor
+    func loadedSummaryIsPreserved() async throws {
+        let store = SessionSummaryStore()
+        await store.load(client: client(), projectID: 1_001, sessionID: Self.summarised)
+        let existing = try #require(store.detail)
+
+        await store.generate(client: client(), projectID: 1_001, sessionID: Self.summarised)
+
+        #expect(store.detail == existing)
     }
 
     // MARK: - Chapters as player positions

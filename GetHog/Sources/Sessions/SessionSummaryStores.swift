@@ -71,6 +71,8 @@ final class SessionSummaryStore {
         case loaded(SessionSummaryDetail)
         /// Nobody has summarised this session. Normal.
         case absent
+        case generating
+        case generationFailed(String)
         case failed(String)
     }
 
@@ -83,6 +85,38 @@ final class SessionSummaryStore {
     }
 
     var isLoading: Bool { state == .loading }
+    var isGenerating: Bool { state == .generating }
+
+    func generate(
+        client: PostHogClient,
+        projectID: Int,
+        sessionID: String
+    ) async {
+        guard state != .generating, detail == nil else { return }
+        state = .generating
+        do {
+            _ = try await client.data(
+                for: PostHogAPI.generateIndividualSessionSummary(
+                    projectID: projectID,
+                    sessionID: sessionID
+                )
+            )
+            await load(client: client, projectID: projectID, sessionID: sessionID)
+        } catch {
+            state = .generationFailed(
+                Self.generationFailureMessage(for: error)
+            )
+        }
+    }
+
+    private static func generationFailureMessage(for error: Error) -> String {
+        if case let .forbidden(_, detail) = error as? PostHogError,
+           let detail, !detail.isEmpty {
+            return detail
+        }
+        return (error as? PostHogError)?.localizedDescription
+            ?? error.localizedDescription
+    }
 
     func load(client: PostHogClient, projectID: Int, sessionID: String) async {
         state = .loading
