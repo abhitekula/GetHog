@@ -98,6 +98,91 @@ struct ReplayCoordinationTests {
         #expect(controller.speed == 2)
     }
 
+    @Test("pre-ready restart preserves prepared playback and ignores superseded ready")
+    @MainActor
+    func preReadyRestartPreservesPreparedPlayback() {
+        let controller = ReplayPlayerController()
+        controller.preparePlaybackForNextReady(position: 42, speed: 4, resume: true)
+
+        controller.restartPlayback(rebasingPlayheadBy: 39)
+        controller.handle(message: [
+            "type": "ready", "totalTime": 100_000.0, "rendererGeneration": 0,
+        ])
+
+        #expect(!controller.didRestorePreparedPlayback)
+        #expect(!controller.isReady)
+
+        controller.handle(message: [
+            "type": "ready", "totalTime": 100_000.0, "rendererGeneration": 1,
+        ])
+
+        #expect(controller.didRestorePreparedPlayback)
+        #expect(controller.expansionHandoffPosition == 81)
+        #expect(controller.speed == 4)
+        #expect(controller.isPlaying)
+    }
+
+    @Test("multiple pre-ready backfills accumulate on the prepared position")
+    @MainActor
+    func multiplePreReadyRestartsAccumulate() {
+        let controller = ReplayPlayerController()
+        controller.preparePlaybackForNextReady(position: 42, speed: 4, resume: true)
+
+        controller.restartPlayback(rebasingPlayheadBy: 39)
+        controller.restartPlayback(rebasingPlayheadBy: 6)
+        controller.handle(message: [
+            "type": "ready", "totalTime": 100_000.0, "rendererGeneration": 2,
+        ])
+
+        #expect(controller.expansionHandoffPosition == 87)
+        #expect(controller.speed == 4)
+        #expect(controller.isPlaying)
+    }
+
+    @Test("superseded renderer messages cannot mutate the current generation")
+    @MainActor
+    func staleRendererMessagesAreIgnored() {
+        let controller = ReplayPlayerController()
+        controller.restartPlayback()
+
+        controller.handle(message: [
+            "type": "meta", "totalTime": 900_000.0, "rendererGeneration": 0,
+        ])
+        controller.handle(message: [
+            "type": "time", "currentTime": 90_000.0, "rendererGeneration": 0,
+        ])
+        controller.handle(message: [
+            "type": "state", "state": "playing", "rendererGeneration": 0,
+        ])
+        controller.handle(message: ["type": "finish", "rendererGeneration": 0])
+        controller.handle(message: [
+            "type": "error", "message": "stale synthetic failure", "rendererGeneration": 0,
+        ])
+
+        #expect(controller.playerDuration == 0)
+        #expect(controller.currentTime == 0)
+        #expect(!controller.isPlaying)
+        #expect(!controller.didFinish)
+        #expect(controller.failure == nil)
+    }
+
+    @Test("the bundled renderer tags every boot-scoped message generation")
+    @MainActor
+    func bundledRendererCarriesGeneration() throws {
+        let url = try #require(
+            Bundle.main.url(
+                forResource: "index",
+                withExtension: "html",
+                subdirectory: "rrweb-player"
+            )
+                ?? Bundle.main.url(forResource: "index", withExtension: "html")
+        )
+        let html = try String(contentsOf: url, encoding: .utf8)
+
+        #expect(html.contains("options.rendererGeneration"))
+        #expect(html.contains("rendererGeneration: generation"))
+    }
+
     @Test("a rejected interactive commit cannot retain a dead handoff target")
     @MainActor
     func rejectedInteractiveCommitReleasesHandoff() {

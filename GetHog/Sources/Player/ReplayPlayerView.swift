@@ -218,15 +218,24 @@ final class ReplayPlayerController {
     /// Rebuilds rrweb against an archive whose origin moved earlier while
     /// preserving the same absolute moment, speed, and playback intent.
     func restartPlayback(rebasingPlayheadBy adjustment: TimeInterval) {
-        let rebasedPosition = max(0, expansionHandoffPosition + adjustment)
-        let preservedSpeed = speed
-        let shouldResume = isPlaying
+        let pendingPlayback = preparedPlayback
+        let livePosition = expansionHandoffPosition
+        let liveSpeed = speed
+        let liveResume = isPlaying
         restartPlayback()
-        preparePlaybackForNextReady(
-            position: rebasedPosition,
-            speed: preservedSpeed,
-            resume: shouldResume
-        )
+        if let pendingPlayback {
+            preparePlaybackForNextReady(
+                position: pendingPlayback.position + adjustment,
+                speed: pendingPlayback.speed,
+                resume: pendingPlayback.resume
+            )
+        } else {
+            preparePlaybackForNextReady(
+                position: livePosition + adjustment,
+                speed: liveSpeed,
+                resume: liveResume
+            )
+        }
     }
 
     // MARK: Feeding events
@@ -263,6 +272,7 @@ final class ReplayPlayerController {
                     {"speed": \(acceptedSpeed), \
                     "skipInactive": \(acceptedSkipInactive), \
                     "mouseTail": \(acceptedReduceMotion ? "false" : "true"), \
+                    "rendererGeneration": \(acceptedGeneration), \
                     "tailColor": "\(Self.cssHex(Theme.accent, in: acceptedColorScheme))"}
                     """
                 self.evaluate("window.GetHogReplay.boot(\(payload), \(options));")
@@ -366,6 +376,7 @@ final class ReplayPlayerController {
 
     func handle(message body: [String: Any]) {
         guard let type = body["type"] as? String else { return }
+        guard type == "loaded" || acceptsRendererMessage(body) else { return }
         switch type {
         case "loaded":
             isDocumentReady = true
@@ -432,7 +443,18 @@ final class ReplayPlayerController {
         self.preparedPlayback = nil
         setSpeed(preparedPlayback.speed)
         seek(to: preparedPlayback.position, resume: preparedPlayback.resume)
+        isPlaying = preparedPlayback.resume
         didRestorePreparedPlayback = true
+    }
+
+    private func acceptsRendererMessage(_ body: [String: Any]) -> Bool {
+        guard body.keys.contains("rendererGeneration") else {
+            // Unit tests and manually constructed diagnostics predate the
+            // production bridge contract and remain useful without a tag.
+            return true
+        }
+        guard let generation = body["rendererGeneration"] as? NSNumber else { return false }
+        return generation.intValue == submissionGeneration
     }
 }
 

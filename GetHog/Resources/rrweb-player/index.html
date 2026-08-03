@@ -47,6 +47,7 @@
 
   var stage = document.getElementById("stage");
   var player = null;
+  var rendererGeneration = null;
   // rrweb-player only exposes a *toggle* for skip-inactive, so the absolute
   // value the native switch is bound to has to be mirrored here.
   var skipInactive = false;
@@ -59,12 +60,23 @@
     }
   }
 
-  function fail(where, err) {
-    post({ type: "error", message: where + ": " + String((err && err.message) || err) });
+  function postRenderer(message, generation) {
+    var tagged = { rendererGeneration: generation };
+    for (var key in message) { tagged[key] = message[key]; }
+    post(tagged);
+  }
+
+  function fail(where, err, generation) {
+    postRenderer(
+      { type: "error", message: where + ": " + String((err && err.message) || err) },
+      generation == null ? rendererGeneration : generation
+    );
   }
 
   window.addEventListener("error", function (event) {
-    post({ type: "error", message: String(event.message || "script error") });
+    var message = { type: "error", message: String(event.message || "script error") };
+    if (rendererGeneration == null) { post(message); }
+    else { postRenderer(message, rendererGeneration); }
   });
 
   function stageSize() {
@@ -81,15 +93,15 @@
     return ns.default || ns.Player || (typeof ns === "function" ? ns : null);
   }
 
-  function postMeta(extra) {
+  function postMeta(extra, generation) {
     if (!player) return;
     try {
       var meta = player.getMetaData();
       var message = { type: "meta", totalTime: meta.totalTime };
       if (extra) { for (var k in extra) { message[k] = extra[k]; } }
-      post(message);
+      postRenderer(message, generation);
     } catch (e) {
-      fail("meta", e);
+      fail("meta", e, generation);
     }
   }
 
@@ -98,14 +110,16 @@
     boot: function (events, options) {
       try {
         options = options || {};
+        var generation = Number(options.rendererGeneration);
+        rendererGeneration = generation;
         var Player = playerClass();
         if (!Player) {
-          post({ type: "error", message: "rrweb-player asset failed to load" });
+          postRenderer({ type: "error", message: "rrweb-player asset failed to load" }, generation);
           return;
         }
         // rrweb needs a meta + full-snapshot pair before it can render anything.
         if (!events || events.length < 2) {
-          post({ type: "error", message: "Not enough snapshot data to replay" });
+          postRenderer({ type: "error", message: "Not enough snapshot data to replay" }, generation);
           return;
         }
         if (player) { api.teardown(); }
@@ -131,25 +145,26 @@
         });
 
         player.addEventListener("ui-update-current-time", function (detail) {
-          post({ type: "time", currentTime: detail.payload });
+          postRenderer({ type: "time", currentTime: detail.payload }, generation);
         });
         player.addEventListener("ui-update-player-state", function (detail) {
-          post({ type: "state", state: detail.payload });
+          postRenderer({ type: "state", state: detail.payload }, generation);
         });
         player.addEventListener("finish", function () {
-          post({ type: "finish" });
+          postRenderer({ type: "finish" }, generation);
         });
 
-        postMeta({ type: "ready" });
+        postMeta({ type: "ready" }, generation);
       } catch (e) {
         player = null;
-        fail("boot", e);
+        fail("boot", e, generation);
       }
     },
 
     /** Appends a progressively-fetched chunk without disturbing playback. */
     append: function (events) {
       if (!player || !events || !events.length) return;
+      var generation = rendererGeneration;
       try {
         for (var i = 0; i < events.length; i++) {
           player.addEvent(events[i]);
@@ -157,9 +172,9 @@
         // `addEvent` reaches the replayer's state machine through a microtask,
         // and the player refreshes its metadata through another, so reading the
         // new duration synchronously would report the pre-append total.
-        setTimeout(function () { postMeta(null); }, 0);
+        setTimeout(function () { postMeta(null, generation); }, 0);
       } catch (e) {
-        fail("append", e);
+        fail("append", e, generation);
       }
     },
 
