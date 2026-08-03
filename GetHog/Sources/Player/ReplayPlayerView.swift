@@ -713,6 +713,14 @@ struct PlayerTransportBar: View {
         SessionReplayMarker.active(in: markers, at: position.wrappedValue)
     }
 
+    private var previousMarker: SessionReplayMarker? {
+        SessionReplayMarker.previous(in: markers, before: position.wrappedValue)
+    }
+
+    private var nextMarker: SessionReplayMarker? {
+        SessionReplayMarker.next(in: markers, after: position.wrappedValue)
+    }
+
     private var positionAccessibilityValue: String {
         var value = "\(SessionClock.spoken(position.wrappedValue)) of \(SessionClock.spoken(duration))"
         guard !markers.isEmpty else { return value }
@@ -796,32 +804,7 @@ struct PlayerTransportBar: View {
             }
 
             ZStack {
-                Slider(value: position, in: 0...upperBound) { editing in
-                    controller.isScrubbing = editing
-                    if editing {
-                        controller.scrubPosition = controller.currentTime
-                    } else {
-                        onScrubCommitted(controller.scrubPosition)
-                    }
-                }
-                .tint(Theme.accent)
-                .disabled(!controller.isReady)
-                .accessibilityLabel(positionAccessibilityLabel)
-                .accessibilityValue(positionAccessibilityValue)
-                .accessibilityAction(named: Text("Previous key event")) {
-                    guard let marker = SessionReplayMarker.previous(
-                        in: markers,
-                        before: position.wrappedValue
-                    ) else { return }
-                    onScrubCommitted(marker.offset)
-                }
-                .accessibilityAction(named: Text("Next key event")) {
-                    guard let marker = SessionReplayMarker.next(
-                        in: markers,
-                        after: position.wrappedValue
-                    ) else { return }
-                    onScrubCommitted(marker.offset)
-                }
+                scrubberSlider
 
                 ReplayMarkerTrack(markers: markers, duration: duration)
             }
@@ -835,6 +818,44 @@ struct PlayerTransportBar: View {
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
         }
+    }
+
+    @ViewBuilder
+    private var scrubberSlider: some View {
+        if let previous = previousMarker, let next = nextMarker {
+            slider
+                .accessibilityAction(named: Text("Previous key event")) {
+                    onScrubCommitted(previous.offset)
+                }
+                .accessibilityAction(named: Text("Next key event")) {
+                    onScrubCommitted(next.offset)
+                }
+        } else if let previous = previousMarker {
+            slider.accessibilityAction(named: Text("Previous key event")) {
+                onScrubCommitted(previous.offset)
+            }
+        } else if let next = nextMarker {
+            slider.accessibilityAction(named: Text("Next key event")) {
+                onScrubCommitted(next.offset)
+            }
+        } else {
+            slider
+        }
+    }
+
+    private var slider: some View {
+        Slider(value: position, in: 0...upperBound) { editing in
+            controller.isScrubbing = editing
+            if editing {
+                controller.scrubPosition = controller.currentTime
+            } else {
+                onScrubCommitted(controller.scrubPosition)
+            }
+        }
+        .tint(Theme.accent)
+        .disabled(!controller.isReady)
+        .accessibilityLabel(positionAccessibilityLabel)
+        .accessibilityValue(positionAccessibilityValue)
     }
 
     private var speedPicker: some View {

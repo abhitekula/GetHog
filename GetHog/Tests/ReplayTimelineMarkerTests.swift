@@ -6,44 +6,56 @@ import Testing
 
 @Suite("Replay timeline markers")
 struct ReplayTimelineMarkerTests {
-    private func detail() async throws -> SessionSummaryDetail {
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
-            transport: DemoTransport()
-        )
-        return try await client.send(
-            PostHogAPI.sessionSummary(
-                projectID: 1_001,
-                sessionID: "018f1000-0000-7000-8000-000000000001"
-            )
-        )
-    }
-
-    @Test("maps every timed key event onto the replay clock")
-    func mapsKeyEvents() async throws {
-        let origin = try #require(PostHogDate.parse("2026-01-15T12:00:00Z"))
+    @Test("prefers absolute timestamps and preserves close semantic moments")
+    func mapsKeyEvents() throws {
+        let detail = try SessionSummaryDetail.decode(from: Data(#"""
+            {
+              "session_id":"synthetic-session",
+              "summary":{
+                "segments":[{"index":0,"name":"Synthetic moments"}],
+                "key_actions":[{"segment_index":0,"events":[
+                  {"event_id":"late","description":"Second moment",
+                   "timestamp":"2026-01-15T12:00:01.500500Z",
+                   "milliseconds_since_start":9000},
+                  {"event_id":"early","description":"First moment",
+                   "timestamp":"2026-01-15T12:00:01.500000Z",
+                   "milliseconds_since_start":8000},
+                  {"event_id":"fallback","description":"Offset fallback",
+                   "milliseconds_since_start":1500}
+                ]}]
+              }
+            }
+            """#.utf8))
+        let origin = try #require(PostHogDate.parse("2026-01-15T12:00:01Z"))
         let markers = SessionReplayMarker.make(
-            detail: try await detail(), origin: origin, duration: 10
+            detail: detail, origin: origin, duration: 10
         )
 
-        #expect(markers.map(\.id) == ["event-open", "event-refresh"])
-        #expect(markers.map(\.offset) == [0.5, 0.9])
-        #expect(markers.map(\.kind) == [.keyAction, .struggle])
-        #expect(markers[1].label == "The user pressed the fictional refresh button.")
+        #expect(markers.map(\.id) == ["early", "late", "fallback"])
+        #expect(abs(markers[0].offset - 0.5) < 0.000_001)
+        #expect(abs(markers[1].offset - 0.5005) < 0.000_001)
+        #expect(abs(markers[2].offset - 1.5) < 0.000_001)
+        #expect(SessionReplayMarker.active(in: markers, at: 0.5)?.id == "early")
+        #expect(SessionReplayMarker.next(in: markers, after: 0.5)?.id == "late")
+        #expect(SessionReplayMarker.active(in: markers, at: 0.5005)?.id == "late")
+        #expect(SessionReplayMarker.previous(in: markers, before: 0.5005)?.id == "early")
+        #expect(SessionReplayMarker.next(in: markers, after: 0.5005)?.id == "fallback")
     }
 
     @Test("selects the active, previous and next semantic moments")
-    func markerNavigation() async throws {
-        let origin = try #require(PostHogDate.parse("2026-01-15T12:00:00Z"))
-        let markers = SessionReplayMarker.make(
-            detail: try await detail(), origin: origin, duration: 10
-        )
+    func markerNavigation() {
+        let markers = [
+            SessionReplayMarker(id: "early", offset: 0.5, label: "First", kind: .keyAction),
+            SessionReplayMarker(id: "late", offset: 0.501, label: "Second", kind: .keyAction),
+            SessionReplayMarker(id: "end", offset: 1, label: "Last", kind: .keyAction)
+        ]
 
         #expect(SessionReplayMarker.active(in: markers, at: 0.4) == nil)
-        #expect(SessionReplayMarker.active(in: markers, at: 0.7)?.id == "event-open")
-        #expect(SessionReplayMarker.active(in: markers, at: 1.0)?.id == "event-refresh")
-        #expect(SessionReplayMarker.previous(in: markers, before: 1.0)?.id == "event-open")
-        #expect(SessionReplayMarker.next(in: markers, after: 0.5)?.id == "event-refresh")
+        #expect(SessionReplayMarker.active(in: markers, at: 0.5)?.id == "early")
+        #expect(SessionReplayMarker.next(in: markers, after: 0.5)?.id == "late")
+        #expect(SessionReplayMarker.active(in: markers, at: 0.501)?.id == "late")
+        #expect(SessionReplayMarker.previous(in: markers, before: 0.501)?.id == "early")
+        #expect(SessionReplayMarker.next(in: markers, after: 0.501)?.id == "end")
     }
 
     @Test("deduplicates, omits untimed events, and clamps to duration")

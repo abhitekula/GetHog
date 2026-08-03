@@ -28,7 +28,7 @@ struct SessionReplayMarker: Identifiable, Equatable, Sendable {
             .compactMap { event -> Self? in
                 let rawOffset: TimeInterval?
                 if let origin, let timestamp = event.timestamp {
-                    rawOffset = (timestamp.timeIntervalSince(origin) * 1_000).rounded() / 1_000
+                    rawOffset = timestamp.timeIntervalSince(origin)
                 } else {
                     rawOffset = event.offset
                 }
@@ -55,16 +55,26 @@ struct SessionReplayMarker: Identifiable, Equatable, Sendable {
     }
 
     static func active(in markers: [Self], at position: TimeInterval) -> Self? {
-        markers.last { $0.offset <= position }
+        activeIndex(in: markers, at: position).map { markers[$0] }
     }
 
     static func previous(in markers: [Self], before position: TimeInterval) -> Self? {
-        guard let active = active(in: markers, at: position) else { return nil }
-        return markers.last { $0.offset < active.offset - 0.001 }
+        guard let activeIndex = activeIndex(in: markers, at: position),
+              activeIndex > markers.startIndex else { return nil }
+        return markers[markers.index(before: activeIndex)]
     }
 
     static func next(in markers: [Self], after position: TimeInterval) -> Self? {
-        markers.first { $0.offset > position + 0.001 }
+        guard let activeIndex = activeIndex(in: markers, at: position) else {
+            return markers.first
+        }
+        let nextIndex = markers.index(after: activeIndex)
+        guard nextIndex < markers.endIndex else { return nil }
+        return markers[nextIndex]
+    }
+
+    private static func activeIndex(in markers: [Self], at position: TimeInterval) -> Int? {
+        markers.lastIndex { $0.offset <= position }
     }
 }
 
