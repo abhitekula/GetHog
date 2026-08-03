@@ -69,6 +69,33 @@ struct DemoTransportTests {
     private static let healthySavedQueryID = "018f9000-0000-7000-8000-000000000243"
     private static let plainSavedQueryID = "018f9000-0000-7000-8000-000000000014"
 
+    /// This catches a demo transport that accepts generation but keeps the
+    /// canonical synthetic replay in its initial missing-summary state.
+    @Test("demo summary generation changes one transport from absent to stored")
+    @MainActor
+    func demoSummaryGenerationPersistsForTheRun() async {
+        let transport = DemoTransport(summaryInitiallyAbsent: true)
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
+            transport: transport
+        )
+        let store = SessionSummaryStore()
+
+        await store.load(
+            client: client,
+            projectID: Self.projectID,
+            sessionID: "018f1000-0000-7000-8000-000000000001"
+        )
+        #expect(store.state == .absent)
+
+        await store.generate(
+            client: client,
+            projectID: Self.projectID,
+            sessionID: "018f1000-0000-7000-8000-000000000001"
+        )
+        #expect(store.detail?.chapters.count == 2)
+    }
+
     @Test(
         "the visual-verification seam empties its requested collection",
         arguments: [

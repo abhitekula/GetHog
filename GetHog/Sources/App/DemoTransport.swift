@@ -7,11 +7,27 @@ import UniformTypeIdentifiers
 /// Loads deterministic, hand-authored PostHog response shapes containing only fictional data.
 /// Routing is local to DEBUG builds and preserves each endpoint's method, path, shape, and status.
 #if DEBUG
+private actor DemoSummaryGenerationState {
+    private let startsAbsent: Bool
+    private var generated = false
+
+    init(startsAbsent: Bool) {
+        self.startsAbsent = startsAbsent
+    }
+
+    var shouldReturnMissing: Bool { startsAbsent && !generated }
+
+    func markGenerated() {
+        generated = true
+    }
+}
+
 struct DemoTransport: HTTPTransport {
 
     static let launchArgument = "-GetHogDemo"
     static let dashboardID = 725_101
     static let emptyCollectionEnvironment = "GETHOG_DEMO_EMPTY_COLLECTION"
+    static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
 
     enum EmptyCollection: String, CaseIterable {
         case dashboards
@@ -33,11 +49,18 @@ struct DemoTransport: HTTPTransport {
     }
 
     private let emptyCollection: EmptyCollection?
+    private let summaryGeneration: DemoSummaryGenerationState
 
-    init(emptyCollection: EmptyCollection? = nil) {
+    init(
+        emptyCollection: EmptyCollection? = nil,
+        summaryInitiallyAbsent: Bool? = nil
+    ) {
         self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
             Self.emptyCollectionEnvironment
         ].flatMap(EmptyCollection.init(rawValue:))
+        let startsAbsent = summaryInitiallyAbsent
+            ?? (ProcessInfo.processInfo.environment[Self.summaryGenerationEnvironment] == "1")
+        summaryGeneration = DemoSummaryGenerationState(startsAbsent: startsAbsent)
     }
 
     static var isEnabled: Bool {
@@ -60,6 +83,20 @@ struct DemoTransport: HTTPTransport {
         let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
         let query = request.url?.query ?? ""
 
+        if request.httpMethod == "POST",
+           path.hasSuffix("/create_session_summaries_individually/"),
+           body.contains(Self.summarisedDemoSession) {
+            await summaryGeneration.markGenerated()
+            return Self.jsonReply(
+                url: request.url!, data: Data(#"{}"#.utf8), status: 200
+            )
+        }
+
+        if path.hasSuffix("/single_session_summaries/\(Self.summarisedDemoSession)/"),
+           await summaryGeneration.shouldReturnMissing {
+            return Self.jsonReply(url: request.url!, data: Self.noStoredSummary, status: 404)
+        }
+
         // Writes route by **method**, because a create and a list share a path.
         // `POST /annotations/` and `GET /annotations/` differ in nothing else,
         // and answering the create with the collection's `Page` envelope would
@@ -71,12 +108,8 @@ struct DemoTransport: HTTPTransport {
             path: path,
             body: body
         ) {
-            let response = HTTPURLResponse(
-                url: request.url!, statusCode: write.status, httpVersion: nil,
-                headerFields: ["Content-Type": "application/json"]
-            )!
             try? await Task.sleep(for: .milliseconds(120))
-            return (write.data, response)
+            return Self.jsonReply(url: request.url!, data: write.data, status: write.status)
         }
 
         let reply = if let emptyCollection,
@@ -86,16 +119,24 @@ struct DemoTransport: HTTPTransport {
         } else {
             Self.fixture(for: path, body: body, query: query)
         }
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: reply.status,
-            httpVersion: nil,
-            headerFields: ["Content-Type": "application/json"]
-        )!
         // A touch of latency so loading states actually render rather than
         // flashing past — otherwise skeletons and spinners go untested.
         try? await Task.sleep(for: .milliseconds(120))
-        return (reply.data, response)
+        return Self.jsonReply(url: request.url!, data: reply.data, status: reply.status)
+    }
+
+    private static func jsonReply(
+        url: URL,
+        data: Data,
+        status: Int
+    ) -> (Data, HTTPURLResponse) {
+        (
+            data,
+            HTTPURLResponse(
+                url: url, statusCode: status, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+        )
     }
 
     /// One demo answer: the bytes, and the status they arrive with.
