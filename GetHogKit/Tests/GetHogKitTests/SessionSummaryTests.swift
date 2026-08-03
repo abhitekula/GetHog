@@ -365,6 +365,29 @@ struct SessionSummaryTests {
 
     // MARK: - Endpoints
 
+    @Test("builds a PAT-compatible individual summary generation request")
+    func generationEndpoint() throws {
+        let sessionID = "018f1000-0000-7000-8000-000000000001"
+        let endpoint = PostHogAPI.generateIndividualSessionSummary(
+            projectID: 1_001,
+            sessionID: sessionID
+        )
+
+        #expect(
+            endpoint.path
+                == "/api/projects/1001/session_summaries/create_session_summaries_individually/"
+        )
+        #expect(endpoint.method == "POST")
+        #expect(endpoint.category == .query)
+
+        let body = try #require(endpoint.body)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        #expect(object.keys.sorted() == ["session_ids"])
+        #expect(object["session_ids"] as? [String] == [sessionID])
+    }
+
     @Test("builds the summaries list endpoint")
     func listEndpoint() {
         let endpoint = PostHogAPI.sessionSummaries(projectID: 1_001, limit: 50)

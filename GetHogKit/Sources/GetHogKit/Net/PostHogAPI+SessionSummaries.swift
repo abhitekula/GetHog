@@ -24,13 +24,30 @@ public enum SessionSummaryOutcomeFilter: String, Sendable, CaseIterable, Identif
 
 /// AI session summaries.
 ///
-/// Generation is a write
-/// (`POST /session_summaries/create_session_summaries/`) and
-/// `/session_summaries/config/` is PAT-incompatible, so a phone can never do
-/// the whole loop. What it *can* do is read what someone else generated, which
-/// is the half that actually suits a small screen: "did this session go wrong,
-/// and where" beats scrubbing a video on a phone.
+/// Configuration is optional server context. GetHog neither reads nor edits it
+/// during generation.
 public extension PostHogAPI {
+
+    /// Starts one server-side, individually persisted replay summary.
+    ///
+    /// This endpoint accepts a personal API key with `session_recording:read`.
+    /// Generation performs query and LLM work, so it belongs to the shared query
+    /// budget rather than the CRUD budget used by stored-summary reads.
+    static func generateIndividualSessionSummary(
+        projectID: Int,
+        sessionID: String
+    ) -> Endpoint {
+        let body = try? JSONSerialization.data(
+            withJSONObject: ["session_ids": [sessionID]]
+        )
+        return Endpoint(
+            path: "/api/projects/\(projectID)/session_summaries/"
+                + "create_session_summaries_individually/",
+            method: "POST",
+            body: body,
+            category: .query
+        )
+    }
 
     /// The summaries list.
     ///
