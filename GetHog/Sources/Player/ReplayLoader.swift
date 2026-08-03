@@ -94,6 +94,7 @@ final class ReplayLoader {
     @ObservationIgnored private var lastTimestampMS: Double?
     @ObservationIgnored private var hasFullSnapshot = false
     @ObservationIgnored private var totalEventCount = 0
+    @ObservationIgnored private var loadGeneration = 0
 
     @ObservationIgnored private var client: PostHogClient?
     @ObservationIgnored private var projectID: Int?
@@ -114,6 +115,7 @@ final class ReplayLoader {
 
     func start(client: PostHogClient, projectID: Int, recording: SessionRecording) async {
         guard availability == .idle else { return }
+        let generation = loadGeneration
 
         // The cheapest possible check comes first: mobile recordings are never
         // attempted, so the user gets an explanation instead of a spinner that
@@ -132,6 +134,7 @@ final class ReplayLoader {
             let data = try await client.data(
                 for: PostHogAPI.snapshotSources(projectID: projectID, recordingID: recording.id)
             )
+            guard generation == loadGeneration else { return }
             let listing = try SnapshotSourceListing.decode(from: data)
 
             guard !listing.isRealtimeOnly else {
@@ -148,8 +151,9 @@ final class ReplayLoader {
             }
 
             targetCoverage = Self.initialCoverage
-            await pump()
+            await pump(generation: generation)
         } catch {
+            guard generation == loadGeneration else { return }
             availability = .unavailable(Self.describe(error))
         }
     }
@@ -157,10 +161,11 @@ final class ReplayLoader {
     /// Requests that the buffer reach `seconds` of session time. Cheap to call
     /// often — it collapses into the in-flight fetch when one is running.
     func ensureCoverage(upTo seconds: TimeInterval) {
+        let generation = loadGeneration
         targetCoverage = max(targetCoverage, seconds)
         guard !isFetching, !isComplete, streamingError == nil else { return }
         guard availability == .ready || availability == .preparing else { return }
-        Task { await pump() }
+        Task { await pump(generation: generation) }
     }
 
     /// Hands over everything fetched since the last call.
@@ -171,6 +176,7 @@ final class ReplayLoader {
 
     /// Clears all progress so a failed load can be retried from scratch.
     func reset() {
+        loadGeneration &+= 1
         availability = .idle
         isFetching = false
         pending = []
@@ -196,19 +202,24 @@ final class ReplayLoader {
     ///
     /// Serialised by `isFetching`: everything here is main-actor isolated, so
     /// the check-and-set can't race even though the body suspends.
-    private func pump() async {
-        guard !isFetching else { return }
+    private func pump(generation: Int) async {
+        guard generation == loadGeneration, !isFetching else { return }
         isFetching = true
-        defer { isFetching = false }
+        defer {
+            if generation == loadGeneration {
+                isFetching = false
+            }
+        }
 
-        while !isComplete, bufferedSeconds < targetCoverage {
-            let advanced = await loadNextRange()
+        while generation == loadGeneration, !isComplete, bufferedSeconds < targetCoverage {
+            let advanced = await loadNextRange(generation: generation)
             if !advanced { break }
         }
     }
 
-    private func loadNextRange() async -> Bool {
-        guard let client, let projectID, let recordingID,
+    private func loadNextRange(generation: Int) async -> Bool {
+        guard generation == loadGeneration,
+              let client, let projectID, let recordingID,
               nextRangeIndex < ranges.count
         else { return false }
 
@@ -219,6 +230,7 @@ final class ReplayLoader {
                     projectID: projectID, recordingID: recordingID, range: range
                 )
             )
+            guard generation == loadGeneration else { return false }
             // ~1.6 MB of JSONL per range; parsing it on the main actor would
             // drop frames in whatever is already on screen. The console and
             // network extraction rides along in the same detached task so the
@@ -227,6 +239,7 @@ final class ReplayLoader {
                 let events = try SnapshotParser.parse(jsonl: data)
                 return (events, ReplayDiagnostics.extract(from: events))
             }.value
+            guard generation == loadGeneration else { return false }
 
             nextRangeIndex += 1
             loadedRangeCount = nextRangeIndex
@@ -234,6 +247,7 @@ final class ReplayLoader {
             ingest(events)
             return true
         } catch {
+            guard generation == loadGeneration else { return false }
             let message = Self.describe(error)
             if canBoot {
                 // Playback already works; losing a later chunk must not take the
@@ -254,6 +268,7 @@ final class ReplayLoader {
 
         let sorted = events.sorted { $0.timestamp < $1.timestamp }
         archivedEvents.append(contentsOf: sorted)
+        archivedEvents.sort { $0.timestamp < $1.timestamp }
 
         if firstTimestampMS == nil, let first = sorted.first {
             firstTimestampMS = first.timestamp
