@@ -370,6 +370,7 @@ struct ReplayPlayerView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
     let controller: ReplayPlayerController
+    var summary: SessionSummaryDetail?
     var onOpenInPostHog: (() -> Void)?
     var onRetry: (() -> Void)?
 
@@ -385,6 +386,14 @@ struct ReplayPlayerView: View {
     /// scrubber grows rather than lying about a short session.
     private var duration: TimeInterval {
         max(recording.recordingDuration ?? 0, max(controller.playerDuration, loader.bufferedSeconds))
+    }
+
+    private var markers: [SessionReplayMarker] {
+        SessionReplayMarker.make(
+            detail: summary,
+            origin: loader.replayStart ?? recording.startTime,
+            duration: duration
+        )
     }
 
     var body: some View {
@@ -487,6 +496,7 @@ struct ReplayPlayerView: View {
                             controller: controller,
                             duration: duration,
                             buffered: loader.bufferedSeconds,
+                            markers: markers,
                             onScrubCommitted: { seek(to: $0) }
                         )
                         streamingFootnote
@@ -684,6 +694,8 @@ struct PlayerTransportBar: View {
     let controller: ReplayPlayerController
     let duration: TimeInterval
     let buffered: TimeInterval
+    var markers: [SessionReplayMarker] = []
+    var positionAccessibilityLabel = "Playback position"
     let onScrubCommitted: (TimeInterval) -> Void
 
     private static let speeds: [Double] = [1, 2, 4]
@@ -695,6 +707,20 @@ struct PlayerTransportBar: View {
             get: { controller.isScrubbing ? controller.scrubPosition : controller.currentTime },
             set: { controller.scrubPosition = $0 }
         )
+    }
+
+    private var activeMarker: SessionReplayMarker? {
+        SessionReplayMarker.active(in: markers, at: position.wrappedValue)
+    }
+
+    private var positionAccessibilityValue: String {
+        var value = "\(SessionClock.spoken(position.wrappedValue)) of \(SessionClock.spoken(duration))"
+        guard !markers.isEmpty else { return value }
+        value += ". \(markers.count) key events"
+        if let activeMarker {
+            value += ". Current key event: \(activeMarker.label)"
+        }
+        return value
     }
 
     var body: some View {
@@ -761,20 +787,44 @@ struct PlayerTransportBar: View {
 
     private var scrubber: some View {
         VStack(spacing: 2) {
-            Slider(value: position, in: 0...upperBound) { editing in
-                controller.isScrubbing = editing
-                if editing {
-                    controller.scrubPosition = controller.currentTime
-                } else {
-                    onScrubCommitted(controller.scrubPosition)
-                }
+            if let active = activeMarker {
+                Text(active.label)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(2)
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .tint(Theme.accent)
-            .disabled(!controller.isReady)
-            .accessibilityLabel("Playback position")
-            .accessibilityValue(
-                "\(SessionClock.spoken(position.wrappedValue)) of \(SessionClock.spoken(duration))"
-            )
+
+            ZStack {
+                Slider(value: position, in: 0...upperBound) { editing in
+                    controller.isScrubbing = editing
+                    if editing {
+                        controller.scrubPosition = controller.currentTime
+                    } else {
+                        onScrubCommitted(controller.scrubPosition)
+                    }
+                }
+                .tint(Theme.accent)
+                .disabled(!controller.isReady)
+                .accessibilityLabel(positionAccessibilityLabel)
+                .accessibilityValue(positionAccessibilityValue)
+                .accessibilityAction(named: Text("Previous key event")) {
+                    guard let marker = SessionReplayMarker.previous(
+                        in: markers,
+                        before: position.wrappedValue
+                    ) else { return }
+                    onScrubCommitted(marker.offset)
+                }
+                .accessibilityAction(named: Text("Next key event")) {
+                    guard let marker = SessionReplayMarker.next(
+                        in: markers,
+                        after: position.wrappedValue
+                    ) else { return }
+                    onScrubCommitted(marker.offset)
+                }
+
+                ReplayMarkerTrack(markers: markers, duration: duration)
+            }
 
             HStack {
                 Text(SessionClock.clock(position.wrappedValue))

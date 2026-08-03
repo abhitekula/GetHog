@@ -47,6 +47,7 @@ struct SessionDetailView: View {
                     recording: recording,
                     loader: loader,
                     controller: player,
+                    summary: summary.detail,
                     onOpenInPostHog: openInPostHog,
                     onRetry: { retryReplay() }
                 )
