@@ -56,6 +56,10 @@ final class ReplayLoader {
     private(set) var pending: [SnapshotEvent] = []
     var pendingCount: Int { pending.count }
 
+    /// Snapshot events retained for the full-screen replay renderer.
+    private(set) var archivedEvents: [SnapshotEvent] = []
+    var archivedEventCount: Int { archivedEvents.count }
+
     /// Wall-clock time of the first snapshot event. rrweb measures its offsets
     /// from this instant, so it — not `recording.start_time` — is what timeline
     /// entries must be rebased against before seeking.
@@ -170,6 +174,7 @@ final class ReplayLoader {
         availability = .idle
         isFetching = false
         pending = []
+        archivedEvents.removeAll(keepingCapacity: false)
         diagnostics = ReplayDiagnostics()
         replayStart = nil
         bufferedSeconds = 0
@@ -248,6 +253,7 @@ final class ReplayLoader {
         }
 
         let sorted = events.sorted { $0.timestamp < $1.timestamp }
+        archivedEvents.append(contentsOf: sorted)
 
         if firstTimestampMS == nil, let first = sorted.first {
             firstTimestampMS = first.timestamp
