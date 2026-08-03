@@ -53,4 +53,41 @@ final class ReplayInteractionTests: XCTestCase {
         app.buttons["Close full-screen replay"].tap()
         XCTAssertTrue(DemoLaunch.wait(for: app.sliders["Playback position"]))
     }
+
+    func testGenerateSummaryAddsKeyEventsAndKeepsThemFullScreen() {
+        let app = DemoLaunch.launch(
+            openURL: "gethog://replay/\(DemoLaunch.replaySessionID)",
+            environment: ["GETHOG_DEMO_SUMMARY_GENERATION": "1"]
+        )
+
+        let generate = app.buttons["Generate AI summary"]
+        for _ in 0..<12 where !generate.isHittable {
+            app.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.3)
+        }
+        XCTAssertTrue(generate.exists && generate.isHittable)
+        generate.tap()
+
+        let chapter = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,")
+        ).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: chapter, timeout: 120))
+
+        let compact = app.sliders["Playback position"]
+        for _ in 0..<12 where !compact.isHittable {
+            app.swipeDown(velocity: .slow)
+            DemoLaunch.pause(0.3)
+        }
+        XCTAssertTrue(compact.exists && compact.isEnabled)
+        compact.adjust(toNormalizedSliderPosition: 0.1)
+        XCTAssertTrue((compact.value as? String)?.contains("2 key events") == true)
+        XCTAssertTrue(
+            (compact.value as? String)?.contains("fictional refresh button") == true
+        )
+
+        app.buttons["Expand replay"].tap()
+        let full = app.sliders["Full-screen playback position"]
+        XCTAssertTrue(DemoLaunch.wait(for: full, timeout: 120))
+        XCTAssertTrue((full.value as? String)?.contains("2 key events") == true)
+    }
 }
