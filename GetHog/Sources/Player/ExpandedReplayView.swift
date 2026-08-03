@@ -1,6 +1,23 @@
 import GetHogKit
 import SwiftUI
 
+enum ExpandedReplayHandoff {
+    static func dismissalPosition(
+        initialPosition: TimeInterval,
+        didRestorePosition: Bool,
+        currentTime: TimeInterval
+    ) -> TimeInterval {
+        didRestorePosition ? currentTime : initialPosition
+    }
+}
+
+@MainActor
+enum ExpandedReplayCoverage {
+    static func target(after playhead: TimeInterval) -> TimeInterval {
+        max(0, playhead) + ReplayLoader.prefetchLead
+    }
+}
+
 struct ExpandedReplayView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
@@ -13,7 +30,7 @@ struct ExpandedReplayView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var controller = ReplayPlayerController()
-    @State private var archiveCursor = 0
+    @State private var archiveCursor: ReplayArchiveDeliveryCursor?
     @State private var didRestorePosition = false
     @State private var didClose = false
 
@@ -42,7 +59,10 @@ struct ExpandedReplayView: View {
                     buffered: loader.bufferedSeconds,
                     markers: markers,
                     positionAccessibilityLabel: "Full-screen playback position",
-                    onScrubCommitted: { controller.seek(to: $0) }
+                    onScrubCommitted: { target in
+                        controller.seek(to: target)
+                        requestCoverage(for: target)
+                    }
                 )
                 .padding(.horizontal, Theme.Space.l)
                 .padding(.vertical, Theme.Space.s)
@@ -62,8 +82,11 @@ struct ExpandedReplayView: View {
             .onChange(of: controller.isDocumentReady, initial: true) { _, _ in
                 feedArchive()
             }
-            .onChange(of: loader.archivedEventCount) { _, _ in
+            .onChange(of: loader.archiveDeliveryRevision) { _, _ in
                 feedArchive()
+            }
+            .onChange(of: controller.currentTime) { _, now in
+                requestCoverage(for: now)
             }
             .onChange(of: controller.isReady) { _, ready in
                 guard ready, !didRestorePosition else { return }
@@ -81,12 +104,26 @@ struct ExpandedReplayView: View {
     }
 
     private func feedArchive() {
-        guard controller.isDocumentReady,
-              archiveCursor < loader.archivedEvents.count
-        else { return }
-        let events = Array(loader.archivedEvents[archiveCursor...])
-        archiveCursor = loader.archivedEvents.count
-        controller.submit(events: events, reduceMotion: reduceMotion, colorScheme: colorScheme)
+        guard controller.isDocumentReady else { return }
+        let delivery = loader.archiveDelivery(after: archiveCursor)
+        if delivery.mode == .restart, archiveCursor != nil {
+            controller.restartPlayback()
+            didRestorePosition = false
+        }
+        guard !delivery.events.isEmpty else {
+            archiveCursor = delivery.cursor
+            return
+        }
+        guard controller.submit(
+            events: delivery.events,
+            reduceMotion: reduceMotion,
+            colorScheme: colorScheme
+        ) else { return }
+        archiveCursor = delivery.cursor
+    }
+
+    private func requestCoverage(for playhead: TimeInterval) {
+        loader.ensureCoverage(upTo: ExpandedReplayCoverage.target(after: playhead))
     }
 
     private func close() {
@@ -97,6 +134,12 @@ struct ExpandedReplayView: View {
     private func finishOnce() {
         guard !didClose else { return }
         didClose = true
-        onClose(controller.currentTime)
+        onClose(
+            ExpandedReplayHandoff.dismissalPosition(
+                initialPosition: initialPosition,
+                didRestorePosition: didRestorePosition,
+                currentTime: controller.currentTime
+            )
+        )
     }
 }

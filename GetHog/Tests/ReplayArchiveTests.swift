@@ -6,6 +6,57 @@ import Testing
 
 @Suite("Replay event archive")
 struct ReplayArchiveTests {
+    @Test("incremental delivery uses fetched batches when a later range sorts earlier")
+    @MainActor
+    func incrementalDeliveryDoesNotSliceTheSortedArchive() {
+        var ledger = ReplayArchiveDeliveryLedger()
+        let firstBatch = [
+            event("first-40", at: 40_000),
+            event("first-50", at: 50_000),
+        ]
+        ledger.append(firstBatch)
+
+        let boot = ledger.delivery(sortedArchive: firstBatch, after: nil)
+        #expect(boot.mode == .restart)
+        #expect(boot.events.map(\.windowID) == ["first-40", "first-50"])
+
+        let secondBatch = [
+            event("second-1", at: 1_000),
+            event("second-50", at: 50_000),
+        ]
+        ledger.append(secondBatch)
+        let globallySorted = ReplayLoader.mergedArchivedEvents(firstBatch, with: secondBatch)
+
+        let incremental = ledger.delivery(sortedArchive: globallySorted, after: boot.cursor)
+        #expect(incremental.mode == .append)
+        #expect(incremental.events.map(\.windowID) == ["second-1", "second-50"])
+    }
+
+    @Test("delivery restarts after archive reset and recovers from a smaller count")
+    @MainActor
+    func deliveryRecoversAfterResetAndCountShrink() {
+        var ledger = ReplayArchiveDeliveryLedger()
+        let original = [
+            event("old-1", at: 1_000),
+            event("old-2", at: 2_000),
+        ]
+        ledger.append(original)
+        let oldCursor = ledger.delivery(sortedArchive: original, after: nil).cursor
+
+        ledger.reset()
+        let reset = ledger.delivery(sortedArchive: [], after: oldCursor)
+        #expect(reset.mode == .restart)
+        #expect(reset.events.isEmpty)
+        #expect(reset.cursor.generation != oldCursor.generation)
+        #expect(reset.cursor.batchIndex == 0)
+
+        let replacement = [event("new-1", at: 500)]
+        ledger.append(replacement)
+        let recovered = ledger.delivery(sortedArchive: replacement, after: reset.cursor)
+        #expect(recovered.mode == .append)
+        #expect(recovered.events.map(\.windowID) == ["new-1"])
+    }
+
     @Test("the archive merge preserves each source's equal-timestamp order")
     @MainActor
     func stableArchiveMergePreservesTieOrder() {

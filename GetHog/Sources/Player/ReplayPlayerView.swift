@@ -30,6 +30,46 @@ enum ReplayAssets {
 
 // MARK: - Controller
 
+enum ReplaySubmissionKind: Equatable {
+    case boot
+    case append
+}
+
+/// Accepts renderer submissions synchronously, then runs their asynchronous
+/// encoding/evaluation work in that same order.
+@MainActor
+final class ReplaySubmissionCoordinator {
+    private var tail: Task<Void, Never>?
+    private var hasAcceptedBoot = false
+    private var generation = 0
+
+    func accept(_ operation: @escaping @MainActor (ReplaySubmissionKind) async -> Void) {
+        let kind: ReplaySubmissionKind = hasAcceptedBoot ? .append : .boot
+        hasAcceptedBoot = true
+        let predecessor = tail
+        let acceptedGeneration = generation
+        tail = Task { @MainActor [weak self] in
+            await predecessor?.value
+            guard let self,
+                  !Task.isCancelled,
+                  acceptedGeneration == self.generation
+            else { return }
+            await operation(kind)
+        }
+    }
+
+    func reset() {
+        generation &+= 1
+        tail?.cancel()
+        tail = nil
+        hasAcceptedBoot = false
+    }
+
+    func waitUntilIdle() async {
+        await tail?.value
+    }
+}
+
 /// Drives the embedded rrweb player and mirrors its state back into SwiftUI.
 ///
 /// Every command is a one-line JS call and every state change arrives as a
@@ -59,9 +99,10 @@ final class ReplayPlayerController {
     var scrubPosition: TimeInterval = 0
 
     @ObservationIgnored private weak var webView: WKWebView?
-    @ObservationIgnored private var hasBooted = false
     @ObservationIgnored private var reduceMotion = false
     @ObservationIgnored private var colorScheme: ColorScheme = .light
+    @ObservationIgnored private var submissionCoordinator = ReplaySubmissionCoordinator()
+    @ObservationIgnored private var submissionGeneration = 0
 
     // MARK: Wiring
 
@@ -76,8 +117,8 @@ final class ReplayPlayerController {
     func teardown() {
         guard webView != nil else { return }
         evaluate("window.GetHogReplay && window.GetHogReplay.teardown();")
+        invalidateSubmissions()
         webView = nil
-        hasBooted = false
         isDocumentReady = false
         isReady = false
         isPlaying = false
@@ -85,8 +126,21 @@ final class ReplayPlayerController {
 
     /// Wipes player state so a retry starts from a clean web view.
     func resetForRetry() {
+        invalidateSubmissions()
         failure = nil
-        hasBooted = false
+        isReady = false
+        isPlaying = false
+        didFinish = false
+        currentTime = 0
+        playerDuration = 0
+    }
+
+    /// Clears the current rrweb instance while keeping its loaded document so a
+    /// new archive generation can boot in the same representable.
+    func restartPlayback() {
+        invalidateSubmissions()
+        evaluate("window.GetHogReplay && window.GetHogReplay.teardown();")
+        failure = nil
         isReady = false
         isPlaying = false
         didFinish = false
@@ -98,37 +152,49 @@ final class ReplayPlayerController {
 
     /// Boots the player on the first batch, then appends every later chunk
     /// in place so progressive loading never restarts playback.
-    func submit(events: [SnapshotEvent], reduceMotion: Bool, colorScheme: ColorScheme) {
-        guard !events.isEmpty, isDocumentReady, failure == nil else { return }
+    @discardableResult
+    func submit(events: [SnapshotEvent], reduceMotion: Bool, colorScheme: ColorScheme) -> Bool {
+        guard !events.isEmpty, isDocumentReady, failure == nil else { return false }
         self.reduceMotion = reduceMotion
         self.colorScheme = colorScheme
+        let acceptedGeneration = submissionGeneration
+        let acceptedSpeed = speed
+        let acceptedSkipInactive = skipInactive
+        let acceptedReduceMotion = reduceMotion
+        let acceptedColorScheme = colorScheme
 
-        let booting = !hasBooted
-        hasBooted = true
-
-        Task { [weak self] in
+        submissionCoordinator.accept { [weak self] kind in
             // Encoding a megabyte of rrweb JSON is real work; keep it off the
             // main actor so the timeline stays scrollable while a chunk lands.
             let payload = await Task.detached(priority: .userInitiated) {
                 Self.encode(events)
             }.value
 
-            guard let self, let payload else {
-                self?.failure = "Could not prepare the replay data."
+            guard let self else { return }
+            guard acceptedGeneration == self.submissionGeneration else { return }
+            guard let payload else {
+                self.failure = "Could not prepare the replay data."
                 return
             }
-            if booting {
+            guard self.failure == nil else { return }
+            if kind == .boot {
                 let options = """
-                    {"speed": \(self.speed), \
-                    "skipInactive": \(self.skipInactive), \
-                    "mouseTail": \(self.reduceMotion ? "false" : "true"), \
-                    "tailColor": "\(Self.cssHex(Theme.accent, in: self.colorScheme))"}
+                    {"speed": \(acceptedSpeed), \
+                    "skipInactive": \(acceptedSkipInactive), \
+                    "mouseTail": \(acceptedReduceMotion ? "false" : "true"), \
+                    "tailColor": "\(Self.cssHex(Theme.accent, in: acceptedColorScheme))"}
                     """
                 self.evaluate("window.GetHogReplay.boot(\(payload), \(options));")
             } else {
                 self.evaluate("window.GetHogReplay.append(\(payload));")
             }
         }
+        return true
+    }
+
+    private func invalidateSubmissions() {
+        submissionGeneration &+= 1
+        submissionCoordinator.reset()
     }
 
     /// Flattens a dynamic colour to the CSS hex rrweb's boot options want.

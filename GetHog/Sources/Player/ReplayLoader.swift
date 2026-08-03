@@ -2,6 +2,65 @@ import Foundation
 import Observation
 import GetHogKit
 
+struct ReplayArchiveDeliveryCursor: Equatable {
+    let generation: Int
+    let batchIndex: Int
+}
+
+enum ReplayArchiveDeliveryMode: Equatable {
+    case restart
+    case append
+}
+
+struct ReplayArchiveDelivery {
+    let mode: ReplayArchiveDeliveryMode
+    let events: [SnapshotEvent]
+    let cursor: ReplayArchiveDeliveryCursor
+}
+
+/// Append-only identities for renderer delivery, separate from the globally
+/// sorted archive used to boot a new renderer.
+struct ReplayArchiveDeliveryLedger {
+    private(set) var generation = 0
+    private var batches: [[SnapshotEvent]] = []
+
+    mutating func append(_ events: [SnapshotEvent]) {
+        guard !events.isEmpty else { return }
+        batches.append(events)
+    }
+
+    mutating func reset() {
+        generation &+= 1
+        batches.removeAll(keepingCapacity: false)
+    }
+
+    func delivery(
+        sortedArchive: [SnapshotEvent],
+        after cursor: ReplayArchiveDeliveryCursor?
+    ) -> ReplayArchiveDelivery {
+        let nextCursor = ReplayArchiveDeliveryCursor(
+            generation: generation,
+            batchIndex: batches.count
+        )
+        guard let cursor,
+              cursor.generation == generation,
+              cursor.batchIndex <= batches.count
+        else {
+            return ReplayArchiveDelivery(
+                mode: .restart,
+                events: sortedArchive,
+                cursor: nextCursor
+            )
+        }
+
+        return ReplayArchiveDelivery(
+            mode: .append,
+            events: batches[cursor.batchIndex...].flatMap { $0 },
+            cursor: nextCursor
+        )
+    }
+}
+
 /// Streams rrweb snapshot events for one recording.
 ///
 /// This type is the *only* thing in the app that talks to the snapshot
@@ -59,6 +118,7 @@ final class ReplayLoader {
     /// Snapshot events retained for the full-screen replay renderer.
     private(set) var archivedEvents: [SnapshotEvent] = []
     var archivedEventCount: Int { archivedEvents.count }
+    private(set) var archiveDeliveryRevision = 0
 
     /// Wall-clock time of the first snapshot event. rrweb measures its offsets
     /// from this instant, so it — not `recording.start_time` — is what timeline
@@ -95,6 +155,7 @@ final class ReplayLoader {
     @ObservationIgnored private var hasFullSnapshot = false
     @ObservationIgnored private var totalEventCount = 0
     @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private var archiveDeliveryLedger = ReplayArchiveDeliveryLedger()
 
     @ObservationIgnored private var client: PostHogClient?
     @ObservationIgnored private var projectID: Int?
@@ -174,6 +235,10 @@ final class ReplayLoader {
         return pending
     }
 
+    func archiveDelivery(after cursor: ReplayArchiveDeliveryCursor?) -> ReplayArchiveDelivery {
+        archiveDeliveryLedger.delivery(sortedArchive: archivedEvents, after: cursor)
+    }
+
     /// Clears all progress so a failed load can be retried from scratch.
     func reset() {
         loadGeneration &+= 1
@@ -181,6 +246,8 @@ final class ReplayLoader {
         isFetching = false
         pending = []
         archivedEvents.removeAll(keepingCapacity: false)
+        archiveDeliveryLedger.reset()
+        archiveDeliveryRevision &+= 1
         diagnostics = ReplayDiagnostics()
         replayStart = nil
         bufferedSeconds = 0
@@ -273,6 +340,8 @@ final class ReplayLoader {
                 : left.element.timestamp < right.element.timestamp
         }.map(\.element)
         archivedEvents = Self.mergedArchivedEvents(archivedEvents, with: archiveBatch)
+        archiveDeliveryLedger.append(archiveBatch)
+        archiveDeliveryRevision &+= 1
 
         if firstTimestampMS == nil, let first = sorted.first {
             firstTimestampMS = first.timestamp
