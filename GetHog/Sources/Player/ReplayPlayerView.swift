@@ -95,8 +95,7 @@ final class ReplayPlayerController {
     private(set) var speed: Double = 1
     private(set) var skipInactive = false
 
-    var isScrubbing = false
-    var scrubPosition: TimeInterval = 0
+    @ObservationIgnored var isScrubbing = false
 
     @ObservationIgnored private weak var webView: WKWebView?
     @ObservationIgnored private var reduceMotion = false
@@ -432,6 +431,11 @@ struct WKWebViewRepresentable: UIViewRepresentable {
 /// screen keeps working: mobile recordings never attempt playback, a failed
 /// internal endpoint degrades to an explanation, and the "Watch in PostHog"
 /// escape hatch is always one tap away.
+private struct DeferredReplaySeek {
+    let target: TimeInterval
+    let resume: Bool
+}
+
 struct ReplayPlayerView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
@@ -444,7 +448,7 @@ struct ReplayPlayerView: View {
     /// Handed to the controller because the rrweb mouse tail is drawn by the web
     /// view, which cannot resolve a SwiftUI dynamic colour on its own.
     @Environment(\.colorScheme) private var colorScheme
-    @State private var pendingSeek: TimeInterval?
+    @State private var pendingSeek: DeferredReplaySeek?
     @State private var isExpanded = false
     @State private var expandedStartPosition: TimeInterval = 0
     @State private var expandedEndPosition: TimeInterval = 0
@@ -483,9 +487,9 @@ struct ReplayPlayerView: View {
         .onChange(of: loader.bufferedSeconds) { _, buffered in
             // A scrub past the buffer is honoured once the data lands, rather
             // than silently clamping and leaving the playhead somewhere else.
-            guard let target = pendingSeek, buffered >= target else { return }
+            guard let pending = pendingSeek, buffered >= pending.target else { return }
             pendingSeek = nil
-            controller.seek(to: target)
+            controller.seek(to: pending.target, resume: pending.resume)
         }
         .fullScreenCover(isPresented: $isExpanded) {
             ExpandedReplayView(
@@ -579,9 +583,18 @@ struct ReplayPlayerView: View {
                         PlayerTransportBar(
                             controller: controller,
                             duration: duration,
-                            buffered: loader.bufferedSeconds,
+                            buffered: loader.isComplete ? duration : loader.bufferedSeconds,
                             markers: markers,
-                            onScrubCommitted: { seek(to: $0) }
+                            onPreviewSeek: { controller.seek(to: $0, resume: false) },
+                            onCoverageRequested: {
+                                loader.ensureCoverage(upTo: $0 + ReplayLoader.prefetchLead)
+                            },
+                            onScrubCommitted: { target, resume in
+                                seek(to: target, resume: resume)
+                            },
+                            onMarkerSeek: { target in
+                                seek(to: target, resume: controller.isPlaying)
+                            }
                         )
                         streamingFootnote
                     }
@@ -779,15 +792,16 @@ struct ReplayPlayerView: View {
     }
 
     /// Seeks within the buffer immediately and pulls the rest in behind it.
-    private func seek(to seconds: TimeInterval) {
+    private func seek(to seconds: TimeInterval, resume: Bool? = nil) {
         let target = max(0, seconds)
+        let shouldResume = resume ?? controller.isPlaying
         if target > loader.bufferedSeconds, !loader.isComplete {
-            pendingSeek = target
+            pendingSeek = DeferredReplaySeek(target: target, resume: shouldResume)
             loader.ensureCoverage(upTo: target + ReplayLoader.prefetchLead)
-            controller.seek(to: max(0, loader.bufferedSeconds - 1))
+            controller.seek(to: max(0, loader.bufferedSeconds - 1), resume: false)
         } else {
             pendingSeek = nil
-            controller.seek(to: target)
+            controller.seek(to: target, resume: shouldResume)
         }
     }
 }
@@ -803,7 +817,14 @@ struct PlayerTransportBar: View {
     let buffered: TimeInterval
     var markers: [SessionReplayMarker] = []
     var positionAccessibilityLabel = "Playback position"
-    let onScrubCommitted: (TimeInterval) -> Void
+    let onPreviewSeek: (TimeInterval) -> Void
+    let onCoverageRequested: (TimeInterval) -> Void
+    let onScrubCommitted: (TimeInterval, Bool) -> Void
+    let onMarkerSeek: (TimeInterval) -> Void
+
+    @State private var scrub = ReplayScrubCoordinator()
+    @State private var scrubPosition: TimeInterval = 0
+    @State private var isEditing = false
 
     private static let speeds: [Double] = [1, 2, 4]
 
@@ -811,8 +832,26 @@ struct PlayerTransportBar: View {
 
     private var position: Binding<Double> {
         Binding(
-            get: { controller.isScrubbing ? controller.scrubPosition : controller.currentTime },
-            set: { controller.scrubPosition = $0 }
+            get: {
+                isEditing || scrub.pendingTarget != nil
+                    ? scrubPosition
+                    : controller.currentTime
+            },
+            set: { target in
+                scrubPosition = target
+                guard isEditing else { return }
+                let update = scrub.update(
+                    position: target,
+                    buffered: buffered,
+                    now: ProcessInfo.processInfo.systemUptime
+                )
+                if let preview = update.previewPosition {
+                    onPreviewSeek(preview)
+                }
+                if let coverage = update.coverageTarget {
+                    onCoverageRequested(coverage)
+                }
+            }
         )
     }
 
@@ -898,11 +937,22 @@ struct PlayerTransportBar: View {
             .tint(Theme.accent)
             .accessibilityLabel("Skip inactive time")
         }
+        .onChange(of: buffered) { _, buffered in
+            guard let commit = scrub.coverageAdvanced(to: buffered) else { return }
+            guard case .seek(let target, let resume) = commit else { return }
+            onScrubCommitted(target, resume)
+        }
     }
 
     private var scrubber: some View {
         VStack(spacing: 2) {
-            if let active = activeMarker {
+            if scrub.pendingTarget != nil {
+                Text("Buffering selected moment…")
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(2)
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let active = activeMarker {
                 Text(active.label)
                     .font(.caption2.weight(.medium))
                     .lineLimit(2)
@@ -932,18 +982,18 @@ struct PlayerTransportBar: View {
         if let previous = previousMarker, let next = nextMarker {
             slider
                 .accessibilityAction(named: Text("Previous key event")) {
-                    onScrubCommitted(previous.offset)
+                    onMarkerSeek(previous.offset)
                 }
                 .accessibilityAction(named: Text("Next key event")) {
-                    onScrubCommitted(next.offset)
+                    onMarkerSeek(next.offset)
                 }
         } else if let previous = previousMarker {
             slider.accessibilityAction(named: Text("Previous key event")) {
-                onScrubCommitted(previous.offset)
+                onMarkerSeek(previous.offset)
             }
         } else if let next = nextMarker {
             slider.accessibilityAction(named: Text("Next key event")) {
-                onScrubCommitted(next.offset)
+                onMarkerSeek(next.offset)
             }
         } else {
             slider
@@ -951,18 +1001,34 @@ struct PlayerTransportBar: View {
     }
 
     private var slider: some View {
-        Slider(value: position, in: 0...upperBound) { editing in
-            controller.isScrubbing = editing
-            if editing {
-                controller.scrubPosition = controller.currentTime
-            } else {
-                onScrubCommitted(controller.scrubPosition)
+        Slider(value: position, in: 0...upperBound, onEditingChanged: editingChanged)
+            .tint(Theme.accent)
+            .disabled(!controller.isReady)
+            .accessibilityLabel(positionAccessibilityLabel)
+            .accessibilityValue(positionAccessibilityValue)
+    }
+
+    private func editingChanged(_ editing: Bool) {
+        if editing {
+            guard !isEditing else { return }
+            isEditing = true
+            scrubPosition = controller.currentTime
+            controller.isScrubbing = true
+            if scrub.begin(isPlaying: controller.isPlaying) {
+                controller.pause()
             }
+            return
         }
-        .tint(Theme.accent)
-        .disabled(!controller.isReady)
-        .accessibilityLabel(positionAccessibilityLabel)
-        .accessibilityValue(positionAccessibilityValue)
+
+        guard isEditing else { return }
+        isEditing = false
+        controller.isScrubbing = false
+        switch scrub.end(position: scrubPosition, buffered: buffered) {
+        case .seek(let target, let resume):
+            onScrubCommitted(target, resume)
+        case .waiting(let target):
+            onCoverageRequested(target)
+        }
     }
 
     private var speedPicker: some View {

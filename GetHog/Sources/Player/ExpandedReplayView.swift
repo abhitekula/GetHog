@@ -18,6 +18,11 @@ enum ExpandedReplayCoverage {
     }
 }
 
+private struct DeferredReplaySeek {
+    let target: TimeInterval
+    let resume: Bool
+}
+
 struct ExpandedReplayView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
@@ -33,6 +38,7 @@ struct ExpandedReplayView: View {
     @State private var archiveCursor: ReplayArchiveDeliveryCursor?
     @State private var didRestorePosition = false
     @State private var didClose = false
+    @State private var pendingSeek: DeferredReplaySeek?
 
     var body: some View {
         NavigationStack {
@@ -56,12 +62,16 @@ struct ExpandedReplayView: View {
                 PlayerTransportBar(
                     controller: controller,
                     duration: duration,
-                    buffered: loader.bufferedSeconds,
+                    buffered: loader.isComplete ? duration : loader.bufferedSeconds,
                     markers: markers,
                     positionAccessibilityLabel: "Full-screen playback position",
-                    onScrubCommitted: { target in
-                        controller.seek(to: target)
-                        requestCoverage(for: target)
+                    onPreviewSeek: { controller.seek(to: $0, resume: false) },
+                    onCoverageRequested: { requestCoverage(for: $0) },
+                    onScrubCommitted: { target, resume in
+                        seek(to: target, resume: resume)
+                    },
+                    onMarkerSeek: { target in
+                        seek(to: target, resume: controller.isPlaying)
                     }
                 )
                 .padding(.horizontal, Theme.Space.l)
@@ -87,6 +97,11 @@ struct ExpandedReplayView: View {
             }
             .onChange(of: controller.currentTime) { _, now in
                 requestCoverage(for: now)
+            }
+            .onChange(of: loader.bufferedSeconds) { _, buffered in
+                guard let pending = pendingSeek, buffered >= pending.target else { return }
+                pendingSeek = nil
+                controller.seek(to: pending.target, resume: pending.resume)
             }
             .onChange(of: controller.isReady) { _, ready in
                 guard ready, !didRestorePosition else { return }
@@ -124,6 +139,19 @@ struct ExpandedReplayView: View {
 
     private func requestCoverage(for playhead: TimeInterval) {
         loader.ensureCoverage(upTo: ExpandedReplayCoverage.target(after: playhead))
+    }
+
+    private func seek(to seconds: TimeInterval, resume: Bool? = nil) {
+        let target = max(0, seconds)
+        let shouldResume = resume ?? controller.isPlaying
+        if target > loader.bufferedSeconds, !loader.isComplete {
+            pendingSeek = DeferredReplaySeek(target: target, resume: shouldResume)
+            requestCoverage(for: target)
+            controller.seek(to: max(0, loader.bufferedSeconds - 1), resume: false)
+        } else {
+            pendingSeek = nil
+            controller.seek(to: target, resume: shouldResume)
+        }
     }
 
     private func close() {
