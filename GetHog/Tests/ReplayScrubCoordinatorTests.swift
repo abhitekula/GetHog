@@ -120,6 +120,49 @@ struct ReplayScrubCoordinatorTests {
         #expect(transport.pendingTarget == nil)
     }
 
+    @Test("a deferred commit releases its handoff after renderer acknowledgement")
+    @MainActor
+    func deferredCommitReleasesHandoff() {
+        let controller = ReplayPlayerController()
+        controller.handle(message: ["type": "ready", "totalTime": 100_000.0])
+        controller.handle(message: ["type": "time", "currentTime": 10_000.0])
+
+        var transport = ReplayTransportInteraction()
+        _ = transport.begin(position: 10, duration: 100, isPlaying: false)
+        controller.updateInteractiveSeekPosition(90)
+        _ = transport.update(
+            position: 90,
+            buffered: 30,
+            duration: 100,
+            isComplete: false,
+            now: 0
+        )
+
+        #expect(
+            transport.end(buffered: 30, duration: 100, isComplete: false)
+                == [.requestCoverage(target: 90)]
+        )
+        #expect(controller.expansionHandoffPosition == 90)
+
+        for effect in transport.coverageAdvanced(
+            to: 90,
+            duration: 100,
+            isComplete: false
+        ) {
+            guard case .commit(let target, let resume) = effect else {
+                Issue.record("Coverage emitted a non-commit effect")
+                continue
+            }
+            controller.seek(to: target, resume: resume)
+            controller.finishInteractiveSeek()
+        }
+
+        controller.handle(message: ["type": "time", "currentTime": 89_990.0])
+        #expect(controller.expansionHandoffPosition == 90)
+        controller.handle(message: ["type": "time", "currentTime": 92_000.0])
+        #expect(controller.expansionHandoffPosition == 92)
+    }
+
     @Test("a replacement drag is the only target allowed to complete")
     func replacementDragWins() {
         var transport = ReplayTransportInteraction()

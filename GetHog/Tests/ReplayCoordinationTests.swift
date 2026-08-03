@@ -64,6 +64,28 @@ struct ReplayCoordinationTests {
         #expect(controller.expansionHandoffPosition == 1)
         #expect(controller.speed == 2)
         #expect(!controller.isPlaying)
+
+        controller.restartPlayback()
+        controller.preparePlaybackForNextReady(position: 4, speed: 4)
+        controller.handle(message: ["type": "ready", "totalTime": 10_000.0])
+
+        #expect(controller.didRestorePreparedPlayback)
+        #expect(controller.expansionHandoffPosition == 4)
+        #expect(controller.speed == 4)
+        #expect(!controller.isPlaying)
+    }
+
+    @Test("a rejected interactive commit cannot retain a dead handoff target")
+    @MainActor
+    func rejectedInteractiveCommitReleasesHandoff() {
+        let controller = ReplayPlayerController()
+        controller.handle(message: ["type": "ready", "totalTime": 100_000.0])
+        controller.handle(message: ["type": "time", "currentTime": 10_000.0])
+
+        controller.updateInteractiveSeekPosition(90)
+        controller.finishInteractiveSeek()
+
+        #expect(controller.expansionHandoffPosition == 10)
     }
 
     @Test("renderer ticks cannot roll back a pending native seek")

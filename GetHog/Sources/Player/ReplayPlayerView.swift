@@ -153,12 +153,7 @@ final class ReplayPlayerController {
     }
 
     func finishInteractiveSeek() {
-        guard let interactiveSeekPosition,
-              let pendingSeekAcknowledgement,
-              abs(interactiveSeekPosition - pendingSeekAcknowledgement.target)
-                <= PendingSeekAcknowledgement.tolerance
-        else { return }
-        self.interactiveSeekPosition = nil
+        interactiveSeekPosition = nil
     }
 
     func cancelInteractiveSeek() {
@@ -1128,7 +1123,6 @@ struct PlayerTransportBar: View {
             duration: duration,
             isComplete: isComplete
         ))
-        controller.finishInteractiveSeek()
     }
 
     private func markerSeek(to target: TimeInterval) {
@@ -1149,6 +1143,7 @@ struct PlayerTransportBar: View {
                 onCoverageRequested(target)
             case .commit(let target, let resume):
                 onScrubCommitted(target, resume)
+                controller.finishInteractiveSeek()
             }
         }
     }
