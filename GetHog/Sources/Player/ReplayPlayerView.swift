@@ -79,6 +79,23 @@ final class ReplaySubmissionCoordinator {
 @Observable
 final class ReplayPlayerController {
 
+    private struct PendingSeekAcknowledgement {
+        static let tolerance: TimeInterval = 0.05
+
+        let origin: TimeInterval
+        let target: TimeInterval
+
+        func accepts(_ position: TimeInterval) -> Bool {
+            if target > origin + Self.tolerance {
+                return position >= target - Self.tolerance
+            }
+            if target < origin - Self.tolerance {
+                return position <= target + Self.tolerance
+            }
+            return abs(position - target) <= Self.tolerance
+        }
+    }
+
     private(set) var isDocumentReady = false
     private(set) var isReady = false
     private(set) var isPlaying = false
@@ -102,6 +119,13 @@ final class ReplayPlayerController {
     @ObservationIgnored private var colorScheme: ColorScheme = .light
     @ObservationIgnored private var submissionCoordinator = ReplaySubmissionCoordinator()
     @ObservationIgnored private var submissionGeneration = 0
+    @ObservationIgnored private var pendingSeekAcknowledgement: PendingSeekAcknowledgement?
+    @ObservationIgnored private var interactiveSeekPosition: TimeInterval?
+    @ObservationIgnored private var preparedPlayback: (
+        position: TimeInterval,
+        speed: Double
+    )?
+    @ObservationIgnored private(set) var didRestorePreparedPlayback = false
 
     // MARK: Wiring
 
@@ -113,6 +137,34 @@ final class ReplayPlayerController {
         failure = "The bundled replay player is missing from this build."
     }
 
+    func preparePlaybackForNextReady(position: TimeInterval, speed: Double) {
+        preparedPlayback = (max(0, position), speed)
+        didRestorePreparedPlayback = false
+        restorePreparedPlaybackIfReady()
+    }
+
+    var expansionHandoffPosition: TimeInterval {
+        interactiveSeekPosition ?? pendingSeekAcknowledgement?.target ?? currentTime
+    }
+
+    func updateInteractiveSeekPosition(_ position: TimeInterval) {
+        guard isReady else { return }
+        interactiveSeekPosition = max(0, position)
+    }
+
+    func finishInteractiveSeek() {
+        guard let interactiveSeekPosition,
+              let pendingSeekAcknowledgement,
+              abs(interactiveSeekPosition - pendingSeekAcknowledgement.target)
+                <= PendingSeekAcknowledgement.tolerance
+        else { return }
+        self.interactiveSeekPosition = nil
+    }
+
+    func cancelInteractiveSeek() {
+        interactiveSeekPosition = nil
+    }
+
     func teardown() {
         guard webView != nil else { return }
         evaluate("window.GetHogReplay && window.GetHogReplay.teardown();")
@@ -121,6 +173,8 @@ final class ReplayPlayerController {
         isDocumentReady = false
         isReady = false
         isPlaying = false
+        pendingSeekAcknowledgement = nil
+        interactiveSeekPosition = nil
     }
 
     /// Wipes player state so a retry starts from a clean web view.
@@ -132,6 +186,8 @@ final class ReplayPlayerController {
         didFinish = false
         currentTime = 0
         playerDuration = 0
+        pendingSeekAcknowledgement = nil
+        interactiveSeekPosition = nil
     }
 
     /// Clears the current rrweb instance while keeping its loaded document so a
@@ -145,6 +201,8 @@ final class ReplayPlayerController {
         didFinish = false
         currentTime = 0
         playerDuration = 0
+        pendingSeekAcknowledgement = nil
+        interactiveSeekPosition = nil
     }
 
     // MARK: Feeding events
@@ -258,6 +316,10 @@ final class ReplayPlayerController {
     func seek(to seconds: TimeInterval, resume: Bool? = nil) {
         guard isReady else { return }
         let target = max(0, seconds)
+        pendingSeekAcknowledgement = PendingSeekAcknowledgement(
+            origin: currentTime,
+            target: target
+        )
         currentTime = target
         didFinish = false
         let shouldResume = resume ?? isPlaying
@@ -291,6 +353,7 @@ final class ReplayPlayerController {
             isReady = true
             failure = nil
             if let total = body["totalTime"] as? Double { playerDuration = total / 1000 }
+            restorePreparedPlaybackIfReady()
 
         case "meta":
             if let total = body["totalTime"] as? Double { playerDuration = total / 1000 }
@@ -298,6 +361,10 @@ final class ReplayPlayerController {
         case "time":
             guard !isScrubbing, let ms = body["currentTime"] as? Double else { return }
             let seconds = ms / 1000
+            if let pendingSeekAcknowledgement {
+                guard pendingSeekAcknowledgement.accepts(seconds) else { return }
+                self.pendingSeekAcknowledgement = nil
+            }
             // rrweb ticks on every animation frame; quantising keeps SwiftUI from
             // re-rendering the whole detail screen 60 times a second.
             if abs(seconds - currentTime) >= 0.05 { currentTime = seconds }
@@ -334,6 +401,14 @@ final class ReplayPlayerController {
         // try/catch and reports through the message bridge, which carries a far
         // more useful description than "a JavaScript exception occurred".
         webView.evaluateJavaScript(script + "\nnull;", completionHandler: nil)
+    }
+
+    private func restorePreparedPlaybackIfReady() {
+        guard isReady, let preparedPlayback else { return }
+        self.preparedPlayback = nil
+        setSpeed(preparedPlayback.speed)
+        seek(to: preparedPlayback.position, resume: false)
+        didRestorePreparedPlayback = true
     }
 }
 
@@ -445,8 +520,6 @@ struct ReplayPlayerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var seekArbiter = ReplaySeekArbiter()
     @State private var isExpanded = false
-    @State private var expandedStartPosition: TimeInterval = 0
-    @State private var expandedEndPosition: TimeInterval = 0
     @State private var resumeAfterExpansion = false
 
     /// The recording's own duration is the honest total. The other two are
@@ -497,15 +570,13 @@ struct ReplayPlayerView: View {
             ExpandedReplayView(
                 recording: recording,
                 loader: loader,
-                initialPosition: expandedStartPosition,
+                initialPosition: controller.expansionHandoffPosition,
                 initialSpeed: controller.speed,
                 markers: markers,
-                onClose: { expandedEndPosition = $0 }
+                onClose: { position in
+                    seek(to: position, resume: resumeAfterExpansion)
+                }
             )
-        }
-        .onChange(of: isExpanded) { wasExpanded, expanded in
-            guard wasExpanded, !expanded else { return }
-            controller.seek(to: expandedEndPosition, resume: resumeAfterExpansion)
         }
     }
 
@@ -791,8 +862,6 @@ struct ReplayPlayerView: View {
 
     private func expand() {
         guard controller.isReady, !isExpanded else { return }
-        expandedStartPosition = controller.currentTime
-        expandedEndPosition = controller.currentTime
         resumeAfterExpansion = controller.isPlaying
         controller.pause()
         isExpanded = true
@@ -858,6 +927,7 @@ struct PlayerTransportBar: View {
                 interaction.displayedPosition(current: controller.currentTime)
             },
             set: { target in
+                controller.updateInteractiveSeekPosition(target)
                 perform(interaction.update(
                     position: target,
                     buffered: buffered,
@@ -968,6 +1038,7 @@ struct PlayerTransportBar: View {
         .onChange(of: scrubCancellationToken) { _, token in
             guard let token, interaction.cancel(ifMatching: token) else { return }
             controller.isScrubbing = false
+            controller.cancelInteractiveSeek()
         }
     }
 
@@ -1057,11 +1128,13 @@ struct PlayerTransportBar: View {
             duration: duration,
             isComplete: isComplete
         ))
+        controller.finishInteractiveSeek()
     }
 
     private func markerSeek(to target: TimeInterval) {
         interaction.cancel()
         controller.isScrubbing = false
+        controller.cancelInteractiveSeek()
         onMarkerSeek(target)
     }
 

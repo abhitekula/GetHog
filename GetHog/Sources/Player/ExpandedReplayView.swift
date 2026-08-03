@@ -31,7 +31,6 @@ struct ExpandedReplayView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var controller = ReplayPlayerController()
     @State private var archiveCursor: ReplayArchiveDeliveryCursor?
-    @State private var didRestorePosition = false
     @State private var didClose = false
     @State private var seekArbiter = ReplaySeekArbiter()
 
@@ -112,15 +111,8 @@ struct ExpandedReplayView: View {
                 else { return }
                 controller.seek(to: target, resume: resume)
             }
-            .onChange(of: controller.isReady) { _, ready in
-                guard ready, !didRestorePosition else { return }
-                didRestorePosition = true
-                controller.setSpeed(initialSpeed)
-                controller.seek(to: initialPosition, resume: false)
-            }
         }
         .interactiveDismissDisabled()
-        .onDisappear { finishOnce() }
     }
 
     private var duration: TimeInterval {
@@ -129,10 +121,13 @@ struct ExpandedReplayView: View {
 
     private func feedArchive() {
         guard controller.isDocumentReady else { return }
+        if archiveCursor == nil {
+            prepareInitialPlayback()
+        }
         let delivery = loader.archiveDelivery(after: archiveCursor)
         if delivery.mode == .restart, archiveCursor != nil {
             controller.restartPlayback()
-            didRestorePosition = false
+            prepareInitialPlayback()
         }
         guard !delivery.events.isEmpty else {
             archiveCursor = delivery.cursor
@@ -148,6 +143,13 @@ struct ExpandedReplayView: View {
 
     private func requestCoverage(for playhead: TimeInterval) {
         loader.ensureCoverage(upTo: ExpandedReplayCoverage.target(after: playhead))
+    }
+
+    private func prepareInitialPlayback() {
+        controller.preparePlaybackForNextReady(
+            position: initialPosition,
+            speed: initialSpeed
+        )
     }
 
     private func seek(to seconds: TimeInterval, resume: Bool? = nil) {
@@ -186,8 +188,8 @@ struct ExpandedReplayView: View {
         onClose(
             ExpandedReplayHandoff.dismissalPosition(
                 initialPosition: initialPosition,
-                didRestorePosition: didRestorePosition,
-                currentTime: controller.currentTime
+                didRestorePosition: controller.didRestorePreparedPlayback,
+                currentTime: controller.expansionHandoffPosition
             )
         )
     }

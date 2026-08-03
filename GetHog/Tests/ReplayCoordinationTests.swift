@@ -51,6 +51,62 @@ struct ReplayCoordinationTests {
     func expandedCoverageBoundary() {
         #expect(ExpandedReplayCoverage.target(after: 75) == 135)
     }
+
+    @Test("prepared expanded playback restores at the controller ready boundary")
+    @MainActor
+    func preparedPlaybackRestoresWhenReady() {
+        let controller = ReplayPlayerController()
+        controller.preparePlaybackForNextReady(position: 1, speed: 2)
+
+        controller.handle(message: ["type": "ready", "totalTime": 10_000.0])
+
+        #expect(controller.didRestorePreparedPlayback)
+        #expect(controller.expansionHandoffPosition == 1)
+        #expect(controller.speed == 2)
+        #expect(!controller.isPlaying)
+    }
+
+    @Test("renderer ticks cannot roll back a pending native seek")
+    @MainActor
+    func pendingSeekWaitsForDirectionalAcknowledgement() {
+        let controller = ReplayPlayerController()
+        controller.handle(message: ["type": "ready", "totalTime": 10_000.0])
+
+        controller.handle(message: ["type": "time", "currentTime": 400.0])
+        controller.updateInteractiveSeekPosition(1)
+        #expect(controller.expansionHandoffPosition == 1)
+        controller.handle(message: ["type": "time", "currentTime": 500.0])
+        #expect(controller.currentTime == 0.5)
+        #expect(controller.expansionHandoffPosition == 1)
+
+        controller.seek(to: 1, resume: false)
+        controller.finishInteractiveSeek()
+        #expect(controller.expansionHandoffPosition == 1)
+        controller.handle(message: ["type": "time", "currentTime": 730.0])
+        #expect(controller.currentTime == 1)
+        #expect(controller.expansionHandoffPosition == 1)
+
+        controller.handle(message: ["type": "time", "currentTime": 990.0])
+        #expect(controller.currentTime == 1)
+        #expect(controller.expansionHandoffPosition == 1)
+        controller.handle(message: ["type": "time", "currentTime": 1_200.0])
+        #expect(controller.currentTime == 1.2)
+        #expect(controller.expansionHandoffPosition == 1.2)
+
+        controller.updateInteractiveSeekPosition(2)
+        #expect(controller.expansionHandoffPosition == 2)
+        controller.cancelInteractiveSeek()
+        #expect(controller.expansionHandoffPosition == 1.2)
+
+        controller.seek(to: 0.5, resume: false)
+        controller.handle(message: ["type": "time", "currentTime": 900.0])
+        #expect(controller.currentTime == 0.5)
+
+        controller.handle(message: ["type": "time", "currentTime": 510.0])
+        #expect(controller.currentTime == 0.5)
+        controller.handle(message: ["type": "time", "currentTime": 700.0])
+        #expect(controller.currentTime == 0.7)
+    }
 }
 
 private actor ReplaySubmissionGate {

@@ -19,15 +19,50 @@ final class ReplayInteractionTests: XCTestCase {
         let app = launchReadyReplay()
         let compact = app.sliders["Playback position"]
         compact.adjust(toNormalizedSliderPosition: 0.2)
+        let markerSemantics = ["2 key events", "fictional refresh button"]
+        guard let compactSemanticValue = compact.value as? String else {
+            XCTFail("Compact playback position did not publish an accessibility value.")
+            return
+        }
+        for semantic in markerSemantics {
+            XCTAssertTrue(
+                compactSemanticValue.contains(semantic),
+                "Compact playback value \(compactSemanticValue) omitted \(semantic)."
+            )
+        }
 
         let expand = app.buttons["Expand replay"]
         XCTAssertTrue(DemoLaunch.wait(for: expand))
+        XCTAssertTrue(expand.isHittable)
         XCTAssertGreaterThanOrEqual(expand.frame.width, 44)
         XCTAssertGreaterThanOrEqual(expand.frame.height, 44)
         expand.tap()
 
         let full = app.sliders["Full-screen playback position"]
-        XCTAssertTrue(DemoLaunch.wait(for: full, timeout: 120))
+        let fullReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+                format: "exists == true AND enabled == true AND hittable == true"
+            ),
+            object: full
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [fullReady], timeout: 120), .completed)
+
+        let markerRestored = XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+                format: "value CONTAINS %@ AND value CONTAINS %@",
+                markerSemantics[0],
+                markerSemantics[1]
+            ),
+            object: full
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [markerRestored], timeout: 15), .completed)
+        let restoredValue = full.value as? String
+        for semantic in markerSemantics {
+            XCTAssertTrue(
+                restoredValue?.contains(semantic) == true,
+                "Ready full-screen value \(restoredValue ?? "nil") did not restore \(semantic) from \(compactSemanticValue)."
+            )
+        }
         full.adjust(toNormalizedSliderPosition: 0.8)
         let expandedValue = full.value as? String
 
@@ -79,15 +114,55 @@ final class ReplayInteractionTests: XCTestCase {
             DemoLaunch.pause(0.3)
         }
         XCTAssertTrue(compact.exists && compact.isEnabled)
-        compact.adjust(toNormalizedSliderPosition: 0.1)
-        XCTAssertTrue((compact.value as? String)?.contains("2 key events") == true)
-        XCTAssertTrue(
-            (compact.value as? String)?.contains("fictional refresh button") == true
-        )
 
-        app.buttons["Expand replay"].tap()
+        let expand = app.buttons["Expand replay"]
+        for _ in 0..<12 where !expand.isHittable {
+            app.swipeDown(velocity: .slow)
+            DemoLaunch.pause(0.3)
+        }
+        XCTAssertTrue(expand.exists && expand.isHittable)
+
+        compact.adjust(toNormalizedSliderPosition: 0.1)
+        let markerSemantics = ["2 key events", "fictional refresh button"]
+        guard let compactSemanticValue = compact.value as? String else {
+            XCTFail("Compact playback position did not publish an accessibility value.")
+            return
+        }
+        for semantic in markerSemantics {
+            XCTAssertTrue(compactSemanticValue.contains(semantic))
+        }
+        XCTAssertTrue(expand.exists && expand.isHittable)
+        expand.tap()
+
         let full = app.sliders["Full-screen playback position"]
-        XCTAssertTrue(DemoLaunch.wait(for: full, timeout: 120))
-        XCTAssertTrue((full.value as? String)?.contains("2 key events") == true)
+        let fullReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+                format: "exists == true AND enabled == true AND hittable == true"
+            ),
+            object: full
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [fullReady], timeout: 120), .completed)
+        XCTAssertTrue(full.exists && full.isEnabled && full.isHittable)
+
+        let markerRestored = XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+                format: "value CONTAINS %@ AND value CONTAINS %@",
+                markerSemantics[0],
+                markerSemantics[1]
+            ),
+            object: full
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [markerRestored], timeout: 30), .completed)
+
+        guard let fullSemanticValue = full.value as? String else {
+            XCTFail("Ready full-screen playback position did not publish an accessibility value.")
+            return
+        }
+        for semantic in markerSemantics {
+            XCTAssertTrue(
+                fullSemanticValue.contains(semantic),
+                "Full-screen playback did not preserve \(semantic) from \(compactSemanticValue)."
+            )
+        }
     }
 }
