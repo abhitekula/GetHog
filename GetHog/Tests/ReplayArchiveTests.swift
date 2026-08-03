@@ -6,7 +6,33 @@ import Testing
 
 @Suite("Replay event archive")
 struct ReplayArchiveTests {
-    @Test("the archive merges events across out-of-order blob ranges")
+    @Test("the archive merge preserves each source's equal-timestamp order")
+    @MainActor
+    func stableArchiveMergePreservesTieOrder() {
+        let existing = [
+            event("range-one-before", at: 1_000),
+            event("range-one-first-tie", at: 50_000),
+            event("range-one-second-tie", at: 50_000),
+        ]
+        let incoming = [
+            event("range-two-before", at: 2_000),
+            event("range-two-first-tie", at: 50_000),
+            event("range-two-second-tie", at: 50_000),
+        ]
+
+        let merged = ReplayLoader.mergedArchivedEvents(existing, with: incoming)
+
+        #expect(
+            merged.map(\.windowID)
+                == [
+                    "range-one-before", "range-two-before",
+                    "range-one-first-tie", "range-one-second-tie",
+                    "range-two-first-tie", "range-two-second-tie",
+                ]
+        )
+    }
+
+    @Test("the archive keeps source order for equal timestamps across blob ranges")
     @MainActor
     func archiveIsChronologicalAcrossRanges() async throws {
         let loader = ReplayLoader()
@@ -17,7 +43,11 @@ struct ReplayArchiveTests {
         )
 
         #expect(loader.loadedRangeCount == 2)
-        #expect(loader.archivedEvents.map(\.timestamp) == [1_000, 2_000, 40_000, 41_000])
+        #expect(loader.archivedEvents.map(\.timestamp) == [1_000, 40_000, 50_000, 50_000])
+        #expect(
+            loader.archivedEvents.map(\.windowID)
+                == ["range-two-before", "range-one-before", "range-one-tie", "range-two-tie"]
+        )
     }
 
     @Test("reset prevents a suspended snapshot fetch from repopulating replay state")
@@ -85,6 +115,10 @@ struct ReplayArchiveTests {
             )
         )
     }
+
+    private func event(_ windowID: String, at timestamp: Double) -> SnapshotEvent {
+        SnapshotEvent(windowID: windowID, type: 3, timestamp: timestamp, event: .object([:]))
+    }
 }
 
 private actor ArchiveRangeTransport: HTTPTransport {
@@ -114,8 +148,8 @@ private actor ArchiveRangeTransport: HTTPTransport {
     private var laterEvents: Data {
         Data(
             """
-            ["archive-demo",{"type":2,"timestamp":40000,"data":{}}]
-            ["archive-demo",{"type":3,"timestamp":41000,"data":{}}]
+            ["range-one-before",{"type":2,"timestamp":40000,"data":{}}]
+            ["range-one-tie",{"type":3,"timestamp":50000,"data":{}}]
             """.utf8
         )
     }
@@ -123,8 +157,8 @@ private actor ArchiveRangeTransport: HTTPTransport {
     private var earlierEvents: Data {
         Data(
             """
-            ["archive-demo",{"type":3,"timestamp":1000,"data":{}}]
-            ["archive-demo",{"type":3,"timestamp":2000,"data":{}}]
+            ["range-two-before",{"type":3,"timestamp":1000,"data":{}}]
+            ["range-two-tie",{"type":3,"timestamp":50000,"data":{}}]
             """.utf8
         )
     }

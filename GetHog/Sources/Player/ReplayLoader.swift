@@ -267,8 +267,12 @@ final class ReplayLoader {
         }
 
         let sorted = events.sorted { $0.timestamp < $1.timestamp }
-        archivedEvents.append(contentsOf: sorted)
-        archivedEvents.sort { $0.timestamp < $1.timestamp }
+        let archiveBatch = events.enumerated().sorted { left, right in
+            left.element.timestamp == right.element.timestamp
+                ? left.offset < right.offset
+                : left.element.timestamp < right.element.timestamp
+        }.map(\.element)
+        archivedEvents = Self.mergedArchivedEvents(archivedEvents, with: archiveBatch)
 
         if firstTimestampMS == nil, let first = sorted.first {
             firstTimestampMS = first.timestamp
@@ -291,6 +295,32 @@ final class ReplayLoader {
         } else if isComplete {
             availability = .noData
         }
+    }
+
+    /// Merges timestamp-sorted archive batches while preserving source order for
+    /// equal timestamps. Existing archive events win ties because they were
+    /// fetched from an earlier blob range.
+    static func mergedArchivedEvents(
+        _ existing: [SnapshotEvent],
+        with incoming: [SnapshotEvent]
+    ) -> [SnapshotEvent] {
+        var merged: [SnapshotEvent] = []
+        merged.reserveCapacity(existing.count + incoming.count)
+
+        var existingIndex = 0
+        var incomingIndex = 0
+        while existingIndex < existing.count, incomingIndex < incoming.count {
+            if existing[existingIndex].timestamp <= incoming[incomingIndex].timestamp {
+                merged.append(existing[existingIndex])
+                existingIndex += 1
+            } else {
+                merged.append(incoming[incomingIndex])
+                incomingIndex += 1
+            }
+        }
+        merged.append(contentsOf: existing[existingIndex...])
+        merged.append(contentsOf: incoming[incomingIndex...])
+        return merged
     }
 
     private static func describe(_ error: any Error) -> String {
