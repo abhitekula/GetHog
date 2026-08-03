@@ -68,8 +68,11 @@ struct SessionDetailView: View {
                     canSeek: player.isReady,
                     onSeek: { offset in player.seek(to: offset, resume: true) },
                     onGenerate: {
-                        summaryGenerationTask?.cancel()
-                        summaryGenerationTask = Task { await generateSummary() }
+                        guard summaryGenerationTask == nil else { return }
+                        summaryGenerationTask = Task { @MainActor in
+                            await generateSummary()
+                            summaryGenerationTask = nil
+                        }
                     },
                     onRetry: { Task { await loadSummary() } }
                 )

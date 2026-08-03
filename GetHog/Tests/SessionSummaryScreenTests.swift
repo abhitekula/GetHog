@@ -9,9 +9,33 @@ private actor SummaryGenerationTransport: HTTPTransport {
     private var generated = false
     private var generationStatuses: [Int]
     private let storedSummary = DemoTransport()
+    private let holdsFirstGeneration: Bool
+    private var generationRequestCount = 0
+    private var summaryRequestCount = 0
+    private var firstGenerationStarted = false
+    private var firstGenerationWaiter: CheckedContinuation<Void, Never>?
+    private var firstGenerationGate: CheckedContinuation<Void, Never>?
 
-    init(generationStatuses: [Int] = [200]) {
+    init(
+        generationStatuses: [Int] = [200],
+        holdsFirstGeneration: Bool = false
+    ) {
         self.generationStatuses = generationStatuses
+        self.holdsFirstGeneration = holdsFirstGeneration
+    }
+
+    func waitForFirstGenerationRequest() async {
+        guard !firstGenerationStarted else { return }
+        await withCheckedContinuation { firstGenerationWaiter = $0 }
+    }
+
+    func releaseFirstGeneration() {
+        firstGenerationGate?.resume()
+        firstGenerationGate = nil
+    }
+
+    func requestCounts() -> (generations: Int, summaries: Int) {
+        (generationRequestCount, summaryRequestCount)
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -19,7 +43,13 @@ private actor SummaryGenerationTransport: HTTPTransport {
 
         if request.httpMethod == "POST",
            path.hasSuffix("/create_session_summaries_individually/") {
-            try? await Task.sleep(for: .milliseconds(30))
+            generationRequestCount += 1
+            if holdsFirstGeneration, generationRequestCount == 1 {
+                firstGenerationStarted = true
+                firstGenerationWaiter?.resume()
+                firstGenerationWaiter = nil
+                await withCheckedContinuation { firstGenerationGate = $0 }
+            }
             let generationStatus = generationStatuses.count > 1
                 ? generationStatuses.removeFirst()
                 : (generationStatuses.first ?? 200)
@@ -35,6 +65,7 @@ private actor SummaryGenerationTransport: HTTPTransport {
         }
 
         if path.contains("/single_session_summaries/"), !generated {
+            summaryRequestCount += 1
             return response(
                 for: request,
                 status: 404,
@@ -44,6 +75,9 @@ private actor SummaryGenerationTransport: HTTPTransport {
             )
         }
 
+        if path.contains("/single_session_summaries/") {
+            summaryRequestCount += 1
+        }
         return try await storedSummary.send(request)
     }
 
@@ -132,9 +166,10 @@ struct SessionSummaryScreenTests {
     @Test("generation transitions an absent summary through generating to loaded")
     @MainActor
     func generationLoadsCanonicalSummary() async throws {
+        let transport = SummaryGenerationTransport(holdsFirstGeneration: true)
         let client = PostHogClient(
             auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
-            transport: SummaryGenerationTransport()
+            transport: transport
         )
         let store = SessionSummaryStore()
 
@@ -146,8 +181,9 @@ struct SessionSummaryScreenTests {
                 client: client, projectID: 1_001, sessionID: Self.summarised
             )
         }
-        try await Task.sleep(for: .milliseconds(5))
+        await transport.waitForFirstGenerationRequest()
         #expect(store.state == .generating)
+        await transport.releaseFirstGeneration()
         await generation.value
         #expect(store.detail?.id == Self.summarised)
         #expect(store.loadedAt != nil)
@@ -216,6 +252,77 @@ struct SessionSummaryScreenTests {
         await store.generate(client: client(), projectID: 1_001, sessionID: Self.summarised)
 
         #expect(store.detail == existing)
+    }
+
+    @Test("a refresh cannot supersede a generation or create a second POST")
+    @MainActor
+    func refreshCannotDuplicateGeneration() async {
+        let transport = SummaryGenerationTransport(holdsFirstGeneration: true)
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = SessionSummaryStore()
+
+        await store.load(client: client, projectID: 1_001, sessionID: Self.summarised)
+        #expect(store.state == .absent)
+
+        let original = Task {
+            await store.generate(
+                client: client, projectID: 1_001, sessionID: Self.summarised
+            )
+        }
+        await transport.waitForFirstGenerationRequest()
+
+        await store.load(client: client, projectID: 1_001, sessionID: Self.summarised)
+        let duplicate = Task {
+            await store.generate(
+                client: client, projectID: 1_001, sessionID: Self.summarised
+            )
+        }
+        await duplicate.value
+
+        let whileGenerating = await transport.requestCounts()
+        #expect(whileGenerating.generations == 1)
+        #expect(whileGenerating.summaries == 1)
+        #expect(store.state == .generating)
+
+        await transport.releaseFirstGeneration()
+        await original.value
+
+        let completed = await transport.requestCounts()
+        #expect(completed.generations == 1)
+        #expect(completed.summaries == 2)
+        #expect(store.detail?.id == Self.summarised)
+    }
+
+    @Test("cancelling generation restores its prior absent state")
+    @MainActor
+    func cancelledGenerationDoesNotReportFailure() async {
+        let transport = SummaryGenerationTransport(holdsFirstGeneration: true)
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = SessionSummaryStore()
+
+        await store.load(client: client, projectID: 1_001, sessionID: Self.summarised)
+        #expect(store.state == .absent)
+
+        let generation = Task {
+            await store.generate(
+                client: client, projectID: 1_001, sessionID: Self.summarised
+            )
+        }
+        await transport.waitForFirstGenerationRequest()
+        generation.cancel()
+        await transport.releaseFirstGeneration()
+        await generation.value
+
+        #expect(store.state == .absent)
+        #expect(store.detail == nil)
+        let counts = await transport.requestCounts()
+        #expect(counts.summaries == 1)
     }
 
     // MARK: - Chapters as player positions

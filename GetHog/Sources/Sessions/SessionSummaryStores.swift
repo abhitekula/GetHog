@@ -65,6 +65,11 @@ final class SessionSummariesStore {
 @MainActor
 @Observable
 final class SessionSummaryStore {
+    private struct Generation {
+        let operationID: UInt
+        let priorState: State
+    }
+
     enum State: Equatable {
         case idle
         case loading
@@ -78,6 +83,8 @@ final class SessionSummaryStore {
 
     private(set) var state: State = .idle
     private(set) var loadedAt: Date?
+    private var operationID: UInt = 0
+    private var generation: Generation?
 
     var detail: SessionSummaryDetail? {
         if case .loaded(let detail) = state { return detail }
@@ -92,7 +99,9 @@ final class SessionSummaryStore {
         projectID: Int,
         sessionID: String
     ) async {
-        guard state != .generating, detail == nil else { return }
+        guard generation == nil, detail == nil, !isLoading else { return }
+        let operationID = nextOperationID()
+        generation = Generation(operationID: operationID, priorState: state)
         state = .generating
         do {
             _ = try await client.data(
@@ -101,11 +110,26 @@ final class SessionSummaryStore {
                     sessionID: sessionID
                 )
             )
-            await load(client: client, projectID: projectID, sessionID: sessionID)
+            guard !Task.isCancelled else {
+                restoreCancelledGeneration(operationID: operationID)
+                return
+            }
+            await loadGeneratedSummary(
+                client: client,
+                projectID: projectID,
+                sessionID: sessionID,
+                operationID: operationID
+            )
         } catch {
+            guard isCurrentGeneration(operationID) else { return }
+            guard !Task.isCancelled else {
+                restoreCancelledGeneration(operationID: operationID)
+                return
+            }
             state = .generationFailed(
                 Self.generationFailureMessage(for: error)
             )
+            generation = nil
         }
     }
 
@@ -119,20 +143,86 @@ final class SessionSummaryStore {
     }
 
     func load(client: PostHogClient, projectID: Int, sessionID: String) async {
+        guard generation == nil else { return }
+        let operationID = nextOperationID()
         state = .loading
         do {
             let detail: SessionSummaryDetail = try await client.send(
                 PostHogAPI.sessionSummary(projectID: projectID, sessionID: sessionID)
             )
+            guard isCurrentOperation(operationID) else { return }
             state = .loaded(detail)
             loadedAt = Date()
         } catch let error as PostHogError where SessionSummaryDetail.isMissingSummary(error) {
+            guard isCurrentOperation(operationID) else { return }
             state = .absent
             loadedAt = Date()
         } catch {
+            guard isCurrentOperation(operationID) else { return }
             state = .failed(
                 (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
             )
         }
+    }
+
+    private func loadGeneratedSummary(
+        client: PostHogClient,
+        projectID: Int,
+        sessionID: String,
+        operationID: UInt
+    ) async {
+        do {
+            let detail: SessionSummaryDetail = try await client.send(
+                PostHogAPI.sessionSummary(projectID: projectID, sessionID: sessionID)
+            )
+            guard isCurrentGeneration(operationID) else { return }
+            guard !Task.isCancelled else {
+                restoreCancelledGeneration(operationID: operationID)
+                return
+            }
+            state = .loaded(detail)
+            loadedAt = Date()
+            generation = nil
+        } catch let error as PostHogError where SessionSummaryDetail.isMissingSummary(error) {
+            guard isCurrentGeneration(operationID) else { return }
+            guard !Task.isCancelled else {
+                restoreCancelledGeneration(operationID: operationID)
+                return
+            }
+            state = .absent
+            loadedAt = Date()
+            generation = nil
+        } catch {
+            guard isCurrentGeneration(operationID) else { return }
+            guard !Task.isCancelled else {
+                restoreCancelledGeneration(operationID: operationID)
+                return
+            }
+            state = .failed(
+                (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
+            )
+            generation = nil
+        }
+    }
+
+    private func nextOperationID() -> UInt {
+        operationID &+= 1
+        return operationID
+    }
+
+    private func isCurrentOperation(_ operationID: UInt) -> Bool {
+        self.operationID == operationID
+    }
+
+    private func isCurrentGeneration(_ operationID: UInt) -> Bool {
+        generation?.operationID == operationID && isCurrentOperation(operationID)
+    }
+
+    private func restoreCancelledGeneration(operationID: UInt) {
+        guard let generation, generation.operationID == operationID,
+              isCurrentOperation(operationID)
+        else { return }
+        state = generation.priorState
+        self.generation = nil
     }
 }
