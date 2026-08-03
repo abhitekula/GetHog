@@ -588,7 +588,7 @@ struct ReplayPlayerView: View {
                             buffered: loader.isComplete ? duration : loader.bufferedSeconds,
                             isComplete: loader.isComplete,
                             markers: markers,
-                            scrubCancellationRevision: seekArbiter.sliderCancellationRevision,
+                            scrubCancellationToken: seekArbiter.sliderCancellationToken,
                             onPreviewSeek: { controller.seek(to: $0, resume: false) },
                             onCoverageRequested: {
                                 loader.ensureCoverage(upTo: $0 + ReplayLoader.prefetchLead)
@@ -596,7 +596,9 @@ struct ReplayPlayerView: View {
                             onScrubCommitted: { target, resume in
                                 commitSliderSeek(to: target, resume: resume)
                             },
-                            onScrubBegan: { seekArbiter.sliderBegan() },
+                            onScrubBegan: {
+                                seekArbiter.sliderBegan(generation: $0)
+                            },
                             onMarkerSeek: { target in
                                 seek(to: target, resume: controller.isPlaying)
                             }
@@ -835,11 +837,11 @@ struct PlayerTransportBar: View {
     let isComplete: Bool
     var markers: [SessionReplayMarker] = []
     var positionAccessibilityLabel = "Playback position"
-    let scrubCancellationRevision: Int
+    let scrubCancellationToken: ReplaySliderCancellationToken?
     let onPreviewSeek: (TimeInterval) -> Void
     let onCoverageRequested: (TimeInterval) -> Void
     let onScrubCommitted: (TimeInterval, Bool) -> Void
-    let onScrubBegan: () -> Void
+    let onScrubBegan: (Int) -> Void
     let onMarkerSeek: (TimeInterval) -> Void
 
     @State private var interaction = ReplayTransportInteraction()
@@ -963,8 +965,8 @@ struct PlayerTransportBar: View {
                 isComplete: isComplete
             ))
         }
-        .onChange(of: scrubCancellationRevision) { _, _ in
-            interaction.cancel()
+        .onChange(of: scrubCancellationToken) { _, token in
+            guard let token, interaction.cancel(ifMatching: token) else { return }
             controller.isScrubbing = false
         }
     }
@@ -1037,13 +1039,14 @@ struct PlayerTransportBar: View {
     private func editingChanged(_ editing: Bool) {
         if editing {
             guard !interaction.isEditing else { return }
-            onScrubBegan()
-            controller.isScrubbing = true
-            perform(interaction.begin(
+            let effects = interaction.begin(
                 position: controller.currentTime,
                 duration: duration,
                 isPlaying: controller.isPlaying
-            ))
+            )
+            onScrubBegan(interaction.sliderGeneration)
+            controller.isScrubbing = true
+            perform(effects)
             return
         }
 

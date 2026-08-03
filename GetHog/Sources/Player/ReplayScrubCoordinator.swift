@@ -88,12 +88,18 @@ enum ReplayTransportEffect: Equatable {
     case commit(target: TimeInterval, resume: Bool)
 }
 
+struct ReplaySliderCancellationToken: Equatable {
+    let generation: Int
+    let revision: Int
+}
+
 struct ReplayTransportInteraction {
     static let bufferingStatusText = "Buffering selected moment…"
 
     private var scrub = ReplayScrubCoordinator()
     private(set) var scrubPosition: TimeInterval = 0
     private(set) var isEditing = false
+    private(set) var sliderGeneration = 0
 
     var pendingTarget: TimeInterval? { scrub.pendingTarget }
 
@@ -115,6 +121,7 @@ struct ReplayTransportInteraction {
         isPlaying: Bool
     ) -> [ReplayTransportEffect] {
         guard !isEditing else { return [] }
+        sliderGeneration &+= 1
         isEditing = true
         scrubPosition = Self.clamped(position, duration: duration)
         return scrub.begin(isPlaying: isPlaying) ? [.pause] : []
@@ -188,6 +195,13 @@ struct ReplayTransportInteraction {
         scrub.cancel()
     }
 
+    @discardableResult
+    mutating func cancel(ifMatching token: ReplaySliderCancellationToken) -> Bool {
+        guard sliderGeneration == token.generation else { return false }
+        cancel()
+        return true
+    }
+
     private static func clamped(
         _ position: TimeInterval,
         duration: TimeInterval
@@ -226,11 +240,14 @@ struct ReplaySeekArbiter {
 
     private var deferred: DeferredSeek?
     private var owner: Owner?
-    private(set) var sliderCancellationRevision = 0
+    private var sliderGeneration: Int?
+    private var nextCancellationRevision = 0
+    private(set) var sliderCancellationToken: ReplaySliderCancellationToken?
 
-    mutating func sliderBegan() {
+    mutating func sliderBegan(generation: Int) {
         deferred = nil
         owner = .slider
+        sliderGeneration = generation
     }
 
     mutating func acceptSliderCommit(
@@ -239,6 +256,7 @@ struct ReplaySeekArbiter {
     ) -> ReplayScrubCommit? {
         guard owner == .slider else { return nil }
         owner = nil
+        sliderGeneration = nil
         return .seek(target: max(0, target), resume: resume)
     }
 
@@ -249,7 +267,14 @@ struct ReplaySeekArbiter {
         isComplete: Bool
     ) -> ReplayScrubCommit {
         let target = max(0, target)
-        sliderCancellationRevision &+= 1
+        if owner == .slider, let sliderGeneration {
+            nextCancellationRevision &+= 1
+            sliderCancellationToken = ReplaySliderCancellationToken(
+                generation: sliderGeneration,
+                revision: nextCancellationRevision
+            )
+        }
+        sliderGeneration = nil
         if target > buffered, !isComplete {
             deferred = DeferredSeek(target: target, resume: resume)
             owner = .programmatic

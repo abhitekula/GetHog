@@ -61,13 +61,15 @@ struct ExpandedReplayView: View {
                     isComplete: loader.isComplete,
                     markers: markers,
                     positionAccessibilityLabel: "Full-screen playback position",
-                    scrubCancellationRevision: seekArbiter.sliderCancellationRevision,
+                    scrubCancellationToken: seekArbiter.sliderCancellationToken,
                     onPreviewSeek: { controller.seek(to: $0, resume: false) },
                     onCoverageRequested: { requestCoverage(for: $0) },
                     onScrubCommitted: { target, resume in
                         commitSliderSeek(to: target, resume: resume)
                     },
-                    onScrubBegan: { seekArbiter.sliderBegan() },
+                    onScrubBegan: {
+                        seekArbiter.sliderBegan(generation: $0)
+                    },
                     onMarkerSeek: { target in
                         seek(to: target, resume: controller.isPlaying)
                     }

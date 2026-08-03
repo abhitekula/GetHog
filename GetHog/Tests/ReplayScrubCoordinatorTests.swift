@@ -206,9 +206,8 @@ struct ReplayScrubCoordinatorTests {
                 isComplete: false
             ) == .waiting(target: 80)
         )
-        arbiter.sliderBegan()
-
         _ = transport.begin(position: 5, duration: 100, isPlaying: false)
+        arbiter.sliderBegan(generation: transport.sliderGeneration)
         _ = transport.update(
             position: 50,
             buffered: 20,
@@ -236,12 +235,12 @@ struct ReplayScrubCoordinatorTests {
     }
 
     @Test("a newer programmatic seek cancels an older slider target")
-    func programmaticWins() {
+    func programmaticWins() throws {
         var arbiter = ReplaySeekArbiter()
         var transport = ReplayTransportInteraction()
 
-        arbiter.sliderBegan()
         _ = transport.begin(position: 5, duration: 100, isPlaying: true)
+        arbiter.sliderBegan(generation: transport.sliderGeneration)
         _ = transport.update(
             position: 80,
             buffered: 20,
@@ -251,7 +250,6 @@ struct ReplayScrubCoordinatorTests {
         )
         _ = transport.end(buffered: 20, duration: 100, isComplete: false)
 
-        let revision = arbiter.sliderCancellationRevision
         #expect(
             arbiter.requestProgrammatic(
                 target: 40,
@@ -260,14 +258,102 @@ struct ReplayScrubCoordinatorTests {
                 isComplete: false
             ) == .waiting(target: 40)
         )
-        #expect(arbiter.sliderCancellationRevision == revision + 1)
-        transport.cancel()
+        let cancellation = try #require(arbiter.sliderCancellationToken)
+        let didCancel = transport.cancel(ifMatching: cancellation)
+        #expect(didCancel)
 
         #expect(arbiter.acceptSliderCommit(target: 80, resume: true) == nil)
         #expect(
             transport.coverageAdvanced(
                 to: 80, duration: 100, isComplete: false
             ).isEmpty
+        )
+        #expect(arbiter.coverageAdvanced(to: 40) == .seek(target: 40, resume: true))
+        #expect(arbiter.coverageAdvanced(to: 100) == nil)
+    }
+
+    @Test("a stale cancellation token cannot cancel a newer slider generation")
+    func staleCancellationCannotCancelNewSlider() throws {
+        var arbiter = ReplaySeekArbiter()
+        var transport = ReplayTransportInteraction()
+
+        _ = transport.begin(position: 5, duration: 100, isPlaying: true)
+        arbiter.sliderBegan(generation: transport.sliderGeneration)
+        #expect(
+            arbiter.requestProgrammatic(
+                target: 80,
+                resume: true,
+                buffered: 20,
+                isComplete: false
+            ) == .waiting(target: 80)
+        )
+        let cancellationA = try #require(arbiter.sliderCancellationToken)
+
+        let staleAEffects = transport.end(
+            buffered: 20,
+            duration: 100,
+            isComplete: false
+        )
+        #expect(staleAEffects == [.commit(target: 5, resume: true)])
+        #expect(arbiter.acceptSliderCommit(target: 5, resume: true) == nil)
+
+        _ = transport.begin(position: 10, duration: 100, isPlaying: false)
+        arbiter.sliderBegan(generation: transport.sliderGeneration)
+        let didCancelB = transport.cancel(ifMatching: cancellationA)
+        #expect(didCancelB == false)
+        #expect(transport.isEditing)
+        #expect(
+            transport.update(
+                position: 40,
+                buffered: 100,
+                duration: 100,
+                isComplete: true,
+                now: 1
+            ) == [.preview(target: 40)]
+        )
+        #expect(
+            transport.end(buffered: 100, duration: 100, isComplete: true)
+                == [.commit(target: 40, resume: false)]
+        )
+        #expect(
+            arbiter.acceptSliderCommit(target: 40, resume: false)
+                == .seek(target: 40, resume: false)
+        )
+        #expect(arbiter.acceptSliderCommit(target: 40, resume: false) == nil)
+        #expect(arbiter.coverageAdvanced(to: 100) == nil)
+    }
+
+    @Test("a matching cancellation token still cancels its slider generation")
+    func matchingCancellationCancelsSlider() throws {
+        var arbiter = ReplaySeekArbiter()
+        var transport = ReplayTransportInteraction()
+
+        _ = transport.begin(position: 5, duration: 100, isPlaying: true)
+        arbiter.sliderBegan(generation: transport.sliderGeneration)
+        #expect(
+            arbiter.requestProgrammatic(
+                target: 40,
+                resume: true,
+                buffered: 20,
+                isComplete: false
+            ) == .waiting(target: 40)
+        )
+        let cancellation = try #require(arbiter.sliderCancellationToken)
+
+        let didCancel = transport.cancel(ifMatching: cancellation)
+        #expect(didCancel)
+        #expect(!transport.isEditing)
+        #expect(
+            transport.update(
+                position: 80,
+                buffered: 100,
+                duration: 100,
+                isComplete: true,
+                now: 1
+            ).isEmpty
+        )
+        #expect(
+            transport.end(buffered: 100, duration: 100, isComplete: true).isEmpty
         )
         #expect(arbiter.coverageAdvanced(to: 40) == .seek(target: 40, resume: true))
         #expect(arbiter.coverageAdvanced(to: 100) == nil)
