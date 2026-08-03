@@ -42,10 +42,19 @@ struct SessionReplayMarker: Identifiable, Equatable, Sendable {
                 } else {
                     .keyAction
                 }
+                let fallbackLabel = event.event?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedLabel = if !label.isEmpty {
+                    label
+                } else if let fallbackLabel, !fallbackLabel.isEmpty {
+                    fallbackLabel
+                } else {
+                    "Key event"
+                }
                 return Self(
                     id: event.id,
                     offset: min(upperBound, max(0, rawOffset)),
-                    label: label.isEmpty ? (event.event ?? "Key event") : label,
+                    label: resolvedLabel,
                     kind: kind
                 )
             }
@@ -71,6 +80,10 @@ struct SessionReplayMarker: Identifiable, Equatable, Sendable {
         let nextIndex = markers.index(after: activeIndex)
         guard nextIndex < markers.endIndex else { return nil }
         return markers[nextIndex]
+    }
+
+    static func accessibilityCountDescription(_ count: Int) -> String {
+        "\(count) key \(count == 1 ? "event" : "events")"
     }
 
     private static func activeIndex(in markers: [Self], at position: TimeInterval) -> Int? {

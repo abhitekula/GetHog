@@ -47,7 +47,7 @@ struct ExpandedReplayView: View {
                 } else {
                     WKWebViewRepresentable(controller: controller)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black)
+                        .background(Theme.replayStageBackground)
                         .accessibilityRepresentation {
                             Rectangle().accessibilityLabel("Full-screen session replay")
                         }
@@ -126,8 +126,9 @@ struct ExpandedReplayView: View {
         }
         let delivery = loader.archiveDelivery(after: archiveCursor)
         if delivery.mode == .restart, archiveCursor != nil {
-            controller.restartPlayback()
-            prepareInitialPlayback()
+            controller.restartPlayback(
+                rebasingPlayheadBy: delivery.playheadAdjustment
+            )
         }
         guard !delivery.events.isEmpty else {
             archiveCursor = delivery.cursor

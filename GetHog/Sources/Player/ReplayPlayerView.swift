@@ -123,7 +123,8 @@ final class ReplayPlayerController {
     @ObservationIgnored private var interactiveSeekPosition: TimeInterval?
     @ObservationIgnored private var preparedPlayback: (
         position: TimeInterval,
-        speed: Double
+        speed: Double,
+        resume: Bool
     )?
     @ObservationIgnored private(set) var didRestorePreparedPlayback = false
 
@@ -137,8 +138,16 @@ final class ReplayPlayerController {
         failure = "The bundled replay player is missing from this build."
     }
 
-    func preparePlaybackForNextReady(position: TimeInterval, speed: Double) {
-        preparedPlayback = (max(0, position), speed)
+    func reportResourcePolicyFailure(_ message: String) {
+        failure = message
+    }
+
+    func preparePlaybackForNextReady(
+        position: TimeInterval,
+        speed: Double,
+        resume: Bool = false
+    ) {
+        preparedPlayback = (max(0, position), speed, resume)
         didRestorePreparedPlayback = false
         restorePreparedPlaybackIfReady()
     }
@@ -170,6 +179,8 @@ final class ReplayPlayerController {
         isPlaying = false
         pendingSeekAcknowledgement = nil
         interactiveSeekPosition = nil
+        preparedPlayback = nil
+        didRestorePreparedPlayback = false
     }
 
     /// Wipes player state so a retry starts from a clean web view.
@@ -183,6 +194,8 @@ final class ReplayPlayerController {
         playerDuration = 0
         pendingSeekAcknowledgement = nil
         interactiveSeekPosition = nil
+        preparedPlayback = nil
+        didRestorePreparedPlayback = false
     }
 
     /// Clears the current rrweb instance while keeping its loaded document so a
@@ -198,6 +211,22 @@ final class ReplayPlayerController {
         playerDuration = 0
         pendingSeekAcknowledgement = nil
         interactiveSeekPosition = nil
+        preparedPlayback = nil
+        didRestorePreparedPlayback = false
+    }
+
+    /// Rebuilds rrweb against an archive whose origin moved earlier while
+    /// preserving the same absolute moment, speed, and playback intent.
+    func restartPlayback(rebasingPlayheadBy adjustment: TimeInterval) {
+        let rebasedPosition = max(0, expansionHandoffPosition + adjustment)
+        let preservedSpeed = speed
+        let shouldResume = isPlaying
+        restartPlayback()
+        preparePlaybackForNextReady(
+            position: rebasedPosition,
+            speed: preservedSpeed,
+            resume: shouldResume
+        )
     }
 
     // MARK: Feeding events
@@ -402,12 +431,102 @@ final class ReplayPlayerController {
         guard isReady, let preparedPlayback else { return }
         self.preparedPlayback = nil
         setSpeed(preparedPlayback.speed)
-        seek(to: preparedPlayback.position, resume: false)
+        seek(to: preparedPlayback.position, resume: preparedPlayback.resume)
         didRestorePreparedPlayback = true
     }
 }
 
 // MARK: - Web view
+
+/// WebKit enforcement for the replay renderer's offline-only boundary.
+///
+/// rrweb restores recorded attributes verbatim, including image, stylesheet,
+/// font, media, and websocket URLs. File read scoping protects the app bundle;
+/// it does not stop those restored URLs from reaching the network. These rules
+/// block remote schemes while leaving the local shell's file URLs and rrweb's
+/// data/blob/about URLs untouched.
+enum ReplayWebResourcePolicy {
+    static let identifier = "app.gethog.replay-offline-resources-v1"
+    static let failureMessage =
+        "The replay renderer couldn't enforce its offline resource protection."
+
+    private static let encodedRules = #"""
+        [
+          {
+            "trigger": { "url-filter": "^https?://.*" },
+            "action": { "type": "block" }
+          },
+          {
+            "trigger": { "url-filter": "^wss?://.*" },
+            "action": { "type": "block" }
+          }
+        ]
+        """#
+
+    @MainActor
+    static func compile() async throws -> WKContentRuleList {
+        try await withCheckedThrowingContinuation { continuation in
+            WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: identifier,
+                encodedContentRuleList: encodedRules
+            ) { rules, error in
+                if let rules {
+                    continuation.resume(returning: rules)
+                } else {
+                    continuation.resume(
+                        throwing: error ?? ReplayWebResourcePolicyError.compilationFailed
+                    )
+                }
+            }
+        }
+    }
+}
+
+private enum ReplayWebResourcePolicyError: Error {
+    case compilationFailed
+}
+
+/// Serializes policy installation before document loading and invalidates late
+/// callbacks when SwiftUI tears down or replaces the representable.
+@MainActor
+final class ReplayWebDocumentLoader {
+    private var task: Task<Void, Never>?
+    private var generation = 0
+
+    func start(
+        installPolicy: @escaping @MainActor () async throws -> Void,
+        loadDocument: @escaping @MainActor () -> Void,
+        reportFailure: @escaping @MainActor (String) -> Void
+    ) {
+        cancel()
+        let acceptedGeneration = generation
+        task = Task { @MainActor [weak self] in
+            do {
+                try await installPolicy()
+                try Task.checkCancellation()
+                guard let self, acceptedGeneration == self.generation else { return }
+                loadDocument()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self,
+                      acceptedGeneration == self.generation,
+                      !Task.isCancelled
+                else { return }
+                reportFailure(ReplayWebResourcePolicy.failureMessage)
+            }
+        }
+    }
+
+    func cancel() {
+        generation &+= 1
+        task?.cancel()
+    }
+
+    func waitUntilIdle() async {
+        await task?.value
+    }
+}
 
 /// Forwards `window.webkit.messageHandlers.player` messages to the controller.
 ///
@@ -417,6 +536,7 @@ final class ReplayPlayerController {
 @MainActor
 final class ReplayWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     weak var controller: ReplayPlayerController?
+    let documentLoader = ReplayWebDocumentLoader()
 
     func userContentController(
         _ userContentController: WKUserContentController,
@@ -479,15 +599,35 @@ struct WKWebViewRepresentable: UIViewRepresentable {
             controller.reportAssetMissing()
             return webView
         }
-        // Read access is scoped to the folder holding the shim so the page can
-        // pull in its sibling script and stylesheet, and nothing else.
-        webView.loadFileURL(index, allowingReadAccessTo: index.deletingLastPathComponent())
+        bridge.documentLoader.start(
+            installPolicy: { [weak webView] in
+                let rules = try await ReplayWebResourcePolicy.compile()
+                try Task.checkCancellation()
+                guard let webView else { throw CancellationError() }
+                webView.configuration.userContentController.add(rules)
+            },
+            loadDocument: { [weak webView] in
+                guard let webView else { return }
+                // Read access is scoped to the folder holding the shim so the
+                // page can pull in its sibling script and stylesheet, and
+                // nothing else.
+                webView.loadFileURL(
+                    index,
+                    allowingReadAccessTo: index.deletingLastPathComponent()
+                )
+            },
+            reportFailure: { [weak controller] message in
+                controller?.reportResourcePolicyFailure(message)
+            }
+        )
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: ReplayWebBridge) {
+        coordinator.documentLoader.cancel()
+        webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "player")
         coordinator.controller?.teardown()
     }
@@ -710,7 +850,7 @@ struct ReplayPlayerView: View {
         WKWebViewRepresentable(controller: controller)
             .aspectRatio(16.0 / 10.0, contentMode: .fit)
             .frame(maxWidth: .infinity)
-            .background(Color.black.opacity(0.9))
+            .background(Theme.replayStageBackground.opacity(0.9))
             .clipShape(.rect(cornerRadius: 10))
             .overlay {
                 ZStack {
@@ -850,9 +990,18 @@ struct ReplayPlayerView: View {
 
     private func feedPlayer() {
         guard controller.isDocumentReady, loader.canBoot, controller.failure == nil else { return }
-        let batch = loader.drainPending()
-        guard !batch.isEmpty else { return }
-        controller.submit(events: batch, reduceMotion: reduceMotion, colorScheme: colorScheme)
+        let delivery = loader.drainPendingDelivery()
+        guard !delivery.events.isEmpty else { return }
+        if delivery.mode == .restart {
+            controller.restartPlayback(
+                rebasingPlayheadBy: delivery.playheadAdjustment
+            )
+        }
+        controller.submit(
+            events: delivery.events,
+            reduceMotion: reduceMotion,
+            colorScheme: colorScheme
+        )
     }
 
     private func expand() {
@@ -949,7 +1098,7 @@ struct PlayerTransportBar: View {
     private var positionAccessibilityValue: String {
         var value = "\(SessionClock.spoken(position.wrappedValue)) of \(SessionClock.spoken(duration))"
         guard !markers.isEmpty else { return value }
-        value += ". \(markers.count) key events"
+        value += ". \(SessionReplayMarker.accessibilityCountDescription(markers.count))"
         if let activeMarker {
             value += ". Current key event: \(activeMarker.label)"
         }

@@ -6,9 +6,9 @@ import Testing
 
 @Suite("Replay event archive")
 struct ReplayArchiveTests {
-    @Test("incremental delivery uses fetched batches when a later range sorts earlier")
+    @Test("an earlier batch restarts delivery from the globally sorted archive")
     @MainActor
-    func incrementalDeliveryDoesNotSliceTheSortedArchive() {
+    func earlierBatchRestartsDelivery() {
         var ledger = ReplayArchiveDeliveryLedger()
         let firstBatch = [
             event("first-40", at: 40_000),
@@ -16,20 +16,66 @@ struct ReplayArchiveTests {
         ]
         ledger.append(firstBatch)
 
-        let boot = ledger.delivery(sortedArchive: firstBatch, after: nil)
+        let boot = ledger.delivery(
+            sortedArchive: firstBatch,
+            currentOriginMS: 40_000,
+            after: nil
+        )
         #expect(boot.mode == .restart)
         #expect(boot.events.map(\.windowID) == ["first-40", "first-50"])
+        #expect(boot.playheadAdjustment == 0)
 
         let secondBatch = [
             event("second-1", at: 1_000),
             event("second-50", at: 50_000),
         ]
-        ledger.append(secondBatch)
         let globallySorted = ReplayLoader.mergedArchivedEvents(firstBatch, with: secondBatch)
+        ledger.restart()
 
-        let incremental = ledger.delivery(sortedArchive: globallySorted, after: boot.cursor)
-        #expect(incremental.mode == .append)
-        #expect(incremental.events.map(\.windowID) == ["second-1", "second-50"])
+        let restart = ledger.delivery(
+            sortedArchive: globallySorted,
+            currentOriginMS: 1_000,
+            after: boot.cursor
+        )
+        #expect(restart.mode == .restart)
+        #expect(
+            restart.events.map(\.windowID)
+                == ["second-1", "first-40", "first-50", "second-50"]
+        )
+        #expect(restart.playheadAdjustment == 39)
+    }
+
+    @Test("a later monotonic batch stays exactly-once append delivery")
+    @MainActor
+    func monotonicBatchAppends() {
+        var ledger = ReplayArchiveDeliveryLedger()
+        let first = [event("first", at: 1_000)]
+        ledger.append(first)
+        let boot = ledger.delivery(
+            sortedArchive: first,
+            currentOriginMS: 1_000,
+            after: nil
+        )
+
+        let later = [event("later", at: 2_000)]
+        ledger.append(later)
+        let append = ledger.delivery(
+            sortedArchive: first + later,
+            currentOriginMS: 1_000,
+            after: boot.cursor
+        )
+
+        #expect(append.mode == .append)
+        #expect(append.events.map(\.windowID) == ["later"])
+        #expect(append.playheadAdjustment == 0)
+
+        let empty = ledger.delivery(
+            sortedArchive: first + later,
+            currentOriginMS: 1_000,
+            after: append.cursor
+        )
+        #expect(empty.mode == .append)
+        #expect(empty.events.isEmpty)
     }
 
     @Test("delivery restarts after archive reset and recovers from a smaller count")
@@ -41,10 +87,18 @@ struct ReplayArchiveTests {
             event("old-2", at: 2_000),
         ]
         ledger.append(original)
-        let oldCursor = ledger.delivery(sortedArchive: original, after: nil).cursor
+        let oldCursor = ledger.delivery(
+            sortedArchive: original,
+            currentOriginMS: 1_000,
+            after: nil
+        ).cursor
 
         ledger.reset()
-        let reset = ledger.delivery(sortedArchive: [], after: oldCursor)
+        let reset = ledger.delivery(
+            sortedArchive: [],
+            currentOriginMS: nil,
+            after: oldCursor
+        )
         #expect(reset.mode == .restart)
         #expect(reset.events.isEmpty)
         #expect(reset.cursor.generation != oldCursor.generation)
@@ -52,9 +106,92 @@ struct ReplayArchiveTests {
 
         let replacement = [event("new-1", at: 500)]
         ledger.append(replacement)
-        let recovered = ledger.delivery(sortedArchive: replacement, after: reset.cursor)
+        let recovered = ledger.delivery(
+            sortedArchive: replacement,
+            currentOriginMS: 500,
+            after: reset.cursor
+        )
         #expect(recovered.mode == .append)
         #expect(recovered.events.map(\.windowID) == ["new-1"])
+    }
+
+    @Test("stale cursors compute cumulative rebase across multiple backfills")
+    @MainActor
+    func multipleBackfillsRebaseStaleCursors() {
+        var ledger = ReplayArchiveDeliveryLedger()
+        let initial = [event("initial", at: 40_000)]
+        ledger.append(initial)
+        let initialDelivery = ledger.delivery(
+            sortedArchive: initial,
+            currentOriginMS: 40_000,
+            after: nil
+        )
+
+        let firstBackfill = [event("first-backfill", at: 1_000)] + initial
+        ledger.restart()
+        let firstRestart = ledger.delivery(
+            sortedArchive: firstBackfill,
+            currentOriginMS: 1_000,
+            after: initialDelivery.cursor
+        )
+        #expect(firstRestart.playheadAdjustment == 39)
+
+        let secondBackfill = [event("second-backfill", at: -5_000)] + firstBackfill
+        ledger.restart()
+        let fromFirstRestart = ledger.delivery(
+            sortedArchive: secondBackfill,
+            currentOriginMS: -5_000,
+            after: firstRestart.cursor
+        )
+        let fromOriginal = ledger.delivery(
+            sortedArchive: secondBackfill,
+            currentOriginMS: -5_000,
+            after: initialDelivery.cursor
+        )
+
+        #expect(fromFirstRestart.playheadAdjustment == 6)
+        #expect(fromOriginal.playheadAdjustment == 45)
+        #expect(fromFirstRestart.mode == .restart)
+        #expect(fromOriginal.mode == .restart)
+    }
+
+    @Test("loader backfill replaces compact pending and rebases the replay clock")
+    @MainActor
+    func loaderBackfillRestartsCompactDelivery() async throws {
+        let transport = BackfillRangeTransport()
+        let loader = ReplayLoader()
+        let replay = try recording()
+        let load = Task {
+            await loader.start(
+                client: client(transport: transport),
+                projectID: 1_001,
+                recording: replay
+            )
+        }
+
+        await transport.waitForBackfillRequest()
+        #expect(loader.replayStart == Date(timeIntervalSince1970: 40))
+        #expect(loader.bufferedSeconds == 10)
+        let compactBoot = loader.drainPendingDelivery()
+        let expandedBoot = loader.archiveDelivery(after: nil)
+        #expect(compactBoot.mode == .append)
+        #expect(compactBoot.events.map(\.windowID) == ["first-40", "first-50"])
+
+        await transport.releaseBackfill()
+        await load.value
+
+        #expect(loader.replayStart == Date(timeIntervalSince1970: 1))
+        #expect(loader.bufferedSeconds == 49)
+        let compactRestart = loader.drainPendingDelivery()
+        let expandedRestart = loader.archiveDelivery(after: expandedBoot.cursor)
+        let expected = ["second-1", "first-40", "first-50", "second-50"]
+        #expect(compactRestart.mode == .restart)
+        #expect(compactRestart.events.map(\.windowID) == expected)
+        #expect(compactRestart.playheadAdjustment == 39)
+        #expect(expandedRestart.mode == .restart)
+        #expect(expandedRestart.events.map(\.windowID) == expected)
+        #expect(expandedRestart.playheadAdjustment == 39)
+        #expect(loader.drainPendingDelivery().events.isEmpty)
     }
 
     @Test("the archive merge preserves each source's equal-timestamp order")
@@ -260,6 +397,75 @@ private actor SuspendedBlobTransport: HTTPTransport {
             """
             ["archive-demo",{"type":2,"timestamp":1000,"data":{}}]
             ["archive-demo",{"type":3,"timestamp":2000,"data":{}}]
+            """.utf8
+        )
+    }
+}
+
+private actor BackfillRangeTransport: HTTPTransport {
+    private var backfillRequestStarted = false
+    private var backfillRequestWaiter: CheckedContinuation<Void, Never>?
+    private var backfillGate: CheckedContinuation<Void, Never>?
+    private var releaseRequested = false
+
+    func waitForBackfillRequest() async {
+        guard !backfillRequestStarted else { return }
+        await withCheckedContinuation { backfillRequestWaiter = $0 }
+    }
+
+    func releaseBackfill() {
+        releaseRequested = true
+        backfillGate?.resume()
+        backfillGate = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let key = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "start_blob_key" })?
+            .value
+
+        switch key {
+        case nil:
+            return response(for: request, data: listing)
+        case "0":
+            return response(for: request, data: initialEvents)
+        case "20":
+            backfillRequestStarted = true
+            backfillRequestWaiter?.resume()
+            backfillRequestWaiter = nil
+            await withCheckedContinuation { continuation in
+                if releaseRequested {
+                    continuation.resume()
+                } else {
+                    backfillGate = continuation
+                }
+            }
+            return response(for: request, data: backfillEvents)
+        default:
+            throw PostHogError.transport("Unexpected synthetic blob range")
+        }
+    }
+
+    private var listing: Data {
+        let sources = (0...20).map { #"{"source":"blob_v2","blob_key":"\#($0)"}"# }
+        return Data(#"{"sources":[\#(sources.joined(separator: ","))]}"#.utf8)
+    }
+
+    private var initialEvents: Data {
+        Data(
+            """
+            ["first-40",{"type":2,"timestamp":40000,"data":{}}]
+            ["first-50",{"type":3,"timestamp":50000,"data":{}}]
+            """.utf8
+        )
+    }
+
+    private var backfillEvents: Data {
+        Data(
+            """
+            ["second-1",{"type":3,"timestamp":1000,"data":{}}]
+            ["second-50",{"type":3,"timestamp":50000,"data":{}}]
             """.utf8
         )
     }

@@ -89,4 +89,34 @@ struct ReplayTimelineMarkerTests {
             SessionReplayMarker.make(detail: nil, origin: nil, duration: 10).isEmpty
         )
     }
+
+    @Test("trims fallback event names and rejects whitespace-only labels")
+    func sanitizesMarkerLabels() throws {
+        let detail = try SessionSummaryDetail.decode(from: Data(#"""
+            {
+              "session_id":"synthetic-session",
+              "summary":{
+                "segments":[{"index":0,"name":"Synthetic moments"}],
+                "key_actions":[{"segment_index":0,"events":[
+                  {"event_id":"trimmed","description":"   ",
+                   "event":"  Synthetic click  ","milliseconds_since_start":1000},
+                  {"event_id":"empty","description":"\n\t",
+                   "event":"   ","milliseconds_since_start":2000}
+                ]}]
+              }
+            }
+            """#.utf8))
+
+        let markers = SessionReplayMarker.make(
+            detail: detail, origin: nil, duration: 10
+        )
+
+        #expect(markers.map(\.label) == ["Synthetic click", "Key event"])
+    }
+
+    @Test("accessibility marker counts use singular grammar")
+    func markerCountDescription() {
+        #expect(SessionReplayMarker.accessibilityCountDescription(1) == "1 key event")
+        #expect(SessionReplayMarker.accessibilityCountDescription(2) == "2 key events")
+    }
 }

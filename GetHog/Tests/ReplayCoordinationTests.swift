@@ -75,6 +75,29 @@ struct ReplayCoordinationTests {
         #expect(!controller.isPlaying)
     }
 
+    @Test("renderer restarts rebase the same absolute recorded moment at ready")
+    @MainActor
+    func rendererRestartRebasesPreparedPlayback() {
+        let controller = ReplayPlayerController()
+        controller.handle(message: ["type": "ready", "totalTime": 100_000.0])
+        controller.handle(message: ["type": "time", "currentTime": 5_000.0])
+        controller.setSpeed(2)
+
+        controller.restartPlayback(rebasingPlayheadBy: 39)
+        #expect(!controller.isReady)
+        controller.handle(message: ["type": "ready", "totalTime": 100_000.0])
+
+        #expect(controller.didRestorePreparedPlayback)
+        #expect(controller.expansionHandoffPosition == 44)
+        #expect(controller.speed == 2)
+
+        controller.restartPlayback(rebasingPlayheadBy: 6)
+        controller.handle(message: ["type": "ready", "totalTime": 100_000.0])
+
+        #expect(controller.expansionHandoffPosition == 50)
+        #expect(controller.speed == 2)
+    }
+
     @Test("a rejected interactive commit cannot retain a dead handoff target")
     @MainActor
     func rejectedInteractiveCommitReleasesHandoff() {

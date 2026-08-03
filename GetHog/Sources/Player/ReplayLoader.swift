@@ -5,6 +5,7 @@ import GetHogKit
 struct ReplayArchiveDeliveryCursor: Equatable {
     let generation: Int
     let batchIndex: Int
+    let originTimestampMS: Double?
 }
 
 enum ReplayArchiveDeliveryMode: Equatable {
@@ -16,6 +17,13 @@ struct ReplayArchiveDelivery {
     let mode: ReplayArchiveDeliveryMode
     let events: [SnapshotEvent]
     let cursor: ReplayArchiveDeliveryCursor
+    let playheadAdjustment: TimeInterval
+}
+
+struct ReplayPendingDelivery {
+    let mode: ReplayArchiveDeliveryMode
+    let events: [SnapshotEvent]
+    let playheadAdjustment: TimeInterval
 }
 
 /// Append-only identities for renderer delivery, separate from the globally
@@ -34,13 +42,19 @@ struct ReplayArchiveDeliveryLedger {
         batches.removeAll(keepingCapacity: false)
     }
 
+    mutating func restart() {
+        reset()
+    }
+
     func delivery(
         sortedArchive: [SnapshotEvent],
+        currentOriginMS: Double?,
         after cursor: ReplayArchiveDeliveryCursor?
     ) -> ReplayArchiveDelivery {
         let nextCursor = ReplayArchiveDeliveryCursor(
             generation: generation,
-            batchIndex: batches.count
+            batchIndex: batches.count,
+            originTimestampMS: currentOriginMS
         )
         guard let cursor,
               cursor.generation == generation,
@@ -49,15 +63,28 @@ struct ReplayArchiveDeliveryLedger {
             return ReplayArchiveDelivery(
                 mode: .restart,
                 events: sortedArchive,
-                cursor: nextCursor
+                cursor: nextCursor,
+                playheadAdjustment: Self.playheadAdjustment(
+                    from: cursor?.originTimestampMS,
+                    to: currentOriginMS
+                )
             )
         }
 
         return ReplayArchiveDelivery(
             mode: .append,
             events: batches[cursor.batchIndex...].flatMap { $0 },
-            cursor: nextCursor
+            cursor: nextCursor,
+            playheadAdjustment: 0
         )
+    }
+
+    private static func playheadAdjustment(
+        from previousOriginMS: Double?,
+        to currentOriginMS: Double?
+    ) -> TimeInterval {
+        guard let previousOriginMS, let currentOriginMS else { return 0 }
+        return (previousOriginMS - currentOriginMS) / 1_000
     }
 }
 
@@ -114,6 +141,8 @@ final class ReplayLoader {
     /// Snapshot events fetched but not yet handed to the web player.
     private(set) var pending: [SnapshotEvent] = []
     var pendingCount: Int { pending.count }
+    @ObservationIgnored private var pendingDeliveryMode: ReplayArchiveDeliveryMode = .append
+    @ObservationIgnored private var pendingPlayheadAdjustment: TimeInterval = 0
 
     /// Snapshot events retained for the full-screen replay renderer.
     private(set) var archivedEvents: [SnapshotEvent] = []
@@ -231,12 +260,28 @@ final class ReplayLoader {
 
     /// Hands over everything fetched since the last call.
     func drainPending() -> [SnapshotEvent] {
-        defer { pending.removeAll(keepingCapacity: true) }
-        return pending
+        drainPendingDelivery().events
+    }
+
+    func drainPendingDelivery() -> ReplayPendingDelivery {
+        defer {
+            pending.removeAll(keepingCapacity: true)
+            pendingDeliveryMode = .append
+            pendingPlayheadAdjustment = 0
+        }
+        return ReplayPendingDelivery(
+            mode: pendingDeliveryMode,
+            events: pending,
+            playheadAdjustment: pendingPlayheadAdjustment
+        )
     }
 
     func archiveDelivery(after cursor: ReplayArchiveDeliveryCursor?) -> ReplayArchiveDelivery {
-        archiveDeliveryLedger.delivery(sortedArchive: archivedEvents, after: cursor)
+        archiveDeliveryLedger.delivery(
+            sortedArchive: archivedEvents,
+            currentOriginMS: firstTimestampMS,
+            after: cursor
+        )
     }
 
     /// Clears all progress so a failed load can be retried from scratch.
@@ -245,6 +290,8 @@ final class ReplayLoader {
         availability = .idle
         isFetching = false
         pending = []
+        pendingDeliveryMode = .append
+        pendingPlayheadAdjustment = 0
         archivedEvents.removeAll(keepingCapacity: false)
         archiveDeliveryLedger.reset()
         archiveDeliveryRevision &+= 1
@@ -333,27 +380,40 @@ final class ReplayLoader {
             return
         }
 
-        let sorted = events.sorted { $0.timestamp < $1.timestamp }
         let archiveBatch = events.enumerated().sorted { left, right in
             left.element.timestamp == right.element.timestamp
                 ? left.offset < right.offset
                 : left.element.timestamp < right.element.timestamp
         }.map(\.element)
+        let previousFirstTimestampMS = firstTimestampMS
         archivedEvents = Self.mergedArchivedEvents(archivedEvents, with: archiveBatch)
-        archiveDeliveryLedger.append(archiveBatch)
+        let newFirstTimestampMS = archivedEvents.first?.timestamp
+        if let previousFirstTimestampMS,
+           let newFirstTimestampMS,
+           newFirstTimestampMS < previousFirstTimestampMS {
+            let adjustment = (previousFirstTimestampMS - newFirstTimestampMS) / 1_000
+            archiveDeliveryLedger.restart()
+            pending = archivedEvents
+            if pendingDeliveryMode == .restart {
+                pendingPlayheadAdjustment += adjustment
+            } else {
+                pendingDeliveryMode = .restart
+                pendingPlayheadAdjustment = adjustment
+            }
+        } else {
+            archiveDeliveryLedger.append(archiveBatch)
+            pending.append(contentsOf: archiveBatch)
+        }
         archiveDeliveryRevision &+= 1
 
-        if firstTimestampMS == nil, let first = sorted.first {
-            firstTimestampMS = first.timestamp
-            replayStart = Date(timeIntervalSince1970: first.timestamp / 1000)
-        }
-        if let last = sorted.last {
-            lastTimestampMS = max(lastTimestampMS ?? last.timestamp, last.timestamp)
+        firstTimestampMS = newFirstTimestampMS
+        lastTimestampMS = archivedEvents.last?.timestamp
+        if let firstTimestampMS {
+            replayStart = Date(timeIntervalSince1970: firstTimestampMS / 1_000)
         }
 
-        hasFullSnapshot = hasFullSnapshot || sorted.contains { $0.isFullSnapshot }
-        totalEventCount += sorted.count
-        pending.append(contentsOf: sorted)
+        hasFullSnapshot = hasFullSnapshot || archiveBatch.contains { $0.isFullSnapshot }
+        totalEventCount += archiveBatch.count
 
         if let first = firstTimestampMS, let last = lastTimestampMS {
             bufferedSeconds = max(0, (last - first) / 1000)

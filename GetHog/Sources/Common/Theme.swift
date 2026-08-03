@@ -33,6 +33,9 @@ enum Theme {
         dark: Color(hex: 0x1F1E1C)
     )
 
+    /// Neutral letterbox behind locally rendered session replays.
+    static let replayStageBackground = Color.black
+
     /// Warm border, a shade darker than the page.
     ///
     /// Load-bearing rather than decorative: a white card on a pale ground has no
