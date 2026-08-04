@@ -100,6 +100,29 @@ enum DemoLaunch {
         return false
     }
 
+    /// Polls a condition instead of sleeping through it.
+    ///
+    /// The sibling of `wait(for:)` for the cases where what is being waited on
+    /// is not an element appearing — a window resizing, a label changing, a
+    /// count settling. Same polling shape and the same reason for it: a failing
+    /// XCTest wait captures a full element debug description on every retry, and
+    /// enough of those end the run rather than failing a test.
+    ///
+    /// Returns whether the condition held before the deadline, so a caller can
+    /// fail with its own message rather than on a generic timeout.
+    @discardableResult
+    static func wait(
+        timeout: TimeInterval = 15,
+        until condition: () -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            pause(0.25)
+        }
+        return condition()
+    }
+
     /// Waits for the in-flight loads a screen starts on appear.
     ///
     /// `DemoTransport` sleeps 120ms per response on purpose, so every screen

@@ -103,7 +103,7 @@ final class TabBarCustomisationTests: XCTestCase {
             return
         }
         toggle.tap()
-        DemoLaunch.pause(1.5)
+        DemoLaunch.wait { app.buttons["Edit"].exists || app.cells.count > 0 }
 
         XCTAssertTrue(
             app.buttons["Edit"].exists,
@@ -156,9 +156,9 @@ final class TabBarCustomisationTests: XCTestCase {
         XCTAssertTrue(DemoLaunch.wait(for: slot, timeout: 10), "No slot-1 control.")
         slot.assertMeetsMinimumHitTarget("The slot-1 menu")
         slot.tap()
-        DemoLaunch.pause(1.0)
+        DemoLaunch.wait { app.buttons["Logs"].firstMatch.exists }
         app.buttons["Logs"].firstMatch.tap()
-        DemoLaunch.pause(1.5)
+        DemoLaunch.wait { app.buttons["Slot 1: Logs"].exists }
 
         XCTAssertTrue(app.buttons["Slot 1: Logs"].exists, "The slot did not take the new screen.")
 
@@ -203,9 +203,9 @@ final class TabBarCustomisationTests: XCTestCase {
 
         // Demote Dashboards and promote Logs in one move.
         app.buttons["Slot 1: Dashboards"].tap()
-        DemoLaunch.pause(1.0)
+        DemoLaunch.wait { app.buttons["Logs"].firstMatch.exists }
         app.buttons["Logs"].firstMatch.tap()
-        DemoLaunch.pause(1.5)
+        DemoLaunch.wait { app.buttons["Slot 1: Logs"].exists }
 
         XCTAssertTrue(
             app.navigationBars["Tab bar"].exists,
@@ -218,7 +218,7 @@ final class TabBarCustomisationTests: XCTestCase {
             let back = app.navigationBars.firstMatch.buttons.firstMatch
             guard back.exists, back.isHittable else { break }
             back.tap()
-            DemoLaunch.pause(1.0)
+            DemoLaunch.wait { app.navigationBars.firstMatch.exists }
         }
         DemoLaunch.settle(app)
 
@@ -254,7 +254,7 @@ final class TabBarCustomisationTests: XCTestCase {
             return
         }
         toggle.tap()
-        DemoLaunch.pause(1.5)
+        DemoLaunch.wait { app.cells.count > 0 }
 
         let labels = app.cells.allElementsBoundByIndex.map { $0.label }.filter { !$0.isEmpty }
         let duplicated = Set(labels.filter { label in labels.filter { $0 == label }.count > 1 })

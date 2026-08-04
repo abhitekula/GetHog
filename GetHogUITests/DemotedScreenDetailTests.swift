@@ -51,7 +51,7 @@ final class DemotedScreenDetailTests: XCTestCase {
         }
         print("CONTROL row=\(row.frame) hittable=\(row.isHittable)")
         row.tap()
-        DemoLaunch.pause(2.0)
+        DemoLaunch.wait { app.navigationBars[Self.flagKey].exists }
         print("CONTROL barsAfterTap=\(app.navigationBars.allElementsBoundByIndex.map { $0.identifier })")
 
         XCTAssertTrue(
@@ -128,7 +128,15 @@ final class DemotedScreenDetailTests: XCTestCase {
         }
         print("DEMOTED-OPEN \(tab) row=\(row.label.prefix(40)) barsBefore=\(before)")
         row.tap()
-        DemoLaunch.pause(2.5)
+        // Something opened when a bar carries a name that is neither the
+        // screen's nor SwiftUI's host container - the same condition asserted
+        // below, so this waits for exactly what it is about to measure.
+        DemoLaunch.wait {
+            app.navigationBars.allElementsBoundByIndex.contains { bar in
+                let name = bar.identifier
+                return !name.isEmpty && name != title && !name.hasPrefix("_Tt")
+            }
+        }
 
         let after = app.navigationBars.allElementsBoundByIndex.map { $0.identifier }
         print("DEMOTED-OPEN \(tab) barsAfter=\(after)")
@@ -179,9 +187,8 @@ final class DemotedScreenDetailTests: XCTestCase {
             return
         }
         row.tap()
-        DemoLaunch.pause(2.0)
-
         let detail = app.navigationBars[Self.flagKey]
+        DemoLaunch.wait { detail.exists }
         print("DEMOTED-DETAIL window=\(window) flag=\(Self.flagKey) detailBarExists=\(detail.exists)")
         print("DEMOTED-DETAIL barsAfterTap=\(app.navigationBars.allElementsBoundByIndex.map { $0.identifier })")
         print("DEMOTED-DETAIL switchesAfterTap=\(app.switches.allElementsBoundByIndex.map { $0.label }.prefix(6))")
@@ -192,8 +199,18 @@ final class DemotedScreenDetailTests: XCTestCase {
         }
 
         for stage in 1...4 {
+            let widthBefore = app.windows.firstMatch.frame.width
             XCUIDevice.shared.orientation = stage.isMultiple(of: 2) ? .portrait : .landscapeLeft
-            DemoLaunch.pause(3.0)
+            // Wait for the resize to actually land rather than for a fixed
+            // interval, then settle, then read *late* on purpose.
+            //
+            // The late read is not padding and must not be optimised away: the
+            // arrangement this test guards once looked correct the instant a
+            // drag ended and was wrong a second later, which is the whole reason
+            // the check is four crossings rather than one.
+            DemoLaunch.wait { app.windows.firstMatch.frame.width != widthBefore }
+            DemoLaunch.settle(app)
+            DemoLaunch.pause(1.0)
             let bars = app.navigationBars.allElementsBoundByIndex.map { $0.identifier }
             print(
                 "DEMOTED-DETAIL stage=\(stage) width=\(app.windows.firstMatch.frame.width) "

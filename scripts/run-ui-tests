@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+
+# Runs a UI test target across cloned simulators and verifies from the log that
+# tests actually ran.
+#
+# **Both halves are the point, and the second is why this exists.** Parallel
+# testing is a 2.5x cut on this target — measured on a 14-core machine, iPhone
+# 17, GetHogUITests: 576s serially against 230s with four workers, same 73 test
+# cases, no `ExclusiveRun` collisions because that lock keys on `SIMULATOR_UDID`
+# and each clone gets its own.
+#
+# But `-parallel-testing-enabled YES` changes the log format, and the repository
+# rule for reading test results does not survive it:
+#
+#   serial:   Test Case '-[GetHogUITests.FooTests testBar]' passed (1.234 seconds).
+#             Executed 78 tests, with 5 tests skipped and 0 failures ...
+#   parallel: Test case 'FooTests.testBar()' passed on 'Clone 1 of iPhone 17 - ...'
+#             (no "Executed N tests" line is emitted at all)
+#
+# A filter that names nothing still prints `** TEST SUCCEEDED **` and exits 0, so
+# the count is the only honest signal — and every count grep written for the
+# serial format silently reports zero under parallel. That is the failure this
+# wrapper removes: it counts both formats, and it fails when the count is zero
+# no matter what xcodebuild's exit status says.
+#
+#   scripts/run-ui-tests                                  # whole UI target
+#   scripts/run-ui-tests GetHogUITests/TabBarCustomisationTests
+#   DESTINATION_NAME='iPad Air 11-inch (M4)' scripts/run-ui-tests
+#   WORKERS=1 scripts/run-ui-tests                        # serial, for debugging
+#
+# Every argument is passed to `-only-testing:` in order, so several suites can be
+# named. With none, the whole target runs.
+
+set -uo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+
+scheme=${SCHEME:-GetHog}
+project=${PROJECT:-GetHog.xcodeproj}
+destination_name=${DESTINATION_NAME:-iPhone 17}
+target=${TARGET:-GetHogUITests}
+
+# Four was the measured sweet spot; each worker is a booted simulator clone, so
+# raising this past the machine's performance cores buys queueing rather than
+# throughput. `WORKERS=1` disables cloning entirely and restores the serial log
+# format, which is what to use when a failure needs reading in order.
+workers=${WORKERS:-4}
+
+log_file=${LOG_FILE:-$(mktemp "${TMPDIR:-/tmp}/gethog-ui-tests.XXXXXX")}
+
+only_testing=()
+if [ "$#" -eq 0 ]; then
+    only_testing+=("-only-testing:$target")
+else
+    for suite in "$@"; do
+        only_testing+=("-only-testing:$suite")
+    done
+fi
+
+parallel_flags=()
+if [ "$workers" -gt 1 ]; then
+    parallel_flags+=(-parallel-testing-enabled YES -maximum-parallel-testing-workers "$workers")
+else
+    parallel_flags+=(-parallel-testing-enabled NO)
+fi
+
+printf 'Running %s on "%s" with %s worker(s)\n' "${only_testing[*]}" "$destination_name" "$workers"
+printf 'Log: %s\n\n' "$log_file"
+
+started=$SECONDS
+
+# Redirected to a file rather than piped, deliberately: a pipeline reports the
+# *reader's* exit status, and this script has to be able to tell a build failure
+# from a test failure. The two debugger-version lines Xcode 26 emits on every
+# XCUIApplication launch are dropped on the way through; nothing else is.
+(
+    cd "$repository_root" && xcodebuild test \
+        -project "$project" \
+        -scheme "$scheme" \
+        -destination "platform=iOS Simulator,name=$destination_name" \
+        "${only_testing[@]}" \
+        "${parallel_flags[@]}"
+) > "$log_file" 2>&1
+xcodebuild_status=$?
+
+elapsed=$((SECONDS - started))
+
+# Serial format, parallel format, and xcodebuild's own tally. Counted separately
+# so a format change shows up as a zero here rather than as a silent pass.
+serial_passed=$(grep -cE "^Test Case '-\[.*\]' passed" "$log_file")
+serial_failed=$(grep -cE "^Test Case '-\[.*\]' failed" "$log_file")
+parallel_passed=$(grep -cE "^Test case '.*' passed on '" "$log_file")
+parallel_failed=$(grep -cE "^Test case '.*' failed on '" "$log_file")
+
+passed=$((serial_passed + parallel_passed))
+failed=$((serial_failed + parallel_failed))
+executed=$((passed + failed))
+
+printf 'elapsed   %ss\n' "$elapsed"
+printf 'passed    %s\n' "$passed"
+printf 'failed    %s\n' "$failed"
+
+if [ "$failed" -gt 0 ]; then
+    printf '\nFailures:\n'
+    grep -hE "^Test Case '-\[.*\]' failed|^Test case '.*' failed on '" "$log_file" | sed 's/^/  /'
+    printf '\nMessages:\n'
+    grep -hE "error: -\[|error: .*\.swift:[0-9]+" "$log_file" | sort -u | sed "s|$repository_root/||" | head -20 | sed 's/^/  /'
+fi
+
+# **A run that executed nothing is a failure here even when xcodebuild says
+# otherwise.** `-only-testing:` naming a suite or method that does not exist —
+# a typo, or a rename the command line did not follow — runs zero tests, prints
+# `** TEST SUCCEEDED **` and exits 0. Only a wrong *target* is caught by
+# xcodebuild itself, because that one is checked against the scheme.
+if [ "$executed" -eq 0 ]; then
+    printf '\nNO TESTS RAN.\n'
+    printf 'xcodebuild exited %s, which proves nothing on its own: a filter that\n' "$xcodebuild_status"
+    printf 'names nothing still succeeds. Check the suite and method names in:\n'
+    printf '  %s\n' "${only_testing[*]}"
+    printf 'Full log: %s\n' "$log_file"
+    exit 1
+fi
+
+if [ "$xcodebuild_status" -ne 0 ] || [ "$failed" -gt 0 ]; then
+    printf '\nFull log: %s\n' "$log_file"
+    exit 1
+fi
+
+printf '\nAll %s tests passed.\n' "$executed"
