@@ -89,14 +89,64 @@ final class FlagsStore {
 
 struct FlagsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = FlagsStore()
-    @State private var selection: FeatureFlag?
     @State private var search = ""
 
+    /// The open flag, and deliberately **not** `@State`.
+    ///
+    /// This screen used to be one of the four loose tabs, hosted once at both
+    /// widths, and `@State` inside an always-`NavigationSplitView` body was
+    /// correct for exactly that reason. Since the bar became a preference it can
+    /// be **demoted**, and a demoted screen is reached by a push on the search
+    /// tab's stack - where a `NavigationSplitView` is nested inside a
+    /// `NavigationStack` and its selection-driven detail has nowhere to go, so
+    /// the row opened nothing at all.
+    ///
+    /// The fix is the arrangement the seven secondary split views already use:
+    /// carry the selection in `OpenDetails`, push it with
+    /// `navigationDestination(item:)` in compact, and keep the split view for
+    /// regular width only. The **id** is carried rather than the row, so the
+    /// selection survives a reload that replaces the decoded value.
+    private var selectedID: Binding<Int?> {
+        Binding(
+            get: { openDetails[.flags] as? Int },
+            set: { openDetails[.flags] = $0.map(AnyHashable.init) }
+        )
+    }
+
+    private var selection: FeatureFlag? {
+        selectedID.wrappedValue.flatMap { id in store.flags.first { $0.id == id } }
+    }
+
     var body: some View {
-        NavigationSplitView {
-            content
+        if sizeClass == .compact {
+            // No `NavigationSplitView` here, and that is the whole fix: in
+            // compact width this screen is hosted either by its own tab or by a
+            // push on the search stack, and only the second of those was broken.
+            listChrome
+                .navigationDestination(item: selectedID) { id in
+                    if let flag = store.flags.first(where: { $0.id == id }) {
+                        FlagDetailView(flag: flag, controller: store.toggles).id(id)
+                    }
+                }
+        } else {
+            NavigationSplitView {
+                listChrome
+                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 400)
+                    .toolbar(removing: .sidebarToggle)
+            } detail: {
+                detailPane
+            }
+        }
+    }
+
+    /// The list and everything attached to it, shared by both widths so the two
+    /// arrangements cannot drift in what they load or how they search.
+    private var listChrome: some View {
+        content
                 .navigationTitle("Flags")
                 .toolbar { ProjectSwitcher() }
                 .projectSubtitle()
@@ -112,13 +162,6 @@ struct FlagsRoot: View {
                 // "50% rollout · 3 variants". It does not need what a stack
                 // trace message needs, and the release conditions in the detail
                 // pane do.
-                .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 400)
-                // The tab sidebar already puts a toggle in this bar; the split
-                // view added a second, identical one beside it.
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
-            detailPane
-        }
     }
 
     /// The detail column: the chosen flag, or a summary of the product when
@@ -157,7 +200,7 @@ struct FlagsRoot: View {
                 )
             }
         } else {
-            FlagsOverview(store: store, selection: $selection)
+            FlagsOverview(store: store, selection: selectedID)
         }
     }
 
@@ -189,7 +232,7 @@ struct FlagsRoot: View {
     }
 
     private var list: some View {
-        List(selection: $selection) {
+        List(selection: selectedID) {
             // Withheld at accessibility sizes. Measured at AX5: the card grew
             // past the full viewport — title, four-line body and dismiss button
             // — and not one flag row was visible under it, so opening the tab
@@ -216,7 +259,7 @@ struct FlagsRoot: View {
                 if !items.isEmpty {
                     Section {
                         ForEach(items) { flag in
-                            NavigationLink(value: flag) {
+                            NavigationLink(value: flag.id) {
                                 FlagRowView(flag: flag, group: group)
                             }
                             .listRowBackground(

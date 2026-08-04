@@ -41,6 +41,18 @@ enum DebugLaunch {
         environment["GETHOG_TAB"].flatMap { $0.isEmpty ? nil : $0 }
     }
 
+    /// The four screens to put in the tab bar, by `AppTab` raw value, comma
+    /// separated — `GETHOG_TAB_BAR=errorTracking,logs,inbox,health`.
+    ///
+    /// The customised bar cannot be reached any other way from a test: the
+    /// editor is two pushes deep behind Search, and `NavPreferences` has to be
+    /// correct before the first body reads it. Sanitised like a stored value, so
+    /// a typo degrades to the default four rather than to an empty bar.
+    static var tabBar: [String]? {
+        guard let raw = environment["GETHOG_TAB_BAR"], !raw.isEmpty else { return nil }
+        return raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
     /// Shows a single detached screen as the whole app, bypassing the tab bar
     /// and split view — the way to tell whether a layout is misbehaving on its
     /// own or only because of what contains it.

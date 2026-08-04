@@ -181,9 +181,20 @@ enum AppTab: String, Hashable, CaseIterable {
     /// empty navigation bar above it on iPhone and breaks the two-column layout
     /// on iPad. Everything else is stack-less and gets its stack from whatever
     /// is showing it — a `Tab` in `RootView`, or the index behind "More".
-    var ownsNavigationContainer: Bool {
+    /// **All seven build a plain list in compact width**, so asking about the
+    /// width is required rather than incidental. Each renders
+    /// `list.navigationDestination(item:)` below the size-class boundary and
+    /// keeps the split view for regular — in compact they own nothing and need a
+    /// stack from whatever hosts them.
+    ///
+    /// Measured both ways on iPhone, and both failures are silent-looking:
+    /// with this returning `true` unconditionally, a screen *promoted* into the
+    /// bar got no stack from `container(for:)` and tapping a row left
+    /// `navigationBars` empty; and a screen converted to the compact shape while
+    /// this still claimed a container drew no navigation bar at all.
+    func ownsNavigationContainer(compact: Bool) -> Bool {
         switch self {
-        case .dashboards, .events, .sessions, .flags, .people, .errorTracking, .insights: true
+        case .dashboards, .events, .sessions, .flags, .people, .errorTracking, .insights: !compact
         default: false
         }
     }
@@ -228,7 +239,17 @@ extension AppTab {
         // the two answer the same question at different granularities.
         AppTabSection(
             title: "Analyze",
-            tabs: [.insights, .webAnalytics, .clickmap, .people, .groups, .sql]
+            // Dashboards, Events and Sessions lead this group, and their being
+            // here at all is what the tab bar becoming a preference required: a
+            // screen the user demotes out of the bar has to have somewhere to be
+            // listed, and before this these three — and Flags below — were in no
+            // section at all. They lead rather than sitting among the rest
+            // because they are the defaults, and a reader who has customised
+            // nothing should find them where the bar left them.
+            tabs: [
+                .dashboards, .events, .sessions,
+                .insights, .webAnalytics, .clickmap, .people, .groups, .sql,
+            ]
         ),
         AppTabSection(
             title: "Monitor",
@@ -263,7 +284,10 @@ extension AppTab {
             title: "Data",
             tabs: [.warehouse, .pipelines, .automation, .actions, .annotations, .taxonomy]
         ),
-        AppTabSection(title: "Experiment", tabs: [.experiments, .surveys, .earlyAccess]),
+        // Flags leads Experiment rather than joining Analyze, which is where
+        // PostHog's own console files feature flags: a flag is the mechanism an
+        // experiment is run with, and the two screens link to each other.
+        AppTabSection(title: "Experiment", tabs: [.flags, .experiments, .surveys, .earlyAccess]),
         // Renders sit with the other saved artefacts rather than with Sessions:
         // the screen is a library of files somebody kept, not a live analysis
         // surface, and this app can only read it.
@@ -277,8 +301,48 @@ extension AppTab {
     /// index alike: settings are about the app, not about a part of PostHog.
     static let utility: [AppTab] = [.settings]
 
-    /// Everything the phone reaches through the index rather than the tab bar.
-    static let secondary: [AppTab] = sections.flatMap(\.tabs) + utility
+    /// Every screen that can occupy a tab-bar slot.
+    ///
+    /// Defined as the sections' contents, which is what excludes `.search` and
+    /// `.settings` by construction rather than by a list that would need
+    /// maintaining: neither sits in a section, and neither should be choosable
+    /// into the four.
+    static let productScreens: [AppTab] = sections.flatMap(\.tabs)
+
+    /// The sections with `loose` removed — the one rule that decides where a
+    /// screen is listed, so it is listed exactly once.
+    ///
+    /// One helper for two consumers: the compact index and the iPad sidebar.
+    /// Written twice they would drift the first time a screen moved, and the
+    /// difference would only ever show up on one of the two devices.
+    ///
+    /// This became necessary the moment the four defaults moved into sections
+    /// above. Before that they were in no group, so a sidebar could declare them
+    /// loose and render every section without listing anything twice; now it
+    /// would list each of them twice, and the compact index would offer a screen
+    /// that is already a tab.
+    static func groupedScreens(excluding loose: [AppTab]) -> [AppTabSection] {
+        sections.compactMap { section in
+            let tabs = section.tabs.filter { !loose.contains($0) }
+            return tabs.isEmpty ? nil : AppTabSection(title: section.title, tabs: tabs)
+        }
+    }
+
+    /// Everything the phone reaches through the index rather than the tab bar,
+    /// **for the default bar only**.
+    ///
+    /// It used to be a fact about the app; it is now a fact about one
+    /// arrangement of it, because which screens the index holds depends on which
+    /// four the user put in the bar. Kept for the call sites that genuinely mean
+    /// "the default arrangement" — the demo-index ambiguity measurement in
+    /// `SearchSuggestionTests` is one — and *not* for anything that draws the
+    /// index. Those read `NavPreferences.indexedScreens`.
+    ///
+    /// Computed rather than stored, and that is load-bearing: as a `static let`
+    /// it would now hold the four as well, since they are in sections.
+    static var secondary: [AppTab] {
+        groupedScreens(excluding: primary).flatMap(\.tabs) + utility
+    }
 }
 
 /// The screen a tab names.
@@ -458,6 +522,7 @@ struct DetailSheetView: View {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(NavPreferences.self) private var nav
     @Environment(\.horizontalSizeClass) private var sizeClass
     @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
     /// The search tab's stack. Heterogeneous — a screen result pushes an
@@ -482,6 +547,17 @@ struct RootView: View {
     @State private var surveyLifecycle = SurveyLifecycleController()
     @State private var experimentLifecycle = ExperimentLifecycleController()
     @State private var hasAppliedDebugTab = false
+    /// SwiftUI's own record of how the iPad sidebar has been rearranged.
+    ///
+    /// **iPad only, and the gate is `tabViewCustomization`'s own optional
+    /// binding rather than a branch in the view tree** — passing `nil` switches
+    /// the whole mechanism off without changing the shape of the `TabView`, so
+    /// the single-`TabView`-across-both-widths arrangement survives intact.
+    ///
+    /// Two stores describing one bar is what this avoids. On iPhone the four
+    /// loose tabs come from `NavPreferences`; on iPad they are the static
+    /// defaults and this holds the arrangement instead. No device has both.
+    @AppStorage("sidebarCustomization") private var sidebarCustomization = TabViewCustomization()
     /// Set only when a link could not do what it said. Success is silent; see
     /// `LinkNotice`.
     @State private var linkNotice: LinkNotice?
@@ -504,20 +580,43 @@ struct RootView: View {
             tabs
                 .environment(openDetails)
                 .tabViewStyle(.sidebarAdaptable)
+                // **Measured** on iPad Air 11-inch (M4), 820 x 1180, sidebar
+                // open: this adds the system's own Edit button to the sidebar
+                // header at (18, 36, 54.5, 36) - 18 buttons against 17 without
+                // it. The control run kept the `customizationID`s and removed
+                // only this line, and the button went away, which is what makes
+                // the attribution causal rather than coincidental.
+                //
+                // **Measured** on iPhone 17, 402 x 874: nothing. No Edit, no
+                // Customize, no Rearrange anywhere in the rendered tree, and a
+                // 1.2s long press on a tab bar button surfaced no affordance
+                // (183 elements before, 185 after). The API cannot be driven
+                // into the compact bar programmatically either -
+                // `TabCustomization.tabBarVisibility` is get-only. That is why
+                // there is a Settings editor at all.
+                .tabViewCustomization(isPad ? $sidebarCustomization : nil)
                 // Gives the tab bar's height back to the data while reading down a
                 // long list, which is most of what this app is. It restores itself
                 // on the first upward scroll, so nothing becomes unreachable.
                 .tabBarMinimizeBehavior(.onScrollDown)
-                // Only the four loose tabs get a number: they are the ones always
-                // present in the tab bar. Settings takes the platform-conventional
-                // comma rather than a fifth number it would have to compete for.
-                .keyboardActions([
-                    KeyboardAction(key: "1", title: AppTab.dashboards.title) { open(.dashboards) },
-                    KeyboardAction(key: "2", title: AppTab.events.title) { open(.events) },
-                    KeyboardAction(key: "3", title: AppTab.sessions.title) { open(.sessions) },
-                    KeyboardAction(key: "4", title: AppTab.flags.title) { open(.flags) },
-                    KeyboardAction(key: ",", title: AppTab.settings.title) { open(.settings) },
-                ])
+                // Only the loose tabs get a number: they are the ones always
+                // present in the tab bar, and which four those are is now the
+                // user's choice - so Cmd-1..4 name whatever they put there rather
+                // than four screens that may have left it. Settings takes the
+                // platform-conventional comma rather than a fifth number it
+                // would have to compete for.
+                .keyboardActions(
+                    looseTabs.enumerated().map { index, tab in
+                        // `KeyEquivalent` is expressible by a literal but not
+                        // convertible from a `Character`, and the digit here is
+                        // computed rather than written out.
+                        KeyboardAction(
+                            key: KeyEquivalent(Character("\(index + 1)")),
+                            title: tab.title
+                        ) { open(tab) }
+                    }
+                        + [KeyboardAction(key: ",", title: AppTab.settings.title) { open(.settings) }]
+                )
                 // Attached **here**, to the one view in the tree that a resize
                 // never rebuilds, rather than inside the four screens that own
                 // these details. See `presentedDetail`.
@@ -640,9 +739,30 @@ struct RootView: View {
     /// identity — and therefore their loaded data and scroll position — when a
     /// Max-size iPhone is rotated across the size-class boundary. Two separate
     /// `TabView`s threw all of that away on every rotation.
+    /// Whether this process is running on an iPad.
+    ///
+    /// **Idiom, deliberately, and not the size class** - which is the
+    /// discriminator used everywhere else in this file. An iPhone 17 Pro Max in
+    /// landscape *is* regular width, so a size-class gate would make the user's
+    /// chosen four vanish on rotation and return on rotating back. Idiom is a
+    /// per-process constant, which keeps this a static branch: the single
+    /// `TabView` below stays single, and nothing rebuilds when the device turns.
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
+    /// The tabs that sit loose in the bar - or, in regular width, above the
+    /// sidebar's sections.
+    ///
+    /// The user's four on iPhone; the defaults on iPad, where SwiftUI's own
+    /// customisation owns the arrangement instead.
+    private var looseTabs: [AppTab] { isPad ? AppTab.primary : nav.barTabs }
+
+    /// The five the bar draws, whatever the user chose. Search is always last,
+    /// and can never be one of the four.
+    private var alwaysVisible: [AppTab] { looseTabs + [.search] }
+
     private var tabs: some View {
         TabView(selection: tabSelection) {
-            tabItems(for: AppTab.primary)
+            tabItems(for: looseTabs)
 
             searchTab
 
@@ -687,6 +807,10 @@ struct RootView: View {
             Tab(tab.title, systemImage: tab.systemImage, value: tab) {
                 container(for: tab)
             }
+            // Applied at both idioms, and inert on iPhone: the control run
+            // recorded on `.tabViewCustomization` above kept these ids and
+            // removed only the binding, and no editor appeared.
+            .customizationID(tab.rawValue)
         }
     }
 
@@ -695,10 +819,14 @@ struct RootView: View {
     /// the search tab.
     @TabContentBuilder<AppTab>
     private var sidebarSections: some TabContent<AppTab> {
-        ForEach(AppTab.sections) { section in
+        // Excluding the loose tabs is what the taxonomy change made necessary:
+        // the four defaults now live inside sections, so a sidebar that declared
+        // them loose *and* rendered every section would list each of them twice.
+        ForEach(AppTab.groupedScreens(excluding: looseTabs)) { section in
             TabSection(section.title) {
                 tabItems(for: section.tabs)
             }
+            .customizationID("section.\(section.title)")
         }
     }
 
@@ -708,7 +836,7 @@ struct RootView: View {
     /// its own stack would draw a redundant navigation bar when content pushed.
     @ViewBuilder
     private func container(for tab: AppTab) -> some View {
-        if tab.ownsNavigationContainer {
+        if tab.ownsNavigationContainer(compact: sizeClass == .compact) {
             TabRootView(tab: tab)
         } else {
             NavigationStack {
@@ -782,7 +910,7 @@ struct RootView: View {
                     // Nothing past the fifth has a tab of its own on a phone;
                     // those destinations sit on the search tab's stack, and
                     // search is the tab selected while one of them is showing.
-                    AppTab.alwaysVisible.contains(selectedTab) ? selectedTab : .search
+                    alwaysVisible.contains(selectedTab) ? selectedTab : .search
                 } else {
                     // Every tab has a sidebar row of its own in regular width,
                     // search included, so nothing needs translating here.
@@ -813,10 +941,23 @@ struct RootView: View {
         // destination has a sidebar row of its own, so selecting it is the whole
         // job and nothing needs pushing.
         guard sizeClass == .compact else { return }
-        if AppTab.secondary.contains(tab) {
+        if !alwaysVisible.contains(tab) {
             var path = NavigationPath()
             path.append(tab)
             searchPath = path
+        } else {
+            // A destination with a bar row of its own, so nothing needs pushing
+            // - but whatever *was* pushed has to go, and that is not tidiness.
+            //
+            // **Measured**, launching with a custom bar and `GETHOG_TAB=logs`:
+            // the app came up on *Dashboards*, under the Search tab.
+            // `restorePushedTab()` runs first and pushes the scene-restored
+            // `selectedTab` - which that bar does not hold - and the pushed
+            // destination carries `.onAppear { selectedTab = tab }` so the
+            // sidebar can follow it. That write lands *after* `open(.logs)` and
+            // puts the selection back on a screen with no bar row, so
+            // `tabSelection` falls through to `.search`.
+            searchPath = NavigationPath()
         }
     }
 
@@ -935,7 +1076,7 @@ struct RootView: View {
     private func restorePushedTab() {
         guard sizeClass == .compact,
               searchPath.isEmpty,
-              AppTab.secondary.contains(selectedTab)
+              !alwaysVisible.contains(selectedTab)
         else { return }
         searchPath.append(selectedTab)
     }

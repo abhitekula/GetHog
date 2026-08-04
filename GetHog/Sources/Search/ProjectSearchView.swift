@@ -27,6 +27,7 @@ import SwiftUI
 /// them.
 struct ProjectSearchView: View {
     @Environment(AppModel.self) private var model
+    @Environment(NavPreferences.self) private var nav
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var store = ProjectSearchStore()
     @State private var recents = RecentSearchStore()
@@ -43,7 +44,7 @@ struct ProjectSearchView: View {
     var body: some View {
         List {
             if showsScreens {
-                ScreenIndexSections(query: query)
+                ScreenIndexSections(query: query, loose: nav.barTabs)
             }
             objects
             if !store.entries.isEmpty {
@@ -211,8 +212,8 @@ struct ProjectSearchView: View {
     private var rotorScreens: [AppTab] {
         guard showsScreens else { return [] }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return AppTab.secondary }
-        return AppTab.secondary.filter { $0.title.localizedCaseInsensitiveContains(needle) }
+        guard !needle.isEmpty else { return nav.indexedScreens }
+        return nav.indexedScreens.filter { $0.title.localizedCaseInsensitiveContains(needle) }
     }
 
     // MARK: - Objects
@@ -319,7 +320,7 @@ struct ProjectSearchView: View {
     private var resultSections: some View {
         let groups = ProjectSearchIndex.results(in: store.entries, query: query)
         if groups.isEmpty {
-            if showsScreens && ScreenIndexSections.hasMatches(query: query) {
+            if showsScreens && ScreenIndexSections.hasMatches(query: query, loose: nav.barTabs) {
                 // Screens matched and objects did not. Said plainly rather than
                 // left blank, or a reader would reasonably conclude the field
                 // only ever searched the app's own screens.

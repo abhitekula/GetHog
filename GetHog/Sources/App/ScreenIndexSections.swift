@@ -31,6 +31,13 @@ import SwiftUI
 /// destination.
 struct ScreenIndexSections: View {
     let query: String
+    /// The screens that are in the tab bar, and therefore must not be listed
+    /// here as well.
+    ///
+    /// Passed in rather than read from `NavPreferences` directly, so this view
+    /// stays a pure function of what it is told and can be tested against an
+    /// arrangement nobody has stored.
+    let loose: [AppTab]
 
     var body: some View {
         ForEach(visibleSections) { section in
@@ -74,7 +81,7 @@ struct ScreenIndexSections: View {
     // MARK: - Filtering
 
     private var visibleSections: [AppTabSection] {
-        AppTab.sections.compactMap { section in
+        AppTab.groupedScreens(excluding: loose).compactMap { section in
             let tabs = Self.matching(section.tabs, query: query)
             return tabs.isEmpty ? nil : AppTabSection(title: section.title, tabs: tabs)
         }
@@ -85,8 +92,12 @@ struct ScreenIndexSections: View {
     /// Whether this half of the list has anything in it, so the host can tell
     /// "no screens, but objects" from "nothing at all" and word the empty state
     /// for what was actually searched.
-    static func hasMatches(query: String) -> Bool {
-        !matching(AppTab.secondary, query: query).isEmpty
+    /// Takes the same `loose` set the view does, and for the same reason: a
+    /// screen in the tab bar is not in this list, so an empty state that counted
+    /// it would claim a match the reader cannot see.
+    static func hasMatches(query: String, loose: [AppTab]) -> Bool {
+        let indexed = AppTab.groupedScreens(excluding: loose).flatMap(\.tabs) + AppTab.utility
+        return !matching(indexed, query: query).isEmpty
     }
 
     /// Filtered inside the groups rather than flattened into one result list.

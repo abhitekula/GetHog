@@ -93,15 +93,54 @@ final class SessionsStore {
 
 struct SessionsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = SessionsStore()
-    @State private var selection: SessionRecording?
     @State private var showsFilters = false
 
+    /// The open recording's id, and deliberately **not** `@State`.
+    ///
+    /// See `FlagsRoot.selectedID` for the measurement. Since the tab bar became
+    /// a preference this screen can be demoted, a demoted screen is pushed onto
+    /// the search tab's stack, and a `NavigationSplitView` nested in a
+    /// `NavigationStack` has nowhere to put its detail - so the row opened
+    /// nothing at all.
+    private var selectedID: Binding<String?> {
+        Binding(
+            get: { openDetails[.sessions] as? String },
+            set: { openDetails[.sessions] = $0.map(AnyHashable.init) }
+        )
+    }
+
+    private var selection: SessionRecording? {
+        selectedID.wrappedValue.flatMap { id in store.recordings.first { $0.id == id } }
+    }
+
     var body: some View {
+        Group {
+            if sizeClass == .compact {
+                listChrome
+                    .navigationDestination(item: selectedID) { id in
+                        if let recording = store.recordings.first(where: { $0.id == id }) {
+                            SessionDetailView(recording: recording).id(id)
+                        }
+                    }
+            } else {
+                NavigationSplitView {
+                    listChrome
+                } detail: {
+                    detailPane
+                }
+            }
+        }
+    }
+
+    /// The list and everything attached to it, shared by both widths so the two
+    /// arrangements cannot drift in what they load, search or filter.
+    private var listChrome: some View {
         @Bindable var store = store
 
-        return NavigationSplitView {
-            content
+        return content
                 .navigationTitle("Sessions")
                 .toolbar {
                     ProjectSwitcher()
@@ -163,9 +202,6 @@ struct SessionsRoot: View {
                     SessionFilterSheet(filter: $store.filter)
                         .presentationDetents([.medium, .large])
                 }
-        } detail: {
-            detailPane
-        }
     }
 
     /// The detail column: the chosen recording, or a summary of the product when
@@ -200,7 +236,7 @@ struct SessionsRoot: View {
             SessionsOverview(
                 recordings: store.recordings,
                 loadedAt: store.loadedAt,
-                selection: $selection
+                selection: selectedID
             )
         }
     }
@@ -270,7 +306,7 @@ struct SessionsRoot: View {
     }
 
     private var list: some View {
-        List(selection: $selection) {
+        List(selection: selectedID) {
             if store.filter.isNarrowed {
                 ActiveFilterSummary(filter: store.filter) { store.filter.clear() }
                     .listRowBackground(Color.clear)
@@ -278,7 +314,7 @@ struct SessionsRoot: View {
             }
 
             ForEach(store.recordings) { recording in
-                NavigationLink(value: recording) {
+                NavigationLink(value: recording.id) {
                     SessionRowView(recording: recording)
                 }
                 .listRowBackground(

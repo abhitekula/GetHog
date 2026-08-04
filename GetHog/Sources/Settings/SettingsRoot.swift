@@ -12,6 +12,7 @@ import TipKit
 /// plainly here rather than buried under "Advanced".
 struct SettingsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(NavPreferences.self) private var nav
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var maskedKey = ""
@@ -37,6 +38,7 @@ struct SettingsRoot: View {
             accountSection
             projectSection
             alertsSection
+            navigationSection
             permissionsSection
             apiKeySection
             dataSection
@@ -157,6 +159,38 @@ struct SettingsRoot: View {
             // row called "alerts" is exactly where someone forms the assumption
             // that this app watches their numbers continuously. It does not.
             Text("Thresholds on the metrics your widgets already read, checked when iOS wakes the app in the background. Notices arrive late rather than live, and nothing is sent to a server — the check runs on this device.")
+        }
+    }
+
+    // MARK: - Navigation
+
+    /// Where the tab bar is arranged - on a phone.
+    ///
+    /// Absent on iPad, and replaced by a line pointing at the system's own
+    /// control: there the sidebar is rearranged by SwiftUI's Edit button and
+    /// this preference is not read at all. Showing an inert row would be worse
+    /// than showing none, because a preference that does nothing reads as a bug
+    /// in the app rather than as a choice about it.
+    ///
+    /// The idiom check matches `RootView.isPad` deliberately - that is the one
+    /// thing deciding which of the two stores a device uses, and a second rule
+    /// here could disagree with it.
+    @ViewBuilder
+    private var navigationSection: some View {
+        Section {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                NavigationLink {
+                    TabBarSettingsView()
+                } label: {
+                    LabeledContent("Tab bar", value: nav.barTabs.map(\.title).joined(separator: ", "))
+                }
+            }
+        } header: {
+            SectionLabel(text: "Navigation", systemImage: "square.grid.2x2")
         }
     }
 

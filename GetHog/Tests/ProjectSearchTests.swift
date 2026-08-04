@@ -379,14 +379,24 @@ struct ProjectSearchTests {
 /// was no search affordance anywhere. None of that is visible from a compiler,
 /// so what can be checked is the arithmetic underneath it — five slots, and
 /// every destination reachable from one of them.
+@MainActor
 @Suite("Tab structure")
 struct AppTabStructureTests {
+
+    /// A suite of its own rather than `.standard`, so nothing here writes the
+    /// bar of whatever test runs next in the same process.
+    private func prefs() -> NavPreferences {
+        let suite = "AppTabStructureTests"
+        UserDefaults.standard.removePersistentDomain(forName: suite)
+        return NavPreferences(defaults: UserDefaults(suiteName: suite)!)
+    }
+
 
     /// A phone's tab bar holds five. A sixth is what went missing.
     @Test("declares exactly five tabs for the compact bar")
     func compactBarHoldsFive() {
-        #expect(AppTab.alwaysVisible.count == 5)
-        #expect(AppTab.alwaysVisible.contains(.search))
+        #expect(prefs().alwaysVisible.count == 5)
+        #expect(prefs().alwaysVisible.contains(.search))
     }
 
     /// Every destination is reachable: it either has a tab of its own at both
@@ -395,14 +405,16 @@ struct AppTabStructureTests {
     /// which is exactly the state search was in.
     @Test("every tab is reachable from somewhere")
     func everyTabIsReachable() {
-        let reachable = Set(AppTab.alwaysVisible).union(AppTab.secondary)
+        let nav = prefs()
+        let reachable = Set(nav.alwaysVisible).union(nav.indexedScreens)
         let unreachable = Set(AppTab.allCases).subtracting(reachable)
         #expect(unreachable.isEmpty, "unreachable: \(unreachable.map(\.title))")
     }
 
     @Test("no tab is declared in two places at once")
     func noDuplicateDeclarations() {
-        let declared = AppTab.alwaysVisible + AppTab.secondary
+        let nav = prefs()
+        let declared = nav.alwaysVisible + nav.indexedScreens
         #expect(Set(declared).count == declared.count)
     }
 
@@ -411,7 +423,7 @@ struct AppTabStructureTests {
     /// rather than inside it — one navigation bar, not two.
     @Test("search is a tab root, never something pushed onto a stack")
     func searchIsNeverPushed() {
-        #expect(!AppTab.secondary.contains(.search))
+        #expect(!AppTab.productScreens.contains(.search))
         #expect(!AppTab.sections.flatMap(\.tabs).contains(.search))
         #expect(!AppTab.utility.contains(.search))
     }
@@ -432,30 +444,44 @@ struct ScreenIndexTests {
 
     @Test("finds a screen by name")
     func findsScreen() {
-        #expect(ScreenIndexSections.hasMatches(query: "Annotations"))
-        #expect(ScreenIndexSections.hasMatches(query: "annotations"))
+        #expect(ScreenIndexSections.hasMatches(query: "Annotations", loose: AppTab.primary))
+        #expect(ScreenIndexSections.hasMatches(query: "annotations", loose: AppTab.primary))
     }
 
     /// The no-query state is the whole index, which is what the tab has to show
     /// when it is opened for navigation rather than for search.
     @Test("an empty or whitespace query keeps the whole index")
     func emptyQueryKeepsIndex() {
-        #expect(ScreenIndexSections.hasMatches(query: ""))
-        #expect(ScreenIndexSections.hasMatches(query: "   "))
+        #expect(ScreenIndexSections.hasMatches(query: "", loose: AppTab.primary))
+        #expect(ScreenIndexSections.hasMatches(query: "   ", loose: AppTab.primary))
     }
 
     /// Drives which empty state the screen shows, so it has to be able to say no.
     @Test("reports no screens when nothing matches")
     func reportsNoMatches() {
-        #expect(!ScreenIndexSections.hasMatches(query: "zzzzqqq"))
+        #expect(!ScreenIndexSections.hasMatches(query: "zzzzqqq", loose: AppTab.primary))
     }
 
     /// Every screen behind the fifth tab is in the index. One that fell out of
     /// `sections` and `utility` would be unreachable on a phone entirely.
     @Test("indexes every screen the tab bar cannot hold")
     func indexesEverySecondaryScreen() {
-        for tab in AppTab.secondary {
-            #expect(ScreenIndexSections.hasMatches(query: tab.title), "\(tab.title) is not findable")
+        let suite = "ScreenIndexTests"
+        UserDefaults.standard.removePersistentDomain(forName: suite)
+        let nav = NavPreferences(defaults: UserDefaults(suiteName: suite)!)
+        for tab in nav.indexedScreens {
+            #expect(
+                ScreenIndexSections.hasMatches(query: tab.title, loose: nav.barTabs),
+                "\(tab.title) is not findable"
+            )
         }
+    }
+
+    /// The other half of the exactly-once rule, seen from the index's side.
+    @Test("the index holds exactly what the bar does not")
+    func indexIsTheComplementOfTheBar() {
+        let bar: [AppTab] = [.logs, .events, .sessions, .flags]
+        #expect(!ScreenIndexSections.hasMatches(query: "Logs", loose: bar))
+        #expect(ScreenIndexSections.hasMatches(query: "Dashboards", loose: bar))
     }
 }

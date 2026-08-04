@@ -272,11 +272,12 @@ extension EventRow {
 
 struct EventsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = EventsStore()
     @State private var search = ""
     @State private var tokens: [EventFilterToken] = []
     @State private var suggestedTokens: [EventFilterToken] = []
-    @State private var selected: EventRow?
     @State private var liveTail = LiveTailController()
 
     /// Committed filters reload immediately; free text waits for submit, because
@@ -286,8 +287,44 @@ struct EventsRoot: View {
         "\(model.projectID ?? 0)|" + tokens.map(\.id).joined(separator: ",")
     }
 
+    /// The open event's id, and deliberately **not** `@State`.
+    ///
+    /// See `FlagsRoot.selectedID` for the measurement. Since the tab bar became
+    /// a preference this screen can be demoted, a demoted screen is pushed onto
+    /// the search tab's stack, and a `NavigationSplitView` nested in a
+    /// `NavigationStack` has nowhere to put its detail - so the row opened
+    /// nothing at all.
+    private var selectedID: Binding<String?> {
+        Binding(
+            get: { openDetails[.events] as? String },
+            set: { openDetails[.events] = $0.map(AnyHashable.init) }
+        )
+    }
+
+    private var selected: EventRow? {
+        selectedID.wrappedValue.flatMap { id in store.events.first { $0.id == id } }
+    }
+
     var body: some View {
-        NavigationSplitView {
+        if sizeClass == .compact {
+            listChrome
+                .navigationDestination(item: selectedID) { id in
+                    if let event = store.events.first(where: { $0.id == id }) {
+                        EventDetailView(event: event).id(id)
+                    }
+                }
+        } else {
+            NavigationSplitView {
+                listChrome
+            } detail: {
+                detailPane
+            }
+        }
+    }
+
+    /// The list and everything attached to it, shared by both widths so the two
+    /// arrangements cannot drift in what they load or filter.
+    private var listChrome: some View {
             content
                 .navigationTitle("Events")
                 .toolbar {
@@ -342,9 +379,6 @@ struct EventsRoot: View {
                 // The tab sidebar already puts a toggle in this bar; the split
                 // view added a second, identical one beside it.
                 .toolbar(removing: .sidebarToggle)
-        } detail: {
-            detailPane
-        }
     }
 
     /// The detail column: the chosen event, or a summary of the feed when nothing
@@ -439,11 +473,11 @@ struct EventsRoot: View {
     }
 
     private var list: some View {
-        List(selection: $selected) {
+        List(selection: selectedID) {
             ForEach(store.buckets, id: \.title) { bucket in
                 Section {
                     ForEach(bucket.events) { event in
-                        NavigationLink(value: event) { EventRowView(event: event) }
+                        NavigationLink(value: event.id) { EventRowView(event: event) }
                             .listRowBackground(
                                 Theme.cardBackground
                                     .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))

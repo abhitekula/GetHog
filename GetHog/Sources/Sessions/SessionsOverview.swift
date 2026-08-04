@@ -17,7 +17,8 @@ import SwiftUI
 struct SessionsOverview: View {
     let recordings: [SessionRecording]
     let loadedAt: Date?
-    @Binding var selection: SessionRecording?
+    /// The open recording's id. Matches `SessionsRoot.selectedID`.
+    @Binding var selection: String?
 
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -159,7 +160,7 @@ struct SessionsOverview: View {
 
     private func recordingRow(_ recording: SessionRecording) -> some View {
         Button {
-            selection = recording
+            selection = recording.id
         } label: {
             Card(padding: Theme.Space.m) {
                 DataRow(

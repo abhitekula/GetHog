@@ -5,6 +5,14 @@ import SwiftUI
 struct GetHogApp: App {
     @State private var model: AppModel
 
+    /// Which four screens the tab bar holds.
+    ///
+    /// Owned here, beside `model`, and injected into both window groups from the
+    /// same instance - a second `NavPreferences` would be a second object, and a
+    /// tear-off window reading a different copy of the arrangement is the class
+    /// of bug the shared `AppModel` above exists to avoid.
+    @State private var nav = NavPreferences()
+
     /// Exists for one reason: home screen quick actions have no other way in.
     /// `GetHogAppDelegate` names a scene delegate, which is the only object
     /// iOS will hand a `UIApplicationShortcutItem` to once a scene manifest is
@@ -38,6 +46,13 @@ struct GetHogApp: App {
                 #endif
             }
                 .environment(model)
+                // Injected here, above `RootView` entirely, for the reason
+                // `AppModel` is: `RootView` presents sheets, and a `.sheet`
+                // attached *outside* an `.environment` is not in that subtree -
+                // a non-optional `@Environment(NavPreferences.self)` in sheet
+                // content would trap on presentation, with no GetHog frame in
+                // the crash report.
+                .environment(nav)
                 // "Save to Files" is triggered from menu content, which is torn
                 // down the instant the menu closes — the sheet has to be owned
                 // by something that outlives it.
@@ -115,6 +130,8 @@ struct GetHogApp: App {
         WindowGroup(for: WindowTarget.self) { $target in
             DetachedWindowView(target: target)
                 .environment(model)
+                // The same instance as the main window's, not a second one.
+                .environment(nav)
                 .insightCSVExporter()
                 .tint(Theme.accent)
         }

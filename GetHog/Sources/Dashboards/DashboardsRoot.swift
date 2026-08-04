@@ -30,16 +30,66 @@ final class DashboardsStore {
 
 struct DashboardsRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(OpenDetails.self) private var openDetails
     @State private var store = DashboardsStore()
-    @State private var selection: DashboardSummary?
     @State private var search = ""
+
+    /// The open dashboard's id, and deliberately **not** `@State`.
+    ///
+    /// See `FlagsRoot.selectedID` for the measurement. Since the tab bar became
+    /// a preference this screen can be demoted, a demoted screen is pushed onto
+    /// the search tab's stack, and a `NavigationSplitView` nested in a
+    /// `NavigationStack` has nowhere to put its detail - so the row opened
+    /// nothing at all.
+    private var selectedID: Binding<Int?> {
+        Binding(
+            get: { openDetails[.dashboards] as? Int },
+            set: { openDetails[.dashboards] = $0.map(AnyHashable.init) }
+        )
+    }
+
+    private var selection: DashboardSummary? {
+        selectedID.wrappedValue.flatMap { id in store.dashboards.first { $0.id == id } }
+    }
     // `.all`, not `.automatic`: explicit visibility preserves the list column
     // when the split view's own toggle is removed below.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
+        Group {
+            if sizeClass == .compact {
+                // No split view in compact, and that is the fix: this screen is
+                // hosted either by its own tab or - since the bar became a
+                // preference - by a push on the search tab's stack, and a split
+                // view nested in that stack could open nothing at all.
+                listChrome
+                    .navigationDestination(item: selectedID) { id in
+                        if let summary = store.dashboards.first(where: { $0.id == id }) {
+                            DashboardDetailView(summary: summary).id(id)
+                        }
+                    }
+            } else {
+                regularSplit
+            }
+        }
+        // Teaches Siri which dashboard this person actually opens.
+        //
+        // Here rather than in `DashboardDetailView`: the detail screen is also
+        // drawn by a restored window, by a deep link, and by
+        // `applyDebugSelectionIfNeeded` under the UI tests, none of which is
+        // somebody choosing a dashboard.
+        .onChange(of: selection) { _, opened in
+            guard let opened else { return }
+            IntentDonations.dashboardOpened(opened)
+        }
+    }
+
+    /// Regular width keeps the two-column arrangement, and everything the
+    /// columns need to negotiate with each other.
+    private var regularSplit: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            content
+            listChrome
                 // Left to its own devices the sidebar took 340pt of an 834pt
                 // iPad, leaving the grid too narrow for two columns. The list
                 // is titles and one line of description; it does not need more
@@ -91,18 +141,22 @@ struct DashboardsRoot: View {
                 columnVisibility = isOpen ? .detailOnly : .all
             }
         }
-        // Teaches Siri which dashboard this person actually opens.
-        //
-        // Here rather than in `DashboardDetailView`, and that placement is the
-        // point: the detail screen is also drawn by a restored window, by a deep
-        // link, and by `applyDebugSelectionIfNeeded` under the UI tests, none of
-        // which is somebody choosing a dashboard. `selection` on this list is
-        // set by a row tap and by nothing else in a shipping build — the debug
-        // path is `#if DEBUG` and driven by a launch variable.
-        .onChange(of: selection) { _, opened in
-            guard let opened else { return }
-            IntentDonations.dashboardOpened(opened)
-        }
+    }
+
+    /// The list and everything attached to it, shared by both widths.
+    private var listChrome: some View {
+        content
+            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
+            .toolbar(removing: .sidebarToggle)
+            .navigationTitle("Dashboards")
+            .toolbar { ProjectSwitcher() }
+            .projectSubtitle()
+            .searchable(text: $search, prompt: "Search dashboards")
+            .refreshable { await load() }
+            .task(id: model.projectID) {
+                await load()
+                applyDebugSelectionIfNeeded()
+            }
     }
 
     @ViewBuilder
@@ -135,7 +189,7 @@ struct DashboardsRoot: View {
     }
 
     private var list: some View {
-        List(selection: $selection) {
+        List(selection: selectedID) {
             if !filtered(store.pinned).isEmpty {
                 Section {
                     ForEach(filtered(store.pinned), id: \.self) { row($0) }
@@ -161,7 +215,7 @@ struct DashboardsRoot: View {
     }
 
     private func row(_ dashboard: DashboardSummary) -> some View {
-        NavigationLink(value: dashboard) {
+        NavigationLink(value: dashboard.id) {
             DataRow(
                 glyph: dashboard.creationMode == .template ? "wand.and.stars" : "square.grid.2x2",
                 brandGlyph: DashboardBrandAppearance.glyph(for: dashboard.creationMode),
@@ -215,9 +269,9 @@ struct DashboardsRoot: View {
         #if DEBUG
         switch DebugLaunch.dashboard {
         case .first:
-            selection = store.pinned.first ?? store.dashboards.first
+            selectedID.wrappedValue = (store.pinned.first ?? store.dashboards.first)?.id
         case .id(let id):
-            selection = store.dashboards.first { $0.id == id }
+            selectedID.wrappedValue = store.dashboards.first { $0.id == id }?.id
         case nil:
             break
         }

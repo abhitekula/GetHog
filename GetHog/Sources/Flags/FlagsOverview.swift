@@ -16,7 +16,9 @@ import SwiftUI
 /// instead of the two panes disagreeing until the next load.
 struct FlagsOverview: View {
     let store: FlagsStore
-    @Binding var selection: FeatureFlag?
+    /// The open flag's id, so a reload that replaces the decoded rows leaves
+    /// the selection standing. Matches `FlagsRoot.selectedID`.
+    @Binding var selection: Int?
 
     @Environment(AppModel.self) private var model
 
@@ -166,7 +168,7 @@ struct FlagsOverview: View {
     ) -> some View {
         let group = store.group(for: flag)
         return Button {
-            selection = flag
+            selection = flag.id
         } label: {
             Card(padding: Theme.Space.m) {
                 DataRow(

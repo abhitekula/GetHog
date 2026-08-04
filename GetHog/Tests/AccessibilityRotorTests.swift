@@ -223,11 +223,24 @@ struct AccessibilityRotorTests {
         // list that had drifted out of that order — or that pointed at rows no
         // longer rendered — would fail here.
         #expect(!screens.isEmpty)
-        #expect(screens == Array(AppTab.secondary.map(\.title).prefix(screens.count)))
-        #expect(screens.first == AppTab.secondary.first?.title)
+        // Read from the preference rather than a static, because the index is
+        // the *complement* of the tab bar: a screen the user promoted is not
+        // drawn here, so a rotor entry for it would resolve to nothing.
+        let indexed = Self.navPreferences().indexedScreens
+        #expect(screens == Array(indexed.map(\.title).prefix(screens.count)))
+        #expect(screens.first == indexed.first?.title)
     }
 
     // MARK: - Harness
+
+    /// A default bar, from a defaults suite of this test's own. The screen index
+    /// is the complement of the tab bar, so a stored arrangement would change
+    /// which rows this harness renders.
+    static func navPreferences() -> NavPreferences {
+        let suite = "AccessibilityRotorTests"
+        UserDefaults.standard.removePersistentDomain(forName: suite)
+        return NavPreferences(defaults: UserDefaults(suiteName: suite)!)
+    }
 
     /// Renders a screen against the demo fixtures and reads its rotors.
     ///
@@ -251,6 +264,10 @@ struct AccessibilityRotorTests {
         let hosted = screen
             .environment(model)
             .environment(OpenDetails())
+            // `ProjectSearchView` reads this non-optionally, so without it the
+            // harness traps in `DynamicBody.updateValue` before any body of ours
+            // runs - a crash with no GetHog frame in it.
+            .environment(Self.navPreferences())
             .environment(\.horizontalSizeClass, compact ? .compact : nil)
 
         let host = Self.present(AnyView(hosted))
