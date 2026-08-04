@@ -18,7 +18,7 @@ commands, testing, privacy, and Git conventions. It will explicitly state:
 - Explicitly authorized manual simulator testing may use a developer PAT, but
   the credential and live values must never be printed, logged, committed,
   screenshotted, or used to generate fixtures.
-- Live API exploration may retain only public schema facts, recreated with
+- Manual API exploration may retain only public schema facts, recreated with
   fictional values and reserved example domains.
 - Preserve the multi-commit history and unrelated worktree changes; do not
   rewrite history, configure a remote, or push without explicit authorization.

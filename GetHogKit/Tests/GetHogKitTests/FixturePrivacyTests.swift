@@ -130,6 +130,10 @@ enum FixturePrivacyScanner {
     ]
     private static let canonicalReplayEpochSeconds = 1_767_225_600.0..<1_769_904_000.0
     private static let publicPostHogHosts: Set<String> = ["us.posthog.com", "eu.posthog.com"]
+    /// A loopback probe is served by the test process itself, so it names no
+    /// tenant and reaches no external host. Signed-URL rules still apply: a
+    /// credential-shaped query is a credential wherever it is pointed.
+    private static let loopbackHosts: Set<String> = ["127.0.0.1", "::1", "localhost"]
     private static let publicDocumentationHosts: Set<String> = [
         "developer.apple.com", "evilmartians.com", "github.com", "posthog.com",
         "registry.npmjs.org", "www.apple.com", "www.contributor-covenant.org",
@@ -338,7 +342,9 @@ enum FixturePrivacyScanner {
                signedURLExpression.firstMatch(in: text, range: match.range) != nil {
                 findings.insert(.init(relativePath: relativePath, rule: .signedURL))
             }
-            if !isReserved, !publicPostHogHosts.contains(host) {
+            if !isReserved,
+               !publicPostHogHosts.contains(host),
+               !loopbackHosts.contains(host) {
                 findings.insert(.init(relativePath: relativePath, rule: .nonReservedURL))
             }
         }
@@ -369,7 +375,8 @@ enum FixturePrivacyScanner {
                 }
                 if !isReserved,
                    !publicPostHogHosts.contains(host),
-                   !publicDocumentationHosts.contains(host) {
+                   !publicDocumentationHosts.contains(host),
+                   !loopbackHosts.contains(host) {
                     findings.insert(.init(relativePath: relativePath, rule: .nonReservedURL))
                 }
             }
@@ -1112,6 +1119,40 @@ struct FixturePrivacyTests {
             "external.swift: signed-url",
             "posthog.swift: signed-url",
         ])
+    }
+
+    /// A loopback probe started by a test names no tenant and reaches no external
+    /// host, so it is reserved for host rules — but a credential-shaped query is
+    /// still a credential wherever it is pointed.
+    @Test("loopback probe URLs are reserved without excusing signed-URL queries")
+    func loopbackURLsAreReservedButStillScannedForSignatures() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "gethog-loopback-url-rules-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let scheme = ["ht", "tp://"].joined()
+        let signature = ["X-Amz-", "Signature", "=synthetic"].joined()
+        let loopbackHosts = [
+            ("ipv4.swift", ["127.", "0.0.1", ":8080"].joined()),
+            ("named.swift", ["local", "host", ":9000"].joined()),
+            ("ipv6.swift", ["[:", ":1]", ":9000"].joined()),
+        ]
+        for (name, host) in loopbackHosts {
+            try Data(("let url = \"" + scheme + host + "/probe-asset.png\"").utf8)
+                .write(to: directory.appending(path: name))
+        }
+        let signedHost = ["127.", "0.0.1", ":8080"].joined()
+        try Data(("let url = \"" + scheme + signedHost + "/render?" + signature + "\"").utf8)
+            .write(to: directory.appending(path: "signed.swift"))
+
+        let findings = try FixturePrivacyScanner.sourceFindings(
+            in: loopbackHosts.map { directory.appending(path: $0.0) }
+                + [directory.appending(path: "signed.swift")],
+            relativeTo: directory.resolvingSymlinksInPath()
+        )
+
+        #expect(findings == ["signed.swift: signed-url"])
     }
 
     @Test("escaped JSON URLs receive the decoded text privacy scan")
