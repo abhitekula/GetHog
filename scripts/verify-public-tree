@@ -166,6 +166,13 @@ scan_text_file() {
     LC_ALL=C grep -Eo '[A-Za-z0-9.!#$%&*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
         "$full_path" > "$emails_file" || true
     while IFS= read -r email; do
+        # The one address that is *meant* to be public: the App Store's
+        # privacy-policy and support pages exist to publish it. The whole
+        # literal, never the domain — a personal automorphism.app address in a
+        # fixture must still fail.
+        if [ "$email" = "support@automorphism.app" ]; then
+            continue
+        fi
         domain=${email##*@}
         case "$domain" in
             example.com|example.org|example.net|users.noreply.github.com)

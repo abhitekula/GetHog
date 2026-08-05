@@ -71,6 +71,15 @@ enum FixturePrivacyScanner {
         pattern: #"[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@([A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,63})\b"#,
         options: .caseInsensitive
     )
+
+    /// The one address that is *meant* to be public: PRIVACY.md and SUPPORT.md
+    /// exist to publish it, and the App Store listing repeats it. Exempted as
+    /// the whole literal, never the domain, so a personal mailbox on the same
+    /// domain still fails — and only in repository sources, never in fixtures,
+    /// where a real address of any kind means a copied payload.
+    /// `scripts/verify-public-tree` carries the same exemption; the two
+    /// scanners must agree or the gate contradicts itself.
+    private static let publishedSupportAddress = "support@automorphism.app"
     private static let urlExpression = try! NSRegularExpression(
         pattern: #"https?://[^\s\"'<>\\]+"#,
         options: .caseInsensitive
@@ -382,6 +391,10 @@ enum FixturePrivacyScanner {
             }
             for match in emailExpression.matches(in: text, range: range) {
                 guard let hostRange = Range(match.range(at: 1), in: text) else { continue }
+                if let emailRange = Range(match.range, in: text),
+                   text[emailRange].lowercased() == publishedSupportAddress {
+                    continue
+                }
                 if !isReserved(host: String(text[hostRange]).lowercased()) {
                     findings.insert(.init(relativePath: relativePath, rule: .nonReservedEmail))
                 }
@@ -1315,6 +1328,35 @@ struct FixturePrivacyTests {
             "public-log.swift: public-log-interpolation",
             "simulator-log.swift: unsafe-diagnostic-metadata",
         ])
+    }
+
+    @Test("source privacy allows the published support address, and only it")
+    func publishedSupportAddressIsAllowed() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "gethog-support-address-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // The App Store's privacy-policy and support pages exist to publish
+        // this one address. The exemption is the whole literal, never the
+        // domain: any other mailbox on it is somebody's personal address and
+        // must still fail.
+        let publishedAddress = ["support", "@automorphism.app"].joined()
+        let personalAddress = ["founder", "@automorphism.app"].joined()
+        try Data("Questions can be sent to <\(publishedAddress)>.".utf8)
+            .write(to: directory.appending(path: "published.md"))
+        try Data("Questions can be sent to <\(personalAddress)>.".utf8)
+            .write(to: directory.appending(path: "personal.md"))
+
+        let findings = try FixturePrivacyScanner.sourceFindings(
+            in: [
+                directory.appending(path: "personal.md"),
+                directory.appending(path: "published.md"),
+            ],
+            relativeTo: directory.resolvingSymlinksInPath()
+        )
+
+        #expect(findings == ["personal.md: non-reserved-email"])
     }
 
     @Test("source privacy rejects signing prefixes and contextual tenant identifiers")
