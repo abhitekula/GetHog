@@ -35,11 +35,22 @@ public struct KeychainTokenStore: CredentialStoring {
         self.accessGroup = accessGroup
     }
 
-    private var baseQuery: [String: Any] {
+    /// The dictionary every `SecItem*` call starts from — load, save and clear
+    /// all derive their queries from it, so this is the one place the shape of
+    /// a keychain request is decided. Internal rather than private so tests can
+    /// assert that shape without talking to a real keychain.
+    var baseQuery: [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            // On iOS every keychain is already the data-protection keychain and
+            // this key changes nothing. On macOS it is the difference between
+            // that keychain and the legacy login keychain, which prompts the
+            // user for its password and cannot honor access groups — so a Mac
+            // build without it would show a password sheet on first launch and
+            // then file the credential where no extension could read it.
+            kSecUseDataProtectionKeychain as String: true,
         ]
         if let accessGroup {
             query[kSecAttrAccessGroup as String] = accessGroup
