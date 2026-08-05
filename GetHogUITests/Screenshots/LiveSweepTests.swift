@@ -6,7 +6,7 @@ import XCTest
 /// the question demo mode structurally cannot: *does it render what a real
 /// project actually contains*. Deterministic fixtures are authored to be
 /// well-formed — one page of results, labels that fit, every insight a type the
-/// app draws. A live project is none of those things, and the defects that live
+/// app draws. A real project is none of those things, and the defects that live
 /// in the gap (an empty collection with no empty state, a label that wraps to
 /// four lines, an insight type that falls back, a scope the key does not carry)
 /// are invisible to a fixture by construction.
@@ -283,7 +283,7 @@ class LiveScreenshotCase: ScreenshotCase {
     ///
     /// Deliberately restricted to cells. Tapping arbitrary `buttons` would reach
     /// rows the app draws as cards, but it would also reach the toggle in a flag
-    /// row, and a sweep that runs unattended against a live project has no
+    /// row, and a sweep that runs unattended against a real project has no
     /// business pressing controls it did not identify. The app confirms before
     /// changing a flag, so even that would be caught — relying on it would still
     /// be the wrong shape.

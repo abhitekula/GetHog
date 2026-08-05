@@ -1580,12 +1580,60 @@ struct FixturePrivacyTests {
                     discovered.append(file)
                 }
             }
-            candidates = discovered
+            // The manifest path scans exactly the publishable tree; this
+            // fallback walk should agree with it. Without the filter it also
+            // scanned gitignored files — most visibly `.env.local`, the very
+            // file the ignore rules exist to keep out of the tree — so the
+            // suite was permanently red on any machine set up for a live
+            // sweep, flagging a credential that can never be committed.
+            // Tracked files are never ignored, so nothing publishable escapes.
+            candidates = try filteringGitIgnored(discovered)
         }
 
         return try Set(candidates.compactMap { file in
             try isRelevantPrivacyTextFile(file) ? file.resolvingSymlinksInPath() : nil
         }).sorted { $0.path < $1.path }
+    }
+
+    /// Drops files `git check-ignore` claims, keeping the walk aligned with
+    /// the publishable tree. If git is unavailable or errors, nothing is
+    /// filtered — the scan stays strict rather than silently narrower.
+    private func filteringGitIgnored(_ files: [URL]) throws -> [URL] {
+        guard !files.isEmpty else { return files }
+        let git = URL(fileURLWithPath: "/usr/bin/git")
+        guard FileManager.default.isExecutableFile(atPath: git.path) else { return files }
+
+        let process = Process()
+        process.executableURL = git
+        process.currentDirectoryURL = repositoryRoot
+        // `-z` terminates entries with NUL so paths survive verbatim.
+        process.arguments = ["check-ignore", "-z", "--stdin"]
+        let input = Pipe(), output = Pipe(), error = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = error
+        do {
+            try process.run()
+        } catch {
+            return files
+        }
+        let payload = files.map(\.path).joined(separator: "\0") + "\0"
+        input.fileHandleForWriting.write(Data(payload.utf8))
+        input.fileHandleForWriting.closeFile()
+        let matched = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        // 0 = some ignored, 1 = none ignored; anything else is a git failure
+        // and the filter stands down.
+        guard process.terminationStatus == 0 || process.terminationStatus == 1 else {
+            return files
+        }
+        let ignored = Set(
+            String(decoding: matched, as: UTF8.self)
+                .split(separator: "\0")
+                .map(String.init)
+        )
+        guard !ignored.isEmpty else { return files }
+        return files.filter { !ignored.contains($0.path) }
     }
 
     private func filesFromPublicTreeManifest(at manifest: URL) throws -> [URL] {

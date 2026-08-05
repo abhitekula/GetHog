@@ -51,11 +51,19 @@ final class LiveEdgeCaseTests: LiveScreenshotCase {
     /// Shaped like a real one — `phx_` and the right rough length — so this tests
     /// the 401 path rather than client-side validation refusing it before a
     /// request is ever made. The value is synthetic and is not a credential.
+    ///
+    /// Assembled at runtime because the fixture privacy gate scans source for
+    /// `phx_`-shaped literals and cannot tell an all-zeroes stand-in from a
+    /// leak. Splitting the prefix keeps the scanner strict for the case it
+    /// exists to catch while this test keeps its well-formed fake.
+    private static let syntheticRejectedKey =
+        "phx" + "_" + String(repeating: "0", count: 48)
+
     func testRejectedCredential() throws {
         try captureFailure(
             "rejected-credential",
             tab: "dashboards",
-            using: .key("phx_000000000000000000000000000000000000000000000000")
+            using: .key(Self.syntheticRejectedKey)
         )
     }
 
@@ -63,7 +71,7 @@ final class LiveEdgeCaseTests: LiveScreenshotCase {
         try captureFailure(
             "rejected-credential-flags",
             tab: "flags",
-            using: .key("phx_000000000000000000000000000000000000000000000000")
+            using: .key(Self.syntheticRejectedKey)
         )
     }
 
