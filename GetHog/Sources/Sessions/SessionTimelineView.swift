@@ -130,14 +130,9 @@ struct TimelineEntry: Identifiable {
     }
 
     var title: String {
-        switch event.event {
-        case "$pageview": "Page view"
-        case "$pageleave": "Page leave"
-        case "$autocapture": "Autocapture"
-        case "$exception": "Exception"
-        case "$rageclick": "Rage click"
-        default: event.event
-        }
+        // Shared with the events feed, so the same event never has two names
+        // in two tabs.
+        EventAppearance.displayName(for: event.event)
     }
 
     var subtitle: String? {
@@ -198,6 +193,15 @@ struct SessionTimelineView: View {
 
     @State private var filter: TimelineFilter = .all
     @State private var expanded: Set<String> = []
+    @State private var showingAll = false
+
+    /// The same collapse contract as the console and network panes, which cap
+    /// at 12 with a "Show all N" toggle. The timeline was the only long list
+    /// on this screen without one — a busy session rendered up to 500 rows
+    /// eagerly, ~47 screens of scrolling before anything below it. The cap is
+    /// higher than the siblings' because the timeline is the primary content
+    /// here, not the supporting evidence.
+    static let collapsedLimit = 25
 
     private var entries: [TimelineEntry] {
         let base = origin ?? recording.startTime ?? store.events.first?.timestamp
@@ -206,6 +210,10 @@ struct SessionTimelineView: View {
 
     private var visible: [TimelineEntry] {
         entries.filter(filter.matches)
+    }
+
+    private var shown: [TimelineEntry] {
+        showingAll ? visible : Array(visible.prefix(Self.collapsedLimit))
     }
 
     var body: some View {
@@ -224,6 +232,7 @@ struct SessionTimelineView: View {
                     empty("No \(filter.rawValue.lowercased()) in this session.")
                 } else {
                     timeline
+                    showAllFooter
                 }
 
                 if store.didHitLimit {
@@ -260,6 +269,10 @@ struct SessionTimelineView: View {
                     let count = entries.filter(option.matches).count
                     Button {
                         filter = option
+                        // A fresh filter starts collapsed again, as the console
+                        // and network panes do: "show all errors" and "show all
+                        // 500 of everything" are different-sized requests.
+                        showingAll = false
                     } label: {
                         HStack(spacing: 5) {
                             Text(option.rawValue)
@@ -286,11 +299,13 @@ struct SessionTimelineView: View {
     }
 
     private var timeline: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(visible.enumerated()), id: \.element.id) { index, entry in
+        // Lazy because "Show all" can realise 500 rows at once; the page's
+        // scroll view lets laziness actually defer the off-screen ones.
+        LazyVStack(spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, entry in
                 TimelineRowView(
                     entry: entry,
-                    isLast: index == visible.count - 1,
+                    isLast: index == shown.count - 1,
                     isExpanded: expanded.contains(entry.id),
                     canSeek: canSeek,
                     onToggle: { toggle(entry.id) },
@@ -299,6 +314,19 @@ struct SessionTimelineView: View {
             }
         }
         .skeleton(store.isLoading && store.events.isEmpty)
+    }
+
+    @ViewBuilder
+    private var showAllFooter: some View {
+        if visible.count > Self.collapsedLimit {
+            Button(showingAll ? "Show fewer" : "Show all \(visible.count)") {
+                showingAll.toggle()
+            }
+            .font(.footnote.weight(.medium))
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.Status.accentInk)
+            .minimumHitTarget()
+        }
     }
 
     private var loading: some View {

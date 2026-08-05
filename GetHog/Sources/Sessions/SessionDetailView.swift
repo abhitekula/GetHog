@@ -59,6 +59,12 @@ struct SessionDetailView: View {
                 // is not one. It also puts the narrative — a paragraph that is
                 // faster to read than the video is to scrub — at the top of what
                 // someone actually reads on a phone.
+                //
+                // This adjacency is real now: the console and network cards
+                // used to ride inside `ReplayPlayerView` and silently wedge
+                // ~1,500pt of diagnostics in between, which no comment here
+                // ever chose. They render below the timeline instead — the
+                // story first, the evidence after.
                 SessionSummaryCard(
                     store: summary,
                     // rrweb counts from its first snapshot, not from
@@ -79,9 +85,6 @@ struct SessionDetailView: View {
                 )
                 .padding(.horizontal, Theme.Space.l)
 
-                watchInPostHogCard
-                    .padding(.horizontal, Theme.Space.l)
-
                 SessionTimelineView(
                     recording: recording,
                     store: timeline,
@@ -93,6 +96,17 @@ struct SessionDetailView: View {
                     onSeek: { offset in player.seek(to: offset, resume: true) }
                 )
                 .padding(.horizontal, Theme.Space.l)
+
+                ReplayDiagnosticsSection(
+                    loader: loader,
+                    controller: player,
+                    duration: recording.recordingDuration ?? loader.bufferedSeconds,
+                    onSeek: { offset in player.seek(to: offset, resume: true) }
+                )
+                .padding(.horizontal, Theme.Space.l)
+
+                watchInPostHogCard
+                    .padding(.horizontal, Theme.Space.l)
 
                 FreshnessLabel(date: timeline.loadedAt)
             }
