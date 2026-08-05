@@ -1,5 +1,7 @@
 import GetHogKit
+#if os(iOS)
 import SafariServices
+#endif
 import SwiftUI
 
 struct SessionDetailView: View {
@@ -12,6 +14,11 @@ struct SessionDetailView: View {
     @State private var loader = ReplayLoader()
     @State private var player = ReplayPlayerController()
     @State private var webLink: WebLink?
+    #if os(macOS)
+    /// The Mac has no in-app Safari; the web fallback opens the default
+    /// browser instead.
+    @Environment(\.openURL) private var openURL
+    #endif
     @State private var summaryGenerationTask: Task<Void, Never>?
 
     private var replayWebURL: URL? {
@@ -147,9 +154,17 @@ struct SessionDetailView: View {
             async let narrative: Void = loadSummary()
             _ = await (events, narrative)
         }
+        #if os(iOS)
         .sheet(item: $webLink) { link in
             SessionSafariView(url: link.url).ignoresSafeArea()
         }
+        #else
+        .onChange(of: webLink?.id) { _, _ in
+            guard let link = webLink else { return }
+            openURL(link.url)
+            webLink = nil
+        }
+        #endif
     }
 
     /// What the session amounted to, before the replay is asked to load.
@@ -523,6 +538,7 @@ struct WebLink: Identifiable {
     var id: String { url.absoluteString }
 }
 
+#if os(iOS)
 /// In-app Safari, so the PostHog session stays signed in and the user never
 /// leaves GetHog to watch a replay it couldn't render itself.
 struct SessionSafariView: UIViewControllerRepresentable {
@@ -536,3 +552,4 @@ struct SessionSafariView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }
+#endif

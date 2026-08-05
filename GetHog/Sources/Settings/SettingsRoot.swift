@@ -178,6 +178,7 @@ struct SettingsRoot: View {
     @ViewBuilder
     private var navigationSection: some View {
         Section {
+            #if os(iOS)
             if UIDevice.current.userInterfaceIdiom == .pad {
                 Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
                     .font(.footnote)
@@ -189,6 +190,11 @@ struct SettingsRoot: View {
                     LabeledContent("Tab bar", value: nav.barTabs.map(\.title).joined(separator: ", "))
                 }
             }
+            #else
+            Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            #endif
         } header: {
             SectionLabel(text: "Navigation", systemImage: "square.grid.2x2")
         }

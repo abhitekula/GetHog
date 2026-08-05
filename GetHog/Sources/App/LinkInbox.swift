@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// One place every inbound link lands before the UI reads it.
 ///
@@ -155,6 +157,7 @@ struct LinkNotice {
 
 // MARK: - Quick action delivery
 
+#if os(iOS)
 /// Exists only to give the scene a delegate of our own.
 ///
 /// Quick actions cannot be received any other way in a scene-based app:
@@ -204,3 +207,4 @@ final class QuickActionSceneDelegate: NSObject, UIWindowSceneDelegate {
         return true
     }
 }
+#endif

@@ -334,6 +334,7 @@ final class ReplayPlayerController {
     /// view's own scheme rather than `UITraitCollection.current`, which is not
     /// the view's when this runs from a detached encode.
     private static func cssHex(_ color: Color, in scheme: ColorScheme) -> String {
+        #if os(iOS)
         let resolved = UIColor(color).resolvedColor(
             with: UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
         )
@@ -341,6 +342,13 @@ final class ReplayPlayerController {
         resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         let byte = { (component: CGFloat) in Int((min(max(component, 0), 1) * 255).rounded()) }
         return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
+        #else
+        var environment = EnvironmentValues()
+        environment.colorScheme = scheme
+        let resolved = color.resolve(in: environment)
+        let byte = { (component: Float) in Int((min(max(CGFloat(component), 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(resolved.red), byte(resolved.green), byte(resolved.blue))
+        #endif
     }
 
     /// Serialises the rrweb events verbatim — `SnapshotEvent.event` is the whole
@@ -650,6 +658,7 @@ final class ReplayWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDeleg
     }
 }
 
+#if os(iOS)
 /// A WKWebView that tells the shim when native layout moved its frame.
 ///
 /// The shim's own `window.resize` listener is debounced and fires only once
@@ -745,6 +754,22 @@ struct WKWebViewRepresentable: UIViewRepresentable {
         coordinator.controller?.teardown()
     }
 }
+#else
+/// Temporary macOS stand-in for the rrweb stage. Task 5 replaces this with an
+/// `NSViewRepresentable` hosting the same player document; keeping the iOS
+/// type name is what lets both call sites compile unchanged until then.
+struct WKWebViewRepresentable: View {
+    let controller: ReplayPlayerController
+
+    var body: some View {
+        ContentUnavailableView(
+            "Replay playback isn't on the Mac yet",
+            systemImage: "play.slash",
+            description: Text("Watch this session in PostHog in your browser.")
+        )
+    }
+}
+#endif
 
 // MARK: - Section
 

@@ -1,5 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Visual system.
 ///
@@ -343,6 +347,7 @@ enum Theme {
         /// furthest apart, and it makes the lookup independent of the appearance
         /// the pill happens to be drawn in.
         private static func swatchKey(_ color: Color) -> UInt32 {
+            #if canImport(UIKit)
             let resolved = UIColor(color)
                 .resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
             var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
@@ -351,6 +356,16 @@ enum Theme {
                 UInt32(min(max((channel * 255).rounded(), 0), 255))
             }
             return byte(red) << 24 | byte(green) << 16 | byte(blue) << 8 | byte(alpha)
+            #else
+            var environment = EnvironmentValues()
+            environment.colorScheme = .light
+            let resolved = color.resolve(in: environment)
+            func byte(_ channel: Float) -> UInt32 {
+                UInt32(min(max((CGFloat(channel) * 255).rounded(), 0), 255))
+            }
+            return byte(resolved.red) << 24 | byte(resolved.green) << 16
+                | byte(resolved.blue) << 8 | byte(resolved.opacity)
+            #endif
         }
     }
 }
@@ -419,9 +434,17 @@ extension Color {
     /// Builds a colour that resolves per appearance, so dark mode is a selected
     /// value rather than an automatic inversion.
     init(light: Color, dark: Color) {
+        #if canImport(UIKit)
         self = Color(UIColor { traits in
             traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
         })
+        #else
+        self = Color(NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(dark)
+                : NSColor(light)
+        })
+        #endif
     }
 
     init(hex: UInt32) {

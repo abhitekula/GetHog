@@ -1,6 +1,8 @@
 import GetHogKit
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Thresholds on the metrics the app already publishes for its widgets.
 ///
@@ -195,12 +197,21 @@ struct MetricAlertsView: View {
                     .font(Theme.Typography.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                #if os(iOS)
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     Link(destination: url) {
                         Label("Open iOS Settings", systemImage: "arrow.up.forward.square")
                             .font(Theme.Typography.body)
                     }
                 }
+                #else
+                if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                    Link(destination: url) {
+                        Label("Open System Settings", systemImage: "arrow.up.forward.square")
+                            .font(Theme.Typography.body)
+                    }
+                }
+                #endif
             } else {
                 Label("Notifications haven't been allowed yet", systemImage: "bell")
                     .font(Theme.Typography.title)

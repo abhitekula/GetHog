@@ -1,7 +1,11 @@
 import CoreTransferable
 import GetHogKit
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import UniformTypeIdentifiers
 
 /// Rasterises a chart for sharing.
@@ -25,7 +29,15 @@ enum ChartImageRenderer {
         // a dark-mode Slack or Notes draws dark ink on a dark surface and reads
         // as an empty image.
         renderer.isOpaque = true
+        #if canImport(UIKit)
         return renderer.uiImage?.pngData()
+        #else
+        guard let image = renderer.nsImage,
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff)
+        else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
+        #endif
     }
 
     private static func card(title: String, model: InsightRenderModel, width: CGFloat) -> some View {

@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 @MainActor
 enum Platform {
@@ -8,7 +10,11 @@ enum Platform {
     /// False on iPhone, so tear-off affordances are hidden rather than offered
     /// and then quietly doing nothing.
     static var supportsMultipleWindows: Bool {
+        #if os(iOS)
         UIApplication.shared.supportsMultipleScenes
+        #else
+        true
+        #endif
     }
 }
 
@@ -51,8 +57,14 @@ extension View {
     /// clipping, so the highlight follows the card's corner radius instead of
     /// the square bounding box the pointer would otherwise light up.
     func pointerHighlight(cornerRadius: CGFloat = 14) -> some View {
+        #if os(iOS)
         contentShape(.hoverEffect, RoundedRectangle(cornerRadius: cornerRadius))
             .hoverEffect(.highlight)
+        #else
+        // AppKit draws its own pointer affordances; the shape is kept so hit
+        // testing still follows the card's corner radius.
+        contentShape(.rect(cornerRadius: cornerRadius))
+        #endif
     }
 
     /// Raises a control to the 44×44pt floor Apple's `hitRegion` audit checks.

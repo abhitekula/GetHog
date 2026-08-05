@@ -1,0 +1,180 @@
+#if os(macOS)
+import AppKit
+import SwiftUI
+
+// The Mac twin of every iOS-only API this codebase names from *shared* files.
+// One rule decides what belongs here: the iOS call sites stay byte-identical,
+// and the Mac meaning is either the honest equivalent (pasteboard, placements)
+// or an honest no-op (spacing tweaks a Mac list doesn't have). Anything that
+// needs real Mac behavior later (Task 4+) replaces its shim, not its call
+// sites.
+
+// MARK: - Size classes
+
+/// Shadow of the iOS-only type: every Mac window is regular-width.
+enum UserInterfaceSizeClass {
+    case compact, regular
+}
+
+extension EnvironmentValues {
+    /// Screens keep their iPad regular-width layout on the Mac.
+    var horizontalSizeClass: UserInterfaceSizeClass? { .regular }
+}
+
+// MARK: - Navigation bar title display mode
+
+/// Shadow of SwiftUI's unavailable-on-macOS `NavigationBarItem`, carrying just
+/// the enum the shared call sites name.
+enum NavigationBarItem {
+    enum TitleDisplayMode {
+        case automatic, inline, large
+    }
+}
+
+extension View {
+    /// macOS has no large-title navigation bar; the toolbar title is already
+    /// inline.
+    func navigationBarTitleDisplayMode(_ displayMode: NavigationBarItem.TitleDisplayMode) -> some View {
+        self
+    }
+}
+
+// MARK: - Toolbar placements
+
+extension ToolbarItemPlacement {
+    static var topBarLeading: ToolbarItemPlacement { .navigation }
+    static var topBarTrailing: ToolbarItemPlacement { .primaryAction }
+}
+
+// MARK: - List conveniences
+
+extension View {
+    /// Row spacing is an iOS inset-grouped affordance; the Mac list spaces
+    /// itself.
+    func listRowSpacing(_ spacing: CGFloat?) -> some View { self }
+}
+
+extension ListStyle where Self == InsetListStyle {
+    /// iOS's grouped inset style, read as the Mac's inset list.
+    static var insetGrouped: InsetListStyle { InsetListStyle() }
+}
+
+/// Shadow of the iOS-only control. Reordering a Mac list needs no edit mode —
+/// drag works directly — so the button contributes nothing.
+struct EditButton: View {
+    var body: some View { EmptyView() }
+}
+
+// MARK: - Text input
+
+/// The iOS keyboard kinds named at shared call sites. There is no software
+/// keyboard to configure on the Mac.
+enum UIKeyboardType {
+    case `default`, URL, decimalPad, numbersAndPunctuation
+}
+
+extension View {
+    func keyboardType(_ type: UIKeyboardType) -> some View { self }
+}
+
+/// Shadow of the iOS-only type; hardware keyboards do not autocapitalise.
+struct TextInputAutocapitalization {
+    static let never = TextInputAutocapitalization()
+    static let words = TextInputAutocapitalization()
+    static let sentences = TextInputAutocapitalization()
+    static let characters = TextInputAutocapitalization()
+}
+
+extension View {
+    func textInputAutocapitalization(_ autocapitalization: TextInputAutocapitalization?) -> some View {
+        self
+    }
+}
+
+// MARK: - Search placement
+
+extension SearchFieldPlacement {
+    enum DrawerDisplayMode {
+        case automatic, always
+    }
+
+    /// The navigation-bar drawer is an iOS shape; the Mac puts the field in
+    /// the toolbar where `.automatic` already lands it.
+    static func navigationBarDrawer(displayMode: DrawerDisplayMode) -> SearchFieldPlacement {
+        .automatic
+    }
+}
+
+// MARK: - Presentation
+
+extension View {
+    /// macOS has no full-screen cover; the expanded replay presents as a sheet
+    /// until Task 5 gives it a real window.
+    func fullScreenCover<Content: View>(
+        isPresented: Binding<Bool>,
+        onDismiss: (() -> Void)? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        sheet(isPresented: isPresented, onDismiss: onDismiss, content: content)
+    }
+}
+
+// MARK: - Navigation transition
+
+extension NavigationTransition where Self == AutomaticNavigationTransition {
+    /// The zoom transition is iOS-only; the Mac keeps the default transition
+    /// and loses nothing but motion.
+    static func zoom(sourceID: some Hashable, in namespace: Namespace.ID) -> AutomaticNavigationTransition {
+        .automatic
+    }
+}
+
+// MARK: - Pasteboard
+
+/// Twin of the UIKit pasteboard over `NSPasteboard`, so the nine shared
+/// screens that copy text or URLs compile unchanged.
+@MainActor
+final class UIPasteboard {
+    static let general = UIPasteboard()
+
+    private init() {}
+
+    var string: String? {
+        get { NSPasteboard.general.string(forType: .string) }
+        set {
+            NSPasteboard.general.clearContents()
+            guard let newValue else { return }
+            NSPasteboard.general.setString(newValue, forType: .string)
+        }
+    }
+
+    var url: URL? {
+        get { NSPasteboard.general.string(forType: .string).flatMap(URL.init(string:)) }
+        set {
+            NSPasteboard.general.clearContents()
+            guard let newValue else { return }
+            NSPasteboard.general.setString(newValue.absoluteString, forType: .string)
+        }
+    }
+}
+
+// MARK: - Excluded-file twins
+
+/// No-op twin of the iOS home screen quick actions (the real one is
+/// `App/QuickActions.swift`, excluded from this target). macOS has no home
+/// screen icon menu; a Dock menu can adopt these entry points later.
+@MainActor
+enum QuickActions {
+    static func recordPinnedDashboard(id: Int, title: String, projectID: Int) {}
+    static func recordVisit(_ link: PostHogLink, title: String, projectID: Int) {}
+    static func refresh(projectID: Int?) {}
+    static func clear() {}
+}
+
+/// No-op twin of the iOS BGTaskScheduler wrapper (excluded from this target):
+/// nothing is scheduled on the Mac, so sign-out has nothing to cancel.
+@MainActor
+enum BackgroundRefresh {
+    static func cancel() {}
+}
+#endif
