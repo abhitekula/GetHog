@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Mac app's real entitlements: what a signed, shipped GetHog.app carries.
+     Selected for the Release configuration by project.yml; Debug takes
+     GetHogMac.entitlements instead, which is the same set minus the two group
+     memberships. That split exists because either group entitlement, alone,
+     makes a macOS target refuse to build without a development certificate —
+     and `DEVELOPMENT_TEAM` is empty in this public repository by policy (see
+     DEVELOPMENT.md, "App Store archive and signing"). Debug is where a fresh
+     clone builds; Release is where a team id is supplied anyway. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- `$(TeamIdentifierPrefix)group.app.gethog`, not the bare
+	     `group.app.gethog` the iOS app declares: macOS requires the team prefix
+	     on an App Group under the App Sandbox where iOS forbids it. Both
+	     spellings name one container, and `SharedSnapshotStore
+	     .appGroupIdentifier(teamIDPrefix:)` is where that rule lives. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(TeamIdentifierPrefix)group.app.gethog</string>
+	</array>
+	<!-- The same shared keychain group as the iOS app and its widgets, so one
+	     credential serves every GetHog process signed by this team. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)app.gethog.shared</string>
+	</array>
+</dict>
+</plist>

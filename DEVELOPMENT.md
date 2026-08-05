@@ -103,6 +103,48 @@ ids, the `group.app.gethog` App Group, and the shared keychain access group
 under that team on first archive. Upload the archive from Xcode's Organizer
 or with `xcodebuild -exportArchive`.
 
+### The Mac app's two entitlements files
+
+`GetHogMac` cannot use one entitlements file, and the reason is the empty team
+above. Either the App Group or the shared keychain access group, **alone**,
+makes a macOS target refuse to build without a development certificate —
+measured by adding each separately and building, and the failure comes before
+any source is compiled:
+
+```
+error: "GetHogMac" has entitlements that require signing with a development
+certificate.
+```
+
+iOS never met this because a Simulator build is not signed against a profile;
+a macOS build always is. So the entitlements split along the axis the
+constraint runs on, and `project.yml` selects by configuration:
+
+| Configuration | File | Carries |
+|---|---|---|
+| Debug | `GetHogMac/Support/GetHogMac.entitlements` | sandbox, network client |
+| Release | `GetHogMac/Support/GetHogMac-Distribution.entitlements` | the above plus the App Group and the shared keychain group |
+
+A fresh clone builds and runs Debug with no certificate at all; Release is only
+ever built with a team supplied on the command line, exactly as the archive
+above does, so it carries both group memberships **by construction** rather
+than by anybody remembering to add them back. Nothing in a Debug run misses
+them: `KeychainTokenStore` defaults to no access group and `SharedSnapshotStore`
+falls back to the app's own container.
+
+To compile-check the Release half without a certificate — which is what CI and
+a local sanity pass want, since signing is the only part that needs the team:
+
+```bash
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac \
+  -destination 'platform=macOS' -configuration Release \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+The macOS App Group is spelled `$(TeamIdentifierPrefix)group.app.gethog`, with
+the prefix that iOS forbids; `SharedSnapshotStore.appGroupIdentifier(teamIDPrefix:)`
+is where that rule lives, so the two platforms name one container.
+
 The upload-facing compliance lives in the repository already:
 `GetHog/Resources/PrivacyInfo.xcprivacy` declares the required-reason APIs the
 app uses, and `ITSAppUsesNonExemptEncryption` in `project.yml` answers the

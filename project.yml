@@ -153,10 +153,34 @@ targets:
         PRODUCT_NAME: GetHog
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: GetHogMac/Support/GetHogMac-Info.plist
-        CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         ENABLE_PREVIEWS: YES
+      # Two entitlements files, chosen by configuration, because one file
+      # cannot be both buildable by a fresh clone and complete for a signed
+      # build. Either the App Group or the shared keychain group, alone, makes
+      # a macOS target refuse to build without a development certificate —
+      # measured by adding each separately to the Debug file — and
+      # `DEVELOPMENT_TEAM` is empty above because a team id is an account
+      # detail, not a project fact (DEVELOPMENT.md, "App Store archive and
+      # signing"). iOS never met this: a Simulator build is not signed against
+      # a profile.
+      #
+      # So the split is along the axis the constraint actually runs on. Debug
+      # is what a clone with no certificate builds and runs, and it carries
+      # sandbox and network client only. Release is what gets archived, always
+      # with a team supplied on the command line, and it carries both groups by
+      # construction — nobody has to remember to add them back. Compile-check
+      # the Release half without signing:
+      #
+      #   xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac \
+      #     -destination 'platform=macOS' -configuration Release \
+      #     CODE_SIGNING_ALLOWED=NO
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac-Distribution.entitlements
 
   GetHogTests:
     type: bundle.unit-test
