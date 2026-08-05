@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Two entitlements the iOS app carries are deliberately absent here, and the
+     reason is a measured build fact rather than a design preference.
+
+         <key>com.apple.security.application-groups</key>
+         <array><string>$(TeamIdentifierPrefix)group.app.gethog</string></array>
+         <key>keychain-access-groups</key>
+         <array><string>$(AppIdentifierPrefix)app.gethog.shared</string></array>
+
+     Either one, alone, makes a macOS target refuse to build without a
+     development certificate: "GetHogMac has entitlements that require signing
+     with a development certificate" — measured by adding each separately to
+     this file and building. `DEVELOPMENT_TEAM` is empty in project.yml because
+     this is a public repository and a team id is an account detail (see
+     DEVELOPMENT.md, "App Store archive and signing"), so a plain
+     `xcodebuild build -scheme GetHogMac -destination 'platform=macOS'` has no
+     certificate to offer and the target becomes unbuildable for anyone who
+     clones the tree. iOS never hit this: a Simulator build is not signed
+     against a profile.
+
+     Nothing needs them yet. `KeychainTokenStore` takes its access group as an
+     argument and defaults to none, and `SharedSnapshotStore` resolves the App
+     Group container and falls back to the app's own when there is not one — so
+     the Mac app reads and writes its own credential and its own snapshot. What
+     makes a *shared* group mean anything is a second process, and there is no
+     macOS widget extension. Restore both keys in the change that gives this
+     target a team and something to share with. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

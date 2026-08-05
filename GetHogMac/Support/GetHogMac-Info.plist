@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the generated Info.plist, the same arrangement as the iOS
+     app's GetHog-Info.plist and for the same reason: INFOPLIST_KEY_* only
+     understands keys Xcode has a schema for and silently drops the rest.
+
+     Deliberately absent, not forgotten: BGTaskSchedulerPermittedIdentifiers
+     and UIBackgroundModes (no BGTaskScheduler arm on macOS), the quick-action
+     items (no home screen), and NSFaceIDUsageDescription (LocalAuthentication
+     on macOS prompts through its own mechanism). -->
+<plist version="1.0">
+<dict>
+	<!-- Handoff ignores an activity whose type is not declared, so the
+	     `.handoff` modifier advertises nothing without this. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>app.gethog.browsing</string>
+	</array>
+
+	<!-- The inbound half of `AppModel.webURL(path:)` — same custom scheme as
+	     iOS, same rationale (see GetHog-Info.plist). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>app.gethog.GetHog</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gethog</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

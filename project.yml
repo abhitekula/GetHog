@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: app.gethog
   deploymentTarget:
     iOS: "26.0"
+    macOS: "26.0"
   createIntermediateGroups: true
 
 packages:
@@ -123,6 +124,40 @@ targets:
         CODE_SIGN_ENTITLEMENTS: GetHog/Support/GetHogWidgets.entitlements
         SKIP_INSTALL: YES
 
+  # The native macOS app: the same bundle id on a different platform, compiling
+  # GetHog/Sources wholesale minus the four iOS-lifecycle files. GetHogMac/
+  # holds only the Mac scene and the stub shell; everything reusable stays in
+  # the shared tree behind `#if` seams (see Common/MacAdaptations.swift).
+  # LinkInbox.swift is deliberately *not* excluded: its mailbox, LinkNotice and
+  # intent routing are consumed by shared screens — only its UIKit delegates
+  # are iOS, and they sit behind `#if os(iOS)` in the file itself.
+  GetHogMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: GetHogMac/Sources
+      - path: GetHog/Sources
+        excludes:
+          - App/GetHogApp.swift
+          - App/QuickActions.swift
+          - App/BackgroundRefresh.swift
+          - App/RootView.swift
+      - path: GetHog/Resources
+        buildPhase: resources
+    dependencies:
+      - package: GetHogKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
+        PRODUCT_NAME: GetHog
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogMac/Support/GetHogMac-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: GetHog
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        ENABLE_PREVIEWS: YES
+
   GetHogTests:
     type: bundle.unit-test
     platform: iOS
@@ -208,6 +243,11 @@ schemes:
       targets:
         - GetHogTests
         - GetHogUITests
+
+  GetHogMac:
+    build:
+      targets:
+        GetHogMac: all
 
   # `xcodebuild test -project GetHog.xcodeproj -scheme GetHogScreenshots \
   #    -destination 'platform=iOS Simulator,name=iPhone 17'`
