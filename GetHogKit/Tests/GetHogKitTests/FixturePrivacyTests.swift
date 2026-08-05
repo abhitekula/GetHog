@@ -103,7 +103,10 @@ enum FixturePrivacyScanner {
         options: .caseInsensitive
     )
     private static let appleSigningIdentifierExpression = try! NSRegularExpression(
-        pattern: #"\b[A-Z0-9]{10}\.app\.gethog(?:\.[A-Za-z0-9.-]+)?\b"#
+        // `(?:group\.)?` because macOS App Groups are spelled
+        // `<TeamID>.group.app.gethog`; without it a committed Team ID would
+        // sail through in exactly the identifier this repository now builds.
+        pattern: #"\b[A-Z0-9]{10}\.(?:group\.)?app\.gethog(?:\.[A-Za-z0-9.-]+)?\b"#
     )
     private static let contextualTenantIdentifierExpression = try! NSRegularExpression(
         pattern: #"\b(project|user|flag|insight|cohort|dashboard|subscriber|issue|session)(?:[\s_-]*(?:id|identifier))?\s*(?:[:=#]|is\s+|was\s+)?([0-9][0-9_]{4,})\b"#,
@@ -1397,13 +1400,19 @@ struct FixturePrivacyTests {
 
         try Data("let group = \"\(signingPrefix).app.gethog.shared\"\n".utf8)
             .write(to: directory.appending(path: "signing.swift"))
+        // The macOS App Group spelling: the prefix sits in front of `group.`,
+        // not in front of `app.gethog`, and must be caught all the same.
+        try Data("let group = \"\(signingPrefix).group.app.gethog\"\n".utf8)
+            .write(to: directory.appending(path: "signing-group.swift"))
         try Data(privateLines.utf8).write(to: directory.appending(path: "private.swift"))
         try Data(allowedLines.utf8).write(to: directory.appending(path: "allowed.swift"))
         try Data(nearMissLines.utf8).write(to: directory.appending(path: "near-miss.swift"))
         try Data(publicDocs.utf8).write(to: directory.appending(path: "docs.swift"))
 
-        let files = ["allowed.swift", "docs.swift", "near-miss.swift", "private.swift", "signing.swift"]
-            .map { directory.appending(path: $0) }
+        let files = [
+            "allowed.swift", "docs.swift", "near-miss.swift", "private.swift",
+            "signing-group.swift", "signing.swift",
+        ].map { directory.appending(path: $0) }
         let findings = try FixturePrivacyScanner.sourceFindings(
             in: files,
             relativeTo: directory.resolvingSymlinksInPath()
@@ -1413,6 +1422,7 @@ struct FixturePrivacyTests {
             "near-miss.swift: non-synthetic-identifier",
             "private.swift: non-synthetic-identifier",
             "private.swift: non-synthetic-project",
+            "signing-group.swift: apple-signing-identifier",
             "signing.swift: apple-signing-identifier",
         ])
     }
