@@ -45,3 +45,7 @@ build/Screenshots/
 .rewrite/
 .rewrite-worktrees/
 .superpowers/
+
+# Internal working notes and local tool state stay out of the public tree.
+docs/superpowers/
+.impeccable/
