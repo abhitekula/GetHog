@@ -276,6 +276,9 @@ struct EventsRoot: View {
     @Environment(OpenDetails.self) private var openDetails
     @State private var store = EventsStore()
     @State private var search = ""
+    /// The free text the server has actually been asked about, set by reload.
+    /// While the live text differs from this, the list narrows locally.
+    @State private var submittedSearch = ""
     @State private var tokens: [EventFilterToken] = []
     @State private var suggestedTokens: [EventFilterToken] = []
     @State private var liveTail = LiveTailController()
@@ -283,8 +286,28 @@ struct EventsRoot: View {
     /// Committed filters reload immediately; free text waits for submit, because
     /// one request per keystroke would spend a budget shared with the whole
     /// organisation.
+    ///
+    /// But waiting silently was its own defect: this field looks identical to
+    /// the Dashboards and Flags fields, which filter live, so typing here
+    /// appeared to do nothing at all — measured in the sweep, `qqzzxx` left the full
+    /// unfiltered list on screen indefinitely. So typing now narrows the rows
+    /// already loaded (free, no request) and Return still runs the real search.
+    /// Local narrowing switches off once the text matches `submittedSearch`:
+    /// the server matches property values the row text never shows, and
+    /// re-filtering its results locally would hide real hits.
     private var filterSignature: String {
         "\(model.projectID ?? 0)|" + tokens.map(\.id).joined(separator: ",")
+    }
+
+    private var isNarrowingLocally: Bool {
+        !search.isEmpty && search != submittedSearch
+    }
+
+    private func matchesLocalSearch(_ event: EventRow) -> Bool {
+        guard isNarrowingLocally else { return true }
+        return event.event.localizedCaseInsensitiveContains(search)
+            || (event.currentURL?.localizedCaseInsensitiveContains(search) ?? false)
+            || (event.distinctID?.localizedCaseInsensitiveContains(search) ?? false)
     }
 
     /// The open event's id, and deliberately **not** `@State`.
@@ -358,6 +381,11 @@ struct EventsRoot: View {
                 }
                 .onChange(of: search) { _, text in
                     suggestedTokens = EventFilterToken.suggestions(for: text)
+                    // Clearing the field un-narrows immediately; if a server
+                    // search was applied, fetch the unfiltered feed back too.
+                    if text.isEmpty, !submittedSearch.isEmpty {
+                        Task { await reload() }
+                    }
                 }
                 // A term an intent asked this screen to filter by, typed in
                 // rather than dropped on the floor.
@@ -475,18 +503,33 @@ struct EventsRoot: View {
     private var list: some View {
         List(selection: selectedID) {
             ForEach(store.buckets, id: \.title) { bucket in
-                Section {
-                    ForEach(bucket.events) { event in
-                        NavigationLink(value: event.id) { EventRowView(event: event) }
-                            .listRowBackground(
-                                Theme.cardBackground
-                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                    .padding(.vertical, 1)
-                            )
-                            .listRowSeparator(.hidden)
+                let rows = bucket.events.filter(matchesLocalSearch)
+                if !rows.isEmpty {
+                    Section {
+                        ForEach(rows) { event in
+                            NavigationLink(value: event.id) { EventRowView(event: event) }
+                                .listRowBackground(
+                                    Theme.cardBackground
+                                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                        .padding(.vertical, 1)
+                                )
+                                .listRowSeparator(.hidden)
+                        }
+                    } header: {
+                        SectionLabel(text: bucket.title, productMark: .event)
                     }
-                } header: {
-                    SectionLabel(text: bucket.title, productMark: .event)
+                }
+            }
+
+            if isNarrowingLocally, !store.events.contains(where: matchesLocalSearch) {
+                // The local pass found nothing — say so, and say what Return
+                // does, because the deeper search is invisible otherwise.
+                Section {
+                    Text("No loaded event matches “\(search)”. Press Search to look further back.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.Ink.secondary)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
             }
 
@@ -553,12 +596,16 @@ struct EventsRoot: View {
 
     private func reload() async {
         guard let client = model.client, let projectID = model.projectID else { return }
+        let requested = search
         await store.reload(
             client: client,
             projectID: projectID,
             tokens: tokens,
-            search: search.isEmpty ? nil : search
+            search: requested.isEmpty ? nil : requested
         )
+        // What the results on screen were actually searched for — local
+        // narrowing stands down while the live text matches this.
+        submittedSearch = requested
     }
 
     private func loadMore() async {
@@ -582,6 +629,37 @@ enum EventAppearance {
     /// Anything without PostHog's `$` prefix was instrumented by the product
     /// team, which is usually what someone is scanning a feed for.
     static func isCustom(_ name: String) -> Bool { !name.hasPrefix("$") }
+
+    /// One humaniser for PostHog's own event names, shared by the feed and the
+    /// session timeline. The two used to disagree — the timeline said
+    /// "Page view" while the feed printed `$pageleave` raw two tabs away —
+    /// which read as half a translation. Custom events stay verbatim: they are
+    /// the product team's own words. The raw name remains on the detail
+    /// screen, where copy-the-identifier flows live.
+    static func displayName(for name: String) -> String {
+        switch name {
+        case "$pageview": return "Page view"
+        case "$pageleave": return "Page leave"
+        case "$screen": return "Screen view"
+        case "$autocapture": return "Autocapture"
+        case "$exception": return "Exception"
+        case "$rageclick": return "Rage click"
+        case "$identify": return "Identify"
+        case "$groupidentify": return "Group identify"
+        case "$web_vitals": return "Web vitals"
+        case "$feature_flag_called": return "Feature flag called"
+        case "$survey_sent": return "Survey sent"
+        case "$survey_shown": return "Survey shown"
+        case "$survey_dismissed": return "Survey dismissed"
+        case "$set": return "Set person properties"
+        default: break
+        }
+        guard name.hasPrefix("$") else { return name }
+        // Unknown PostHog-internal names still read better as words than as
+        // identifiers: `$some_new_event` → "Some new event".
+        let words = name.dropFirst().replacingOccurrences(of: "_", with: " ")
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
 
     /// Says what *kind* of event a row is before the name is read.
     static func glyph(for name: String) -> String {
@@ -622,7 +700,7 @@ struct EventRowView: View {
             glyph: EventAppearance.glyph(for: event.event),
             brandGlyph: EventAppearance.brandGlyph(for: event.event),
             tint: EventAppearance.tint(for: event.event),
-            title: event.event,
+            title: EventAppearance.displayName(for: event.event),
             subtitle: subtitle,
             footnote: footnote,
             // The event name leads the row as its title now. The identifier

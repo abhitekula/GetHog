@@ -500,6 +500,10 @@ struct PersonRowView: View {
             // else. A footnote that clips its own variable is worse than no
             // footnote, because it looks like information.
             footnoteLineLimit: 2,
+            // The title is usually an email: an atomic token, kept on one line
+            // with middle truncation rather than wrapped as `…love@g` /
+            // `mail.com`.
+            titleTruncatesMiddle: true,
             accessory: .pill(
                 person.isIdentified ? "Identified" : "Anonymous",
                 person.isIdentified ? Theme.accent : .secondary

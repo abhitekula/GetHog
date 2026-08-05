@@ -317,7 +317,10 @@ struct MaxMessageRowView: View {
                 .foregroundStyle(roleTint(message.role))
 
             if let text = message.text {
-                Text(text)
+                // Max writes markdown; printing it raw put literal backticks
+                // and `- ` bullets on screen. Inline-only: block structure
+                // stays as typed, but code spans, bold and links render.
+                Text(Self.inlineMarkdown(text))
                     .font(.callout)
                     .textSelection(.enabled)
             } else {
@@ -337,6 +340,17 @@ struct MaxMessageRowView: View {
         case .tool: "Max used a tool here."
         default: "Not shown on mobile."
         }
+    }
+
+    /// Inline markdown only; a parse failure falls back to the verbatim text,
+    /// never to an empty message.
+    static func inlineMarkdown(_ text: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: text,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        )) ?? AttributedString(text)
     }
 }
 

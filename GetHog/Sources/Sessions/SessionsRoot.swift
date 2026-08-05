@@ -490,6 +490,9 @@ struct SessionRowView: View {
             // paths is what makes one session's entry point comparable to the
             // next one's.
             isSubtitleMonospaced: true,
+            // Usually an email; wrapping stranded an orphan `m` on its own
+            // line in the iPad sidebar. See `PersonRowView`.
+            titleTruncatesMiddle: true,
             accessory: .none
         )
         .accessibilityElement(children: .combine)

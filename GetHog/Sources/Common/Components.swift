@@ -759,6 +759,13 @@ extension Double {
     var compactFormatted: String {
         formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
     }
+
+    /// "1 user", "3 users", "12.4K sessions" — a count with its noun, agreed in
+    /// number. Every impact line in the app used to print "1 users"; a client
+    /// whose whole job is reporting counts cannot misdecline its counts.
+    func counted(_ noun: String) -> String {
+        "\(compactFormatted) \(self == 1 ? noun : noun + "s")"
+    }
 }
 
 extension Array where Element == String {

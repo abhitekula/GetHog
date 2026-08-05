@@ -479,7 +479,9 @@ struct SQLConsoleRoot: View {
                 EmptyStateView(
                     title: "Run a query",
                     systemImage: "terminal",
-                    message: "Results appear here. HogQL reads like ClickHouse SQL over your `events`, `persons` and `sessions` tables."
+                    // No backticks: `EmptyStateView` renders plain text, and
+                    // unrendered markdown reads as a typo, not as code.
+                    message: "Results appear here. HogQL reads like ClickHouse SQL over your events, persons and sessions tables."
                 )
             )
         }

@@ -283,6 +283,15 @@ struct DataRow: View {
     /// `2 distinct IDs · First seen Jul 2…` — same prefix, and the day of the
     /// month, the only difference between them, is what went.
     var footnoteLineLimit: Int = 1
+    /// One line with middle truncation, for titles that are emails or other
+    /// atomic identifiers. Wrapping broke them mid-token — measured in the sweep as
+    /// `lambatailorlove@g` / `mail.com` on People and an orphan `m` on the
+    /// iPad Sessions sidebar — and a token split across lines reads as two
+    /// tokens. Middle truncation keeps the start of the local part and the
+    /// whole domain, which are the parts that identify someone. Accessibility
+    /// sizes still wrap: at that scale a single truncated line holds almost
+    /// nothing.
+    var titleTruncatesMiddle = false
     var accessory: RowAccessory = .chevron
 
     var body: some View {
@@ -380,7 +389,10 @@ struct DataRow: View {
             // Uncapped at accessibility sizes: two lines of type that large is
             // half a word, and the cap exists to keep rows an even height, which
             // is a scanning concern that no longer applies at those sizes.
-            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : (titleTruncatesMiddle ? 1 : 2))
+            .truncationMode(
+                titleTruncatesMiddle && !typeSize.isAccessibilitySize ? .middle : .tail
+            )
     }
 
     /// On `Theme.Ink`, not on SwiftUI's `.secondary`.
@@ -619,7 +631,7 @@ struct EmptyStateView: View {
 ///
 /// | screen    | at AX5, side by side                                          |
 /// | --------- | ------------------------------------------------------------- |
-/// | Insights  | `All kinds` set over three lines with the chevron stranded mid-line, beside a `Favourites` toggle wrapped one or two characters per line into a ~700pt-tall capsule — the bar alone filled 40% of the window |
+/// | Insights  | `All kinds` set over three lines with the chevron stranded mid-line, beside a `Favorites` toggle wrapped one or two characters per line into a ~700pt-tall capsule — the bar alone filled 40% of the window |
 /// | Logs      | the severity toggle's word pushed out of the bar entirely, leaving a bare `!` glyph ~5px from the trailing edge |
 /// | Ingestion | a segmented `48h / 7d / 30d` that did not scale at all while every neighbour did |
 ///

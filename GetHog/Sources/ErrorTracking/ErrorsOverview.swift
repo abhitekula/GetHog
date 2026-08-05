@@ -179,8 +179,8 @@ struct ErrorsOverview: View {
                             metric: issue.occurrences.compactFormatted,
                             spokenMetric: "\(whole(issue.occurrences)) occurrences",
                             footnote: [
-                                "\(issue.users.compactFormatted) users",
-                                "\(issue.sessions.compactFormatted) sessions",
+                                issue.users.counted("user"),
+                                issue.sessions.counted("session"),
                             ]
                         )
                     }

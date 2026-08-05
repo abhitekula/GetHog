@@ -165,7 +165,10 @@ struct AccessibilityRotorTests {
 
         let errors = try #require(rotors["Errors"])
         #expect(errors.count == 1)
-        #expect(errors.first?.contains("$exception") == true)
+        // The row's display name, not the raw `$exception`: the feed and the
+        // session timeline now share one humaniser, and the rotor reads what
+        // the row shows.
+        #expect(errors.first?.contains("Exception") == true)
 
         // Two buckets in these rows — two of them minutes old, two of them
         // three-quarters of an hour — so the rotor has somewhere to go.

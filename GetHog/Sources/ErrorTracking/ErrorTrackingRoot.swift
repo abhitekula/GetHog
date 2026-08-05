@@ -89,7 +89,7 @@ extension ErrorIssue {
         if let issueDescription, !issueDescription.isEmpty {
             parts.append(issueDescription.rotorSnippet)
         }
-        parts.append("\(users.compactFormatted) users")
+        parts.append(users.counted("user"))
         return parts.joined(separator: ", ")
     }
 }
@@ -466,18 +466,36 @@ struct ErrorTrackingRoot: View {
 struct ErrorIssueRow: View {
     let issue: ErrorIssue
 
+    /// Exception classes that identify nothing on their own. A JavaScript
+    /// project's list is mostly `Error` — four identical titles stacked, with
+    /// the only distinguishing text demoted to the subtitle. When the class is
+    /// one of these and a message exists, the message takes the headline and
+    /// the class becomes the supporting line; both survive, swapped.
+    private static let genericNames: Set<String> = [
+        "Error", "Exception", "UnhandledRejection", "Unhandled Rejection",
+    ]
+
+    private var isGenericName: Bool {
+        Self.genericNames.contains(issue.name)
+            && !(issue.issueDescription ?? "").isEmpty
+    }
+
     var body: some View {
         DataRow(
             glyph: "ladybug.fill",
             tint: issue.statusTint,
-            title: issue.name,
+            title: isGenericName ? (issue.issueDescription ?? issue.name) : issue.name,
             // The class name and the message both come out of a stack trace, so
-            // the message keeps code type where the headline title cannot.
-            subtitle: issue.issueDescription,
+            // whichever takes the supporting line keeps code type.
+            subtitle: isGenericName ? issue.name : issue.issueDescription,
             footnote: impactLine,
             isSubtitleMonospaced: true,
             // Generic issue names need their message visible to distinguish rows.
             subtitleLineLimit: 2,
+            // Two lines: the counts are what this list is *ranked by*, and at
+            // compact width one line beside the status pill cut them at
+            // "18 occu…" — the metric and the last-seen time both lost.
+            footnoteLineLimit: 2,
             // Unconditional now that the glyph is tinted by status: resolved and
             // suppressed must never be carried by colour alone.
             accessory: .pill(issue.statusTitle, issue.statusTint)
@@ -490,9 +508,9 @@ struct ErrorIssueRow: View {
     /// ordered by, and "when did it last happen" is the next question asked.
     private var impactLine: String {
         var parts = [
-            "\(issue.users.compactFormatted) users",
-            "\(issue.sessions.compactFormatted) sessions",
-            "\(issue.occurrences.compactFormatted) occurrences",
+            issue.users.counted("user"),
+            issue.sessions.counted("session"),
+            issue.occurrences.counted("occurrence"),
         ]
         if let lastSeen = issue.lastSeen {
             parts.append(lastSeen.formatted(.relative(presentation: .numeric, unitsStyle: .narrow)))

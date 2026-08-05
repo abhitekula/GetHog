@@ -381,7 +381,14 @@ private struct SDKHealthRow: View {
     let entry: SDKHealthEntry
 
     private var versions: String? {
-        guard let current = entry.currentVersion, let latest = entry.latestVersion else { return nil }
+        guard let latest = entry.latestVersion, !latest.isEmpty else { return nil }
+        // PostHog sometimes reports the in-use version as a literal "?" — seen
+        // live as "posthog-node ? → 5.34.6", which reads as data corruption.
+        // An unknown current version is still a row worth showing; say what is
+        // known instead of printing the API's shrug.
+        guard let current = entry.currentVersion, !current.isEmpty, current != "?" else {
+            return "\(latest) available"
+        }
         return "\(current) → \(latest)"
     }
 
