@@ -68,3 +68,13 @@ stored in the device Keychain and must never be committed or placed in a
 screenshot. Keep local environment files and one-off probes untracked. When
 investigating an API behavior, retain only durable field, type, nullability,
 pagination, or enum contracts in a synthetic fixture or public note.
+
+For a verification session against a real project, `GETHOG_API_KEY` and
+`GETHOG_REGION` in the launch environment put a DEBUG build straight past
+onboarding without storing anything: the credential goes into an in-memory
+store and dies with the process. Supply them through a UI test's
+`launchEnvironment`, or through `SIMCTL_CHILD_`-prefixed variables when the app
+has to be driven by hand — see AGENTS.md for why that is the one sanctioned use
+of `xcrun simctl`. `GETHOG_REGION` also accepts a full URL, so pointing it at an
+unroutable address is how offline and connection-failure behavior gets
+exercised without touching the simulator's network settings.

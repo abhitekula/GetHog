@@ -25,8 +25,33 @@ xcodebuild test -project GetHog.xcodeproj -scheme GetHog \
 ```
 
 Use `-only-testing:GetHogUITests` for rendered accessibility behavior and the
-`GetHogScreenshots` scheme for visual sweeps. Do not use `xcrun simctl` or pass
-`-derivedDataPath`. Report nonzero executed test counts, not just exit status.
+`GetHogScreenshots` scheme for visual sweeps. Do not pass `-derivedDataPath`.
+Report nonzero executed test counts, not just exit status.
+
+`xcrun simctl` is not a route to automated verification. Booting and mutating a
+simulator out of band is how a run stops being reproducible, and the test
+targets need none of it: `xcodebuild` manages the device lifecycle, and
+anything a launch has to know travels in a target's `launchEnvironment`.
+
+It **is** the route to authorized manual live testing, which needs a channel
+the test targets do not have. Two facts leave no alternative: `GETHOG_API_KEY`
+builds an `InMemoryTokenStore` that dies with the process, deliberately, so no
+credential is persisted for a later launch to find; and the iOS Simulator MCP's
+`launch` action accepts no arguments and no environment, so it cannot supply
+one either. Driving a live, authenticated app — iPad multitasking and window
+resizing especially, which no XCUITest can arrange — therefore starts with
+
+```bash
+SIMCTL_CHILD_GETHOG_API_KEY=$(grep GETHOG_API_KEY .env.local | cut -d= -f2-) \
+  xcrun simctl launch <udid> app.gethog.GetHog
+```
+
+`SIMCTL_CHILD_`-prefixed variables are inherited through the shell into the
+launched process, so the key never appears in `argv` and never reaches a
+process listing. Read it from an untracked file — `.env*` and `*.pat` are
+already ignored — and keep it out of logs, commits, and fixtures. Screenshots
+of live data stay under `build/`, which is ignored; only synthetic images are
+ever committed.
 
 For the UI target, prefer the wrapper — it runs across simulator clones and
 checks the count for you:
