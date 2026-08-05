@@ -37,18 +37,18 @@ final class RenderPlaybackController {
     /// hands back is signed for an hour, so resolving when the list loads would
     /// spend one request per row to produce links that are dead before anyone
     /// picks a row.
-    func play(export: RecordingExport, credential: StoredCredential, projectID: Int) async {
-        #if DEBUG
+    func play(export: RecordingExport, credential: StoredCredential, projectID: Int, isDemo: Bool) async {
         // Demo mode drives the UI from synthetic JSON. The fixtures carry a
         // render's metadata but no video file, and the demo credential is the
         // literal string "demo" — resolving would send it to PostHog and come
         // back with an auth error that says nothing true about this screen.
-        if DemoTransport.isEnabled {
+        // A parameter rather than `DemoTransport.isEnabled`, because a demo
+        // entered from onboarding sets no launch argument.
+        if isDemo {
             failure = "Playback isn't available in demo mode: the demo fixtures "
                 + "carry each render's metadata but no video file."
             return
         }
-        #endif
 
         if let resolved, resolved.isUsable(asOf: Date()), player != nil {
             player?.play()
@@ -629,7 +629,12 @@ struct RenderDetailView: View {
         guard let projectID = model.projectID,
               let credential = try? model.store.load()
         else { return }
-        Task { await controller.play(export: export, credential: credential, projectID: projectID) }
+        Task {
+            await controller.play(
+                export: export, credential: credential,
+                projectID: projectID, isDemo: model.isDemo
+            )
+        }
     }
 
     private func notice(icon: String, title: String, detail: String, tint: Color) -> some View {

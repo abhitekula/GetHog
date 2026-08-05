@@ -5,8 +5,9 @@ import GetHogKit
 import UniformTypeIdentifiers
 
 /// Loads deterministic, hand-authored PostHog response shapes containing only fictional data.
-/// Routing is local to DEBUG builds and preserves each endpoint's method, path, shape, and status.
-#if DEBUG
+/// Preserves each endpoint's method, path, shape, and status. Ships in Release —
+/// onboarding's "Explore the demo" enters it at runtime via `AppModel.enterDemo()`,
+/// which is also what App Review uses to see the app without a PostHog credential.
 private actor DemoSummaryGenerationState {
     private let startsAbsent: Bool
     private var generated = false
@@ -1402,4 +1403,3 @@ struct DemoTransport: HTTPTransport {
     private static let emptyPage = Data(#"{"count":0,"next":null,"previous":null,"results":[]}"#.utf8)
     private static let emptyQueryResult = Data(#"{"columns":[],"types":[],"results":[]}"#.utf8)
 }
-#endif

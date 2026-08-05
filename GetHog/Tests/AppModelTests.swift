@@ -112,6 +112,40 @@ struct AppModelTests {
         #expect(try store.load() == nil)
     }
 
+    @Test("entering the demo becomes ready without persisting a credential")
+    func enterDemoIsEphemeral() async throws {
+        let store = InMemoryTokenStore()
+        // A transport that would fail any request, proving demo entry never
+        // routes through the transport the model was built with.
+        let model = AppModel(store: store, transport: ScriptedTransport([(500, "{}")]))
+
+        await model.enterDemo()
+
+        #expect(model.phase == .ready)
+        #expect(model.isDemo)
+        // Nothing may be persisted: the demo credential is the literal string
+        // "demo", and a store that kept it would greet the next launch with it.
+        #expect(try store.load() == nil)
+    }
+
+    @Test("signing out of the demo restores the transport the model was built with")
+    func signOutLeavesDemo() async throws {
+        let store = InMemoryTokenStore()
+        let model = AppModel(store: store, transport: ScriptedTransport([(200, meJSON)]))
+
+        await model.enterDemo()
+        model.signOut()
+
+        #expect(model.phase == .onboarding)
+        #expect(!model.isDemo)
+
+        // The next connection must reach the injected transport again, not the
+        // demo fixtures the session just left.
+        try await model.connect(key: "phx_abc", region: .usCloud)
+        #expect(model.phase == .ready)
+        #expect(try store.load()?.key == "phx_abc")
+    }
+
     @Test("self-hosted regions are preserved, since OAuth can never reach them")
     func selfHostedRegionSurvives() async throws {
         let store = InMemoryTokenStore()

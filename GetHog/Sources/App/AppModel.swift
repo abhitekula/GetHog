@@ -84,13 +84,30 @@ final class AppModel {
     let store: any CredentialStoring
     let cache = ResponseCache()
     private let governor = RateLimitGovernor()
-    private let transport: any HTTPTransport
+
+    /// The transport the model was built with, kept so `signOut()` can restore
+    /// it after a runtime demo session swapped it out.
+    private let baseTransport: any HTTPTransport
+    private var transport: any HTTPTransport
+
+    /// True only for a demo entered from onboarding at runtime, never for a
+    /// model *built* around `DemoTransport` (the `-GetHogDemo` launch and the
+    /// tests that inject it). The distinction carries the guards below: a
+    /// launch-argument demo owns its whole simulator, while a runtime demo runs
+    /// on a device whose widget cache and pending intents belong to the user's
+    /// real workspace and must survive the visit untouched.
+    private(set) var isRuntimeDemo = false
+
+    /// Whether this session is browsing the bundled fictional data, however it
+    /// got there.
+    var isDemo: Bool { transport is DemoTransport }
 
     init(
         store: any CredentialStoring = KeychainTokenStore(),
         transport: any HTTPTransport = URLSessionTransport()
     ) {
         self.store = store
+        self.baseTransport = transport
         self.transport = transport
     }
 
@@ -117,6 +134,25 @@ final class AppModel {
         let credential = StoredCredential(key: key, region: region)
         try await activate(credential: credential)
         try store.save(credential)
+    }
+
+    /// Becomes a demo session: the bundled fixtures for a transport, the
+    /// literal string "demo" for a credential, and nothing persisted anywhere —
+    /// `activate` alone, never `connect`, so the keychain is not touched and
+    /// the next launch still lands on onboarding. `signOut()` is the exit.
+    func enterDemo() async {
+        transport = DemoTransport()
+        isRuntimeDemo = true
+        do {
+            try await activate(credential: StoredCredential(key: "demo", region: .usCloud))
+        } catch {
+            // Unreachable in practice — the fixtures ship in the bundle — but a
+            // demo that failed to start must not leave the session wedged
+            // between transports.
+            transport = baseTransport
+            isRuntimeDemo = false
+            connectionError = error.localizedDescription
+        }
     }
 
     private func activate(credential: StoredCredential) async throws {
@@ -286,6 +322,11 @@ final class AppModel {
     /// `BackgroundRefreshPolicy` for what a day of that adds up to.
     @discardableResult
     func publishWidgetSnapshot() async -> Bool {
+        // The widget cache renders the user's real workspace on their home
+        // screen. A demo entered from onboarding must not overwrite it with
+        // fiction that would outlive the visit; the launch-argument demo keeps
+        // publishing, because tests and screenshots own their whole simulator.
+        guard !isRuntimeDemo else { return false }
         guard let client, let project = selectedProject else { return false }
         return await publish(using: client, projectID: project.id, projectName: project.name)
     }
@@ -566,6 +607,10 @@ final class AppModel {
     /// to show a 403, so a flag toggle requested from a widget is recorded and
     /// completed here instead.
     func consumePendingIntentWork() async {
+        // A widget-recorded toggle names a flag in the user's real workspace.
+        // Consuming it against the demo fixtures would both lose the request
+        // and claim it was honored; it stays pending for the real session.
+        guard !isRuntimeDemo else { return }
         if let pending = SharedSnapshotStore.shared.pendingFlagWrite() {
             SharedSnapshotStore.shared.clearPendingFlagWrite()
             guard FlagQuickToggle.isAllowed(flagID: pending.flagID) else { return }
@@ -582,6 +627,10 @@ final class AppModel {
     }
 
     func signOut() {
+        // Also the exit from a runtime demo: the fixtures must not answer the
+        // next connection's requests.
+        transport = baseTransport
+        isRuntimeDemo = false
         try? store.clear()
         // A pending wake would otherwise launch the app in the background with
         // nothing to authenticate as, teaching iOS that its requests are futile.

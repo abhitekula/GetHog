@@ -55,7 +55,12 @@ make ownership and actor boundaries explicit rather than suppressing warnings.
 ## Demo mode and fixtures
 
 Demo mode is deterministic and entirely fictional. It is the only data source
-for UI tests, screenshot generation, and public examples. Fixture updates must
+for UI tests, screenshot generation, and public examples, and it ships in
+Release: "Explore the demo" on the welcome screen enters it at runtime
+(`AppModel.enterDemo()`), which is how App Review and the curious see the app
+without a PostHog credential. A runtime demo session never touches the
+Keychain, the widget snapshot, or pending intent work — those belong to the
+user's real workspace. Fixture updates must
 preserve the declared catalog and include privacy regression coverage. Do not
 add customer data, copied response bodies, credentials, non-reserved domains,
 or personal details to fixtures, screenshots, test names, or documentation.

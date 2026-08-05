@@ -193,6 +193,21 @@ struct OnboardingView: View {
                 // slab this dark, light ink is not a preference, it is the only
                 // side of the ramp that can clear AA at all.
                 .foregroundStyle(Theme.inkOnAccent)
+
+                // The second door, and the one App Review walks: the whole app
+                // on the bundled fictional data, no account and no credential.
+                // Quieter than "Get started", because a user holding a real key
+                // should not have to read past the demo to connect — but a full
+                // bordered button rather than a text link, because for the user
+                // *without* a key this is the only tappable thing on the screen
+                // that can show them anything.
+                Button {
+                    Task { await model.enterDemo() }
+                } label: {
+                    Text("Explore the demo").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
         }
     }
