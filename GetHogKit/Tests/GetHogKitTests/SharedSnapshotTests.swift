@@ -228,6 +228,46 @@ struct SharedSnapshotTests {
         #expect(try store.read()?.projectID == 1_001)
     }
 
+    @Test("the identifier wears the team prefix only where the platform demands it")
+    func platformAwareAppGroupIdentifier() {
+        // The base identifier is what iOS declares, and what every platform
+        // degrades to when no prefix is injected.
+        #expect(SharedSnapshotStore.appGroupIdentifier == "group.app.gethog")
+        #expect(SharedSnapshotStore.appGroupIdentifier(teamIDPrefix: nil)
+            == SharedSnapshotStore.appGroupIdentifier)
+
+        // Both branches of the rule, pinned regardless of which platform runs
+        // this test. "EXAMPLETEAM" is one character longer than a real signing
+        // prefix on purpose, so the privacy scanner never needs to exempt it.
+        #expect(SharedSnapshotStore.resolvedAppGroupIdentifier(
+            teamIDPrefix: "EXAMPLETEAM.", requiresTeamIDPrefix: true
+        ) == "EXAMPLETEAM.group.app.gethog")
+        // A raw Team ID arrives without `$(AppIdentifierPrefix)`'s trailing
+        // dot; the spelling must come out identical.
+        #expect(SharedSnapshotStore.resolvedAppGroupIdentifier(
+            teamIDPrefix: "EXAMPLETEAM", requiresTeamIDPrefix: true
+        ) == "EXAMPLETEAM.group.app.gethog")
+        #expect(SharedSnapshotStore.resolvedAppGroupIdentifier(
+            teamIDPrefix: "EXAMPLETEAM.", requiresTeamIDPrefix: false
+        ) == "group.app.gethog")
+        // An empty prefix degrades to the shared spelling instead of minting
+        // the invalid ".group.app.gethog".
+        #expect(SharedSnapshotStore.resolvedAppGroupIdentifier(
+            teamIDPrefix: "", requiresTeamIDPrefix: true
+        ) == "group.app.gethog")
+
+        // And the platform this run is actually on picks the right branch.
+        #if os(macOS)
+        #expect(SharedSnapshotStore.platformRequiresTeamIDPrefix)
+        #expect(SharedSnapshotStore.appGroupIdentifier(teamIDPrefix: "EXAMPLETEAM.")
+            == "EXAMPLETEAM.group.app.gethog")
+        #else
+        #expect(SharedSnapshotStore.platformRequiresTeamIDPrefix == false)
+        #expect(SharedSnapshotStore.appGroupIdentifier(teamIDPrefix: "EXAMPLETEAM.")
+            == "group.app.gethog")
+        #endif
+    }
+
     @Test("uses the App Group container when one is available")
     func appGroupContainer() throws {
         #expect(SharedSnapshotStore.appGroupIdentifier == "group.app.gethog")

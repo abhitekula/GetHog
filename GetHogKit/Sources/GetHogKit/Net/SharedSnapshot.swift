@@ -267,7 +267,56 @@ public struct PendingOpen: Codable, Sendable, Equatable {
 /// app, and the tests each construct their own and point it at a directory.
 public struct SharedSnapshotStore: Sendable {
 
+    /// The unprefixed App Group identifier — exactly what iOS declares.
+    /// Prefer `appGroupIdentifier(teamIDPrefix:)` when resolving a container:
+    /// it spells the identifier the way the running platform requires.
     public static let appGroupIdentifier = "group.app.gethog"
+
+    /// The App Group identifier as the running platform spells it.
+    ///
+    /// macOS requires the signing Team ID in front of an App Group identifier
+    /// under the App Sandbox — `<TeamID>.group.app.gethog` — while iOS forbids
+    /// exactly that. The prefix belongs to whoever signs the app, so the kit
+    /// cannot name it: an app target injects it (typically by publishing
+    /// `$(AppIdentifierPrefix)` through its own `Info.plist`), and a `nil` or
+    /// empty prefix degrades to the unprefixed identifier — today's behavior
+    /// on every platform. On iOS the prefix is ignored outright, so no caller
+    /// can accidentally change what shipping widgets already read.
+    public static func appGroupIdentifier(teamIDPrefix: String?) -> String {
+        resolvedAppGroupIdentifier(
+            teamIDPrefix: teamIDPrefix,
+            requiresTeamIDPrefix: platformRequiresTeamIDPrefix
+        )
+    }
+
+    /// True where App Group identifiers carry the Team ID prefix (macOS under
+    /// the sandbox), false where they must not (iOS and its extensions).
+    static var platformRequiresTeamIDPrefix: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// The platform-independent rule behind `appGroupIdentifier(teamIDPrefix:)`,
+    /// split out so tests can pin both branches from whichever platform runs
+    /// them.
+    static func resolvedAppGroupIdentifier(
+        teamIDPrefix: String?,
+        requiresTeamIDPrefix: Bool
+    ) -> String {
+        guard requiresTeamIDPrefix, let teamIDPrefix, !teamIDPrefix.isEmpty else {
+            return appGroupIdentifier
+        }
+        // `$(AppIdentifierPrefix)` renders with a trailing dot and a raw Team
+        // ID has none; accept both rather than let container resolution fail
+        // invisibly over punctuation.
+        let trimmed = teamIDPrefix.hasSuffix(".")
+            ? String(teamIDPrefix.dropLast())
+            : teamIDPrefix
+        return "\(trimmed).\(appGroupIdentifier)"
+    }
 
     private static let snapshotFileName = "snapshot.json"
     private static let pendingFlagFileName = "pending-flag.json"
@@ -287,7 +336,11 @@ public struct SharedSnapshotStore: Sendable {
         self.isSharedContainer = isSharedContainer
     }
 
-    /// The store both processes use in production.
+    /// The store both processes use in production — on iOS. It resolves the
+    /// unprefixed identifier, which is the wrong spelling for a sandboxed Mac
+    /// app; Mac targets build their store with
+    /// `resolve(appGroupIdentifier: appGroupIdentifier(teamIDPrefix:))` and
+    /// the prefix their signing gave them.
     public static let shared = resolve()
 
     /// `containerURL(forSecurityApplicationGroupIdentifier:)` returns nil
@@ -295,7 +348,7 @@ public struct SharedSnapshotStore: Sendable {
     /// a unit-test host. Falling back to a private directory keeps every call
     /// site total: nothing traps, nothing force-unwraps, and the widget simply
     /// renders its no-data state rather than crashing on a locked screen.
-    static func resolve(
+    public static func resolve(
         appGroupIdentifier: String = SharedSnapshotStore.appGroupIdentifier,
         container: (String) -> URL? = {
             FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0)
