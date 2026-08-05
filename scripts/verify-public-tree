@@ -17,6 +17,80 @@ files_file="$temporary_root/public-tree-files"
 : > "$manifest_file"
 : > "$files_file"
 
+# A PNG's pixel stream is compressed noise, and `strings` over it will
+# eventually cough up something shaped like an email address. Provenance can
+# only live in the metadata chunks (tEXt, zTXt, iTXt, eXIf) and in any bytes
+# trailing the IEND chunk, so only those regions are extracted for scanning.
+# A file that is not a well-formed PNG is scanned whole, which fails safe.
+png_text_extractor="$temporary_root/png-text-extractor.py"
+cat > "$png_text_extractor" <<'PYEOF'
+import sys
+import zlib
+
+
+def runs(data):
+    out, run = [], bytearray()
+    for byte in data:
+        if 32 <= byte < 127:
+            run.append(byte)
+        else:
+            if len(run) >= 4:
+                out.append(run.decode("ascii"))
+            run = bytearray()
+    if len(run) >= 4:
+        out.append(run.decode("ascii"))
+    return out
+
+
+with open(sys.argv[1], "rb") as handle:
+    data = handle.read()
+
+lines = []
+if data[:8] != b"\x89PNG\r\n\x1a\n":
+    lines = runs(data)
+else:
+    pos, trailing = 8, b""
+    while pos < len(data):
+        stop = pos + 8 + int.from_bytes(data[pos : pos + 4], "big") + 4
+        if pos + 8 > len(data) or stop > len(data):
+            trailing = data[pos:]
+            break
+        kind = data[pos + 4 : pos + 8]
+        payload = data[pos + 8 : stop - 4]
+        if kind == b"tEXt":
+            lines += runs(payload)
+        elif kind == b"zTXt":
+            key, _, rest = payload.partition(b"\x00")
+            lines += runs(key)
+            try:
+                lines += runs(zlib.decompress(rest[1:]))
+            except Exception:
+                lines += runs(rest)
+        elif kind == b"iTXt":
+            key, _, rest = payload.partition(b"\x00")
+            lines += runs(key)
+            if len(rest) >= 2:
+                compressed, body = rest[0] == 1, rest[2:]
+                language, _, body = body.partition(b"\x00")
+                translated, _, text = body.partition(b"\x00")
+                lines += runs(language) + runs(translated)
+                if compressed:
+                    try:
+                        text = zlib.decompress(text)
+                    except Exception:
+                        pass
+                lines += runs(text)
+        elif kind == b"eXIf":
+            lines += runs(payload)
+        pos = stop
+        if kind == b"IEND":
+            trailing = data[pos:]
+            break
+    lines += runs(trailing)
+
+print("\n".join(lines))
+PYEOF
+
 cleanup() {
     rm -rf -- "$temporary_root"
 }
@@ -184,7 +258,10 @@ scan_one_path() {
             if ! is_allowed_png_path "$relative_path"; then
                 record_violation "binary-artifact" "$relative_path"
             fi
-            strings -a "$full_path" > "$temporary_root/image-strings" || true
+            if ! python3 "$png_text_extractor" "$full_path" \
+                > "$temporary_root/image-strings" 2>/dev/null; then
+                strings -a "$full_path" > "$temporary_root/image-strings" || true
+            fi
             legacy_app="Mobile""Hog"
             legacy_package="Post""HogKit"
             image_private_pattern="${legacy_app}|${legacy_package}|/""Users/|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
