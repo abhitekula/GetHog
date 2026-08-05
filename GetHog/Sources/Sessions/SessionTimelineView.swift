@@ -162,6 +162,62 @@ struct TimelineEntry: Identifiable {
     }
 }
 
+/// What the timeline actually draws: an entry on its own, or a run of
+/// consecutive lookalikes folded into one row.
+///
+/// Measured in the sweep: a busy session put nine consecutive `Autocapture ·
+/// /same/path` rows on screen, four of them stamped the same minute — nineteen
+/// rows per screen for ~48 screens, all saying the same thing. A run row says
+/// it once, with a count and a span, and expands in place when the individual
+/// moments matter. Errors and custom events never fold: they are what someone
+/// is scanning a session *for*, and burying an exception inside "×9" would be
+/// the exact noise this exists to remove.
+enum TimelineDisplayItem: Identifiable {
+    case single(TimelineEntry)
+    case run([TimelineEntry])
+
+    var id: String {
+        switch self {
+        case .single(let entry): entry.id
+        case .run(let entries): "run-\(entries.first?.id ?? "")"
+        }
+    }
+
+    /// Three is the floor for folding: two identical rows read fine, and a
+    /// "×2" row costs a tap to see what two rows would have just shown.
+    static let runThreshold = 3
+
+    static func grouped(_ entries: [TimelineEntry]) -> [TimelineDisplayItem] {
+        var result: [TimelineDisplayItem] = []
+        var buffer: [TimelineEntry] = []
+        func flush() {
+            if buffer.count >= runThreshold {
+                result.append(.run(buffer))
+            } else {
+                result.append(contentsOf: buffer.map(TimelineDisplayItem.single))
+            }
+            buffer.removeAll()
+        }
+        for entry in entries {
+            if entry.isError || entry.isCustom {
+                flush()
+                result.append(.single(entry))
+                continue
+            }
+            if let last = buffer.last,
+               last.title == entry.title,
+               last.subtitle == entry.subtitle {
+                buffer.append(entry)
+            } else {
+                flush()
+                buffer = [entry]
+            }
+        }
+        flush()
+        return result
+    }
+}
+
 enum TimelineFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case errors = "Errors"
@@ -193,6 +249,7 @@ struct SessionTimelineView: View {
 
     @State private var filter: TimelineFilter = .all
     @State private var expanded: Set<String> = []
+    @State private var expandedRuns: Set<String> = []
     @State private var showingAll = false
 
     /// The same collapse contract as the console and network panes, which cap
@@ -212,8 +269,16 @@ struct SessionTimelineView: View {
         entries.filter(filter.matches)
     }
 
-    private var shown: [TimelineEntry] {
-        showingAll ? visible : Array(visible.prefix(Self.collapsedLimit))
+    /// Consecutive lookalikes folded into runs — see `TimelineDisplayItem`.
+    private var items: [TimelineDisplayItem] {
+        TimelineDisplayItem.grouped(visible)
+    }
+
+    /// The cap counts drawn rows, not events: a folded run is one row however
+    /// many moments it holds, and the "Show all" figure below matches what
+    /// pressing it will actually add to the screen.
+    private var shown: [TimelineDisplayItem] {
+        showingAll ? items : Array(items.prefix(Self.collapsedLimit))
     }
 
     var body: some View {
@@ -233,6 +298,16 @@ struct SessionTimelineView: View {
                 } else {
                     timeline
                     showAllFooter
+                }
+
+                if let earliest = visible.first?.offset, earliest < -1 {
+                    // The network pane explains its own sub-zero starts; the
+                    // timeline owed the same sentence. Offsets count from the
+                    // replay's first frame, and PostHog stamps events the page
+                    // fired while recording was still spinning up.
+                    Text("Events before +0:00 had already fired when the recording's first frame was captured.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
 
                 if store.didHitLimit {
@@ -273,6 +348,7 @@ struct SessionTimelineView: View {
                         // and network panes do: "show all errors" and "show all
                         // 500 of everything" are different-sized requests.
                         showingAll = false
+                        expandedRuns.removeAll()
                     } label: {
                         HStack(spacing: 5) {
                             Text(option.rawValue)
@@ -299,27 +375,49 @@ struct SessionTimelineView: View {
     }
 
     private var timeline: some View {
-        // Lazy because "Show all" can realise 500 rows at once; the page's
-        // scroll view lets laziness actually defer the off-screen ones.
+        // Lazy because "Show all" can realise hundreds of rows at once; the
+        // page's scroll view lets laziness actually defer the off-screen ones.
         LazyVStack(spacing: 0) {
-            ForEach(Array(shown.enumerated()), id: \.element.id) { index, entry in
-                TimelineRowView(
-                    entry: entry,
-                    isLast: index == shown.count - 1,
-                    isExpanded: expanded.contains(entry.id),
-                    canSeek: canSeek,
-                    onToggle: { toggle(entry.id) },
-                    onSeek: { onSeek?(entry.offset) }
-                )
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                let isLastItem = index == shown.count - 1
+                switch item {
+                case .single(let entry):
+                    row(entry, isLast: isLastItem)
+                case .run(let runEntries):
+                    if expandedRuns.contains(item.id) {
+                        ForEach(Array(runEntries.enumerated()), id: \.element.id) { position, entry in
+                            row(entry, isLast: isLastItem && position == runEntries.count - 1)
+                        }
+                    } else {
+                        TimelineRunRowView(
+                            entries: runEntries,
+                            isLast: isLastItem,
+                            canSeek: canSeek,
+                            onToggle: { expandedRuns.insert(item.id) },
+                            onSeek: { onSeek?(runEntries[0].offset) }
+                        )
+                    }
+                }
             }
         }
         .skeleton(store.isLoading && store.events.isEmpty)
     }
 
+    private func row(_ entry: TimelineEntry, isLast: Bool) -> some View {
+        TimelineRowView(
+            entry: entry,
+            isLast: isLast,
+            isExpanded: expanded.contains(entry.id),
+            canSeek: canSeek,
+            onToggle: { toggle(entry.id) },
+            onSeek: { onSeek?(entry.offset) }
+        )
+    }
+
     @ViewBuilder
     private var showAllFooter: some View {
-        if visible.count > Self.collapsedLimit {
-            Button(showingAll ? "Show fewer" : "Show all \(visible.count)") {
+        if items.count > Self.collapsedLimit {
+            Button(showingAll ? "Show fewer" : "Show all \(items.count) rows") {
                 showingAll.toggle()
             }
             .font(.footnote.weight(.medium))
@@ -373,6 +471,126 @@ struct SessionTimelineView: View {
 }
 
 // MARK: - Row
+
+/// A folded run of consecutive lookalike events: one gutter timestamp, one
+/// title carrying the count, and the span the run covers. Tapping unfolds it
+/// into its individual rows in place.
+struct TimelineRunRowView: View {
+    let entries: [TimelineEntry]
+    let isLast: Bool
+    let canSeek: Bool
+    let onToggle: () -> Void
+    let onSeek: () -> Void
+
+    @ScaledMetric(relativeTo: .caption2) private var offsetWidth: CGFloat = 54
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var first: TimelineEntry { entries[0] }
+    private var span: String {
+        let last = entries[entries.count - 1]
+        return "\(SessionClock.offset(first.offset)) – \(SessionClock.offset(last.offset))"
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    offsetLabel
+                    summary
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, isLast ? 0 : 14)
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    offsetLabel
+                        .frame(width: offsetWidth, alignment: .trailing)
+                        .padding(.top, 2)
+
+                    rail
+
+                    summary
+                        .padding(.bottom, isLast ? 0 : 14)
+                }
+            }
+        }
+        .contentShape(.rect)
+        .onTapGesture(perform: onToggle)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var offsetLabel: some View {
+        Text(SessionClock.offset(first.offset))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+
+    /// A stack of three dots rather than one: the rail's way of saying this
+    /// stop stands for several.
+    private var rail: some View {
+        VStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { _ in
+                Circle()
+                    .fill(Color.secondary)
+                    .frame(width: 5, height: 5)
+            }
+            .padding(.top, 1)
+            if !isLast {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+            }
+        }
+        .frame(width: 9)
+        .accessibilityHidden(true)
+    }
+
+    private var summary: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(first.title) ×\(entries.count)")
+                    .font(.subheadline.weight(.medium))
+                if let subtitle = first.subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                }
+                Text(span)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(Theme.Ink.tertiary)
+            }
+
+            Spacer(minLength: 4)
+
+            if canSeek {
+                Button(action: onSeek) {
+                    Image(systemName: "play.circle")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.accent)
+                        .minimumHitTarget()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    "Play the replay from \(SessionClock.spoken(max(0, first.offset)))"
+                )
+            }
+
+            if !dynamicTypeSize.isAccessibilitySize {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(entries.count) \(first.title) events between \(SessionClock.spoken(max(0, first.offset))) and \(SessionClock.spoken(max(0, entries[entries.count - 1].offset)))"
+        )
+        .accessibilityHint("Expands into individual events")
+    }
+}
 
 struct TimelineRowView: View {
     let entry: TimelineEntry
