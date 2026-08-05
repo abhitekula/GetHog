@@ -1,8 +1,12 @@
 # GetHog
 
-The PostHog companion I wanted on my phone, built during a weekend that got slightly out of hand.
+![GetHog — PostHog, pocket-sized](docs/assets/gethog-social-preview.png)
 
-> GetHog is an independent community project. It is not affiliated with, endorsed by, or maintained by PostHog.
+The PostHog companion I wanted on my phone. I built it over a weekend, and then
+it got a little out of hand.
+
+> GetHog is an independent community project. It is not affiliated with,
+> endorsed by, or maintained by PostHog.
 
 ## Why this exists
 
@@ -14,28 +18,28 @@ we are.
 **Warning:** side projects may expand when exposed to SwiftUI, analytics APIs,
 and the dangerous thought, “replay parsing can’t be *that* much work.”
 
-## What it does
+> **Hey, PostHog folks:** if you like what I’ve built, feel free to give me a
+> job. I’d also happily accept some PostHog credits 🙃
 
-GetHog is a native iPhone and iPad client for checking the PostHog work that
-cannot wait for a laptop: dashboards, events, sessions and replay, and feature
-flags. It keeps the app deliberately narrow, cache-aware, and honest about
-surfaces it does not yet render.
+## What it can do
+
+GetHog is a native SwiftUI app for iPhone and iPad. Right now it can:
 
 - Browse saved dashboards and their supported insights.
-- Inspect events, people, sessions, and web-session replay.
+- Inspect events, people, and sessions, including web-session replay.
 - Review feature flags and change a flag only after confirmation.
 - Connect to PostHog US Cloud, EU Cloud, or a self-hosted instance.
 
-## See it without an API key
+## Try it without an API key
 
-Demo mode uses deterministic, hand-authored fictional data. It is the data
-source for UI tests and screenshots, so you can explore the app or work on its
-interface without a PostHog account, project, or credential.
+Demo mode is built in. Its data is fictional and written by hand. Every run
+gets the same data, and the UI tests and screenshots use it too. You can poke
+around or work on the interface without a PostHog account or credential.
 
 ## Getting started
 
-Get Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen), then generate
-the project from its source of truth:
+Install Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen), then
+generate the project:
 
 ```bash
 brew install xcodegen
@@ -43,10 +47,11 @@ xcodegen generate
 open GetHog.xcodeproj
 ```
 
-To connect your own account, create a PostHog [personal API key](https://posthog.com/docs/api/personal-api-keys)
-with the scopes shown in onboarding. GetHog stores it in the device Keychain;
-it has no backend. See [DEVELOPMENT.md](DEVELOPMENT.md) for builds, tests, demo
-mode, and credential handling.
+If you want to connect your account, create a PostHog
+[personal API key](https://posthog.com/docs/api/personal-api-keys) with the
+scopes shown during onboarding. GetHog stores the key in the device Keychain.
+There is no GetHog backend. See [DEVELOPMENT.md](DEVELOPMENT.md) for builds,
+tests, demo mode, and credential handling.
 
 ## Architecture
 
@@ -58,31 +63,32 @@ GetHogWidgets/      WidgetKit extension using the shared cache only
 GetHog/Resources/   Deterministic demo resources and bundled replay player
 ```
 
-`project.yml` is authoritative; `GetHog.xcodeproj` is generated. The app keeps
-networking and decoding in `GetHogKit` so those contracts can be verified apart
-from the UI.
+`project.yml` is the source of truth and `GetHog.xcodeproj` is generated. The
+app keeps networking and decoding in `GetHogKit`, where they can be tested
+without the UI. Widgets use the shared cache and do not call PostHog directly.
 
 ## Project status
 
-GetHog is a community project under active development. The core dashboard,
-event, session, replay, and flag workflows are present; unsupported insight
-types fall back to clear guidance rather than pretending to be complete.
+GetHog is unfinished and moving quickly. You can use dashboards, events,
+people, sessions, replay, and feature flags now. If the app finds an insight
+type it cannot draw yet, it tells you instead of making up a chart.
 
-It is not a replacement for the PostHog web app. Some API surfaces are still
-unimplemented, replay availability depends on the source recording, and a phone
-is not the right place for every analytics task. See [ROADMAP.md](ROADMAP.md)
-for current limits and directions.
+This is not a replacement for the PostHog web app. Some API surfaces are still
+missing. A replay can only show what the original recording captured. Plenty
+of analytics work is still better done on a laptop. [ROADMAP.md](ROADMAP.md)
+lists the current gaps and what I want to tackle next.
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md),
+Contributions are welcome and encouraged. If you’ve found GetHog useful,
+please star the repo. It helps other people find it.
+
+If you want to send a change, read [CONTRIBUTING.md](CONTRIBUTING.md),
 [DEVELOPMENT.md](DEVELOPMENT.md), and the [Code of Conduct](CODE_OF_CONDUCT.md)
-before opening a change. Examples, fixtures, screenshots, and attachments must
-be synthetic and privacy-safe.
+before opening a change. Please keep every example, fixture, screenshot, and
+attachment synthetic and privacy-safe.
 
 ## License
 
 GetHog is available under the [MIT License](LICENSE). See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for bundled dependencies.
-
-<!-- PostHog folks: if you made it this far, I accept feature requests and suspiciously well-timed job interviews. My calendar can probably survive one. -->
