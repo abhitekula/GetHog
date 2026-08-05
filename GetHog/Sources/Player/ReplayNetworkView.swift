@@ -23,11 +23,14 @@ struct ReplayNetworkCard: View {
     @State private var showingAll = false
     @State private var selected: String?
 
-    /// Same as the console pane's. A session's requests run to the hundreds and
+    /// Half the console pane's. A session's requests run to the hundreds and
     /// they are in time order, so the first screenful is the page's own boot —
     /// fonts and chunks. The chips are how you get past that, and "Show all" is
     /// one tap; what neither of them survives is a card a thousand points tall.
-    private static let collapsedLimit = 12
+    /// Measured at the old cap of 12: ~1,050pt on a phone, more than a
+    /// full screen of waterfall before anything after it. Six rows plus the
+    /// summary line says what the network did; the rest is on request.
+    private static let collapsedLimit = 6
 
     private var visible: [ReplayNetworkEntry] {
         diagnostics.network.filter(filter.matches)
@@ -159,7 +162,10 @@ struct ReplayNetworkCard: View {
     }
 
     private var waterfall: some View {
-        VStack(spacing: 0) {
+        // Lazy: "Show all" can mean a couple of hundred rows, and eager rows
+        // were the payload of the playback-starvation bug — every one carried
+        // a GeometryReader re-laid-out on each playhead tick.
+        LazyVStack(spacing: 0) {
             ForEach(shown) { entry in
                 ReplayNetworkRow(
                     entry: entry,

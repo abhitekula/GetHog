@@ -81,11 +81,34 @@ final class ReplayPlayerController {
 
     private struct PendingSeekAcknowledgement {
         static let tolerance: TimeInterval = 0.05
+        /// How long rejected ticks may pile up before the gate opens anyway.
+        ///
+        /// The acknowledgement exists to stop one stale pre-seek tick from
+        /// snapping the clock back; it must never become a latch. A backward
+        /// seek that resumes can blow straight through its acceptance window —
+        /// rrweb lands near the target, plays on, and by the time the first
+        /// tick is delivered the position is already past `target + tolerance`,
+        /// after which *every* later tick is rejected and the clock is frozen
+        /// for the life of the view. One second is ~20 rejected ticks: far more
+        /// than one stale frame, far less than a user reaching for the scrubber
+        /// to un-stick a dead readout.
+        static let patience: TimeInterval = 1.0
 
         let origin: TimeInterval
         let target: TimeInterval
+        let setAt: TimeInterval
 
-        func accepts(_ position: TimeInterval) -> Bool {
+        func accepts(_ position: TimeInterval, now: TimeInterval) -> Bool {
+            // The patience valve, not a wider window. An earlier fix tried
+            // widening the backward-seek acceptance to "anything earlier than
+            // origin" instead, and `ReplayCoordinationTests` rejects that
+            // rightly: a stale tick can land anywhere between target and
+            // origin, and accepting one rolls the clock back — the exact
+            // defect this gate exists to stop. Time is the only signal that
+            // distinguishes "stale frame being filtered" from "window blown,
+            // clock latched dead"; after a second of nothing but rejections,
+            // the stream on offer is the only stream there is.
+            if now - setAt > Self.patience { return true }
             if target > origin + Self.tolerance {
                 return position >= target - Self.tolerance
             }
@@ -102,9 +125,22 @@ final class ReplayPlayerController {
     private(set) var didFinish = false
 
     /// Playhead in seconds from the first snapshot event.
+    ///
+    /// Republished at up to 20 Hz. Only views that genuinely need frame-rate
+    /// tracking — the transport bar's knob — may read this in `body`;
+    /// everything else reads `coarseTime`. Observation tracks the property
+    /// *access*, so a view that reads `currentTime` and rounds it still
+    /// invalidates twenty times a second; measured: it starved playback
+    /// to a frozen clock with the network card expanded.
     private(set) var currentTime: TimeInterval = 0
+    /// `currentTime` quantised to half-second steps and mutated only when the
+    /// quantised value moves, so a dependent view invalidates at 2 Hz worst
+    /// case. This is what the console and network panes lay out against.
+    private(set) var coarseTime: TimeInterval = 0
     /// Duration the player currently knows about — grows as chunks arrive.
     private(set) var playerDuration: TimeInterval = 0
+
+    static let coarseQuantum: TimeInterval = 0.5
 
     /// Fatal for the player only. The session header and timeline are unaffected.
     private(set) var failure: String?
@@ -191,6 +227,7 @@ final class ReplayPlayerController {
         isPlaying = false
         didFinish = false
         currentTime = 0
+        coarseTime = 0
         playerDuration = 0
         pendingSeekAcknowledgement = nil
         interactiveSeekPosition = nil
@@ -208,6 +245,7 @@ final class ReplayPlayerController {
         isPlaying = false
         didFinish = false
         currentTime = 0
+        coarseTime = 0
         playerDuration = 0
         pendingSeekAcknowledgement = nil
         interactiveSeekPosition = nil
@@ -332,6 +370,15 @@ final class ReplayPlayerController {
         isPlaying ? pause() : play()
     }
 
+    // `isPlaying` moves optimistically on the transport calls below and is
+    // corrected by rrweb's own `state` messages. It used to move only on the
+    // messages, which are asynchronous — so between asking to play and rrweb
+    // saying "playing", `isPlaying` read false. Anything that captured
+    // playback intent in that window captured the wrong one: measured as the
+    // expanded player opening paused whenever an archive-origin restart fired
+    // during the handoff, because `restartPlayback(rebasingPlayheadBy:)`
+    // snapshots `isPlaying` to re-prepare with.
+
     func play() {
         guard isReady else { return }
         if didFinish {
@@ -339,25 +386,42 @@ final class ReplayPlayerController {
             seek(to: 0, resume: true)
             return
         }
+        isPlaying = true
         evaluate("window.GetHogReplay.play();")
     }
 
     func pause() {
         guard isReady else { return }
+        isPlaying = false
         evaluate("window.GetHogReplay.pause();")
     }
 
     func seek(to seconds: TimeInterval, resume: Bool? = nil) {
         guard isReady else { return }
+        let shouldResumeIntent = resume ?? isPlaying
+        isPlaying = shouldResumeIntent
         let target = max(0, seconds)
         pendingSeekAcknowledgement = PendingSeekAcknowledgement(
             origin: currentTime,
-            target: target
+            target: target,
+            setAt: ProcessInfo.processInfo.systemUptime
         )
         currentTime = target
+        coarseTime = (target / Self.coarseQuantum).rounded(.down) * Self.coarseQuantum
         didFinish = false
-        let shouldResume = resume ?? isPlaying
-        evaluate("window.GetHogReplay.seek(\(Int(target * 1000)), \(shouldResume));")
+        evaluate("window.GetHogReplay.seek(\(Int(target * 1000)), \(shouldResumeIntent));")
+    }
+
+    /// Re-measures the stage and rescales the replay to it.
+    ///
+    /// The shim listens for `window.resize`, but a WKWebView whose frame is
+    /// animated by SwiftUI — the full-screen cover appearing, the cover being
+    /// dismissed, a window resize on iPad — can boot or settle at a geometry
+    /// the debounced listener never saw. Observed live as a letterboxed sliver
+    /// or an entirely black canvas that only a manual seek repainted.
+    func refit() {
+        guard isReady else { return }
+        evaluate("window.GetHogReplay.resize();")
     }
 
     func setSpeed(_ value: Double) {
@@ -397,12 +461,17 @@ final class ReplayPlayerController {
             guard !isScrubbing, let ms = body["currentTime"] as? Double else { return }
             let seconds = ms / 1000
             if let pendingSeekAcknowledgement {
-                guard pendingSeekAcknowledgement.accepts(seconds) else { return }
+                guard pendingSeekAcknowledgement.accepts(
+                    seconds,
+                    now: ProcessInfo.processInfo.systemUptime
+                ) else { return }
                 self.pendingSeekAcknowledgement = nil
             }
             // rrweb ticks on every animation frame; quantising keeps SwiftUI from
             // re-rendering the whole detail screen 60 times a second.
             if abs(seconds - currentTime) >= 0.05 { currentTime = seconds }
+            let coarse = (seconds / Self.coarseQuantum).rounded(.down) * Self.coarseQuantum
+            if coarse != coarseTime { coarseTime = coarse }
 
         case "state":
             isPlaying = (body["state"] as? String) == "playing"
@@ -581,6 +650,25 @@ final class ReplayWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDeleg
     }
 }
 
+/// A WKWebView that tells the shim when native layout moved its frame.
+///
+/// The shim's own `window.resize` listener is debounced and fires only once
+/// the web content process notices the change; a SwiftUI-animated frame — the
+/// full-screen cover presenting, an iPad window resize — can settle at a size
+/// the listener never reports, leaving the replay scaled to stale geometry.
+/// Layout is the one place the native side knows the truth first.
+final class ReplayStageWebView: WKWebView {
+    var onLayout: ((CGSize) -> Void)?
+    private var lastLayoutSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != lastLayoutSize else { return }
+        lastLayoutSize = bounds.size
+        onLayout?(bounds.size)
+    }
+}
+
 /// Hosts the offline rrweb player. Renders frames only — the transport controls
 /// live outside, in SwiftUI.
 struct WKWebViewRepresentable: UIViewRepresentable {
@@ -597,7 +685,10 @@ struct WKWebViewRepresentable: UIViewRepresentable {
         bridge.controller = controller
         configuration.userContentController.add(bridge, name: "player")
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = ReplayStageWebView(frame: .zero, configuration: configuration)
+        webView.onLayout = { [weak controller] _ in
+            controller?.refit()
+        }
         webView.navigationDelegate = bridge
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -696,17 +787,20 @@ struct ReplayPlayerView: View {
     }
 
     var body: some View {
-        // Three cards, not one. The console and network panes are siblings of
-        // the player rather than children of it: they come from the same fetched
-        // blobs, but a 400-line console inside the player's card would put the
-        // transport controls off the top of the screen.
-        VStack(spacing: Theme.Space.l) {
-            playerCard
-            diagnosticsPanes
-        }
+        // Just the player card. The console and network panes used to be
+        // emitted here as siblings — which silently wedged ~1,500pt of
+        // diagnostics between the player and the session narrative, and put
+        // both cards inside the player's own invalidation graph. They are now
+        // `ReplayDiagnosticsSection`, placed by the session screen after the
+        // timeline, where a reader who has finished the story goes looking for
+        // evidence.
+        playerCard
         .onChange(of: loader.pendingCount, initial: true) { _, _ in feedPlayer() }
         .onChange(of: controller.isDocumentReady, initial: true) { _, _ in feedPlayer() }
-        .onChange(of: controller.currentTime) { _, now in
+        // Coverage prefetch keyed to the half-second playhead, not the 20 Hz
+        // one: `prefetchLead` is measured in tens of seconds, so asking forty
+        // times a second bought nothing but invalidation.
+        .onChange(of: controller.coarseTime) { _, now in
             loader.ensureCoverage(upTo: now + ReplayLoader.prefetchLead)
         }
         .onChange(of: loader.bufferedSeconds) { _, buffered in
@@ -729,53 +823,21 @@ struct ReplayPlayerView: View {
                 loader: loader,
                 initialPosition: controller.expansionHandoffPosition,
                 initialSpeed: controller.speed,
+                // Expansion used to pause: the cover's controller prepared its
+                // playback without a resume flag, so going full screen was
+                // silently also pressing pause. Playback intent survives the
+                // trip in both directions now.
+                initialResume: resumeAfterExpansion,
                 markers: markers,
-                onClose: { position in
-                    seek(to: position, resume: resumeAfterExpansion)
+                onClose: { position, wasPlaying in
+                    seek(to: position, resume: wasPlaying)
+                    // The inline stage sat behind the cover through all of
+                    // this; if its frame settled while covered, its scale is
+                    // stale — observed as a black canvas until a manual seek.
+                    controller.refit()
                 }
             )
         }
-    }
-
-    /// Console and network, drawn from rrweb plugin events that arrived in the
-    /// blobs the player already fetched — no extra request, and no part of the
-    /// shared rate-limit budget.
-    ///
-    /// Shown whenever snapshot data loaded, including when the web player itself
-    /// failed: an rrweb crash costs the pixels, not the console.
-    @ViewBuilder
-    private var diagnosticsPanes: some View {
-        if loader.availability == .ready {
-            ReplayConsoleCard(
-                diagnostics: loader.diagnostics,
-                origin: loader.replayStart,
-                playhead: coarsePlayhead,
-                canSeek: controller.isReady,
-                isStreaming: !loader.isComplete && loader.streamingError == nil,
-                onSeek: { seek(to: $0) }
-            )
-            ReplayNetworkCard(
-                diagnostics: loader.diagnostics,
-                origin: loader.replayStart,
-                duration: duration,
-                playhead: coarsePlayhead,
-                canSeek: controller.isReady,
-                isStreaming: !loader.isComplete && loader.streamingError == nil,
-                onSeek: { seek(to: $0) }
-            )
-        }
-    }
-
-    /// The playhead these two panes are laid out against, quantised.
-    ///
-    /// `controller.currentTime` already drops from rrweb's per-frame tick to
-    /// 20 Hz, which is right for the scrubber and much too fast here: a change
-    /// re-filters a few hundred entries and re-lays out every visible row,
-    /// twenty times a second, inside the page's scroll view. Half a second is
-    /// invisible for what it drives — a rule that crosses the waterfall once per
-    /// session, and the dimming of console lines that have not happened yet.
-    private var coarsePlayhead: TimeInterval {
-        (controller.currentTime / 0.5).rounded(.down) * 0.5
     }
 
     private var playerCard: some View {
@@ -1060,6 +1122,49 @@ struct ReplayPlayerView: View {
     }
 }
 
+// MARK: - Diagnostics section
+
+/// Console and network, drawn from rrweb plugin events that arrived in the
+/// blobs the player already fetched — no extra request, and no part of the
+/// shared rate-limit budget.
+///
+/// A sibling of the player on the session screen, placed after the timeline:
+/// the summary and event story are what a reader wants next to the video, and
+/// the waterfall is what they consult afterwards. Being its own view also keeps
+/// the playhead dependency out of the player card's body — this subtree reads
+/// `coarseTime` and invalidates at 2 Hz worst case, whatever the frame rate.
+///
+/// Shown whenever snapshot data loaded, including when the web player itself
+/// failed: an rrweb crash costs the pixels, not the console.
+struct ReplayDiagnosticsSection: View {
+    let loader: ReplayLoader
+    let controller: ReplayPlayerController
+    let duration: TimeInterval
+    let onSeek: (TimeInterval) -> Void
+
+    var body: some View {
+        if loader.availability == .ready {
+            ReplayConsoleCard(
+                diagnostics: loader.diagnostics,
+                origin: loader.replayStart,
+                playhead: controller.coarseTime,
+                canSeek: controller.isReady,
+                isStreaming: !loader.isComplete && loader.streamingError == nil,
+                onSeek: onSeek
+            )
+            ReplayNetworkCard(
+                diagnostics: loader.diagnostics,
+                origin: loader.replayStart,
+                duration: duration,
+                playhead: controller.coarseTime,
+                canSeek: controller.isReady,
+                isStreaming: !loader.isComplete && loader.streamingError == nil,
+                onSeek: onSeek
+            )
+        }
+    }
+}
+
 // MARK: - Transport
 
 /// Native playback controls. Deliberately outside the web view: rrweb's own
@@ -1080,6 +1185,8 @@ struct PlayerTransportBar: View {
     let onMarkerSeek: (TimeInterval) -> Void
 
     @State private var interaction = ReplayTransportInteraction()
+    /// Width of the scrubber row, for tap-to-seek and the buffered underlay.
+    @State private var trackWidth: CGFloat = 0
 
     private static let speeds: [Double] = [1, 2, 4]
 
@@ -1228,8 +1335,20 @@ struct PlayerTransportBar: View {
             ZStack {
                 scrubberSlider
 
+                bufferedUnderlay
+
                 ReplayMarkerTrack(markers: markers, duration: duration)
             }
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                trackWidth = width
+            }
+            // Simultaneous, not exclusive: drags still belong to the slider.
+            // Before this, the only way to move an 85-minute recording was
+            // dragging a 27pt knob — every video player on the platform seeks
+            // on a track tap.
+            .simultaneousGesture(trackTap)
 
             HStack {
                 Text(SessionClock.clock(position.wrappedValue))
@@ -1240,6 +1359,33 @@ struct PlayerTransportBar: View {
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
         }
+    }
+
+    /// How much of the recording is actually seekable, drawn on the track
+    /// itself. The number was always known — it drove the "Buffering selected
+    /// moment…" deferral — but it was printed only as a footnote below the
+    /// toggle, the one place a thumb on the scrubber is not looking.
+    @ViewBuilder
+    private var bufferedUnderlay: some View {
+        if !isComplete, duration > 0, trackWidth > 28 {
+            let fraction = min(1, max(0, buffered / duration))
+            Capsule()
+                .fill(Theme.accent.opacity(0.25))
+                .frame(width: max(0, (trackWidth - 28) * fraction), height: 4)
+                .padding(.leading, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var trackTap: some Gesture {
+        SpatialTapGesture()
+            .onEnded { value in
+                guard controller.isReady, trackWidth > 28 else { return }
+                let fraction = min(1, max(0, (value.location.x - 14) / (trackWidth - 28)))
+                markerSeek(to: fraction * upperBound)
+            }
     }
 
     @ViewBuilder

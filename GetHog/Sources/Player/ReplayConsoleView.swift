@@ -114,7 +114,9 @@ struct ReplayConsoleCard: View {
     }
 
     private var list: some View {
-        VStack(spacing: 0) {
+        // Lazy for the same reason as the network waterfall: "Show all" can
+        // realise hundreds of rows inside the page's scroll view.
+        LazyVStack(spacing: 0) {
             ForEach(shown) { entry in
                 ReplayConsoleRow(
                     entry: entry,

@@ -23,8 +23,13 @@ struct ExpandedReplayView: View {
     let loader: ReplayLoader
     let initialPosition: TimeInterval
     let initialSpeed: Double
+    /// Whether playback was running when the user expanded. Full screen is a
+    /// bigger seat for the same show — it must not also be the pause button.
+    var initialResume = false
     let markers: [SessionReplayMarker]
-    let onClose: (TimeInterval) -> Void
+    /// Reports where the playhead ended up and whether it was playing, so the
+    /// inline player can pick up mid-motion exactly where this view left off.
+    let onClose: (TimeInterval, Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -33,6 +38,7 @@ struct ExpandedReplayView: View {
     @State private var archiveCursor: ReplayArchiveDeliveryCursor?
     @State private var didClose = false
     @State private var seekArbiter = ReplaySeekArbiter()
+    @State private var didRestoreInitialPosition = false
 
     var body: some View {
         NavigationStack {
@@ -91,6 +97,23 @@ struct ExpandedReplayView: View {
             .onChange(of: controller.isDocumentReady, initial: true) { _, _ in
                 feedArchive()
             }
+            // The handoff position waits for *this* player to know that much
+            // of the recording. It used to ride in through
+            // `preparePlaybackForNextReady`, which seeks the instant rrweb
+            // boots — and the loader's `bufferedSeconds` is no help either,
+            // because that measures what has been *fetched*, not what has been
+            // *delivered to this instance*. A goto past the expanded player's
+            // own duration does not join the stream mid-way; rrweb runs off
+            // the end of what it has and reports `finish`, which is why entry
+            // kept landing at the right position, paused. `playerDuration`
+            // grows with each appended chunk, so the restore fires the moment
+            // the target is actually reachable.
+            .onChange(of: controller.isReady, initial: true) { _, _ in
+                attemptEntryRestore()
+            }
+            .onChange(of: controller.playerDuration) { _, _ in
+                attemptEntryRestore()
+            }
             .onChange(of: loader.archiveDeliveryRevision) { _, _ in
                 feedArchive()
             }
@@ -147,10 +170,27 @@ struct ExpandedReplayView: View {
     }
 
     private func prepareInitialPlayback() {
+        // Speed only. Position and playback intent are restored through
+        // `attemptEntryRestore` — see the onChange pair above for why the
+        // prepared-playback path cannot carry them.
         controller.preparePlaybackForNextReady(
-            position: initialPosition,
+            position: 0,
             speed: initialSpeed
         )
+    }
+
+    /// Seeks to the handoff position once this player can reach it, resuming
+    /// if the inline player was playing. Idempotent; called from both the
+    /// ready transition and every duration growth until it fires.
+    private func attemptEntryRestore() {
+        guard controller.isReady, !didRestoreInitialPosition else { return }
+        let target = min(max(0, initialPosition), max(0, duration))
+        guard controller.playerDuration + 0.25 >= target else { return }
+        didRestoreInitialPosition = true
+        seek(to: target, resume: initialResume)
+        // Belt and braces for the goto's play flag: a no-op when it was
+        // honoured, the recovery when it was not.
+        if initialResume { controller.play() }
     }
 
     private func seek(to seconds: TimeInterval, resume: Bool? = nil) {
@@ -191,7 +231,11 @@ struct ExpandedReplayView: View {
                 initialPosition: initialPosition,
                 didRestorePosition: controller.didRestorePreparedPlayback,
                 currentTime: controller.expansionHandoffPosition
-            )
+            ),
+            // Read before dismissal tears the controller down: if the show was
+            // running in here, it keeps running inline. Closing a bigger
+            // window is not a pause gesture.
+            controller.isPlaying
         )
     }
 }

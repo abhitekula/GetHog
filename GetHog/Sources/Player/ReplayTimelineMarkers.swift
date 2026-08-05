@@ -109,6 +109,12 @@ struct ReplayMarkerTrack: View {
                 }
             }
         }
+        // A GeometryReader is maximally greedy on both axes and this one uses
+        // the proxy for width alone — unconstrained, it claimed every free
+        // point the expanded player's VStack had, splitting the screen 50/50
+        // with the stage and marooning the scrubber in ~300pt of blank card.
+        // The markers are 12pt tall; that is the track's height.
+        .frame(height: 12)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
