@@ -1,6 +1,6 @@
 # GetHog
 
-![GetHog — PostHog, pocket-sized](docs/assets/gethog-social-preview.png)
+![GetHog — PostHog, pocket-sized](docs/images/gethog-social-preview.png)
 
 The PostHog companion I wanted on my phone. I built it over a weekend, and then
 it got a little out of hand.
