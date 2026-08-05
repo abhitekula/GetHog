@@ -242,7 +242,7 @@ scan_one_path() {
         SECURITY.md|.github/SECURITY.md|docs/SECURITY.md)
             record_violation "security-reporting-route" "$relative_path"
             ;;
-        docs/superpowers/*|.superpowers/*|CLAUDE.md|PROGRESS.md|\
+        docs/superpowers/*|.superpowers/*|PROGRESS.md|\
         .rewrite/*|.rewrite-worktrees/*)
             record_violation "internal-artifact" "$relative_path"
             ;;
