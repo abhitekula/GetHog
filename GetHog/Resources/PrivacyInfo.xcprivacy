@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Apple's privacy manifest, required at upload since May 2024: App Store
+     Connect rejects a build (ITMS-91053) whose code calls a "required reason"
+     API with no approved reason declared here. Lives in `GetHog/Resources` so
+     the existing resources build phase copies it to the bundle root, which is
+     where the validator looks.
+
+     The declarations must track the code. Current uses:
+       - UserDefaults: NavPreferences, QuickActions, SearchSuggestions and
+         friends (app-private, CA92.1); the App Group suite in
+         IntentDependencies.sharedDefaults (1C8F.1).
+       - System boot time: ProcessInfo.systemUptime in ReplayPlayerView,
+         measuring elapsed playback time (35F9.1).
+     Nothing is collected or tracked: the app has no backend and no telemetry,
+     so the collection and tracking sections are deliberately empty rather
+     than omitted. -->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

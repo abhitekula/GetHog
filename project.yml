@@ -50,6 +50,10 @@ targets:
         # purpose string. Used before revealing the stored API key and,
         # optionally, before toggling a live feature flag.
         INFOPLIST_KEY_NSFaceIDUsageDescription: "GetHog asks for Face ID before revealing your PostHog API key or changing a live feature flag."
+        # The app's only cryptography is TLS via URLSession, which is exempt
+        # from export documentation. Declaring it here answers App Store
+        # Connect's per-build export-compliance question once, for every build.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: GetHog

@@ -83,3 +83,29 @@ has to be driven by hand — see AGENTS.md for why that is the one sanctioned us
 of `xcrun simctl`. `GETHOG_REGION` also accepts a full URL, so pointing it at an
 unroutable address is how offline and connection-failure behavior gets
 exercised without touching the simulator's network settings.
+
+## App Store archive and signing
+
+`DEVELOPMENT_TEAM` is deliberately empty in `project.yml`: this is a public
+repository and a team id is an account detail, not a project fact. Supply it
+on the command line at archive time instead — it never gets committed:
+
+```bash
+xcodebuild archive -project GetHog.xcodeproj -scheme GetHog \
+  -destination 'generic/platform=iOS' \
+  -archivePath build/GetHog.xcarchive \
+  -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM=<team id>
+```
+
+`-allowProvisioningUpdates` lets automatic signing register the two bundle
+ids, the `group.app.gethog` App Group, and the shared keychain access group
+under that team on first archive. Upload the archive from Xcode's Organizer
+or with `xcodebuild -exportArchive`.
+
+The upload-facing compliance lives in the repository already:
+`GetHog/Resources/PrivacyInfo.xcprivacy` declares the required-reason APIs the
+app uses, and `ITSAppUsesNonExemptEncryption` in `project.yml` answers the
+export question (TLS only, exempt). If a change starts using a new
+required-reason API — file timestamps, disk space, active keyboards — the
+manifest must grow with it, or the upload is rejected with ITMS-91053.
