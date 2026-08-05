@@ -89,31 +89,13 @@ struct DashboardsRoot: View {
     /// columns need to negotiate with each other.
     private var regularSplit: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Bare on purpose: `listChrome` already carries the full modifier
+            // stack. This site used to re-apply all of it inline — which drew
+            // the project-switcher glyph twice in the sidebar header and, far
+            // worse, mounted a second `.task(id: model.projectID)`, fetching
+            // the dashboard list twice on appear and twice per project switch
+            // against a shared rate limit.
             listChrome
-                // Left to its own devices the sidebar took 340pt of an 834pt
-                // iPad, leaving the grid too narrow for two columns. The list
-                // is titles and one line of description; it does not need more
-                // than this, and the charts do.
-                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
-                // The tab sidebar already puts a toggle in this bar; the split
-                // view added a second, identical one beside it.
-                //
-                // Removing it is only safe because the column above is pinned
-                // `.all` rather than left to resolve. The earlier reasoning here
-                // — that `InsightPanelOpenKey` drives the column, so the button
-                // was redundant — was the bug: the preference only ever *closes*
-                // the column, and the reopening path it assumed existed was
-                // `.automatic`, which in iPad portrait resolves to detail-only.
-                .toolbar(removing: .sidebarToggle)
-                .navigationTitle("Dashboards")
-                .toolbar { ProjectSwitcher() }
-                .projectSubtitle()
-                .searchable(text: $search, prompt: "Search dashboards")
-                .refreshable { await load() }
-                .task(id: model.projectID) {
-                    await load()
-                    applyDebugSelectionIfNeeded()
-                }
         } detail: {
             if let selection {
                 // `.id` rebuilds the screen per dashboard, which also clears the
@@ -144,9 +126,24 @@ struct DashboardsRoot: View {
     }
 
     /// The list and everything attached to it, shared by both widths.
+    /// The one copy of this chrome — `regularSplit` must not re-apply any of
+    /// it, or the switcher glyph doubles and the list fetches twice.
     private var listChrome: some View {
         content
+            // Left to its own devices the sidebar took 340pt of an 834pt
+            // iPad, leaving the grid too narrow for two columns. The list
+            // is titles and one line of description; it does not need more
+            // than this, and the charts do.
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
+            // The tab sidebar already puts a toggle in this bar; the split
+            // view added a second, identical one beside it.
+            //
+            // Removing it is only safe because the column is pinned `.all`
+            // rather than left to resolve. The earlier reasoning here — that
+            // `InsightPanelOpenKey` drives the column, so the button was
+            // redundant — was the bug: the preference only ever *closes* the
+            // column, and the reopening path it assumed existed was
+            // `.automatic`, which in iPad portrait resolves to detail-only.
             .toolbar(removing: .sidebarToggle)
             .navigationTitle("Dashboards")
             .toolbar { ProjectSwitcher() }
@@ -212,6 +209,21 @@ struct DashboardsRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .skeleton(store.isLoading && store.dashboards.isEmpty)
+        // Same shape as the flags list. Without it, a query matching nothing
+        // emptied both sections and left the freshness label floating over
+        // ~1,600pt of bare page — a blank screen after typing reads as a
+        // crash, on the landing tab.
+        .overlay {
+            if !search.isEmpty,
+               filtered(store.pinned).isEmpty,
+               filtered(store.others).isEmpty {
+                EmptyStateView(
+                    title: "No matching dashboards",
+                    systemImage: "magnifyingglass",
+                    message: "No dashboard title matched “\(search)”."
+                )
+            }
+        }
     }
 
     private func row(_ dashboard: DashboardSummary) -> some View {

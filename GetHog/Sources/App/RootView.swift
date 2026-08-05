@@ -599,6 +599,15 @@ struct RootView: View {
                 // long list, which is most of what this app is. It restores itself
                 // on the first upward scroll, so nothing becomes unreachable.
                 .tabBarMinimizeBehavior(.onScrollDown)
+                // Nothing typed into this app is a sentence by default: search
+                // queries are event names, flag keys, emails and URLs, and
+                // autocapitalisation was corrupting every one of them
+                // (`zzzqqq` → `Zzzqqq` across all ~29 search fields, measured
+                // live on both devices). The handful of true prose fields —
+                // annotation text, experiment conclusions, saved-filter names —
+                // opt back in with `.sentences` locally, which wins over this.
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
                 // Only the loose tabs get a number: they are the ones always
                 // present in the tab bar, and which four those are is now the
                 // user's choice - so Cmd-1..4 name whatever they put there rather

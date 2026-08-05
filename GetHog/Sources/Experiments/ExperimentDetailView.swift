@@ -242,6 +242,10 @@ struct ExperimentDetailSheet: View {
         TextField("Why (optional)", text: $conclusionComment, axis: .vertical)
             .lineLimit(1...4)
             .font(.subheadline)
+            // Real prose: wins over the app-wide `.never` that protects
+            // search queries from autocapitalisation.
+            .textInputAutocapitalization(.sentences)
+            .autocorrectionDisabled(false)
             .accessibilityLabel("Conclusion comment, optional")
 
         Button {

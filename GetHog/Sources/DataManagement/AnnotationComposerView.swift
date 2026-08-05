@@ -88,6 +88,10 @@ struct AnnotationComposerView: View {
                     )
                     .lineLimit(1...6)
                     .focused($isEditorFocused)
+                    // Real prose: wins over the app-wide `.never` that
+                    // protects search queries from autocapitalisation.
+                    .textInputAutocapitalization(.sentences)
+                    .autocorrectionDisabled(false)
                 }
 
                 Section {
