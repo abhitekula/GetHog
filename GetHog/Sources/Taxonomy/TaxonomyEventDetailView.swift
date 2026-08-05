@@ -123,7 +123,7 @@ struct TaxonomyEventDetailView: View {
                     .foregroundStyle(.secondary)
                 }
             } header: {
-                SectionLabel(text: "Event", systemImage: "bolt")
+                SectionLabel(text: "Event", systemImage: "bolt", productMark: .event)
             }
 
             propertiesSection

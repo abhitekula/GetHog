@@ -98,7 +98,7 @@ struct ReplayNetworkCard: View {
 
     private var header: some View {
         HStack {
-            SectionLabel(text: "Network", systemImage: "arrow.left.arrow.right")
+            SectionLabel(text: "Network", systemImage: "arrow.left.arrow.right", productMark: .session)
             Spacer()
             if diagnostics.failureCount > 0 {
                 StatusPill(

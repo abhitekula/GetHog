@@ -254,7 +254,7 @@ struct TaxonomyPropertyDetailView: View {
             }
             LabeledContent("Scope") { Text(scopeText) }
         } header: {
-            SectionLabel(text: "Definition", systemImage: "tag")
+            SectionLabel(text: "Definition", systemImage: "tag", productMark: .event)
         }
     }
 

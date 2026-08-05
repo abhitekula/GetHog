@@ -124,7 +124,7 @@ struct SessionSummariesRoot: View {
                 // section's provenance visible; the per-row spoken label carries
                 // the same word, because VoiceOver reaches a row long after a
                 // header has been read and forgotten.
-                SectionLabel(text: "AI summaries", systemImage: "text.append")
+                SectionLabel(text: "AI summaries", systemImage: "text.append", productMark: .session)
             } footer: {
                 Text(footerNote)
             }
@@ -374,12 +374,12 @@ struct SessionSummaryDetailView: View {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: Theme.Space.s) {
-                        SectionLabel(text: "Session", systemImage: "clock")
+                        SectionLabel(text: "Session", systemImage: "clock", productMark: .session)
                         exceptionPill
                     }
                 } else {
                     HStack(spacing: Theme.Space.s) {
-                        SectionLabel(text: "Session", systemImage: "clock")
+                        SectionLabel(text: "Session", systemImage: "clock", productMark: .session)
                         Spacer()
                         exceptionPill
                     }

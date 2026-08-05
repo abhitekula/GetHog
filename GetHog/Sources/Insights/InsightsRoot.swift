@@ -242,7 +242,7 @@ struct InsightsRoot: View {
                 Section {
                     ForEach(store.favorites) { row($0) }
                 } header: {
-                    SectionLabel(text: "Favorites", systemImage: "star.fill")
+                    SectionLabel(text: "Favorites", systemImage: "star.fill", productMark: .dashboard)
                 }
             }
 
@@ -250,7 +250,7 @@ struct InsightsRoot: View {
                 ForEach(store.others) { row($0) }
             } header: {
                 if !store.favorites.isEmpty {
-                    SectionLabel(text: "All insights")
+                    SectionLabel(text: "All insights", productMark: .dashboard)
                 }
             }
 

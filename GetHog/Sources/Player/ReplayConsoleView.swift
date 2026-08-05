@@ -73,7 +73,7 @@ struct ReplayConsoleCard: View {
 
     private var header: some View {
         HStack {
-            SectionLabel(text: "Console", systemImage: "text.alignleft")
+            SectionLabel(text: "Console", systemImage: "text.alignleft", productMark: .session)
             Spacer()
             let errors = diagnostics.consoleCount(.error)
             if errors > 0 {

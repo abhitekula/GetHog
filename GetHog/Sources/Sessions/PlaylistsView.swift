@@ -109,7 +109,7 @@ struct PlaylistsView: View {
                 Section {
                     ForEach(store.savedFilters) { row($0) }
                 } header: {
-                    SectionLabel(text: "Saved filters", systemImage: "line.3.horizontal.decrease.circle")
+                    SectionLabel(text: "Saved filters", systemImage: "line.3.horizontal.decrease.circle", productMark: .session)
                 } footer: {
                     Text("Stored queries. Each one is re-run when you open it, so what it holds changes as new sessions arrive.")
                 }
@@ -119,7 +119,7 @@ struct PlaylistsView: View {
                 Section {
                     ForEach(store.collections) { row($0) }
                 } header: {
-                    SectionLabel(text: "Collections", systemImage: "rectangle.stack")
+                    SectionLabel(text: "Collections", systemImage: "rectangle.stack", productMark: .session)
                 } footer: {
                     // Named as PostHog's, not the team's, because these appear in
                     // the same response and would otherwise read as playlists

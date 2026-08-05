@@ -364,7 +364,7 @@ struct DashboardTemplateDetailView: View {
 
     @ViewBuilder
     private var tiles: some View {
-        SectionLabel(text: "Insights", systemImage: "square.grid.2x2")
+        SectionLabel(text: "Insights", systemImage: "square.grid.2x2", productMark: .dashboard)
 
         if let tiles = template.tiles, !tiles.isEmpty {
             VStack(spacing: Theme.Space.xs) {
