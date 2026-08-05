@@ -59,6 +59,32 @@ enum Screenshot {
     /// True on iPad, which is what scopes the matrix — see `Configuration`.
     static let isPad: Bool = deviceName.lowercased().contains("ipad")
 
+    /// The device-wide appearance `scripts/screenshot-sweep` has already set,
+    /// or nil when this run was not started by that wrapper.
+    ///
+    /// **Why this exists.** Both in-process dark mechanisms —
+    /// `XCUIDevice.appearance` and the `-UIUserInterfaceStyle` launch argument —
+    /// are measured no-ops on iPad (see `Configuration.needsOwnLaunch`), which
+    /// left the iPad `dark/` directory permanently deleted by the duplicate
+    /// check across three separate sweeps. `xcrun simctl ui <udid> appearance
+    /// dark` **does** work there — measured 2026-08-04 on iPad Pro 13" (M5),
+    /// mean luminance 0.12 against light's 0.93 — but `simctl` can only be run
+    /// from the host, and this process lives inside the simulator.
+    ///
+    /// So the wrapper sets the appearance before `xcodebuild` and tells this
+    /// process through the one channel measured to work: a host file, the same
+    /// mechanism `LiveCredentials` uses (`TEST_RUNNER_` environment variables
+    /// are measured not to arrive). The file holds `light` or `dark`; its
+    /// absence means an ordinary run with unchanged behaviour.
+    static let presetAppearance: String? = {
+        let url = repositoryRoot
+            .appendingPathComponent("build")
+            .appendingPathComponent(".screenshot-appearance")
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }()
+
     static var outputRoot: URL {
         repositoryRoot
             .appendingPathComponent("build")
@@ -104,8 +130,19 @@ enum Screenshot {
         case ax5
 
         /// Whether this configuration is captured on the device now running.
+        ///
+        /// When `scripts/screenshot-sweep` has preset the whole device's
+        /// appearance (see `presetAppearance`), each pass captures only the
+        /// configurations that appearance can honestly produce: the dark pass
+        /// captures dark alone, and the light pass captures everything else.
+        /// Without a preset, behaviour is unchanged.
         var appliesToThisDevice: Bool {
-            switch self {
+            if let preset = Screenshot.presetAppearance {
+                return preset == "dark"
+                    ? self == .dark
+                    : self != .dark && (self != .ax5 || !Screenshot.isPad)
+            }
+            return switch self {
             case .light, .dark: true
             case .ax5: !Screenshot.isPad
             }

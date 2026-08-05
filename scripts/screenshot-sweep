@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+
+# Runs the GetHogScreenshots scheme in two passes — device appearance light,
+# then dark — so the dark pass is honest on iPad.
+#
+# **The problem this solves.** Both in-process dark mechanisms
+# (`XCUIDevice.appearance` and the `-UIUserInterfaceStyle` launch argument) are
+# measured no-ops on iPad, so every iPad sweep produced a `dark/` directory the
+# duplicate-luminance check then rightly deleted — three sweeps, ~65 images
+# each, all gone. `xcrun simctl ui <udid> appearance dark` does work on iPad
+# (measured 2026-08-04 on iPad Pro 13" M5: mean luminance 0.12 against light's
+# 0.93), but only the host can run it, and the harness lives inside the
+# simulator.
+#
+# So this wrapper owns the appearance, and tells the harness which pass it is
+# in through `build/.screenshot-appearance` — a host file, because host files
+# are the one inbound channel measured to reach the runner
+# (`TEST_RUNNER_`-prefixed variables are measured not to arrive; see
+# `Screenshot.presetAppearance`). With the file present the harness captures
+# only the configurations that pass can honestly produce; with it absent,
+# behaviour is exactly what it was before this script existed.
+#
+#   scripts/screenshot-sweep                                  # iPhone 17
+#   DESTINATION_NAME='iPad Pro 13-inch (M5)' scripts/screenshot-sweep
+#   scripts/screenshot-sweep GetHogScreenshots/RootScreenshotTests
+#
+# Arguments are passed to `-only-testing:` in order, like run-ui-tests.
+
+set -uo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+
+scheme=${SCHEME:-GetHogScreenshots}
+project=${PROJECT:-GetHog.xcodeproj}
+destination_name=${DESTINATION_NAME:-iPhone 17}
+
+control_file="$repository_root/build/.screenshot-appearance"
+mkdir -p "$repository_root/build"
+
+only_testing=()
+for suite in "$@"; do
+    only_testing+=("-only-testing:$suite")
+done
+
+# The UDID has to be known before xcodebuild picks a device, because the
+# appearance is set through simctl and simctl addresses devices, not
+# destination names. Newest available runtime wins, matching xcodebuild's own
+# preference.
+udid=$(xcrun simctl list devices available -j | python3 -c "
+import json, sys
+data = json.load(sys.stdin)['devices']
+best = None
+for runtime, devices in data.items():
+    for device in devices:
+        if device['name'] == '$destination_name':
+            key = runtime.split('.')[-1]
+            if best is None or key > best[0]:
+                best = (key, device['udid'])
+print(best[1] if best else '')
+")
+if [ -z "$udid" ]; then
+    echo "screenshot-sweep: no available simulator named '$destination_name'" >&2
+    exit 64
+fi
+
+# Booted ahead of xcodebuild so the appearance call lands on a device that can
+# honour it; xcodebuild reuses an already-booted destination.
+xcrun simctl boot "$udid" 2>/dev/null || true
+xcrun simctl bootstatus "$udid" -b >/dev/null
+
+cleanup() {
+    rm -f "$control_file"
+    xcrun simctl ui "$udid" appearance light 2>/dev/null || true
+}
+trap cleanup EXIT
+
+status=0
+for pass in light dark; do
+    echo "== $pass pass on $destination_name ($udid) =="
+    xcrun simctl ui "$udid" appearance "$pass"
+    printf '%s' "$pass" > "$control_file"
+
+    xcodebuild test \
+        -project "$repository_root/$project" \
+        -scheme "$scheme" \
+        -destination "platform=iOS Simulator,id=$udid" \
+        ${only_testing[@]+"${only_testing[@]}"} \
+        2>&1 | grep -E "Test Case .* (passed|failed)|Executed [0-9]+ test|SCREENSHOT-FAILED|error:" \
+        || status=$?
+done
+
+echo
+echo "Images: $repository_root/build/Screenshots/"
+exit "$status"
