@@ -139,7 +139,7 @@ final class InsightsStore {
                 offset: offset,
                 search: request.search,
                 kind: request.kind,
-                favoritedOnly: request.favouritesOnly
+                favoritedOnly: request.favoritesOnly
             )
         )
     }
@@ -152,9 +152,9 @@ final class InsightsStore {
     /// inside each half. It is stable across pages for the same reason: a row
     /// keeps its place when the page after it arrives.
     ///
-    /// A project can have no favourites, so this section must not read as broken
+    /// A project can have no favorites, so this section must not read as broken
     /// when it is empty. The heading therefore appears only with rows under it.
-    var favourites: [Insight] { insights.filter(\.favorited) }
+    var favorites: [Insight] { insights.filter(\.favorited) }
     var others: [Insight] { insights.filter { !$0.favorited } }
 
     /// How much of the collection is on screen, stated rather than implied.
@@ -182,13 +182,13 @@ struct InsightsRequest: Equatable, Hashable {
     /// `nil` is "every kind", which is not the same as any particular one and
     /// must not be spelled as a default case.
     var kind: InsightKind?
-    var favouritesOnly = false
+    var favoritesOnly = false
 
     /// Whether anything is narrowing the list, for the empty state to be able to
     /// tell "this project has no insights" from "nothing matched".
     var isFiltering: Bool {
         !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || kind != nil
-            || favouritesOnly
+            || favoritesOnly
     }
 }

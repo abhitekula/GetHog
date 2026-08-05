@@ -367,10 +367,19 @@ enum Theme {
 /// **relief rule** applies: charts using them always ship a legend and direct
 /// labels, never colour alone.
 enum SeriesPalette {
+    /// Slot order is a brand decision, not alphabetical: slot 0 is what every
+    /// single-series tile in the app is painted, which makes it the app's most
+    /// visible colour after the accent itself. It used to be the blue — so the
+    /// home tab opened on two large stock-blue charts inside teal chrome, the
+    /// single loudest generic-by-default tell in two independent design
+    /// sweeps. The aqua leads now: it is the palette's teal-family hue, so a
+    /// chart reads as this app's before a single label is read. The hues
+    /// themselves are unchanged — same validated set, same relief rule — and
+    /// the yellow keeps slot 3, which `StatusInkContrastTests` samples.
     private static let light: [Color] = [
-        Color(hex: 0x2A78D6),  // blue
-        Color(hex: 0xEB6834),  // orange
         Color(hex: 0x1BAF7A),  // aqua
+        Color(hex: 0xEB6834),  // orange
+        Color(hex: 0x2A78D6),  // blue
         Color(hex: 0xEDA100),  // yellow
         Color(hex: 0xE87BA4),  // magenta
         Color(hex: 0x008300),  // green
@@ -379,9 +388,9 @@ enum SeriesPalette {
     ]
 
     private static let dark: [Color] = [
-        Color(hex: 0x3987E5),
-        Color(hex: 0xD95926),
         Color(hex: 0x199E70),
+        Color(hex: 0xD95926),
+        Color(hex: 0x3987E5),
         Color(hex: 0xC98500),
         Color(hex: 0xD55181),
         Color(hex: 0x008300),

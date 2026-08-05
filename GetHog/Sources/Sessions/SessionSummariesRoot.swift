@@ -144,7 +144,7 @@ struct SessionSummariesRoot: View {
         DataRow(
             glyph: store.outcome == .failure ? "xmark.circle" : "sparkles.rectangle.stack",
             tint: store.outcome == .failure ? Theme.accentWarm : Theme.accent,
-            title: total == 1 ? "1 summarised session" : "\(total) summarised sessions",
+            title: total == 1 ? "1 summarized session" : "\(total) summarized sessions",
             subtitle: filterDescription,
             accessory: .none
         )
@@ -214,7 +214,7 @@ struct SessionSummariesRoot: View {
 
 // MARK: - Row
 
-/// One summarised session.
+/// One summarized session.
 ///
 /// The narrative is the subtitle rather than the person, and it gets three
 /// lines: it is the only thing on the row that tells one session from another,
@@ -308,7 +308,7 @@ struct SessionSummaryDetailView: View {
     /// answers — it simply renders under the label now.
     ///
     /// What is left in `factsCard` is the session's own record — when it
-    /// started, how long it ran, who, which id, and when it was summarised —
+    /// started, how long it ran, who, which id, and when it was summarized —
     /// none of which a model wrote.
     var body: some View {
         PageScaffold {
@@ -349,7 +349,7 @@ struct SessionSummaryDetailView: View {
     }
 
     /// The session's own record: when, how long, who, which id, and when it was
-    /// summarised.
+    /// summarized.
     ///
     /// Deliberately holds nothing a model wrote. The verdict and the narrative
     /// that used to head this card are in `SessionSummaryCard` above, once, under
@@ -536,7 +536,7 @@ struct SessionSummaryDetailView: View {
         guard let client = model.client, let projectID = model.projectID else { return }
         // Keyed by `session_id`, never by the summary record's own id — that
         // request answers 404, which is the same answer the API gives for a
-        // session nobody has summarised, so the mistake would be invisible.
+        // session nobody has summarized, so the mistake would be invisible.
         await store.load(client: client, projectID: projectID, sessionID: row.id)
     }
 }

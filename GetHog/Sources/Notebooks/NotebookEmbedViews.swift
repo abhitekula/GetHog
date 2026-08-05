@@ -172,7 +172,7 @@ final class NotebookInsightStore {
 /// rebuilt — at `.idle` — when it comes back, and the `.task` fires again. On a
 /// long notebook that turns "one request per embedded insight" into "one per
 /// insight per time the reader scrolls past it", which is exactly the
-/// organisation-wide budget this design exists to protect. Holding the stores
+/// organization-wide budget this design exists to protect. Holding the stores
 /// above the `List` makes a completed fetch survive recycling.
 @MainActor
 @Observable
@@ -272,7 +272,7 @@ struct NotebookInsightBlock: View {
             // costs a `/query/` slot that the reader should choose to spend.
             NotebookBlockNotice(
                 symbol: "clock.arrow.circlepath",
-                message: "PostHog has no stored result for this insight. Computing it now costs one request against your organisation's shared rate limit.",
+                message: "PostHog has no stored result for this insight. Computing it now costs one request against your organization's shared rate limit.",
                 actionTitle: "Run it",
                 action: retry
             )
@@ -288,7 +288,7 @@ struct NotebookInsightBlock: View {
         case .runOnRequest(_, let kind, _):
             NotebookBlockNotice(
                 symbol: "play.circle",
-                message: "This block holds a \(kind.replacingOccurrences(of: "Query", with: "").lowercased()) query written into the notebook rather than a saved insight, so there is no stored result to show. Running it costs one query against your organisation's shared rate limit.",
+                message: "This block holds a \(kind.replacingOccurrences(of: "Query", with: "").lowercased()) query written into the notebook rather than a saved insight, so there is no stored result to show. Running it costs one query against your organization's shared rate limit.",
                 actionTitle: "Run query",
                 action: retry
             )

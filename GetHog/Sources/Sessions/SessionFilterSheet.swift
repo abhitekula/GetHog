@@ -113,7 +113,7 @@ struct SessionFilterSheet: View {
         Section {
             Toggle("Filter out internal and test users", isOn: $filter.filterTestAccounts)
         } header: {
-            Text("People").foregroundStyle(Theme.Ink.secondary)
+            SectionLabel(text: "People")
         } footer: {
             Text("Uses the internal and test-user filters configured for this project in PostHog.")
                 .foregroundStyle(Theme.Ink.secondary)
@@ -141,7 +141,7 @@ struct SessionFilterSheet: View {
             .pickerStyle(.inline)
             .labelsHidden()
         } header: {
-            Text("What went wrong").foregroundStyle(Theme.Ink.secondary)
+            SectionLabel(text: "What went wrong")
         } footer: {
             Text("One at a time. PostHog applies a single combining rule to the whole filter, so asking for two signals would also widen everything else here.")
                 .foregroundStyle(Theme.Ink.secondary)
@@ -158,7 +158,7 @@ struct SessionFilterSheet: View {
                 }
             }
         } header: {
-            Text("When").foregroundStyle(Theme.Ink.secondary)
+            SectionLabel(text: "When")
         }
     }
 
@@ -185,7 +185,7 @@ struct SessionFilterSheet: View {
             .adaptivePickerStyle()
             .disabled((filter.minimumDuration ?? 0) <= 0)
         } header: {
-            Text("How long").foregroundStyle(Theme.Ink.secondary)
+            SectionLabel(text: "How long")
         } footer: {
             // These are genuinely different numbers and can be minutes apart.
             // The old picker filtered on wall-clock time without saying so.
@@ -237,7 +237,7 @@ struct SessionFilterSheet: View {
                 }
             }
         } header: {
-            Text("Sort").foregroundStyle(Theme.Ink.secondary)
+            SectionLabel(text: "Sort")
         }
     }
 

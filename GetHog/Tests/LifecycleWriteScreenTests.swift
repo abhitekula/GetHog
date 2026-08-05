@@ -677,7 +677,7 @@ struct WriteForbiddenMessageTests {
         // The guess may still be offered — it is often right — but only as a
         // possibility, never as the diagnosis.
         #expect(text.contains("If your key is missing the feature_flag:write scope"))
-        #expect(text.contains("organisation admin"))
+        #expect(text.contains("organization admin"))
     }
 
     /// PostHog-side gating: neither a new key nor an admin can lift it.

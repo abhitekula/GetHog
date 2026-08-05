@@ -203,7 +203,7 @@ struct WarehouseViewRowView: View {
 
     var body: some View {
         DataRow(
-            // The glyph separates a materialised view from a plain one before
+            // The glyph separates a materialized view from a plain one before
             // the name is read, the way the table row separates an imported
             // table from a query-built one — and for the same reason: only one
             // of the two can go stale.
@@ -227,7 +227,7 @@ struct WarehouseViewRowView: View {
         if let lastRun = view.lastRunAt {
             return "Last run \(lastRun.formatted(.relative(presentation: .named)))"
         }
-        return view.isMaterialized ? "Never run" : "Not materialised"
+        return view.isMaterialized ? "Never run" : "Not materialized"
     }
 
     /// The consequence is spoken, not just the state.
@@ -301,7 +301,7 @@ struct WarehouseViewDetailView: View {
                     .foregroundStyle(Theme.Status.ink(for: materializationTint(current.materialization)))
 
                     // The state's consequence, always — not only when it is bad.
-                    // "Not materialised. The SQL runs fresh on every query." is
+                    // "Not materialized. The SQL runs fresh on every query." is
                     // the answer to the same question as the failure copy, and a
                     // screen that only explains itself when something is wrong
                     // teaches nobody what the states mean.
@@ -467,10 +467,10 @@ struct WarehouseViewDetailView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                // Not an empty state: a view that is not materialised has no
+                // Not an empty state: a view that is not materialized has no
                 // runs by definition, and "no runs recorded" would imply
                 // something is missing.
-                Text("This view is not materialised, so it has no runs.")
+                Text("This view is not materialized, so it has no runs.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

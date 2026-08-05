@@ -342,11 +342,11 @@ struct ErrorIssueDetailView: View {
 
             // The honest limit, stated where it bites rather than hidden behind
             // an empty picker. PostHog assigns to users *or* roles, and both are
-            // organisation-level resources. Project-scoped keys cannot enumerate
+            // organization-level resources. Project-scoped keys cannot enumerate
             // either through project endpoints, so the app offers the one target
             // it can always name and points elsewhere for the rest.
             if model.me?.userID != nil {
-                Text("Assigning to a teammate or a role needs the organisation member list, which a project-scoped API key can't read. Use the web console for those.")
+                Text("Assigning to a teammate or a role needs the organization member list, which a project-scoped API key can't read. Use the web console for those.")
                     .font(.caption2)
                     .foregroundStyle(Theme.Ink.tertiary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -657,7 +657,7 @@ struct QueryEndpointRowView: View {
                 .map { "Last run \($0.formatted(.relative(presentation: .named)))" }
                 ?? "Never run"
         ]
-        if endpoint.isMaterialized { parts.append("materialised") }
+        if endpoint.isMaterialized { parts.append("materialized") }
         return parts.joined(separator: " · ")
     }
 }

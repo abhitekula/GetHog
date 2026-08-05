@@ -22,7 +22,7 @@ struct InsightsRoot: View {
     @State private var store = InsightsStore()
     @State private var search = ""
     @State private var kind: InsightKind?
-    @State private var favouritesOnly = false
+    @State private var favoritesOnly = false
 
     /// The open insight, and deliberately **not** `@State`.
     ///
@@ -51,7 +51,7 @@ struct InsightsRoot: View {
     /// The three filters as one value, so `.task(id:)` fires once when two of
     /// them change together rather than racing two reloads against each other.
     private var request: InsightsRequest {
-        InsightsRequest(search: search, kind: kind, favouritesOnly: favouritesOnly)
+        InsightsRequest(search: search, kind: kind, favoritesOnly: favoritesOnly)
     }
 
     var body: some View {
@@ -82,7 +82,14 @@ struct InsightsRoot: View {
                     // split view added a second, identical one beside it.
                     .toolbar(removing: .sidebarToggle)
             } detail: {
-                detailPane
+                // Its own stack, so `NavigationLink(value:)` inside the detail
+                // has somewhere to push. Without it the "On dashboards →
+                // Dashboard #N" rows were dead at regular width — the
+                // destination is registered on the detail view itself, and a
+                // bare split-view column is not a navigation container.
+                NavigationStack {
+                    detailPane
+                }
             }
         }
     }
@@ -204,7 +211,7 @@ struct InsightsRoot: View {
             ) {
                 search = ""
                 kind = nil
-                favouritesOnly = false
+                favoritesOnly = false
             }
         } else {
             EmptyStateView(
@@ -222,27 +229,27 @@ struct InsightsRoot: View {
         let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
         if !term.isEmpty { parts.append("named like “\(term)”") }
         if let kind { parts.append("of kind \(kind.title)") }
-        if favouritesOnly { parts.append("marked as favourites") }
+        if favoritesOnly { parts.append("marked as favorites") }
         return "No saved insight in this project is " + parts.joined(separator: ", ") + "."
     }
 
     private var rows: some View {
         List(selection: selectedID) {
-            // Favourites first, and the heading only when there are any. This
+            // Favorites first, and the heading only when there are any. This
             // project has zero, so the section must not leave an empty heading
             // implying the app failed to load something.
-            if !store.favourites.isEmpty {
+            if !store.favorites.isEmpty {
                 Section {
-                    ForEach(store.favourites) { row($0) }
+                    ForEach(store.favorites) { row($0) }
                 } header: {
-                    SectionLabel(text: "Favourites", systemImage: "star.fill")
+                    SectionLabel(text: "Favorites", systemImage: "star.fill")
                 }
             }
 
             Section {
                 ForEach(store.others) { row($0) }
             } header: {
-                if !store.favourites.isEmpty {
+                if !store.favorites.isEmpty {
                     SectionLabel(text: "All insights")
                 }
             }
@@ -262,7 +269,7 @@ struct InsightsRoot: View {
         }
     }
 
-    /// Kind and favourites, above the list.
+    /// Kind and favorites, above the list.
     ///
     /// A menu rather than a segmented control at every size: there are seven
     /// kinds plus "All", and eight segments on a phone is eight illegible
@@ -283,13 +290,13 @@ struct InsightsRoot: View {
             // between two rows that were already spaced.
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Toggle(isOn: $favouritesOnly) {
-                favouritesLabel
+            Toggle(isOn: $favoritesOnly) {
+                favoritesLabel
             }
             .toggleStyle(.button)
             .buttonStyle(.bordered)
-            .tint(favouritesOnly ? Theme.accentWarm : Theme.accent)
-            .accessibilityLabel("Show only favourites")
+            .tint(favoritesOnly ? Theme.accentWarm : Theme.accent)
+            .accessibilityLabel("Show only favorites")
         }
         .padding(.vertical, Theme.Space.xs)
     }
@@ -301,8 +308,8 @@ struct InsightsRoot: View {
     /// rather than a ternary on `.labelStyle`, because the two styles are
     /// different concrete types and cannot share an expression.
     @ViewBuilder
-    private var favouritesLabel: some View {
-        let label = Label("Favourites", systemImage: favouritesOnly ? "star.fill" : "star")
+    private var favoritesLabel: some View {
+        let label = Label("Favorites", systemImage: favoritesOnly ? "star.fill" : "star")
         if dynamicTypeSize.isAccessibilitySize {
             label.labelStyle(.titleAndIcon)
         } else {
@@ -314,9 +321,9 @@ struct InsightsRoot: View {
         NavigationLink(value: insight.id) {
             DataRow(
                 glyph: TileStyle.symbol(for: insight.renderModel),
-                // Favourites take the warm secondary, the same way generated
+                // Favorites take the warm secondary, the same way generated
                 // dashboards do on the Dashboards list — a distinction the
-                // "Favourites" heading above already states in words, so nothing
+                // "Favorites" heading above already states in words, so nothing
                 // here rests on the tint alone.
                 tint: insight.favorited ? Theme.accentWarm : Theme.accent,
                 title: insight.title,

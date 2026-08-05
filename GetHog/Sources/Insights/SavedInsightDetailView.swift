@@ -189,7 +189,7 @@ struct SavedInsightDetailView: View {
                 if insight.favorited {
                     // The word, not just the star: a starred insight must be
                     // identifiable without seeing the glyph.
-                    Label("Favourite", systemImage: "star.fill")
+                    Label("Favorite", systemImage: "star.fill")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Theme.Status.warningInk)
                         .labelStyle(.titleAndIcon)

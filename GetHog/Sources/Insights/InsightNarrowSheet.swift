@@ -234,7 +234,7 @@ struct InsightNarrowSheet: View {
 
     private var costSection: some View {
         Section {
-            Text("Applying runs the insight once — one query against a rate limit your whole organisation shares. Nothing runs while you're editing.")
+            Text("Applying runs the insight once — one query against a rate limit your whole organization shares. Nothing runs while you're editing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -535,7 +535,7 @@ private struct InsightFilterPicker: View {
 ///
 /// The caching is the point, not an optimisation. Without it, every re-render of
 /// a picker would re-issue a `/property_definitions/` request, and this app's
-/// budget is organisation-wide and shared with the user's production
+/// budget is organization-wide and shared with the user's production
 /// integrations. Each scope costs **one** `.crud`; each property whose values are
 /// opened costs **one** `.query`; neither is paid twice.
 @MainActor

@@ -839,6 +839,11 @@ struct TimeSeriesChart: View {
             }
             .chartForegroundStyleScale(range: paletteRange)
             .chartLegend(series.count > 1 && !legendBelowChart ? .visible : .hidden)
+            // The first tick sits on the plot origin, and a label centred on
+            // it extends half its width past the leading edge — sheared to
+            // "il 5" on every device the sweep captured, glyphs that read as a
+            // different month. A little scale padding gives the "J" room.
+            .chartXScale(range: .plotDimension(padding: 12))
             .chartXAxis {
                 // The axis owns the format and the thinning; a fixed categorical
                 // axis is what produced overlapping labels. What it cannot see

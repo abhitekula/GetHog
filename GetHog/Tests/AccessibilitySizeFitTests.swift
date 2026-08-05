@@ -134,9 +134,9 @@ struct AccessibilitySizeFitTests {
     /// downwards* — with two controls dividing 393pt between them at AX5, each got
     /// a column narrower than its own label, and every extra line one of them
     /// wrapped to made the bar taller. Measured in this window on the Insights
-    /// pair (a kind menu and a `Favourites` toggle): **559.3pt before the reflow
+    /// pair (a kind menu and a `Favorites` toggle): **559.3pt before the reflow
     /// and 272.7pt after**, against a window 852pt tall. The screenshot sweep
-    /// described the same thing from the other side — a "Favourites" toggle
+    /// described the same thing from the other side — a "Favorites" toggle
     /// wrapped one or two characters per line into a roughly 700pt-tall capsule,
     /// with the filter card filling 40% of the window.
     ///
@@ -366,7 +366,7 @@ struct AccessibilitySizeFitTests {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Toggle(isOn: .constant(false)) {
-                    Label("Favourites", systemImage: "star")
+                    Label("Favorites", systemImage: "star")
                         .labelStyle(.titleAndIcon)
                 }
                 .toggleStyle(.button)

@@ -152,7 +152,7 @@ struct InsightsLibraryScreenTests {
         await store.load(
             client: client(transport),
             projectID: 1,
-            request: InsightsRequest(search: "signup", kind: .funnels, favouritesOnly: true)
+            request: InsightsRequest(search: "signup", kind: .funnels, favoritesOnly: true)
         )
 
         let url = try #require(await transport.requestedURLs.first)
@@ -173,7 +173,7 @@ struct InsightsLibraryScreenTests {
         #expect(!InsightsRequest(search: "   ").isFiltering)
         #expect(InsightsRequest(search: "signup").isFiltering)
         #expect(InsightsRequest(kind: .trends).isFiltering)
-        #expect(InsightsRequest(favouritesOnly: true).isFiltering)
+        #expect(InsightsRequest(favoritesOnly: true).isFiltering)
     }
 
     // MARK: - Presentation
@@ -181,8 +181,8 @@ struct InsightsLibraryScreenTests {
     /// Starred first, and the rest in the order the server sent them — a
     /// partition rather than a sort, so PostHog's own ordering survives inside
     /// each half and a row keeps its place when the next page arrives.
-    @Test("puts favourites first without reordering anything else")
-    func favouritesLeadTheList() async throws {
+    @Test("puts favorites first without reordering anything else")
+    func favoritesLeadTheList() async throws {
         let store = InsightsStore()
         await store.load(
             client: client(PagingTransport(count: 6)),
@@ -190,7 +190,7 @@ struct InsightsLibraryScreenTests {
             request: InsightsRequest()
         )
 
-        #expect(store.favourites.map(\.id) == [1])
+        #expect(store.favorites.map(\.id) == [1])
         #expect(store.others.map(\.id) == [2, 3, 4, 5, 6])
     }
 

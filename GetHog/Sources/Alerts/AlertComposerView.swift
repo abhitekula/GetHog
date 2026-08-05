@@ -180,7 +180,7 @@ struct AlertComposerView: View {
             } header: {
                 SectionLabel(text: "How often", systemImage: "clock")
             } footer: {
-                Text("PostHog also offers real time and every 15 minutes on its paid plans. GetHog can't see which plan this organisation is on, so it doesn't offer a cadence that might be refused.")
+                Text("PostHog also offers real time and every 15 minutes on its paid plans. GetHog can't see which plan this organization is on, so it doesn't offer a cadence that might be refused.")
             }
 
             Section {

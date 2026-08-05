@@ -302,7 +302,7 @@ struct WarehouseRoot: View {
                 // list one, so a quiet banner is not proof that nothing is
                 // suspended. Saying so here costs a line and stops the absence
                 // of an alarm being read as an all-clear.
-                Text("Saved queries the team defined on top of these tables. A materialised view answers from a stored table, so a failed run leaves it serving old rows. A view PostHog has stopped retrying only shows that on its own screen — the list PostHog returns does not carry it.")
+                Text("Saved queries the team defined on top of these tables. A materialized view answers from a stored table, so a failed run leaves it serving old rows. A view PostHog has stopped retrying only shows that on its own screen — the list PostHog returns does not carry it.")
             }
 
             // The one failure case the sections above **cannot** state, and the
@@ -382,7 +382,7 @@ struct WarehouseRoot: View {
     /// Filtered locally, not through the endpoint's `search` parameter.
     ///
     /// The endpoint has one, but using it would spend a request per keystroke on
-    /// an organisation-wide budget to filter a list already in memory. The
+    /// an organization-wide budget to filter a list already in memory. The
     /// server-side search only earns its cost once a project has more views than
     /// one page holds, which is the case `hasMorePages` reports rather than
     /// silently papers over.

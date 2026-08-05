@@ -37,7 +37,11 @@ enum TileStyle {
         case .barValue, .retention: Theme.SignalChrome.clay
         case .funnel, .paths: Theme.SignalChrome.coral
         case .lifecycle, .stickiness: Theme.SignalChrome.ink
-        case .unsupported: Theme.Ink.tertiary
+        // The hairline, not an ink: a text token painted as a 4pt slab reads
+        // as a muddy artifact, and every sibling case maps to a chrome token.
+        // An unsupported tile's spine should say "no signal here", which is
+        // exactly what the border colour already means.
+        case .unsupported: Theme.hairline
         }
     }
 

@@ -203,10 +203,10 @@ enum WriteFailure {
                 return WriteOutcomeMessage(
                     kind: .failure,
                     text: flag.isEmpty
-                        ? "\(opener): PostHog has to enable this feature for your organisation first."
+                        ? "\(opener): PostHog has to enable this feature for your organization first."
                         : """
                           \(opener): this is behind the `\(flag)` feature flag. PostHog has to \
-                          enable it for your organisation — neither a new key nor an admin can.
+                          enable it for your organization — neither a new key nor an admin can.
                           """
                 )
 
@@ -227,7 +227,7 @@ enum WriteFailure {
                 // leads; `writeScope` follows as the guess it has always been,
                 // marked as a guess. PostHog also applies role-based access
                 // control to some objects, whose 403 is about the user's
-                // organisation role rather than the key — a remedy this app
+                // organization role rather than the key — a remedy this app
                 // cannot distinguish from here, and would previously have
                 // hidden behind "edit your key". **Unverified**: safely producing
                 // that permission combination is outside deterministic unit tests.
@@ -237,7 +237,7 @@ enum WriteFailure {
                     text: """
                         \(opener): PostHog refused the change and didn't say which permission \
                         was missing.\(said) If your key is missing the \(writeScope) scope, \
-                        adding it may fix this; otherwise ask an organisation admin to check \
+                        adding it may fix this; otherwise ask an organization admin to check \
                         your role.
                         """
                 )

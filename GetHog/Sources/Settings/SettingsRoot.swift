@@ -8,7 +8,7 @@ import TipKit
 /// Settings carries more weight in this app than in most. Two facts decide
 /// whether GetHog works correctly and neither is visible anywhere else: the
 /// scopes the user happened to tick when creating their key, and the fact that
-/// the rate-limit budget being spent is organisation-wide. Both are stated
+/// the rate-limit budget being spent is organization-wide. Both are stated
 /// plainly here rather than buried under "Advanced".
 struct SettingsRoot: View {
     @Environment(AppModel.self) private var model
@@ -86,7 +86,7 @@ struct SettingsRoot: View {
     private var accountSection: some View {
         Section {
             // Not one word in these rows is prose. Every value is a name, an
-            // address, an organisation or a region — and a `LabeledContent`
+            // address, an organization or a region — and a `LabeledContent`
             // stacks its value under its label at accessibility sizes, so at AX5
             // the value wraps and the hyphenation dictionary gets its chance.
             // Measured here: sample.user@example.org`, which is not this user's
@@ -290,9 +290,9 @@ struct SettingsRoot: View {
 
     /// One section, two budgets, deliberately in that order.
     ///
-    /// The plan quota is what PostHog meters and bills the organisation for; the
+    /// The plan quota is what PostHog meters and bills the organization for; the
     /// rate-limit meter under it is GetHog's own share of a *different*
-    /// organisation-wide allowance. They were built at different times for
+    /// organization-wide allowance. They were built at different times for
     /// different reasons, but a reader arriving here is asking one question —
     /// what is this costing us — and answering it in two unrelated places, with
     /// two different colour languages, would make the smaller of the two look
@@ -322,9 +322,9 @@ struct SettingsRoot: View {
             SectionLabel(text: "Usage & limits", systemImage: "gauge.with.needle")
         } footer: {
             // The whole reason both meters exist. PostHog's limits are counted
-            // per organisation, so requests this app makes come out of the same
+            // per organization, so requests this app makes come out of the same
             // allowance the user's production integrations depend on.
-            Text("Two allowances, both counted per organisation. The quota above is what PostHog meters your plan against; the meter below it is GetHog's own share of PostHog's rate limits — the same budget your production integrations spend. The app paces itself well below the published limits and caches responses on this device, so revisiting a dashboard doesn't cost your team another request.")
+            Text("Two allowances, both counted per organization. The quota above is what PostHog meters your plan against; the meter below it is GetHog's own share of PostHog's rate limits — the same budget your production integrations spend. The app paces itself well below the published limits and caches responses on this device, so revisiting a dashboard doesn't cost your team another request.")
         }
     }
 
