@@ -22,7 +22,7 @@ struct EventDetailView: View {
                     field("URL", glyph: "link", value: url)
                 }
             } header: {
-                SectionLabel(text: "Event", systemImage: "bolt")
+                SectionLabel(text: "Event", systemImage: "bolt", productMark: .event)
             }
 
             if let properties = event.properties, case .object(let dict) = properties {
@@ -68,6 +68,10 @@ struct EventDetailView: View {
             isSubtitleMonospaced: true,
             accessory: .none
         )
+        // A label over an identifier is a pair, and at iPad regular width an
+        // unconstrained pair left ~60% of the pane blank to the value's right —
+        // filed by the sweep as the emptiest detail screen on the device.
+        .readableMeasure(Theme.Measure.pair)
         // Kept from the rows this replaced: the distinct id and the URL are the
         // two things people pull out of an event by hand, and selection is the
         // only way to get at them short of copying the whole JSON payload.

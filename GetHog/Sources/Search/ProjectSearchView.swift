@@ -56,7 +56,17 @@ struct ProjectSearchView: View {
         .navigationTitle("Search")
         .toolbar { ProjectSwitcher() }
         .projectSubtitle()
-        .searchable(text: $query, prompt: prompt)
+        // Pinned open, the way Events pins its filter, and for a stronger
+        // reason: this field is the tab's entire purpose. Left to the default
+        // drawer behaviour it rested *collapsed* — an empty grey capsule with
+        // no glyph and no prompt, reproduced across three sweeps as "the
+        // search tab looks dead on arrival" — and only a pull-down revealed
+        // that a field existed at all.
+        .searchable(
+            text: $query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: prompt
+        )
         .searchSuggestions { suggestions }
         // Submitting is not what runs the search — filtering is live over an
         // index already in memory — so this hook exists only to write the term
@@ -288,8 +298,16 @@ struct ProjectSearchView: View {
                     EmptyStateView(
                         title: "Nothing opened yet",
                         systemImage: "clock",
+                        illustration: .workspace,
                         message: "PostHog records when you last opened an object; nothing in this project has been opened. Search above to find anything in it."
                     )
+                    // Regular width hands this state most of a 13-inch pane.
+                    // Without a claimed height it sat top-anchored over ~85%
+                    // bare ground with the object-count footer stranded at the
+                    // bottom left — measured in two sweeps as the emptiest
+                    // screen in the app. Centring in a generous band makes the
+                    // pane read as composed rather than abandoned.
+                    .frame(maxWidth: .infinity, minHeight: 420)
                 }
             }
         } else {
@@ -452,7 +470,10 @@ struct ProjectSearchView: View {
 
     @ViewBuilder
     private var summary: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        VStack(
+            alignment: showsScreens ? .leading : .center,
+            spacing: Theme.Space.xs
+        ) {
             if let coverage = store.coverageSummary {
                 Text(coverage)
                     .font(Theme.Typography.caption)
@@ -460,6 +481,10 @@ struct ProjectSearchView: View {
             }
             FreshnessLabel(date: store.loadedAt)
         }
+        // Centred at regular width, where this footer often sits beneath a
+        // centred empty state as the only other ink on the pane — left-aligned
+        // there it read as orphaned debris rather than as a caption.
+        .frame(maxWidth: .infinity, alignment: showsScreens ? .leading : .center)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
     }
