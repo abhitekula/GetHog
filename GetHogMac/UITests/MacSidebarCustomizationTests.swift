@@ -50,10 +50,21 @@ final class MacSidebarCustomizationTests: XCTestCase {
         capture("h1-sidebar-before")
         XCTAssertTrue(before.contains("Dashboards"), "The sidebar did not render its destinations.")
 
-        // Drag Web up above Dashboards — three rows, all inside the Analyze
-        // section, so the move is one a customisation can legally hold.
-        let source = row("Web", in: app)
-        let target = row("Dashboards", in: app)
+        // The first two Analyze destinations, swapped — whichever they are.
+        //
+        // Named rows would make this run-once: the customisation *persists*, so
+        // "drag Web above Dashboards" is a no-op the second time and the test
+        // fails reporting a drag that changed nothing. Reading the pair out of
+        // the live order instead makes every run a real move, and two runs
+        // leave the sidebar where they found it.
+        let destinations = Array(before.dropFirst())
+        guard destinations.count >= 2 else {
+            XCTFail("The sidebar offers too few destinations to rearrange.")
+            return
+        }
+        let source = row(destinations[1], in: app)
+        let target = row(destinations[0], in: app)
+        print("PHASEB-SIDEBAR-DRAG \(destinations[1]) above \(destinations[0])")
         guard source.exists, target.exists else {
             XCTFail("The sidebar is missing the rows this drag needs.")
             return
