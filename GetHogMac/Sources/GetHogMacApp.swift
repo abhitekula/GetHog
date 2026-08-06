@@ -9,6 +9,8 @@ struct GetHogMacApp: App {
     /// for why a second copy would be a second source of truth.
     @State private var nav = NavPreferences()
 
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         _model = State(initialValue: GetHogMacApp.makeModel())
     }
@@ -34,8 +36,45 @@ struct GetHogMacApp: App {
                 .insightCSVExporter()
                 .tint(Theme.accent)
                 .onOpenURL { LinkInbox.deliver($0) }
-                .task { await model.bootstrap() }
+                // The inbound half of Handoff. An iPhone publishing the console
+                // URL for the screen it is on is continued here, and lands on
+                // that object's own screen — see `HandoffModifier`.
+                .onContinueUserActivity(HandoffActivity.browsing) { activity in
+                    guard let url = HandoffActivity.continuationURL(from: activity) else { return }
+                    LinkInbox.deliver(url)
+                }
+                .task {
+                    #if DEBUG
+                    // Staged into the same inbox a real link uses, so a
+                    // screenshot run exercises the production routing.
+                    if let url = DebugLaunch.openURL { LinkInbox.deliver(url) }
+                    #endif
+                    AppTips.configure()
+                    await model.bootstrap()
+                    if let projectID = model.projectID {
+                        await SpotlightIndexer.reindex(projectID: projectID)
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    // A widget-recorded toggle needs the keychain, the governor
+                    // and somewhere to show a 403 — all here, none in an
+                    // extension. Inert until phase 2 ships one, cheap now.
+                    if phase == .active {
+                        Task { await model.consumePendingIntentWork() }
+                    }
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: IntentDependencies.selectedProjectDidChangeNotification
+                    )
+                ) { _ in
+                    model.adoptExternallySelectedProject()
+                }
         }
+        // Wide enough for a sidebar and a two-column screen beside it. The
+        // system's own default came up 900×450, which puts the seven split-view
+        // screens into their narrowest shape on first launch.
+        .defaultSize(width: 1_280, height: 820)
 
         // Tear-off windows, sharing the one AppModel — one client, one
         // rate-limit governor, one cache, exactly as on iPad.
@@ -47,10 +86,14 @@ struct GetHogMacApp: App {
                 .tint(Theme.accent)
         }
 
-        // Empty until Task 4 moves the settings surface in; declared now so
-        // the app has the standard Settings menu item from the first build.
+        // ⌘, — the same section views and stores as iOS Settings, regrouped
+        // into panes. Scenes inherit no environment from each other, so the
+        // model and preferences are injected again here.
         Settings {
-            EmptyView()
+            MacSettingsRoot()
+                .environment(model)
+                .environment(nav)
+                .tint(Theme.accent)
         }
     }
 
