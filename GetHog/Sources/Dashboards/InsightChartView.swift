@@ -563,6 +563,9 @@ struct RetentionCell: View {
                     // A floor, not a cap: the cell grows with the text.
                     .frame(maxWidth: .infinity, minHeight: 22)
                     .background(Self.fill(for: rate), in: .rect(cornerRadius: 3))
+                    // Hover highlighting only, per spec §3 — the percentage is
+                    // already printed, so there is no tooltip to earn.
+                    .chartHoverOutline(cornerRadius: 3)
             } else {
                 Color.clear.frame(maxWidth: .infinity, minHeight: 22)
             }
@@ -1382,8 +1385,10 @@ struct FunnelChart: View {
                     )
                     if canDrill {
                         stepButton(for: step, at: index, in: primary) { row }
+                            .chartHoverHighlight()
                     } else {
                         row
+                            .chartHoverHighlight()
                     }
                 }
 
