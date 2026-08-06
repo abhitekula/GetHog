@@ -10,17 +10,14 @@ import TipKit
 /// scopes the user happened to tick when creating their key, and the fact that
 /// the rate-limit budget being spent is organization-wide. Both are stated
 /// plainly here rather than buried under "Advanced".
+///
+/// The sections are views of their own rather than computed properties of this
+/// screen, because the Mac has a second container for them: `MacSettingsRoot`
+/// regroups the same nine into the four panes of a ⌘, window. One set of
+/// sections, two arrangements — written twice they would drift, and the
+/// difference would only ever show up on one of the two platforms.
 struct SettingsRoot: View {
     @Environment(AppModel.self) private var model
-    @Environment(NavPreferences.self) private var nav
-    @Environment(\.scenePhase) private var scenePhase
-
-    @State private var maskedKey = ""
-    @State private var revealedKey: String?
-    @State private var revealError: String?
-    @State private var isRechecking = false
-    @State private var isConfirmingSignOut = false
-    @State private var cacheBytes: Int64 = 0
 
     /// Owned here rather than inside the cards so a row scrolling out of view
     /// and back does not discard what was already paid for. The *loading* is
@@ -29,21 +26,17 @@ struct SettingsRoot: View {
     @State private var quotaStore = QuotaStore()
     @State private var sdkHealthStore = SDKHealthStore()
 
-    /// A revealed key re-masks itself rather than sitting on a screen the user
-    /// walked away from.
-    private static let revealTimeout: Duration = .seconds(30)
-
     var body: some View {
         List {
-            accountSection
-            projectSection
-            alertsSection
-            navigationSection
-            permissionsSection
-            apiKeySection
-            dataSection
-            sdkHealthSection
-            aboutSection
+            SettingsAccountSection()
+            SettingsProjectSection()
+            SettingsAlertsSection()
+            SettingsNavigationSection()
+            SettingsPermissionsSection()
+            SettingsAPIKeySection()
+            SettingsUsageSection(quotaStore: quotaStore)
+            SettingsSDKHealthSection(store: sdkHealthStore)
+            SettingsAboutSection()
         }
         .listStyle(.insetGrouped)
         .pageSurface()
@@ -54,36 +47,30 @@ struct SettingsRoot: View {
         // No `ProjectSwitcher()` here: the Project section below already is
         // the switcher, and two controls for one piece of state on one
         // screen is a bug report waiting to happen.
-        .task {
-            AppTips.refresh(from: model)
-            loadMaskedKey()
-            await loadCacheSize()
-        }
-        .task(id: revealedKey) {
-            guard revealedKey != nil else { return }
-            try? await Task.sleep(for: Self.revealTimeout)
-            revealedKey = nil
-        }
-        .onChange(of: scenePhase) { _, phase in
-            // iOS snapshots the screen for the app switcher on the way out.
-            // A revealed key must not survive into that image.
-            if phase != .active { revealedKey = nil }
-        }
-        .confirmationDialog(
-            "Sign out of GetHog?",
-            isPresented: $isConfirmingSignOut,
-            titleVisibility: .visible
-        ) {
-            Button("Sign out", role: .destructive) { model.signOut() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")
-        }
+        .task { AppTips.refresh(from: model) }
     }
 
-    // MARK: - Account
+    /// `phx_••••••••4f21` — enough to tell two keys apart without exposing one.
+    static func mask(_ key: String) -> String {
+        let bullets = String(repeating: "•", count: 8)
+        guard key.count > 8 else { return bullets }
 
-    private var accountSection: some View {
+        let head: String
+        if let underscore = key.firstIndex(of: "_") {
+            head = String(key[...underscore])
+        } else {
+            head = String(key.prefix(4))
+        }
+        return head + bullets + key.suffix(4)
+    }
+}
+
+// MARK: - Account
+
+struct SettingsAccountSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
         Section {
             // Not one word in these rows is prose. Every value is a name, an
             // address, an organization or a region — and a `LabeledContent`
@@ -113,10 +100,14 @@ struct SettingsRoot: View {
             SectionLabel(text: "Account", systemImage: "person.crop.circle")
         }
     }
+}
 
-    // MARK: - Project
+// MARK: - Project
 
-    private var projectSection: some View {
+struct SettingsProjectSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
         Section {
             // `AppTipView` rather than `TipView`, for the contrast measured on
             // the Flags card — see `AppTipView`. **Not observed here**: this tip
@@ -142,10 +133,12 @@ struct SettingsRoot: View {
             Text("Charts and event timestamps follow the project's timezone, \(model.selectedProject?.timezone ?? "UTC"). Days start and end there, not on this device.")
         }
     }
+}
 
-    // MARK: - Alerts
+// MARK: - Alerts
 
-    private var alertsSection: some View {
+struct SettingsAlertsSection: View {
+    var body: some View {
         Section {
             NavigationLink {
                 MetricAlertsView()
@@ -161,22 +154,30 @@ struct SettingsRoot: View {
             Text("Thresholds on the metrics your widgets already read, checked when iOS wakes the app in the background. Notices arrive late rather than live, and nothing is sent to a server — the check runs on this device.")
         }
     }
+}
 
-    // MARK: - Navigation
+// MARK: - Navigation
 
-    /// Where the tab bar is arranged - on a phone.
-    ///
-    /// Absent on iPad, and replaced by a line pointing at the system's own
-    /// control: there the sidebar is rearranged by SwiftUI's Edit button and
-    /// this preference is not read at all. Showing an inert row would be worse
-    /// than showing none, because a preference that does nothing reads as a bug
-    /// in the app rather than as a choice about it.
-    ///
-    /// The idiom check matches `RootView.isPad` deliberately - that is the one
-    /// thing deciding which of the two stores a device uses, and a second rule
-    /// here could disagree with it.
-    @ViewBuilder
-    private var navigationSection: some View {
+/// Where the tab bar is arranged - on a phone.
+///
+/// Absent on iPad, and replaced by a line pointing at the system's own
+/// control: there the sidebar is rearranged by SwiftUI's Edit button and
+/// this preference is not read at all. Showing an inert row would be worse
+/// than showing none, because a preference that does nothing reads as a bug
+/// in the app rather than as a choice about it.
+///
+/// The idiom check matches `RootView.isPad` deliberately - that is the one
+/// thing deciding which of the two stores a device uses, and a second rule
+/// here could disagree with it.
+///
+/// The Mac says something different again, and it has to: there is no Edit
+/// button above a `.sidebarAdaptable` sidebar on macOS — the arrangement is
+/// changed by dragging rows and hiding them from their context menus — and
+/// the pane this section sits in carries the reset button that undoes it.
+struct SettingsNavigationSection: View {
+    @Environment(NavPreferences.self) private var nav
+
+    var body: some View {
         Section {
             #if os(iOS)
             if UIDevice.current.userInterfaceIdiom == .pad {
@@ -191,7 +192,7 @@ struct SettingsRoot: View {
                 }
             }
             #else
-            Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
+            Text("Drag sidebar rows to reorder them, and hide a row from its own context menu.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             #endif
@@ -199,10 +200,16 @@ struct SettingsRoot: View {
             SectionLabel(text: "Navigation", systemImage: "square.grid.2x2")
         }
     }
+}
 
-    // MARK: - Permissions
+// MARK: - Permissions
 
-    private var permissionsSection: some View {
+struct SettingsPermissionsSection: View {
+    @Environment(AppModel.self) private var model
+
+    @State private var isRechecking = false
+
+    var body: some View {
         Section {
             ForEach(Capability.allCases) { capability in
                 PermissionRow(
@@ -233,10 +240,24 @@ struct SettingsRoot: View {
             Text("Scopes are chosen when you create a personal API key. Add a missing one in PostHog, then re-check.\n\nToggling a flag also needs `feature_flag:write`, which PostHog only reveals on the first toggle attempt — it can't be probed here.")
         }
     }
+}
 
-    // MARK: - API key
+// MARK: - API key
 
-    private var apiKeySection: some View {
+struct SettingsAPIKeySection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
+
+    @State private var maskedKey = ""
+    @State private var revealedKey: String?
+    @State private var revealError: String?
+    @State private var isConfirmingSignOut = false
+
+    /// A revealed key re-masks itself rather than sitting on a screen the user
+    /// walked away from.
+    private static let revealTimeout: Duration = .seconds(30)
+
+    var body: some View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Personal API key")
@@ -251,6 +272,33 @@ struct SettingsRoot: View {
                             ? "API key hidden, ending in \(maskedKey.suffix(4))"
                             : "API key revealed"
                     )
+            }
+            // These four sat on the whole `List` while this section was a
+            // property of it. On the row they behave the same and reach further:
+            // the row is present wherever the section is, so the Mac's Settings
+            // window gets the timeout and the scene-phase re-mask for free. The
+            // one difference is that scrolling the row out of view now also
+            // re-masks a revealed key, which is strictly the safer direction.
+            .task { loadMaskedKey() }
+            .task(id: revealedKey) {
+                guard revealedKey != nil else { return }
+                try? await Task.sleep(for: Self.revealTimeout)
+                revealedKey = nil
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // iOS snapshots the screen for the app switcher on the way out.
+                // A revealed key must not survive into that image.
+                if phase != .active { revealedKey = nil }
+            }
+            .confirmationDialog(
+                "Sign out of GetHog?",
+                isPresented: $isConfirmingSignOut,
+                titleVisibility: .visible
+            ) {
+                Button("Sign out", role: .destructive) { model.signOut() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")
             }
 
             if revealedKey == nil {
@@ -292,83 +340,9 @@ struct SettingsRoot: View {
         }
     }
 
-    // MARK: - Usage & limits
-
-    /// One section, two budgets, deliberately in that order.
-    ///
-    /// The plan quota is what PostHog meters and bills the organization for; the
-    /// rate-limit meter under it is GetHog's own share of a *different*
-    /// organization-wide allowance. They were built at different times for
-    /// different reasons, but a reader arriving here is asking one question —
-    /// what is this costing us — and answering it in two unrelated places, with
-    /// two different colour languages, would make the smaller of the two look
-    /// like the whole story. So they share a section, a palette and a footer,
-    /// and the footer's job is to say which is which.
-    private var dataSection: some View {
-        Section {
-            QuotaSpendCard(store: quotaStore)
-                // Full-bleed so the card's own `StatStrip` supplies the inset;
-                // otherwise the strip is indented past every other row.
-                .listRowInsets(EdgeInsets(top: Theme.Space.s, leading: 0, bottom: Theme.Space.s, trailing: 0))
-
-            RateLimitUsageView(client: model.client)
-
-            LabeledContent("Cached data") {
-                Text(cacheBytes, format: .byteCount(style: .file))
-                    .monospacedDigit()
-            }
-
-            Button {
-                Task { await clearCache() }
-            } label: {
-                Label("Clear cache", systemImage: "trash")
-            }
-            .disabled(cacheBytes == 0)
-        } header: {
-            SectionLabel(text: "Usage & limits", systemImage: "gauge.with.needle")
-        } footer: {
-            // The whole reason both meters exist. PostHog's limits are counted
-            // per organization, so requests this app makes come out of the same
-            // allowance the user's production integrations depend on.
-            Text("Two allowances, both counted per organization. The quota above is what PostHog meters your plan against; the meter below it is GetHog's own share of PostHog's rate limits — the same budget your production integrations spend. The app paces itself well below the published limits and caches responses on this device, so revisiting a dashboard doesn't cost your team another request.")
-        }
-    }
-
-    // MARK: - SDK health
-
-    private var sdkHealthSection: some View {
-        Section {
-            SDKHealthCard(store: sdkHealthStore)
-        } header: {
-            SectionLabel(text: "SDK health", systemImage: "shippingbox")
-        } footer: {
-            // Says out loud that the judgement is not this app's. Without it the
-            // card reads as GetHog grading the user's SDKs, and the first
-            // time it disagreed with the web console the app would be the one
-            // assumed wrong.
-            Text("PostHog decides this, not GetHog. Release grace periods, version-gap and age rules, and each version's share of traffic are all applied on PostHog's servers; this card shows the verdict and PostHog's own wording for it. The check re-runs roughly daily, so an SDK you have just upgraded can stay listed for about a day.")
-        }
-    }
-
-    // MARK: - About
-
-    private var aboutSection: some View {
-        Section {
-            NavigationLink {
-                AboutView()
-            } label: {
-                Label("About GetHog", systemImage: "info.circle")
-            }
-        } footer: {
-            Text("GetHog is a third-party app and operates independently from PostHog.")
-        }
-    }
-
-    // MARK: - Actions
-
     private func loadMaskedKey() {
         guard let key = try? model.store.load()?.key else { return }
-        maskedKey = Self.mask(key)
+        maskedKey = SettingsRoot.mask(key)
     }
 
     private func reveal() async {
@@ -387,6 +361,60 @@ struct SettingsRoot: View {
             revealError = error.localizedDescription
         }
     }
+}
+
+// MARK: - Usage & limits
+
+/// One section, two budgets, deliberately in that order.
+///
+/// The plan quota is what PostHog meters and bills the organization for; the
+/// rate-limit meter under it is GetHog's own share of a *different*
+/// organization-wide allowance. They were built at different times for
+/// different reasons, but a reader arriving here is asking one question —
+/// what is this costing us — and answering it in two unrelated places, with
+/// two different colour languages, would make the smaller of the two look
+/// like the whole story. So they share a section, a palette and a footer,
+/// and the footer's job is to say which is which.
+struct SettingsUsageSection: View {
+    @Environment(AppModel.self) private var model
+
+    /// Owned by the container rather than here, for the reason `SettingsRoot`
+    /// records: a row scrolling out of view and back must not discard what was
+    /// already paid for.
+    let quotaStore: QuotaStore
+
+    @State private var cacheBytes: Int64 = 0
+
+    var body: some View {
+        Section {
+            QuotaSpendCard(store: quotaStore)
+                // Full-bleed so the card's own `StatStrip` supplies the inset;
+                // otherwise the strip is indented past every other row.
+                .listRowInsets(EdgeInsets(top: Theme.Space.s, leading: 0, bottom: Theme.Space.s, trailing: 0))
+
+            RateLimitUsageView(client: model.client)
+
+            LabeledContent("Cached data") {
+                Text(cacheBytes, format: .byteCount(style: .file))
+                    .monospacedDigit()
+            }
+            .task { await loadCacheSize() }
+
+            Button {
+                Task { await clearCache() }
+            } label: {
+                Label("Clear cache", systemImage: "trash")
+            }
+            .disabled(cacheBytes == 0)
+        } header: {
+            SectionLabel(text: "Usage & limits", systemImage: "gauge.with.needle")
+        } footer: {
+            // The whole reason both meters exist. PostHog's limits are counted
+            // per organization, so requests this app makes come out of the same
+            // allowance the user's production integrations depend on.
+            Text("Two allowances, both counted per organization. The quota above is what PostHog meters your plan against; the meter below it is GetHog's own share of PostHog's rate limits — the same budget your production integrations spend. The app paces itself well below the published limits and caches responses on this device, so revisiting a dashboard doesn't cost your team another request.")
+        }
+    }
 
     private func loadCacheSize() async {
         cacheBytes = Int64(await model.cache.totalSizeBytes())
@@ -396,19 +424,41 @@ struct SettingsRoot: View {
         await model.cache.clear()
         await loadCacheSize()
     }
+}
 
-    /// `phx_••••••••4f21` — enough to tell two keys apart without exposing one.
-    static func mask(_ key: String) -> String {
-        let bullets = String(repeating: "•", count: 8)
-        guard key.count > 8 else { return bullets }
+// MARK: - SDK health
 
-        let head: String
-        if let underscore = key.firstIndex(of: "_") {
-            head = String(key[...underscore])
-        } else {
-            head = String(key.prefix(4))
+struct SettingsSDKHealthSection: View {
+    let store: SDKHealthStore
+
+    var body: some View {
+        Section {
+            SDKHealthCard(store: store)
+        } header: {
+            SectionLabel(text: "SDK health", systemImage: "shippingbox")
+        } footer: {
+            // Says out loud that the judgement is not this app's. Without it the
+            // card reads as GetHog grading the user's SDKs, and the first
+            // time it disagreed with the web console the app would be the one
+            // assumed wrong.
+            Text("PostHog decides this, not GetHog. Release grace periods, version-gap and age rules, and each version's share of traffic are all applied on PostHog's servers; this card shows the verdict and PostHog's own wording for it. The check re-runs roughly daily, so an SDK you have just upgraded can stay listed for about a day.")
         }
-        return head + bullets + key.suffix(4)
+    }
+}
+
+// MARK: - About
+
+struct SettingsAboutSection: View {
+    var body: some View {
+        Section {
+            NavigationLink {
+                AboutView()
+            } label: {
+                Label("About GetHog", systemImage: "info.circle")
+            }
+        } footer: {
+            Text("GetHog is a third-party app and operates independently from PostHog.")
+        }
     }
 }
 
