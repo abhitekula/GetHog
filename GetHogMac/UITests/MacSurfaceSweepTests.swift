@@ -18,6 +18,13 @@ import XCTest
 /// declares (1280×820). The narrow and wide passes are screenshot-only and off
 /// unless `TEST_RUNNER_GETHOG_SWEEP_SIZES=all` is set, because they triple the
 /// runtime and exist for a human reading images, not for CI.
+///
+/// **Screenshot indices follow `AppTab.sections`, which is the sidebar's real
+/// order: Analyze, Monitor, Data, Experiment, Workspace.** Read the exported
+/// PNGs against the numbering here, not against any external table — Data
+/// (Warehouse…Taxonomy) precedes Experiment (Flags…Early access), and a table
+/// that lists them the other way round will mis-attribute a finding to the
+/// wrong screen.
 final class MacSurfaceSweepTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -34,11 +41,16 @@ final class MacSurfaceSweepTests: XCTestCase {
     private struct Screen {
         /// The sidebar row's label — `AppTab.title`, verbatim.
         let title: String
-        /// A string only this screen's fixture can produce, or `nil` where the
-        /// demo dataset has no pinned content to name. A `nil` anchor is not a
-        /// weaker test by accident: it is recorded as screenshot-only, and the
-        /// screenshot is what says whether the screen is populated, empty and
-        /// honest, or stuck.
+        /// A string only this screen's fixture can produce, traced from the
+        /// fixture through the model to the rendered row before being pinned
+        /// here — never copied from a plan, which is how two anchors that do
+        /// not render got proposed for this file.
+        ///
+        /// `nil` means one of two things, and each `nil` below says which in a
+        /// comment: the demo dataset has no fixture for the screen, or its
+        /// demo-derived content is not on the root. A `nil` anchor is
+        /// screenshot-only, and the screenshot is what says whether the screen
+        /// is populated, empty and honest, or stuck.
         let anchor: String?
         /// Screenshot filename stem, so shots sort in sweep order.
         let index: Int
@@ -54,27 +66,51 @@ final class MacSurfaceSweepTests: XCTestCase {
     private static let analyze: [Screen] = [
         Screen(1, "Search"),
         Screen(2, "Dashboards", anchor: "Example App metric 33"),
-        Screen(3, "Events"),
+        // The events feed is backed by `query_hogql.json`, the generic HogQL
+        // fixture (`DemoTransport.swift`'s documented fallback) — *not* by
+        // `event_definitions.json`, which is a different screen's data. Its
+        // first row's event name is this, and `EventAppearance.displayName`
+        // passes any name without a `$` prefix through verbatim.
+        Screen(3, "Events", anchor: "meteor_report_opened"),
         Screen(4, "Sessions", anchor: "Alex Example"),
         Screen(5, "Insights", anchor: "Example meteor report"),
         Screen(6, "Web", anchor: "sample visitors"),
         Screen(7, "Clickmap", anchor: "Example App metric 1831"),
         Screen(8, "People", anchor: "Sable Okafor"),
-        Screen(9, "Groups"),
+        // The root lists group *types*; the groups themselves are a level down.
+        // This is the raw type from `groups_types.json`, which the type row
+        // carries as its subtitle and which `DataRow` folds into the row label.
+        Screen(9, "Groups", anchor: "example-team"),
+        // Deliberately unanchored. The console's demo-derived content is the
+        // schema browser and the query result, and neither is on the root: the
+        // browser is a `.sheet` (`SQLConsoleRoot.swift:301`) and the result
+        // needs a run. The seeded statement is real text but lives in an editor,
+        // whose content is a value rather than a label. The screenshot is the
+        // evidence here, and a stuck console is still visible in it.
         Screen(10, "SQL"),
     ]
 
     private static let monitor: [Screen] = [
         Screen(11, "Errors", anchor: "HarborRenderFault"),
-        Screen(12, "Summaries"),
-        Screen(13, "LLM"),
+        // `single_session_summaries.json` carries exactly one row, and the
+        // header row states the count in words.
+        Screen(12, "Summaries", anchor: "1 summarized session"),
+        // The trace's `distinctID` subtitle. `displayName` is not usable here:
+        // `llm_traces.json`'s first row carries no `traceName`, so it falls
+        // back to an id.
+        Screen(13, "LLM", anchor: "synthetic-id-0099"),
         Screen(14, "Tracing"),
         Screen(15, "Logs"),
-        Screen(16, "Support"),
+        // `SupportTicket.displayTitle` prefers `email_subject`, which the first
+        // ticket in `conversations_tickets.json` has.
+        Screen(16, "Support", anchor: "Example email subject 0735"),
         Screen(17, "Inbox"),
         Screen(18, "Signals"),
         Screen(19, "Health"),
-        Screen(20, "Ingestion"),
+        // Humanised, not raw: `IngestionWarning.title` is
+        // `humanise(type)`, so the fixture's `quota_limited_wandering_hedgehog`
+        // reaches the row as this.
+        Screen(20, "Ingestion", anchor: "Quota limited wandering hedgehog"),
     ]
 
     private static let data: [Screen] = [
@@ -260,7 +296,12 @@ final class MacSurfaceSweepTests: XCTestCase {
                               ("wide", CGSize(width: 1_800, height: 1_100))] {
             resizeMainWindow(of: app, to: size)
             for screen in screens {
-                open(screen.title, in: app)
+                // `reach`, not `open`: at 800×600 the sidebar is the single most
+                // likely thing to collapse or drop out of the outline query, and
+                // `open` ends in an `XCTFail`. A screen this pass cannot get to
+                // is a screenshot not taken, not a failed run — which is the
+                // contract this whole function is written to.
+                guard reach(screen.title, in: app) else { continue }
                 capture(app, name: "\(screen.index)-\(slug(screen.title))-\(label)")
             }
         }
@@ -306,15 +347,26 @@ final class MacSurfaceSweepTests: XCTestCase {
             .firstMatch
     }
 
-    /// Clicks a sidebar destination, scrolling the sidebar to it first if it is
-    /// below the fold — thirty-four rows do not fit 820pt, and the rows at the
-    /// bottom of Workspace are exactly the ones nobody has looked at.
+    /// Clicks a sidebar destination, failing the test if it is not there.
+    /// The default pass's route: a missing destination is a finding.
     private func open(_ title: String, in app: XCUIApplication) {
-        var item = sidebarItem(title, in: app)
-        guard DemoLaunch.wait(for: item) else {
+        if !reach(title, in: app) {
             XCTFail("No sidebar destination labelled \(title).")
-            return
         }
+    }
+
+    /// Clicks a sidebar destination and says whether it got there, scrolling the
+    /// sidebar to it first if it is below the fold — thirty-four rows do not fit
+    /// 820pt, and the rows at the bottom of Workspace are exactly the ones
+    /// nobody has looked at.
+    ///
+    /// Returning a `Bool` rather than failing is what lets the screenshot-only
+    /// size passes keep their promise not to fail the run; `open` puts the
+    /// failure back for the passes that assert.
+    @discardableResult
+    private func reach(_ title: String, in app: XCUIApplication) -> Bool {
+        var item = sidebarItem(title, in: app)
+        guard DemoLaunch.wait(for: item) else { return false }
 
         // Existence is not reachability in a scrolling outline.
         var scrolls = 0
@@ -323,9 +375,11 @@ final class MacSurfaceSweepTests: XCTestCase {
             item = sidebarItem(title, in: app)
             scrolls += 1
         }
+        guard item.isHittable else { return false }
 
         item.click()
         DemoLaunch.settle(app)
+        return true
     }
 
     /// Every element whose label contains the text, of any type — list rows
