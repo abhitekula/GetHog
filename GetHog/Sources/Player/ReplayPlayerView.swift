@@ -658,6 +658,72 @@ final class ReplayWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDeleg
     }
 }
 
+/// The halves of the stage web view that must not fork between platforms:
+/// one configuration, one message-handler registration, one resource-policy
+/// installation, one teardown. The iOS and Mac representables own only what
+/// genuinely differs — view plumbing and scroll/gesture suppression.
+@MainActor
+enum ReplayStageBuilder {
+    static func makeConfiguration(
+        bridge: ReplayWebBridge,
+        controller: ReplayPlayerController
+    ) -> WKWebViewConfiguration {
+        let configuration = WKWebViewConfiguration()
+        #if os(iOS)
+        configuration.allowsInlineMediaPlayback = true
+        #endif
+        configuration.mediaTypesRequiringUserActionForPlayback = .all
+        bridge.controller = controller
+        configuration.userContentController.add(bridge, name: "player")
+        return configuration
+    }
+
+    /// Attaches the controller and starts the policy-then-document load —
+    /// the hardened iOS sequence, verbatim: attach first, report a missing
+    /// asset without loading, and let `ReplayWebDocumentLoader` serialise the
+    /// rule-list installation ahead of the document.
+    static func beginDocumentLoad(
+        webView: WKWebView,
+        bridge: ReplayWebBridge,
+        controller: ReplayPlayerController
+    ) {
+        controller.attach(webView)
+
+        guard ReplayAssets.isComplete, let index = ReplayAssets.indexURL else {
+            controller.reportAssetMissing()
+            return
+        }
+        bridge.documentLoader.start(
+            installPolicy: { [weak webView] in
+                let rules = try await ReplayWebResourcePolicy.compile()
+                try Task.checkCancellation()
+                guard let webView else { throw CancellationError() }
+                webView.configuration.userContentController.add(rules)
+            },
+            loadDocument: { [weak webView] in
+                guard let webView else { return }
+                // Read access is scoped to the folder holding the shim so the
+                // page can pull in its sibling script and stylesheet, and
+                // nothing else.
+                webView.loadFileURL(
+                    index,
+                    allowingReadAccessTo: index.deletingLastPathComponent()
+                )
+            },
+            reportFailure: { [weak controller] message in
+                controller?.reportResourcePolicyFailure(message)
+            }
+        )
+    }
+
+    static func dismantle(webView: WKWebView, coordinator: ReplayWebBridge) {
+        coordinator.documentLoader.cancel()
+        webView.stopLoading()
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "player")
+        coordinator.controller?.teardown()
+    }
+}
+
 #if os(iOS)
 /// A WKWebView that tells the shim when native layout moved its frame.
 ///
@@ -686,13 +752,11 @@ struct WKWebViewRepresentable: UIViewRepresentable {
     func makeCoordinator() -> ReplayWebBridge { ReplayWebBridge() }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.allowsInlineMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = .all
-
         let bridge = context.coordinator
-        bridge.controller = controller
-        configuration.userContentController.add(bridge, name: "player")
+        let configuration = ReplayStageBuilder.makeConfiguration(
+            bridge: bridge,
+            controller: controller
+        )
 
         let webView = ReplayStageWebView(frame: .zero, configuration: configuration)
         webView.onLayout = { [weak controller] _ in
@@ -715,32 +779,10 @@ struct WKWebViewRepresentable: UIViewRepresentable {
         webView.isInspectable = true
         #endif
 
-        controller.attach(webView)
-
-        guard ReplayAssets.isComplete, let index = ReplayAssets.indexURL else {
-            controller.reportAssetMissing()
-            return webView
-        }
-        bridge.documentLoader.start(
-            installPolicy: { [weak webView] in
-                let rules = try await ReplayWebResourcePolicy.compile()
-                try Task.checkCancellation()
-                guard let webView else { throw CancellationError() }
-                webView.configuration.userContentController.add(rules)
-            },
-            loadDocument: { [weak webView] in
-                guard let webView else { return }
-                // Read access is scoped to the folder holding the shim so the
-                // page can pull in its sibling script and stylesheet, and
-                // nothing else.
-                webView.loadFileURL(
-                    index,
-                    allowingReadAccessTo: index.deletingLastPathComponent()
-                )
-            },
-            reportFailure: { [weak controller] message in
-                controller?.reportResourcePolicyFailure(message)
-            }
+        ReplayStageBuilder.beginDocumentLoad(
+            webView: webView,
+            bridge: bridge,
+            controller: controller
         )
         return webView
     }
@@ -748,10 +790,7 @@ struct WKWebViewRepresentable: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: ReplayWebBridge) {
-        coordinator.documentLoader.cancel()
-        webView.stopLoading()
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "player")
-        coordinator.controller?.teardown()
+        ReplayStageBuilder.dismantle(webView: webView, coordinator: coordinator)
     }
 }
 #else
