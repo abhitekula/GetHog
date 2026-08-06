@@ -2,15 +2,21 @@
 
 ## Structure
 
-GetHog is a native SwiftUI app for iPhone and iPad with no backend.
+GetHog is a native SwiftUI app for iPhone, iPad and Mac with no backend.
 `GetHogKit/` contains the UI-free authentication, networking, API-model,
 insight-rendering, and replay-parsing package. App code lives in
 `GetHog/Sources/`, the WidgetKit extension in `GetHogWidgets/`, and deterministic
 demo data in `GetHog/Resources/DemoData/`. Widgets read the shared cache and do
 not call PostHog directly.
 
+The Mac is a second shell over the same screens, not a port: `GetHogMac/Sources/`
+holds only what is Mac-shaped — the sidebar shell, the menu bar, the commands,
+the Settings scene — and `GetHogMacWidgets/` is its widget extension. Anything
+both platforms draw stays in `GetHog/Sources/` behind `#if os(macOS)`.
+
 `project.yml` is the source of truth; `GetHog.xcodeproj` is generated. Tests
-live in `GetHogKit/Tests/`, `GetHog/Tests/`, and `GetHogUITests/`.
+live in `GetHogKit/Tests/`, `GetHog/Tests/`, `GetHogUITests/`, and — for the Mac
+shell — `GetHogMac/Tests/` and `GetHogMac/UITests/`.
 
 ## Commands
 
@@ -27,6 +33,25 @@ xcodebuild test -project GetHog.xcodeproj -scheme GetHog \
 Use `-only-testing:GetHogUITests` for rendered accessibility behavior and the
 `GetHogScreenshots` scheme for visual sweeps. Do not pass `-derivedDataPath`.
 Report nonzero executed test counts, not just exit status.
+
+The Mac builds and tests from the same generated project, and the third command
+is the Release compile-check — the half no Debug build covers, and the only one
+signing would otherwise gate:
+
+```bash
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS'
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS' \
+  -only-testing:GetHogMacTests
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac \
+  -destination 'platform=macOS' -configuration Release \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+`GetHogMacTests` is Swift Testing, so its count is the `Test run with N tests`
+line; the `Executed 0 tests` beside it is the empty XCTest shell around it and
+is normal. `GetHogMacUITests` additionally needs an unlocked screen — a locked
+one hands the automation layer nothing and fails every test at launch, before an
+assertion. DEVELOPMENT.md carries the rest of the Mac-specific traps.
 
 `xcrun simctl` is not a route to automated verification. Booting and mutating a
 simulator out of band is how a run stops being reproducible, and the test

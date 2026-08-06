@@ -19,8 +19,12 @@
      access group as an argument and defaults to none, and `SharedSnapshotStore`
      resolves the App Group container and falls back to the app's own when there
      is not one — so a debug Mac app reads and writes its own credential and its
-     own snapshot. What makes a *shared* group mean anything is a second
-     process, and there is no macOS widget extension yet. -->
+     own snapshot. There *is* a second process now, `GetHogMacWidgets`, and the
+     subtraction is exactly what it meets: with no shared container to read, a
+     debug widget draws its can't-share empty state rather than the app's
+     numbers. That is the honest Debug behavior, not a regression — the
+     Distribution set is what a signed build ships, and where the two processes
+     meet. -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.app-sandbox</key>

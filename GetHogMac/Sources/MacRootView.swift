@@ -22,8 +22,12 @@ struct MacRootView: View {
     /// disagreement this prevents.
     @State private var surveyLifecycle = SurveyLifecycleController()
     @State private var experimentLifecycle = ExperimentLifecycleController()
-    /// Same store key as the iPad sidebar, per the spec: one arrangement
-    /// preference, whichever platform is looking at it.
+    /// Same store key, and the same `customizationID`s below it, as the iPad
+    /// sidebar: a stored arrangement written by either shell *means* the same
+    /// thing to the other. It does not travel there — `@AppStorage` reads the
+    /// process's own `UserDefaults`, and macOS and iOS are separate domains, so
+    /// each platform arranges its own sidebar. What the shared vocabulary buys
+    /// is that one key cannot come to mean two arrangements.
     @AppStorage("sidebarCustomization") private var sidebarCustomization = TabViewCustomization()
     /// Set only when a link could not do what it said. Success is silent.
     @State private var linkNotice: LinkNotice?
