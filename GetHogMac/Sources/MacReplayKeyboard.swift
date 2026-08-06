@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Keyboard transport for the Mac replay player (spec §3): space play/pause,
@@ -56,6 +57,37 @@ enum MacReplayKeyboard {
             return speeds.first(where: { $0 > speed }).map(Command.setSpeed)
         }
     }
+
+    /// Whether focus is sitting in something a person types into.
+    ///
+    /// Every key here is unmodified, which is the strongest claim a shortcut
+    /// can make, and this window also carries the sessions search field — the
+    /// Mac resolves `.navigationBarDrawer` to `.automatic`, which is the
+    /// toolbar. A query typed while a replay is ready must reach the field,
+    /// not the transport.
+    ///
+    /// Measured rather than assumed (`NSApp.sendEvent` against a hosted
+    /// window): SwiftUI already declines to offer an unmodified key equivalent
+    /// while a text responder has focus — space, `]`, ← and ⇧← all typed or
+    /// moved the caret and fired nothing, in a `TextField` *and* in a toolbar
+    /// search field, while the same keys fired every shortcut with focus on
+    /// the window. This guard is the second line: if that behavior ever
+    /// changes, one dropped keystroke is a far smaller wrong than a search
+    /// query that plays, seeks and changes speed.
+    ///
+    /// `NSText` is the test — the field editor behind both a SwiftUI
+    /// `TextField` (`_SystemTextFieldFieldEditor`) and an `NSSearchField`
+    /// (`NSTextView`) — deliberately *not* `NSTextInputClient`: `WKWebView`
+    /// conforms to that protocol, so the stage taking focus would have
+    /// switched the transport off.
+    @MainActor
+    static func isTextInputFocused(in window: NSWindow?) -> Bool {
+        switch window?.firstResponder {
+        case let text as NSText: text.isEditable
+        case let field as NSTextField: field.isEditable
+        default: false
+        }
+    }
 }
 
 /// Registers the transport keys as window-level key equivalents while the
@@ -68,7 +100,9 @@ enum MacReplayKeyboard {
 /// zero-size, invisible, and out of the accessibility tree, and they disable
 /// with the same `isReady` gate as the on-screen transport — before the
 /// player is ready the keys keep their ordinary meanings (space still
-/// scrolls the page).
+/// scrolls the page). Typing keeps them too: see
+/// `MacReplayKeyboard.isTextInputFocused(in:)` for what SwiftUI does about a
+/// focused text field, what was measured, and the guard that backs it up.
 private struct MacReplayKeyboardTransport: ViewModifier {
     let controller: ReplayPlayerController
     let duration: TimeInterval
@@ -102,6 +136,7 @@ private struct MacReplayKeyboardTransport: ViewModifier {
     }
 
     private func perform(_ key: MacReplayKeyboard.Key, shift: Bool) {
+        guard !MacReplayKeyboard.isTextInputFocused(in: NSApp.keyWindow) else { return }
         guard let command = MacReplayKeyboard.command(
             for: key,
             shift: shift,
