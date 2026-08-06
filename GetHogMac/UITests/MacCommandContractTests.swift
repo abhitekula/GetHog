@@ -15,10 +15,17 @@ final class MacCommandContractTests: XCTestCase {
     /// XPC service that is not part of GetHog's accessibility tree at all. A
     /// query against `app.windows.sheets` finds nothing and reports "no panel"
     /// about a panel the user can see.
-    private static var savePanelIsRunning: Bool {
-        NSWorkspace.shared.runningApplications.contains {
-            $0.bundleIdentifier?.contains("openAndSavePanelService") ?? false
-        }
+    /// **Pids, not a boolean.** Every sandboxed app on the machine gets its own
+    /// instance of this service, and four were already running here — so "is it
+    /// running?" answers yes whether or not GetHog ever asked for a panel, which
+    /// is a check that cannot fail. A *new* pid appearing is the app spawning
+    /// its own.
+    private static var savePanelPIDs: Set<Int32> {
+        Set(
+            NSWorkspace.shared.runningApplications
+                .filter { $0.bundleIdentifier?.contains("openAndSavePanelService") ?? false }
+                .map(\.processIdentifier)
+        )
     }
 
     private func capture(_ name: String) {
@@ -129,19 +136,30 @@ final class MacCommandContractTests: XCTestCase {
         // the user sees on this window while belonging to another application
         // element entirely. Querying `app.windows.sheets` finds nothing and
         // says "no panel" about a panel that is on screen.
+        let panelsBefore = Self.savePanelPIDs
         app.typeKey("e", modifierFlags: .command)
         // Asked of the workspace rather than of an `XCUIApplication` built from
         // the service's bundle id: that initialiser raises
         // `NSInternalInconsistencyException` — uncatchable from Swift — the
         // moment the service is not already running, which is precisely the
         // case a "did the panel open?" check has to survive.
-        let opened = DemoLaunch.wait(timeout: 20) { Self.savePanelIsRunning }
+        var appeared: Set<Int32> = []
+        let opened = DemoLaunch.wait(timeout: 20) {
+            appeared = Self.savePanelPIDs.subtracting(panelsBefore)
+            return !appeared.isEmpty
+        }
+        // The service is running a moment before its sheet has drawn, and a
+        // screenshot taken on the running check alone photographs the window
+        // without the panel — which reads as "no panel opened".
+        DemoLaunch.pause(2.5)
         capture("c5-cmd-e-save-panel")
-        print("PHASEB-SAVEPANEL running=\(opened)")
+        print("PHASEB-SAVEPANEL before=\(panelsBefore.count) new=\(appeared)")
         XCTAssertTrue(opened, "⌘E opened no save panel.")
         if opened {
             app.typeKey(.escape, modifierFlags: [])
-            _ = DemoLaunch.wait(timeout: 10) { !Self.savePanelIsRunning }
+            _ = DemoLaunch.wait(timeout: 10) {
+                Self.savePanelPIDs.isDisjoint(with: appeared)
+            }
         }
         DemoLaunch.pause(1)
 
