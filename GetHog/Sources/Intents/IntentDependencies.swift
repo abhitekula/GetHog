@@ -36,10 +36,21 @@ struct IntentDependencies: Sendable {
 
     /// Shared container for the app, the widget extension and Focus filters.
     ///
-    /// The same identifier `GetHogKit.SharedSnapshotStore.appGroupIdentifier`
-    /// uses, which is how the widget extension reaches the container without
-    /// compiling anything from this directory.
-    static let appGroupID = "group.app.gethog"
+    /// Resolved rather than spelled out, because the correct spelling is not a
+    /// constant. Under the macOS App Sandbox an App Group identifier carries
+    /// the signing Team ID — `<TeamID>.group.app.gethog` — and the literal
+    /// `"group.app.gethog"` that stood here would hand
+    /// `UserDefaults(suiteName:)` a name no entitlement grants: not an error, a
+    /// *different domain*, private to this process, where the selected project
+    /// a Focus filter wrote would be invisible to the app and the app's would
+    /// be invisible to every intent. iOS forbids the prefix, so
+    /// `bundleAppGroupIdentifier` is byte-identical to the old literal there
+    /// and nothing shipping moves.
+    ///
+    /// This is the same value `SharedSnapshotStore.shared` resolves its
+    /// container from, which is the point: one identifier, one container, no
+    /// second spelling to drift.
+    static let appGroupID = SharedSnapshotStore.bundleAppGroupIdentifier
 
     /// Defaults key holding the selected project id. This exact string is the
     /// contract between `AppModel`, the Focus filter and every intent.
