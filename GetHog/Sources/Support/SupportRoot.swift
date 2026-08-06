@@ -119,7 +119,7 @@ struct SupportRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $store.search, prompt: "Search tickets")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
     }
 

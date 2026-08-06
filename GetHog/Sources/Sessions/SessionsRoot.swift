@@ -175,7 +175,7 @@ struct SessionsRoot: View {
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Search person email"
                 )
-                .refreshable { await load() }
+                .screenRefreshable { await load() }
                 // One task covers project switches, typing and every control on
                 // the filter sheet. `.task(id:)` cancels the previous one, so a
                 // burst of keystrokes costs one request, and a filter change

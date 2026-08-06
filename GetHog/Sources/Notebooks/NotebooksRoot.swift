@@ -45,7 +45,7 @@ struct NotebooksRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search notebooks")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
             .navigationDestination(item: selection) { notebook in
                 NotebookDetailView(summary: notebook)

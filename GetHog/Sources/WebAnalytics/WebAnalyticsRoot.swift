@@ -551,7 +551,7 @@ struct WebAnalyticsRoot: View {
             }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Filter \(dimension.pluralTitle)")
-            .refreshable { await reloadAll() }
+            .screenRefreshable { await reloadAll() }
             // Two keys, not one: changing the breakdown dimension must not
             // spend a second /query/ call re-fetching identical KPIs.
             .task(id: OverviewKey(projectID: model.projectID, window: window)) {

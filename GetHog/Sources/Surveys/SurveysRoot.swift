@@ -94,7 +94,7 @@ struct SurveysRoot: View {
             .navigationTitle("Surveys")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
     }
 

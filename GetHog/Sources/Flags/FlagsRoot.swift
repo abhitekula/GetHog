@@ -151,7 +151,7 @@ struct FlagsRoot: View {
                 .toolbar { ProjectSwitcher() }
                 .projectSubtitle()
                 .searchable(text: $search, prompt: "Search flag key or name")
-                .refreshable { await load() }
+                .screenRefreshable { await load() }
                 .task(id: model.projectID) {
                     AppTips.refresh(from: model)
                     await load()

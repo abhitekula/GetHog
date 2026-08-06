@@ -141,7 +141,7 @@ struct InsightsRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search insight names")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             // One task covers project switches, typing and both filters.
             // Searching is server-side, so a burst of keystrokes is debounced
             // into one request rather than one request per character — the same

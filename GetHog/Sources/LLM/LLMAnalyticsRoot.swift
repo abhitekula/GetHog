@@ -87,7 +87,7 @@ struct LLMAnalyticsRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search traces")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: LoadKey(projectID: model.projectID, range: range)) { await load() }
     }
 

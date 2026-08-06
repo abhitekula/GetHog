@@ -44,7 +44,7 @@ struct SessionSummariesRoot: View {
             }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search the narrative or person")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             // Keyed on the filters too, so changing one issues the new request
             // rather than re-filtering the page already in hand — the counts
             // differ, and a client-side pass would answer "26 failures" with

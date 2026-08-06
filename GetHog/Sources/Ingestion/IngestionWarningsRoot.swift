@@ -141,7 +141,7 @@ struct IngestionWarningsRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $store.search, prompt: "Search warnings")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
     }
 

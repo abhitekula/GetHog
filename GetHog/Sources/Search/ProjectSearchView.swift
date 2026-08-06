@@ -115,7 +115,7 @@ struct ProjectSearchView: View {
         .onAppear {
             if let term = LinkInbox.consumeQuery(for: .search) { query = term }
         }
-        .refreshable { await load(force: true) }
+        .screenRefreshable { await load(force: true) }
         .task(id: model.projectID) { await load(force: false) }
         .sheet(item: $surveyRequest) { request in
             SurveySearchSheet(surveyID: request.id, name: request.name)

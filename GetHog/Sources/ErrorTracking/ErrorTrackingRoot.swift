@@ -264,7 +264,7 @@ struct ErrorTrackingRoot: View {
                 ToolbarItem(placement: .topBarTrailing) { optionsMenu }
             }
             .projectSubtitle()
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: LoadKey(projectID: model.projectID, window: window, order: order)) {
                 await load()
             }

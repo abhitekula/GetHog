@@ -56,7 +56,7 @@ struct ConversationsRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search conversations")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
             .navigationDestination(item: selection) { conversation in
                 ConversationDetailView(conversation: conversation)

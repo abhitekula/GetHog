@@ -284,7 +284,7 @@ struct PeopleRoot: View {
             text: $search,
             prompt: segment == .persons ? "Search persons" : "Filter cohorts"
         )
-        .refreshable { await refresh() }
+        .screenRefreshable { await refresh() }
         // One task covers project switches and typing. Persons search is
         // server-side, so a burst of keystrokes is debounced into one request
         // rather than one request per character.

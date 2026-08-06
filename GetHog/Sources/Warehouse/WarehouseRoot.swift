@@ -147,7 +147,7 @@ struct WarehouseRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search sources, tables and views")
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
             .navigationDestination(item: selection) { detail in
                 switch detail {

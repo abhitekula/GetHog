@@ -4,8 +4,9 @@ import SwiftUI
 // three keys and nothing else; the names below are contract, not convention.
 //
 //   \.openTab          — published by MacRootView. Go menu (⌘1–⌘9).
-//   \.screenRefresh    — published by each screen beside its `.refreshable`
-//                        (Task 5). View ▸ Refresh (⌘R); disabled while nil.
+//   \.screenRefresh    — published by every root screen through
+//                        `screenRefreshable(_:)`, beside its `.refreshable`.
+//                        View ▸ Refresh (⌘R); disabled while nil.
 //   \.insightCSVExport — published by insight-detail surfaces closing over the
 //                        window's CSVExportCoordinator (Task 5).
 //                        File ▸ Export CSV (⌘E); disabled while nil.
@@ -55,4 +56,26 @@ extension FocusedValues {
     @Entry var openTab: OpenTabAction?
     @Entry var screenRefresh: ScreenRefreshAction?
     @Entry var insightCSVExport: InsightCSVExportAction?
+}
+
+extension View {
+
+    /// One closure, two entrances: the platform's pull-to-refresh and the Mac
+    /// menu bar's View ▸ Refresh (⌘R), which reads `\.screenRefresh` from the
+    /// key window. Publishing beside the gesture is the contract above — a
+    /// screen cannot gain one entrance without the other, and the two can never
+    /// disagree about what "refresh" means.
+    ///
+    /// Root screens only. A pushed or column detail that also published would
+    /// put two values in one scene and leave ⌘R's target to focus-proximity
+    /// resolution, which is not an answer a menu item may give. Details keep
+    /// their plain `.refreshable`.
+    ///
+    /// The publication is inert on iOS, where nothing reads the key. That is
+    /// the shared-key design recorded above, and it is why there is no `#if`
+    /// at any of the call sites.
+    func screenRefreshable(_ action: @escaping @Sendable () async -> Void) -> some View {
+        refreshable { await action() }
+            .focusedSceneValue(\.screenRefresh, ScreenRefreshAction { await action() })
+    }
 }

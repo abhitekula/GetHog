@@ -207,7 +207,7 @@ struct HeatmapsRoot: View {
             .navigationTitle("Clickmap")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: LoadKey(projectID: model.projectID, window: window)) { await load() }
             .task(id: model.projectID) { await loadSavedRenders() }
     }

@@ -161,7 +161,7 @@ struct TracingRoot: View {
             .projectSubtitle()
             .searchable(text: $store.spanName, prompt: "Filter by span name")
             .onSubmit(of: .search) { Task { await load() } }
-            .refreshable { await load() }
+            .screenRefreshable { await load() }
             .task(id: model.projectID) { await load() }
             .navigationDestination(item: selection) { trace in
                 TraceDetailView(trace: trace)

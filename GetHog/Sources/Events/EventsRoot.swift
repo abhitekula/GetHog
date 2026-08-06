@@ -393,7 +393,7 @@ struct EventsRoot: View {
                     if let term = LinkInbox.consumeQuery(for: .events) { search = term }
                 }
                 .onSubmit(of: .search) { Task { await reload() } }
-                .refreshable { await reload() }
+                .screenRefreshable { await reload() }
                 .task(id: filterSignature) {
                     AppTips.refresh(from: model)
                     await reload()
