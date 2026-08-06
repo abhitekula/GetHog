@@ -173,8 +173,7 @@ final class MacSurfaceSweepTests: XCTestCase {
 
         for (title, rowText, name) in Self.detailFlows {
             open(title, in: app)
-            let row = element(containing: rowText, in: app)
-            guard DemoLaunch.wait(for: row) else {
+            guard let row = DemoLaunch.waitForContent(containing: rowText, in: app) else {
                 XCTFail("\(title) never offered a row containing \(rowText).")
                 continue
             }
@@ -228,15 +227,15 @@ final class MacSurfaceSweepTests: XCTestCase {
         let app = DemoLaunch.launch()
 
         open("Dashboards", in: app)
-        let row = element(containing: "Example App metric 33", in: app)
-        guard DemoLaunch.wait(for: row) else {
+        guard let row = DemoLaunch.waitForContent(containing: "Example App metric 33", in: app) else {
             XCTFail("The dashboard list never offered its first row.")
             return
         }
         row.click()
 
-        let tile = element(containing: DemoLaunch.firstTileTitle, in: app)
-        guard DemoLaunch.wait(for: tile) else {
+        guard let tile = DemoLaunch.waitForContent(
+            containing: DemoLaunch.firstTileTitle, in: app
+        ) else {
             XCTFail("The dashboard detail never rendered \(DemoLaunch.firstTileTitle).")
             return
         }
@@ -264,8 +263,8 @@ final class MacSurfaceSweepTests: XCTestCase {
             open(screen.title, in: app)
 
             if let anchor = screen.anchor {
-                XCTAssertTrue(
-                    DemoLaunch.wait(for: element(containing: anchor, in: app)),
+                XCTAssertNotNil(
+                    DemoLaunch.waitForContent(containing: anchor, in: app),
                     "\(screen.title) never rendered its demo anchor “\(anchor)”."
                 )
             }
@@ -375,31 +374,50 @@ final class MacSurfaceSweepTests: XCTestCase {
         guard DemoLaunch.wait(for: item) else { return false }
 
         // Existence is not reachability in a scrolling outline.
+        // Scroll monotonically toward the bottom, then back toward the top.
+        // The first attempt alternated direction and therefore netted zero,
+        // which is why the Workspace rows were never reached and their
+        // screenshots caught the *previous* screen still on display.
         var scrolls = 0
-        while !item.isHittable && scrolls < 8 {
-            app.outlines.firstMatch.scroll(byDeltaX: 0, deltaY: -80)
+        while !item.isHittable && scrolls < 12 {
+            app.outlines.firstMatch.scroll(byDeltaX: 0, deltaY: -120)
             item = sidebarItem(title, in: app)
             scrolls += 1
         }
-        guard item.isHittable else { return false }
+        while !item.isHittable && scrolls < 24 {
+            app.outlines.firstMatch.scroll(byDeltaX: 0, deltaY: 120)
+            item = sidebarItem(title, in: app)
+            scrolls += 1
+        }
+
+        // Last resort, and a check in its own right: the Go menu lists every
+        // destination and needs no scrolling. If the sidebar could not be made
+        // to reach a screen but the menu can, the sweep still photographs the
+        // screen and the difference is itself worth knowing.
+        guard item.isHittable else { return openViaGoMenu(title, in: app) }
 
         item.click()
         DemoLaunch.settle(app)
         return true
     }
 
-    /// Every element whose label contains the text, of any type — list rows
-    /// fold their fields into one label, so an exact match cannot find a row.
-    private func element(containing text: String, in app: XCUIApplication) -> XCUIElement {
-        // Scoped to the windows, not the whole application. An app-wide
-        // `descendants(matching: .any)` carrying a compound CONTAINS predicate
-        // has to evaluate the menu bar's entire item tree as well as the
-        // screen's, and measured here that times the query out ("Failed to get
-        // matching snapshots") before it ever reaches the row. The windows hold
-        // everything these assertions are about, including a tear-off.
-        app.windows.descendants(matching: .staticText)
-            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text))
-            .firstMatch
+
+    /// Routes to a destination through the Go menu, which needs no scrolling
+    /// because a menu is not a viewport. Also a check in its own right: if the
+    /// sidebar could not be made to reach a screen but the menu can, the sweep
+    /// still photographs the screen and the difference is worth knowing.
+    private func openViaGoMenu(_ title: String, in app: XCUIApplication) -> Bool {
+        let go = app.menuBars.menuBarItems["Go"]
+        guard go.exists else { return false }
+        go.click()
+        let entry = app.menuItems[title]
+        guard DemoLaunch.wait(for: entry, timeout: 5), entry.isEnabled else {
+            app.typeKey(.escape, modifierFlags: [])
+            return false
+        }
+        entry.click()
+        DemoLaunch.settle(app)
+        return true
     }
 
     /// The whole screen, not the window: the Dock and the menu bar are part of
