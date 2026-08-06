@@ -20,6 +20,13 @@ struct SessionDetailView: View {
     @Environment(\.openURL) private var openURL
     #endif
     @State private var summaryGenerationTask: Task<Void, Never>?
+    #if os(macOS)
+    /// The diagnostics column starts open: the inspector exists because the
+    /// big screen can hold the player and its evidence side by side, and
+    /// hiding the evidence by default would waste the width the layout is
+    /// exploiting.
+    @State private var showsDiagnosticsInspector = true
+    #endif
 
     private var replayWebURL: URL? {
         model.webURL(path: "replay/\(recording.id)")
@@ -104,6 +111,7 @@ struct SessionDetailView: View {
                 )
                 .padding(.horizontal, Theme.Space.l)
 
+                #if os(iOS)
                 ReplayDiagnosticsSection(
                     loader: loader,
                     controller: player,
@@ -111,6 +119,7 @@ struct SessionDetailView: View {
                     onSeek: { offset in player.seek(to: offset, resume: true) }
                 )
                 .padding(.horizontal, Theme.Space.l)
+                #endif
 
                 watchInPostHogCard
                     .padding(.horizontal, Theme.Space.l)
@@ -127,6 +136,17 @@ struct SessionDetailView: View {
         // is the thing a phone is worst at and a large screen is best at.
         .handoff(webURL: replayWebURL, title: recording.personDisplayName)
         .toolbar {
+            #if os(macOS)
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showsDiagnosticsInspector.toggle()
+                } label: {
+                    Label("Replay Diagnostics", systemImage: "sidebar.trailing")
+                }
+                .help("Show or hide the console and network panes")
+                .accessibilityLabel("Toggle replay diagnostics")
+            }
+            #endif
             if let replayWebURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: replayWebURL) {
@@ -136,6 +156,16 @@ struct SessionDetailView: View {
                 }
             }
         }
+        #if os(macOS)
+        .inspector(isPresented: $showsDiagnosticsInspector) {
+            ReplayDiagnosticsInspector(
+                loader: loader,
+                controller: player,
+                duration: recording.recordingDuration ?? loader.bufferedSeconds,
+                onSeek: { offset in player.seek(to: offset, resume: true) }
+            )
+        }
+        #endif
         .task(id: recording.id) { await loadTimeline() }
         .task(id: recording.id) { await startReplay() }
         // A separate request, made when the screen opens. Most sessions have no
@@ -267,6 +297,45 @@ struct SessionDetailView: View {
         Task { await startReplay() }
     }
 }
+
+#if os(macOS)
+// MARK: - Mac diagnostics inspector
+
+/// The console and network cards the iPhone stacks after the timeline, in the
+/// trailing column a Mac window has the width for. Same cards, same stores,
+/// same seek callback — only the placement is the Mac's.
+private struct ReplayDiagnosticsInspector: View {
+    let loader: ReplayLoader
+    let controller: ReplayPlayerController
+    let duration: TimeInterval
+    let onSeek: (TimeInterval) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Theme.Space.l) {
+                if loader.availability == .ready {
+                    ReplayDiagnosticsSection(
+                        loader: loader,
+                        controller: controller,
+                        duration: duration,
+                        onSeek: onSeek
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "No replay diagnostics",
+                        systemImage: "waveform.and.magnifyingglass",
+                        description: Text("Console and network activity appear once a replay loads.")
+                    )
+                    .padding(.top, Theme.Space.xl)
+                }
+            }
+            .padding(Theme.Space.l)
+        }
+        .pageSurface()
+        .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+    }
+}
+#endif
 
 // MARK: - Header
 
