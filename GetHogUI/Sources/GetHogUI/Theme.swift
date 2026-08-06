@@ -351,7 +351,14 @@ public enum Theme {
         /// furthest apart, and it makes the lookup independent of the appearance
         /// the pill happens to be drawn in.
         private static func swatchKey(_ color: Color) -> UInt32 {
-            #if canImport(UIKit)
+            // `!os(watchOS)` for the reason `Color(light:dark:)` gives:
+            // `UITraitCollection` does not exist on watchOS, so the appearance
+            // cannot be named to `resolvedColor(with:)` there. The SwiftUI
+            // branch below is not an AppKit fallback — it is pure SwiftUI and
+            // resolves the same way on watchOS, where the pair has already
+            // collapsed to its dark value and both the table's keys and the
+            // lookups run through this one function, so the two still agree.
+            #if canImport(UIKit) && !os(watchOS)
             let resolved = UIColor(color)
                 .resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
             var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
@@ -438,7 +445,17 @@ extension Color {
     /// Builds a colour that resolves per appearance, so dark mode is a selected
     /// value rather than an automatic inversion.
     init(light: Color, dark: Color) {
-        #if canImport(UIKit)
+        #if os(watchOS)
+        // watchOS has no appearance to resolve *between*: the system UI is
+        // always dark, so there is no light branch for a pair to select and the
+        // dark value is the resolved value.
+        //
+        // The mechanism is unavailable there too, which is why this cannot fall
+        // through to the UIKit branch below even though `canImport(UIKit)` is
+        // true on watchOS: `UIColor(dynamicProvider:)` does not exist, and
+        // `UITraitCollection` is not a watchOS type at all.
+        self = dark
+        #elseif canImport(UIKit)
         self = Color(UIColor { traits in
             traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
         })

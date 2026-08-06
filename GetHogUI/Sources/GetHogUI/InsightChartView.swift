@@ -855,49 +855,7 @@ struct TimeSeriesChart: View {
             }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isZoomed)
 
-            Chart {
-                ForEach(Array(series.enumerated()), id: \.offset) { _, s in
-                    ForEach(Array((s.datedPoints ?? []).enumerated()), id: \.offset) { _, point in
-                        marks(for: point, in: s)
-                    }
-                }
-
-                if let selectedDate {
-                    RuleMark(x: .value("Date", selectedDate))
-                        .foregroundStyle(.secondary.opacity(0.35))
-                        .lineStyle(StrokeStyle(lineWidth: 1))
-                }
-            }
-            .chartForegroundStyleScale(range: paletteRange)
-            .chartLegend(series.count > 1 && !legendBelowChart ? .visible : .hidden)
-            // The first tick sits on the plot origin, and a label centred on
-            // it extends half its width past the leading edge — sheared to
-            // "il 5" on every device the sweep captured, glyphs that read as a
-            // different month. A little scale padding gives the "J" room.
-            .chartXScale(range: .plotDimension(padding: 12))
-            .chartXAxis {
-                // The axis owns the format and the thinning; a fixed categorical
-                // axis is what produced overlapping labels. What it cannot see
-                // is the text size, so the count it is asked for carries that —
-                // see `xAxisTickCount`.
-                AxisMarks(preset: .aligned, values: .automatic(desiredCount: xAxisTickCount)) { value in
-                    AxisGridLine()
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        .font(.caption2)
-                }
-            }
-            .chartYAxis {
-                // Thinned like the x-axis. The note that used to stand here —
-                // that these labels stack down a height that scales, so they
-                // gain room as they grow — was void the moment that height was
-                // capped at 1.5×: see `height`. Left at four, they piled into
-                // each other at the left edge of the lifecycle tile at AX5, and
-                // this chart's y-axis is drawn by the same rules.
-                AxisMarks(position: .leading, values: .automatic(desiredCount: yAxisTickCount)) {
-                    AxisGridLine()
-                    AxisValueLabel().font(.caption2)
-                }
-            }
+            plot
             // **This must never be reachable inside a control.** Left live
             // inside `TileCard`'s `Button` it did not merely swallow the tap on
             // the plot, which is what the tile's own comment used to claim: it
@@ -909,9 +867,24 @@ struct TimeSeriesChart: View {
             // container has to say so. `NotebookQueryBlock` draws the same
             // compact chart *outside* any button and scrubbing there is a real
             // feature, which is why this is not gated on `compact`.
-            #if os(iOS)
+            // Three-way, because there are three kinds of pointing device here
+            // and only two of them can land on a point.
+            //
+            // visionOS joins iOS rather than macOS: an indirect pinch resolves
+            // to a location in the plot exactly as a finger does, and it is
+            // `chartXSelection` that reads one.
+            //
+            // watchOS and tvOS get **no selection modifier at all**. That is
+            // the honest answer rather than the tidy one: a Digital Crown and a
+            // Siri Remote are both indirect, focus-driven inputs with no
+            // continuous position over the plot, so neither `chartXSelection`
+            // nor a hover would ever resolve to the point the reader means.
+            // Scrubbing on those two is a per-platform design question for the
+            // shells that come later, not something this seam can answer by
+            // picking whichever branch happens to compile.
+            #if os(iOS) || os(visionOS)
             .chartXSelection(value: $selectedDate)
-            #else
+            #elseif os(macOS)
             // The pointer's spelling of the same gesture: hover writes the
             // same `selectedDate` the touch drag writes, so the rule mark,
             // the readout and the drill are one path with two front doors.
@@ -927,7 +900,15 @@ struct TimeSeriesChart: View {
             .chartScrollableAxes(allowsZoom ? .horizontal : [])
             .chartXVisibleDomain(length: visibleSpan)
             .frame(height: height)
+            // Pinch to zoom, where there is something to pinch with. tvOS is a
+            // hard compile error — `MagnifyGesture` is unavailable there — and
+            // watchOS is a lie: the type exists, but a watch face has no room
+            // for the second finger the gesture needs. Both keep the zoom they
+            // can actually reach, which is `accessibilityZoomAction` below and
+            // the scrollable axis above.
+            #if !os(tvOS) && !os(watchOS)
             .simultaneousGesture(allowsZoom ? magnify : nil)
+            #endif
             #if os(iOS)
             // iOS only: on a Force Touch trackpad this would tick on every
             // pixel of pointer travel. It was tuned for a deliberate drag.
@@ -977,12 +958,68 @@ struct TimeSeriesChart: View {
         }
     }
 
+    /// The plot itself: marks, scales, axes. Split from the interaction
+    /// modifiers in `body` because the combined chain stopped type-checking
+    /// in reasonable time once the platform seams below made visionOS a
+    /// fourth distinct shape of it — the same failure, and the same remedy,
+    /// as `marks(for:in:)` a few lines down. Splitting a modifier chain in
+    /// two applies the same modifiers in the same order, so nothing about
+    /// what is drawn changes.
+    private var plot: some View {
+        Chart {
+            ForEach(Array(series.enumerated()), id: \.offset) { _, s in
+                ForEach(Array((s.datedPoints ?? []).enumerated()), id: \.offset) { _, point in
+                    marks(for: point, in: s)
+                }
+            }
+
+            if let selectedDate {
+                RuleMark(x: .value("Date", selectedDate))
+                    .foregroundStyle(.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+            }
+        }
+        .chartForegroundStyleScale(range: paletteRange)
+        .chartLegend(series.count > 1 && !legendBelowChart ? .visible : .hidden)
+        // The first tick sits on the plot origin, and a label centred on
+        // it extends half its width past the leading edge — sheared to
+        // "il 5" on every device the sweep captured, glyphs that read as a
+        // different month. A little scale padding gives the "J" room.
+        .chartXScale(range: .plotDimension(padding: 12))
+        .chartXAxis {
+            // The axis owns the format and the thinning; a fixed categorical
+            // axis is what produced overlapping labels. What it cannot see
+            // is the text size, so the count it is asked for carries that —
+            // see `xAxisTickCount`.
+            AxisMarks(preset: .aligned, values: .automatic(desiredCount: xAxisTickCount)) { value in
+                AxisGridLine()
+                AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    .font(.caption2)
+            }
+        }
+        .chartYAxis {
+            // Thinned like the x-axis. The note that used to stand here —
+            // that these labels stack down a height that scales, so they
+            // gain room as they grow — was void the moment that height was
+            // capped at 1.5×: see `height`. Left at four, they piled into
+            // each other at the left edge of the lifecycle tile at AX5, and
+            // this chart's y-axis is drawn by the same rules.
+            AxisMarks(position: .leading, values: .automatic(desiredCount: yAxisTickCount)) {
+                AxisGridLine()
+                AxisValueLabel().font(.caption2)
+            }
+        }
+    }
+
     /// Pinch to change the visible window.
     ///
     /// Two-fingered, so it does not compete with the one-finger drag that pans
     /// and scrubs. The magnification is only committed on release: updating
     /// `zoomSpan` continuously would re-lay-out the chart on every frame of the
     /// gesture, and Swift Charts re-runs its axis label thinning each time.
+    ///
+    /// Built only where the gesture is real — see the call site.
+    #if !os(tvOS) && !os(watchOS)
     private var magnify: some Gesture {
         MagnifyGesture()
             .updating($pinch) { value, state, _ in state = value.magnification }
@@ -993,6 +1030,7 @@ struct TimeSeriesChart: View {
                 zoomSpan = committed
             }
     }
+    #endif
 
     private var isAtZoomLimit: Bool {
         guard let fullSpan else { return false }
