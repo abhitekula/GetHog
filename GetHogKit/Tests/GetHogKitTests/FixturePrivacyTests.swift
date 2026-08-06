@@ -80,6 +80,25 @@ enum FixturePrivacyScanner {
     /// `scripts/verify-public-tree` carries the same exemption; the two
     /// scanners must agree or the gate contradicts itself.
     private static let publishedSupportAddress = "support@automorphism.app"
+
+    /// Apple's scale suffix, which the email pattern cannot tell from a host.
+    ///
+    /// `icon-mac-16@2x.png` parses as a local part, an `@`, and a "host" of
+    /// `2x.png` whose "TLD" is `png` — structurally an address, and the moment
+    /// the icon set gained a `@2x` rendition the gate started reporting the
+    /// asset catalog as leaking one. Matched against the captured host alone
+    /// and anchored end to end, so the exemption covers a scale suffix and
+    /// nothing that merely contains one: a real mailbox in the same file, even
+    /// on the same line, is still a finding.
+    private static let assetScaleSuffixHost = try! NSRegularExpression(
+        pattern: #"^[23]x\.(?:png|jpg|jpeg|pdf|heic|tiff|svg)$"#,
+        options: .caseInsensitive
+    )
+
+    private static func isAssetScaleSuffix(host: String) -> Bool {
+        let range = NSRange(host.startIndex..<host.endIndex, in: host)
+        return assetScaleSuffixHost.firstMatch(in: host, range: range) != nil
+    }
     private static let urlExpression = try! NSRegularExpression(
         pattern: #"https?://[^\s\"'<>\\]+"#,
         options: .caseInsensitive
@@ -341,7 +360,9 @@ enum FixturePrivacyScanner {
         }
         for match in emailExpression.matches(in: text, range: fullRange) {
             guard let range = Range(match.range(at: 1), in: text) else { continue }
-            if !isReserved(host: String(text[range]).lowercased()) {
+            let host = String(text[range]).lowercased()
+            if isAssetScaleSuffix(host: host) { continue }
+            if !isReserved(host: host) {
                 findings.insert(.init(relativePath: relativePath, rule: .nonReservedEmail))
             }
         }
@@ -398,7 +419,9 @@ enum FixturePrivacyScanner {
                    text[emailRange].lowercased() == publishedSupportAddress {
                     continue
                 }
-                if !isReserved(host: String(text[hostRange]).lowercased()) {
+                let host = String(text[hostRange]).lowercased()
+                if isAssetScaleSuffix(host: host) { continue }
+                if !isReserved(host: host) {
                     findings.insert(.init(relativePath: relativePath, rule: .nonReservedEmail))
                 }
             }
@@ -1360,6 +1383,46 @@ struct FixturePrivacyTests {
         )
 
         #expect(findings == ["personal.md: non-reserved-email"])
+    }
+
+    /// `icon-mac-16@2x.png` is an Apple scale suffix, not a mailbox at the host
+    /// `2x.png`. The gate read the Mac icon set's `Contents.json` as leaking an
+    /// address the moment that catalog gained its first `@2x` rendition, which
+    /// is a false positive with a real cost: a gate that cries wolf over the
+    /// most ordinary filename in an asset catalog is a gate people learn to
+    /// route around. The exemption is the scale suffix and nothing else, so a
+    /// genuine address in the same file still fails.
+    @Test("source privacy reads an @2x asset filename as a filename, not an address")
+    func assetScaleSuffixIsNotAnAddress() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "gethog-asset-scale-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let catalog = """
+        { "images": [
+            { "filename": "icon-mac-16@2x.png", "idiom": "mac", "scale": "2x" },
+            { "filename": "icon-mac-512@2x.png", "idiom": "mac", "scale": "2x" },
+            { "filename": "glyph@3x.pdf", "idiom": "universal", "scale": "3x" }
+        ] }
+        """
+        try Data(catalog.utf8).write(to: directory.appending(path: "Contents.json"))
+
+        // The suffix is exempt; a mailbox that merely sits beside one is not.
+        let personalAddress = ["founder", "@automorphism.app"].joined()
+        try Data("""
+        { "filename": "icon@2x.png", "author": "\(personalAddress)" }
+        """.utf8).write(to: directory.appending(path: "Authored.json"))
+
+        let findings = try FixturePrivacyScanner.sourceFindings(
+            in: [
+                directory.appending(path: "Authored.json"),
+                directory.appending(path: "Contents.json"),
+            ],
+            relativeTo: directory.resolvingSymlinksInPath()
+        )
+
+        #expect(findings == ["Authored.json: non-reserved-email"])
     }
 
     @Test("source privacy rejects signing prefixes and contextual tenant identifiers")

@@ -177,6 +177,14 @@ scan_text_file() {
         case "$domain" in
             example.com|example.org|example.net|users.noreply.github.com)
                 ;;
+            # Apple's scale suffix, not a mailbox. `icon-mac-16@2x.png` splits
+            # into a local part and a "domain" of `2x.png`, so an asset catalog
+            # holding a single @2x rendition reads as a leaked address. Anchored
+            # on the whole domain, so only the suffix is exempt — a real address
+            # in the same file is still a violation. FixturePrivacyTests carries
+            # the identical rule; the two scanners must agree.
+            [23]x.png|[23]x.jpg|[23]x.jpeg|[23]x.pdf|[23]x.heic|[23]x.tiff|[23]x.svg)
+                ;;
             *)
                 record_violation "non-reserved-email" "$relative_path"
                 break
