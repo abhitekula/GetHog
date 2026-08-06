@@ -4,7 +4,26 @@ options:
   deploymentTarget:
     iOS: "26.0"
     macOS: "26.0"
+    watchOS: "26.0"
+    tvOS: "26.0"
+    visionOS: "26.0"
   createIntermediateGroups: true
+  # XcodeGen 2.46.0 still writes the pre-Xcode-26 watch embed: a copy phase
+  # into $(CONTENTS_FOLDER_PATH)/Watch with dstSubfolderSpec 16 (XcodeGen
+  # issue #1613). Xcode 26 installs and validates the watch app from PlugIns/
+  # — dstSubfolderSpec 13, the same destination the appex embeds already use —
+  # so the generated project is patched here until XcodeGen learns this.
+  # Idempotent: once patched, neither pattern matches again. The blanket
+  # second expression is safe because the watch phase is the only spec-16
+  # phase this project generates — measured by generating the same spec with
+  # this command removed, which yields exactly one occurrence, in "Embed Watch
+  # Content". Re-check after any generation with
+  #
+  #   grep -c 'dstSubfolderSpec = 16' GetHog.xcodeproj/project.pbxproj
+  #
+  # which must print 0.
+  postGenCommand: |
+    sed -i '' -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "";|' -e 's|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|' GetHog.xcodeproj/project.pbxproj
 
 packages:
   GetHogKit:
@@ -37,6 +56,11 @@ targets:
       - package: GetHogKit
       - package: GetHogUI
       - target: GetHogWidgets
+        embed: true
+      # The watch app ships inside the phone app: one submission, one install.
+      # XcodeGen writes this embed to the wrong destination for Xcode 26 —
+      # see the postGenCommand at the top of this file.
+      - target: GetHogWatch
         embed: true
     settings:
       base:
@@ -242,6 +266,140 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements
 
+  # visionOS: the same bundle identity as iOS and macOS — one app, every
+  # platform — around a placeholder shell. The real scenes arrive in a later
+  # task; this target exists so the project shape (packages, entitlements,
+  # demo data, the widget embed) is proven before any feature lands on it.
+  GetHogVision:
+    type: application
+    platform: visionOS
+    sources:
+      - path: GetHogVision/Sources
+      - path: GetHog/Resources/DemoData
+        buildPhase: resources
+    dependencies:
+      - package: GetHogKit
+      - package: GetHogUI
+      - target: GetHogVisionWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
+        PRODUCT_NAME: GetHog
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogVision/Support/GetHogVision-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogVision/Support/GetHogVision.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: GetHog
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        TARGETED_DEVICE_FAMILY: "7"
+        ENABLE_PREVIEWS: YES
+
+  # Placeholder widget bundle — same contract as every other widget target:
+  # reads the App Group snapshot, never calls the API.
+  GetHogVisionWidgets:
+    type: app-extension
+    platform: visionOS
+    sources:
+      - path: GetHogVisionWidgets/Sources
+    dependencies:
+      - package: GetHogKit
+      - package: GetHogUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.Widgets
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogVisionWidgets/Support/GetHogVisionWidgets-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogVisionWidgets/Support/GetHogVisionWidgets.entitlements
+        TARGETED_DEVICE_FAMILY: "7"
+        SKIP_INSTALL: YES
+
+  # watchOS: its own bundle id under the iOS app's, embedded in the iOS app.
+  # The Info.plist carries the WK* keys that pair it to the phone and let it
+  # run without one. The embed lands in PlugIns/ via the postGenCommand above.
+  GetHogWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: GetHogWatch/Sources
+      - path: GetHog/Resources/DemoData
+        buildPhase: resources
+    dependencies:
+      - package: GetHogKit
+      - package: GetHogUI
+      - target: GetHogWatchWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.watchkitapp
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogWatch/Support/GetHogWatch-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogWatch/Support/GetHogWatch.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: GetHog
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        TARGETED_DEVICE_FAMILY: "4"
+        ENABLE_PREVIEWS: YES
+
+  GetHogWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: GetHogWatchWidgets/Sources
+    dependencies:
+      - package: GetHogKit
+      - package: GetHogUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.watchkitapp.Widgets
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogWatchWidgets/Support/GetHogWatchWidgets-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogWatchWidgets/Support/GetHogWatchWidgets.entitlements
+        TARGETED_DEVICE_FAMILY: "4"
+        SKIP_INSTALL: YES
+
+  # tvOS: the same bundle identity again, around a placeholder shell.
+  GetHogTV:
+    type: application
+    platform: tvOS
+    sources:
+      - path: GetHogTV/Sources
+      - path: GetHog/Resources/DemoData
+        buildPhase: resources
+    dependencies:
+      - package: GetHogKit
+      - package: GetHogUI
+      - target: GetHogTVTopShelf
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
+        PRODUCT_NAME: GetHog
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogTV/Support/GetHogTV-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogTV/Support/GetHogTV.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: GetHog
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        TARGETED_DEVICE_FAMILY: "3"
+        ENABLE_PREVIEWS: YES
+
+  # Top Shelf stub. GetHogKit only: the shelf will eventually render the App
+  # Group snapshot; there is no GetHogUI surface on it.
+  GetHogTVTopShelf:
+    type: app-extension
+    platform: tvOS
+    sources:
+      - path: GetHogTVTopShelf/Sources
+    dependencies:
+      - package: GetHogKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.TopShelf
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogTVTopShelf/Support/GetHogTVTopShelf-Info.plist
+        CODE_SIGN_ENTITLEMENTS: GetHogTVTopShelf/Support/GetHogTVTopShelf.entitlements
+        TARGETED_DEVICE_FAMILY: "3"
+        SKIP_INSTALL: YES
+
   GetHogTests:
     type: bundle.unit-test
     platform: iOS
@@ -389,6 +547,21 @@ schemes:
       targets:
         - GetHogMacTests
         - GetHogMacUITests
+
+  GetHogVision:
+    build:
+      targets:
+        GetHogVision: all
+
+  GetHogWatch:
+    build:
+      targets:
+        GetHogWatch: all
+
+  GetHogTV:
+    build:
+      targets:
+        GetHogTV: all
 
   # `xcodebuild test -project GetHog.xcodeproj -scheme GetHogScreenshots \
   #    -destination 'platform=iOS Simulator,name=iPhone 17'`

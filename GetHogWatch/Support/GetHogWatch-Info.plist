@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The three keys that make this bundle a modern watch app: a real
+     WKApplication, paired to the iOS app by bundle id, and runnable with no
+     phone in reach. They live here rather than as INFOPLIST_KEY_* settings
+     so the cross-target contract — the companion id names the iOS app — is
+     greppable next to its owner. -->
+<plist version="1.0">
+<dict>
+	<key>WKApplication</key>
+	<true/>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>app.gethog.GetHog</string>
+	<key>WKRunsIndependentlyOfCompanionApp</key>
+	<true/>
+</dict>
+</plist>

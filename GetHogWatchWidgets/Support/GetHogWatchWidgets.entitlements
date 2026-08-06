@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- iOS-style groups: the bare App Group — the team prefix is a macOS-only
+     requirement (see GetHogMac-Distribution.entitlements) — and the shared
+     keychain group, so every GetHog process signed by one team reads one
+     credential and one snapshot container. Deliberately byte-identical to
+     GetHog/Support/GetHog.entitlements, and no Debug/Release split: that
+     split exists because either group gates a teamless *macOS* build, which
+     simulator platforms never meet. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.gethog</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)app.gethog.shared</string>
+	</array>
+</dict>
+</plist>
