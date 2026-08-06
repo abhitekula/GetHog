@@ -953,6 +953,9 @@ struct ReplayPlayerView: View {
                 }
             )
         }
+        #if os(macOS)
+        .macReplayKeyboardTransport(controller: controller, duration: duration)
+        #endif
     }
 
     private var playerCard: some View {

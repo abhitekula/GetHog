@@ -136,6 +136,9 @@ struct ExpandedReplayView: View {
             }
         }
         .interactiveDismissDisabled()
+        #if os(macOS)
+        .macReplayKeyboardTransport(controller: controller, duration: duration)
+        #endif
     }
 
     private var duration: TimeInterval {
