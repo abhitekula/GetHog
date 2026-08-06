@@ -50,6 +50,36 @@ enum WidgetCache {
         return candidates.first { $0.id == id }
     }
 
+    // MARK: Empty-state words
+
+    /// The words for a widget with nothing to show, chosen by cause.
+    ///
+    /// `isSharedContainer` is false when the App Group container was unusable
+    /// and the store fell back to a private directory — the ordinary state of a
+    /// teamless Debug build on macOS, where either group entitlement alone
+    /// makes the target refuse to build (see GetHogMac.entitlements). The app
+    /// and this extension are then not talking to each other, so "Open GetHog
+    /// to sync" would promise something opening the app cannot deliver. The
+    /// honest words name the actual condition instead.
+    ///
+    /// iOS keeps its exact shipping string on every path: the unshared state
+    /// exists there only in previews and unsigned test hosts, and a widget's
+    /// empty state is not the place to explain those.
+    static var noDataMessage: String {
+        noDataMessage(sharedContainer: store.isSharedContainer)
+    }
+
+    /// Split from the property so both branches are testable from macOS, where
+    /// no test can construct the other platform's container.
+    static func noDataMessage(sharedContainer: Bool) -> String {
+        #if os(macOS)
+        if !sharedContainer {
+            return "Open GetHog to connect. This build can't share data with widgets."
+        }
+        #endif
+        return "Open GetHog to sync"
+    }
+
     // MARK: Sample data
 
     /// Used for placeholders, the widget gallery, and previews. Plausible but

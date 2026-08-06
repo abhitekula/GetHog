@@ -340,7 +340,10 @@ struct FreshnessFooter: View {
 /// Shown when the App Group holds nothing yet. A blank widget is a bug: it
 /// looks identical to a broken one, and the user has no idea what to do.
 struct NoDataView: View {
-    var message: String = "Open GetHog to sync"
+    /// Defaulted through `WidgetCache`, so every bare `NoDataView()` — the flag
+    /// widget's, chiefly — states the actual cause. Identical to the old literal
+    /// on iOS and in any shared container; see `WidgetCache.noDataMessage`.
+    var message: String = WidgetCache.noDataMessage
 
     @Environment(\.widgetFamily) private var family
 

@@ -204,10 +204,17 @@ struct MetricWidget: Widget {
         }
         .configurationDisplayName("Metric")
         .description("A metric from your last sync. GetHog refreshes it — the widget never calls the API itself.")
+        #if os(iOS)
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,
             .accessoryRectangular, .accessoryCircular, .accessoryInline,
         ])
+        #else
+        // The same widget minus the Lock Screen. Not a styling choice: every
+        // accessory family is `@available(macOS, unavailable)` in the SDK, so
+        // the cases cannot even be named here.
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        #endif
     }
 }
 
@@ -231,9 +238,11 @@ struct MetricWidgetView: View {
         case .systemSmall: small
         case .systemMedium: medium
         case .systemLarge, .systemExtraLarge: large
+        #if os(iOS)
         case .accessoryRectangular: rectangular
         case .accessoryCircular: circular
         case .accessoryInline: InlineMetricView(metric: entry.primary)
+        #endif
         @unknown default: small
         }
     }
@@ -243,6 +252,7 @@ struct MetricWidgetView: View {
     @ViewBuilder
     private var noData: some View {
         switch family {
+        #if os(iOS)
         case .accessoryInline: Text("GetHog: no data")
         case .accessoryCircular:
             Image(systemName: "arrow.down.circle.dotted")
@@ -253,11 +263,15 @@ struct MetricWidgetView: View {
                 Text(entry.isEmptyProject ? "No metrics cached" : "Open the app to sync").font(.caption)
             }
             .accessibilityElement(children: .combine)
+        #endif
         default:
             NoDataView(
                 message: entry.isEmptyProject
                     ? "No metrics cached yet. Open a dashboard in GetHog."
-                    : "Open GetHog to sync"
+                    // Cause-aware: on a Mac build with no App Group, opening the
+                    // app cannot fill this widget, so the words must not say it
+                    // will. Unchanged on iOS. See `WidgetCache.noDataMessage`.
+                    : WidgetCache.noDataMessage
             )
         }
     }
@@ -374,6 +388,12 @@ struct MetricWidgetView: View {
 
     // MARK: Lock Screen
 
+    // Compiled only where the surface exists. `rectangular`, `circular` and
+    // `accessoryLabel` are reachable only from the accessory arms above, and
+    // those cases cannot be named on macOS at all — leaving the views behind
+    // would be dead code the compiler is entitled to warn about.
+    #if os(iOS)
+
     private var rectangular: some View {
         VStack(alignment: .leading, spacing: 1) {
             if let metric = entry.primary {
@@ -420,6 +440,8 @@ struct MetricWidgetView: View {
         guard let metric = entry.primary else { return "GetHog, no data" }
         return WidgetAccessibility.label(for: metric) + ", " + entry.freshness.spokenLabel
     }
+
+    #endif
 }
 
 #Preview("Small", as: .systemSmall) {
@@ -441,8 +463,10 @@ struct MetricWidgetView: View {
     MetricEntry.sample()
 }
 
+#if os(iOS)
 #Preview("Rectangular", as: .accessoryRectangular) {
     MetricWidget()
 } timeline: {
     MetricEntry.sample()
 }
+#endif

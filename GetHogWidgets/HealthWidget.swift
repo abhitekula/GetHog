@@ -23,7 +23,9 @@ struct HealthEntry: TimelineEntry {
     var freshness: WidgetFreshness { WidgetFreshness(capturedAt: snapshot?.capturedAt, now: date) }
     var verdict: SharedSnapshot.HealthVerdict { snapshot?.healthVerdict ?? .unchecked }
     var headline: String { snapshot?.healthHeadline ?? "Not synced yet" }
-    var detail: String { snapshot?.healthDetail ?? "Open GetHog to sync" }
+    /// The unsynced fallback is cause-aware: see `WidgetCache.noDataMessage`.
+    /// Byte-identical on iOS, honest on a Mac build with no App Group.
+    var detail: String { snapshot?.healthDetail ?? WidgetCache.noDataMessage }
 
     /// What this entry claims in a Smart Stack.
     ///
@@ -101,10 +103,17 @@ struct HealthWidget: Widget {
         }
         .configurationDisplayName("Project Health")
         .description("Ingestion warnings and quota from your last sync. GetHog refreshes it — the widget never calls the API itself.")
+        #if os(iOS)
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,
             .accessoryRectangular, .accessoryCircular, .accessoryInline,
         ])
+        #else
+        // The same widget minus the Lock Screen. Not a styling choice: every
+        // accessory family is `@available(macOS, unavailable)` in the SDK, so
+        // the cases cannot even be named here.
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        #endif
     }
 }
 
@@ -119,9 +128,11 @@ struct HealthWidgetView: View {
         case .systemSmall: small
         case .systemMedium: medium
         case .systemLarge, .systemExtraLarge: large
+        #if os(iOS)
         case .accessoryRectangular: rectangular
         case .accessoryCircular: circular
         case .accessoryInline: inline
+        #endif
         @unknown default: small
         }
     }
@@ -208,6 +219,10 @@ struct HealthWidgetView: View {
 
     // MARK: Lock Screen
 
+    // Compiled only where the surface exists: the accessory cases above cannot
+    // be named on macOS, so these views would be unreachable there.
+    #if os(iOS)
+
     private var rectangular: some View {
         VStack(alignment: .leading, spacing: 1) {
             Label("Project health", systemImage: entry.verdict.symbolName)
@@ -264,6 +279,8 @@ struct HealthWidgetView: View {
         }
         .accessibilityLabel(entry.spokenLabel)
     }
+
+    #endif
 }
 
 // MARK: - Building blocks
@@ -521,8 +538,10 @@ struct QuotaBar: View {
     HealthEntry.sample()
 }
 
+#if os(iOS)
 #Preview("Rectangular", as: .accessoryRectangular) {
     HealthWidget()
 } timeline: {
     HealthEntry.sample()
 }
+#endif
