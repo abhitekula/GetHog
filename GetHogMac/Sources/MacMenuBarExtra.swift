@@ -263,15 +263,27 @@ final class MacMenuBarFlagToggler {
         pending = nil
     }
 
-    /// Runs the gate, then the write. `gate` and `isGateEnabled` are injectable
-    /// so tests exercise every outcome without device-owner authentication;
-    /// production callers pass neither.
+    /// Runs the gate, then the write.
+    ///
+    /// **The request is a parameter, not `self.pending`, and that is the whole
+    /// point.** Confirming happens from a dialog button, and SwiftUI writes
+    /// `false` back through the dialog's `isPresented` binding as part of the
+    /// same synchronous dispatch that runs the button's action — which clears
+    /// `pending`. A version of this that read `pending` on its first line found
+    /// nil by the time the awaited body ran and no-oped: no gate, no write, no
+    /// notice, and a switch that snapped back with nothing to explain it. The
+    /// iOS twin is immune for exactly this reason — `FlagDetailView.commit(_:)`
+    /// carries the desired state in as an argument.
+    ///
+    /// `gate` and `isGateEnabled` are injectable so tests exercise every
+    /// outcome without device-owner authentication; production passes neither.
     func confirm(
+        _ request: Request,
         isGateEnabled: Bool = BiometricGate.isEnabled,
         gate: () async -> BiometricGate.Outcome = BiometricGate.evaluate,
         write: (Int, Bool) async -> Void
     ) async {
-        guard let request = pending, inFlightFlagID == nil else { return }
+        guard inFlightFlagID == nil else { return }
         pending = nil
 
         if isGateEnabled {
@@ -340,28 +352,33 @@ struct MacMenuBarPopover: View {
         .padding(Theme.Space.m)
         .frame(width: 320)
         .task { controller.reload() }
+        // The `presenting:` form, as `MacRootView`'s link alert uses: SwiftUI
+        // holds the presented value for the dialog's whole life and hands it to
+        // the builders, so the button's action owns a `Request` outright rather
+        // than reading state that dismissal is about to clear. See
+        // `MacMenuBarFlagToggler.confirm(_:)` for what that race cost.
         .confirmationDialog(
             toggler.pending.map { "\($0.desiredActive ? "Enable" : "Disable") \($0.flag.key)?" } ?? "",
             isPresented: Binding(
                 get: { toggler.pending != nil },
                 set: { if !$0 { toggler.cancel() } }
             ),
-            titleVisibility: .visible
-        ) {
+            titleVisibility: .visible,
+            presenting: toggler.pending
+        ) { request in
             Button(
-                (toggler.pending?.desiredActive ?? true)
-                    ? "Enable for live users" : "Disable for live users",
+                request.desiredActive ? "Enable for live users" : "Disable for live users",
                 role: .destructive
             ) {
                 Task {
-                    await toggler.confirm { id, active in
+                    await toggler.confirm(request) { id, active in
                         await model.setFlag(id: id, active: active)
                     }
                     controller.reload()
                 }
             }
             Button("Cancel", role: .cancel) {}
-        } message: {
+        } message: { _ in
             // The same claim the flag detail's dialog makes, because it is the
             // same write: this changes what production serves, in this project.
             Text(
@@ -518,14 +535,37 @@ struct MacMenuBarPopover: View {
             .disabled(isRefreshing || model.phase != .ready)
             .accessibilityLabel("Refresh now")
             Button("Open GetHog") { openApp(metricID: nil) }
-            Button {
+            overflowMenu
+        }
+    }
+
+    /// Settings and Quit, behind one control so the footer stays three wide.
+    ///
+    /// **Quit is not optional here.** With "keep in the menu bar" on and the
+    /// last window closed the app is in `.accessory`: no Dock icon, no app menu,
+    /// and therefore no ⌘Q anywhere the user can reach. This popover is the
+    /// app's entire presence in that mode, and every menu-bar-resident app
+    /// carries its own way out. Offered unconditionally rather than only in
+    /// accessory mode, because a control that appears and disappears with a
+    /// window is harder to find than one that is always in the same place.
+    private var overflowMenu: some View {
+        Menu {
+            Button("Settings…") {
+                // Back into the Dock first: `openSettings` in `.accessory`
+                // opens a window behind an app the switcher cannot reach.
                 MacMenuBar.activateRegular()
                 openSettings()
-            } label: {
-                Image(systemName: "gearshape")
             }
-            .accessibilityLabel("GetHog settings")
+            .keyboardShortcut(",", modifiers: .command)
+            Divider()
+            Button("Quit GetHog") { MacMenuBar.quit() }
+                .keyboardShortcut("q", modifiers: .command)
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel("More GetHog actions")
     }
 
     private var freshnessCaption: String {
@@ -606,6 +646,14 @@ extension MacMenuBar {
             NSApp.setActivationPolicy(.regular)
         }
         NSApp.activate()
+    }
+
+    /// The way out of `.accessory`, where the app menu that normally carries
+    /// ⌘Q does not exist. Routed through `NSApp` rather than `exit`, so the
+    /// usual termination path — delegate, autosave, teardown — still runs.
+    @MainActor
+    static func quit() {
+        NSApp.terminate(nil)
     }
 
     /// Fronts an existing main-shell window, or opens one. SwiftUI stamps

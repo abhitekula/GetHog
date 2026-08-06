@@ -268,25 +268,46 @@ struct MenuBarFlagTogglerTests {
         #expect(toggler.pending?.flag.key == "new-onboarding")
     }
 
-    @Test("cancel clears the pending request and writes nothing")
-    func cancelClears() async {
+    @Test("the dialog dismissing before the write lands cannot swallow it")
+    func dismissalCannotSwallowTheWrite() async throws {
+        // The exact race this API shape exists to prevent. SwiftUI writes
+        // `false` through the dialog's `isPresented` binding as part of the
+        // same dispatch that runs the confirm button's action, and that setter
+        // calls `cancel()`. So by the time the button's awaited body runs,
+        // `pending` is already nil — and a `confirm` that read it there did
+        // nothing at all, silently. Confirming with the request in hand is
+        // immune, which is what this pins.
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        toggler.request(flag())
+        toggler.request(flag(active: true))
+        let request = try #require(toggler.pending)
+
         toggler.cancel()
         #expect(toggler.pending == nil)
-        await toggler.confirm(isGateEnabled: false) { id, active in
+
+        await toggler.confirm(request, isGateEnabled: false) { id, active in
             recorder.writes.append((id, active))
         }
-        #expect(recorder.writes.isEmpty)
+        #expect(recorder.writes.count == 1)
+        #expect(recorder.writes.first?.active == false)
+    }
+
+    @Test("cancel takes the dialog down, and on its own writes nothing")
+    func cancelClears() {
+        // The Cancel button's whole job: `pending` going nil is what dismisses
+        // the dialog, and no `confirm` follows it.
+        let toggler = MacMenuBarFlagToggler()
+        toggler.request(flag())
+        #expect(toggler.pending != nil)
+        toggler.cancel()
+        #expect(toggler.pending == nil)
     }
 
     @Test("with the gate off, confirm writes the requested state")
     func confirmWritesWithoutGate() async {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        toggler.request(flag(active: true))
-        await toggler.confirm(isGateEnabled: false) { id, active in
+        await toggler.confirm(request(flag(active: true)), isGateEnabled: false) { id, active in
             recorder.writes.append((id, active))
         }
         #expect(recorder.writes.count == 1)
@@ -299,8 +320,9 @@ struct MenuBarFlagTogglerTests {
     func passedGateWrites() async {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        toggler.request(flag(active: false))
-        await toggler.confirm(isGateEnabled: true, gate: { .passed }) { id, active in
+        await toggler.confirm(
+            request(flag(active: false)), isGateEnabled: true, gate: { .passed }
+        ) { id, active in
             recorder.writes.append((id, active))
         }
         #expect(recorder.writes.map(\.active) == [true])
@@ -311,8 +333,8 @@ struct MenuBarFlagTogglerTests {
     func deniedGateBlocks() async {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        toggler.request(flag())
         await toggler.confirm(
+            request(flag()),
             isGateEnabled: true,
             gate: { .denied("Authentication wasn't confirmed.") }
         ) { id, active in
@@ -328,8 +350,8 @@ struct MenuBarFlagTogglerTests {
     func unavailableGateWritesWithNotice() async {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        toggler.request(flag())
         await toggler.confirm(
+            request(flag()),
             isGateEnabled: true,
             gate: { .unavailable("no enrolled biometry") }
         ) { id, active in
@@ -342,23 +364,36 @@ struct MenuBarFlagTogglerTests {
         #expect(toggler.notice?.text.contains("confirmed by dialog only") == true)
     }
 
-    @Test("confirm without a pending request is a no-op")
-    func confirmNeedsARequest() async {
+    @Test("a write already in flight refuses a second one")
+    func inFlightRefusesASecondWrite() async {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        await toggler.confirm(isGateEnabled: false) { id, active in
+        let pending = request(flag())
+        // Re-entered from inside the first write, which is what a double-click
+        // on a dialog button amounts to.
+        await toggler.confirm(pending, isGateEnabled: false) { id, active in
             recorder.writes.append((id, active))
+            await toggler.confirm(pending, isGateEnabled: false) { id, active in
+                recorder.writes.append((id, active))
+            }
         }
-        #expect(recorder.writes.isEmpty)
+        #expect(recorder.writes.count == 1)
     }
 
     @Test("a new request clears the notice the last one left behind")
     func requestClearsNotice() async {
         let toggler = MacMenuBarFlagToggler()
-        toggler.request(flag())
-        await toggler.confirm(isGateEnabled: true, gate: { .denied("nope") }) { _, _ in }
+        await toggler.confirm(
+            request(flag()), isGateEnabled: true, gate: { .denied("nope") }
+        ) { _, _ in }
         #expect(toggler.notice != nil)
         toggler.request(flag())
         #expect(toggler.notice == nil)
+    }
+
+    /// What the dialog's button closure holds: the request as it stood when the
+    /// dialog was built, which is the only thing `confirm` is allowed to need.
+    private func request(_ flag: SharedSnapshot.Flag) -> MacMenuBarFlagToggler.Request {
+        .init(flag: flag)
     }
 }
