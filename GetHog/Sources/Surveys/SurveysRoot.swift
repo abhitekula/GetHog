@@ -218,7 +218,7 @@ struct SurveyDetailSheet: View {
     private var live: Survey { lifecycle.effective(survey) }
 
     var body: some View {
-        NavigationStack {
+        DetailSheetContainer {
             List {
                 Section {
                     resultsSummary
@@ -307,11 +307,15 @@ struct SurveyDetailSheet: View {
             .pageSurface()
             .navigationTitle(survey.name)
             .navigationBarTitleDisplayMode(.inline)
+            // Sheet chrome, and only the sheet has it: on the Mac this detail is
+            // pushed, where Done would duplicate the Back button.
+            #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
+            #endif
             .task(id: survey.id) { await loadResults() }
             .refreshable { await loadResults() }
             .confirmationDialog(

@@ -86,3 +86,25 @@ extension View {
             .contentShape(.rect)
     }
 }
+
+// MARK: - Hoisted detail chrome
+
+/// The chrome around a detail a screen opens without pushing it itself.
+///
+/// iOS presents the four `presentsDetailAsSheet` details as sheets, which
+/// arrive with no navigation chrome of their own, so the container supplies a
+/// stack for the title and the Done button. macOS pushes the same detail
+/// inline (`MacRootView` binds `navigationDestination(item:)` to
+/// `OpenDetails`), where the hosting stack already has the bar — a second
+/// stack would nest, and Done would duplicate Back.
+struct DetailSheetContainer<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        #if os(iOS)
+        NavigationStack { content }
+        #else
+        content
+        #endif
+    }
+}

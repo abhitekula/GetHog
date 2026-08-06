@@ -220,7 +220,7 @@ struct PipelineDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        DetailSheetContainer {
             List {
                 Section {
                     LabeledContent("Status") { Text(function.statusText) }
@@ -267,11 +267,15 @@ struct PipelineDetailSheet: View {
             .pageSurface()
             .navigationTitle(function.name)
             .navigationBarTitleDisplayMode(.inline)
+            // Sheet chrome, and only the sheet has it: on the Mac this detail is
+            // pushed, where Done would duplicate the Back button.
+            #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
+            #endif
         }
     }
 }

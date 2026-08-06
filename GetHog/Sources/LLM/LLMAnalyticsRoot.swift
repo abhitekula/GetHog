@@ -358,7 +358,7 @@ struct LLMTraceDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        DetailSheetContainer {
             List {
                 // The sheet opens on what the trace cost and how long it took;
                 // the breakdown below answers where that went.
@@ -463,11 +463,15 @@ struct LLMTraceDetailSheet: View {
             .pageSurface()
             .navigationTitle(trace.displayName)
             .navigationBarTitleDisplayMode(.inline)
+            // Sheet chrome, and only the sheet has it: on the Mac this detail is
+            // pushed, where Done would duplicate the Back button.
+            #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
+            #endif
         }
     }
 
