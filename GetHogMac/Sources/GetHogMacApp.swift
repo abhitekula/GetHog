@@ -75,6 +75,11 @@ struct GetHogMacApp: App {
         // system's own default came up 900×450, which puts the seven split-view
         // screens into their narrowest shape on first launch.
         .defaultSize(width: 1_280, height: 820)
+        // The menu bar. Attached to the main window group but app-wide by
+        // nature; every item reads the key window's focused values, so the
+        // tear-off and Settings scenes participate exactly as much as they
+        // publish (see FocusedCommandValues.swift).
+        .commands { MacCommands() }
 
         // Tear-off windows, sharing the one AppModel — one client, one
         // rate-limit governor, one cache, exactly as on iPad.
