@@ -98,6 +98,10 @@ struct GetHogMacApp: App {
                 .insightCSVExporter()
                 .tint(Theme.accent)
         }
+        // Enough for a dashboard's tile grid or a replay stage beside its
+        // inspector, without dwarfing the main window it was torn off from.
+        // The system's own 900×450 gave a torn-off dashboard one tile column.
+        .defaultSize(width: 1_000, height: 700)
 
         // ⌘, — the same section views and stores as iOS Settings, regrouped
         // into panes. Scenes inherit no environment from each other, so the
