@@ -5,9 +5,10 @@ import Testing
 @Suite("Go menu layout")
 struct GoMenuLayoutTests {
 
-    /// The menu is the sidebar restated; a screen in one and not the other is a
-    /// destination somebody cannot reach the way they expect.
-    @Test("the Go menu mirrors the sidebar's sections exactly")
+    /// The menu and the sidebar are two readings of `AppTab.sections`; a screen
+    /// in one and not the other is a destination somebody cannot reach the way
+    /// they expect.
+    @Test("the Go menu mirrors AppTab.sections exactly")
     func mirrorsSidebar() {
         let layout = GoMenuLayout.sections()
         #expect(layout.map(\.title) == AppTab.sections.map(\.title))
@@ -17,7 +18,7 @@ struct GoMenuLayoutTests {
         )
     }
 
-    @Test("⌘1–⌘9 belong to the first nine destinations, in sidebar order")
+    @Test("⌘1–⌘9 belong to the first nine destinations, in AppTab.sections order")
     func shortcutsAreTheFirstNine() {
         let entries = GoMenuLayout.sections().flatMap(\.entries)
         #expect(entries.compactMap(\.shortcut) == Array("123456789"))
@@ -35,7 +36,12 @@ struct GoMenuLayoutTests {
     /// The digits are positional, not a hand-tuned map — which is the whole
     /// reason the layout is derived. ⌘3 landing on Sessions is that rule's
     /// observable consequence today.
-    @Test("⌘3 is the third destination the sidebar lists")
+    ///
+    /// Third in `AppTab.sections`, which is the sidebar's *fourth* row: the
+    /// loose Search tab sits above the sections and takes no digit. The offset
+    /// is deliberate, and naming it here keeps a sweep from reading ⌘3 ≠ row 3
+    /// as a defect.
+    @Test("⌘3 is the third destination in AppTab.sections")
     func thirdShortcutIsSessions() {
         let entries = GoMenuLayout.sections().flatMap(\.entries)
         #expect(entries.first { $0.shortcut == "3" }?.tab == .sessions)
@@ -66,8 +72,8 @@ struct GoMenuLayoutTests {
     }
 
     /// The numbering runs across sections rather than restarting inside each
-    /// one, which is what makes "the nth thing the sidebar lists" a single
-    /// unambiguous destination.
+    /// one, which is what makes "the nth destination in `AppTab.sections`" a
+    /// single unambiguous screen.
     @Test("position is counted across sections, not within them")
     func numberingIsGlobal() {
         let layout = GoMenuLayout.sections(

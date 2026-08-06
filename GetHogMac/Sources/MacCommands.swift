@@ -1,15 +1,23 @@
 import SwiftUI
 
-/// How the Go menu lays itself out: the sidebar's own sections, in the
-/// sidebar's own order, with ⌘1–⌘9 on the first nine destinations listed.
+/// How the Go menu lays itself out: `AppTab.sections`, in its own order, with
+/// ⌘1–⌘9 on the first nine destinations it lists.
 ///
 /// Derived rather than declared so the menu cannot drift from the sidebar —
-/// `AppTab.sections` is the single source of truth, and this is another of its
-/// consumers. A hand-tuned shortcut map was considered and rejected: today the
-/// first nine are exactly the Analyze section, and the day a section is
-/// reordered the digits follow the sidebar rather than a list nobody remembers
-/// to edit. (Flags, leading the Experiment section, therefore gets an item but
-/// no digit; that is the rule working, not an omission.)
+/// `AppTab.sections` is the single source of truth for both, and this is
+/// another of its consumers. A hand-tuned shortcut map was considered and
+/// rejected: today the first nine are exactly the Analyze section, and the day
+/// a section is reordered the digits follow `AppTab.sections` rather than a
+/// list nobody remembers to edit. (Flags, leading the Experiment section,
+/// therefore gets an item but no digit; that is the rule working, not an
+/// omission.)
+///
+/// The digits count destinations in `AppTab.sections`, which is *not* the same
+/// as counting rows down the Mac sidebar: `MacRootView` draws its loose Search
+/// tab above the sections, so Search is the first row and ⌘1's Dashboards is
+/// the second. Search is a utility surface with no Go item at all, so numbering
+/// around it is the right answer — but the two orderings are offset by one and
+/// the prose here should not pretend otherwise.
 ///
 /// A type, not view code, so `GetHogMacTests` can pin the layout without
 /// rendering a menu.
@@ -20,7 +28,8 @@ enum GoMenuLayout {
 
     struct Entry: Hashable, Identifiable {
         let tab: AppTab
-        /// "1"–"9" for the first nine screens in sidebar order, nil after.
+        /// "1"–"9" for the first nine screens in `AppTab.sections` order, nil
+        /// after.
         let shortcut: Character?
 
         var id: AppTab { tab }
@@ -37,7 +46,7 @@ enum GoMenuLayout {
 
     static func sections(from sections: [AppTabSection] = AppTab.sections) -> [MenuSection] {
         // Counted across sections rather than within them: ⌘n means "the nth
-        // destination the sidebar lists", which is only one screen if the
+        // destination in `AppTab.sections`", which is only one screen if the
         // numbering never restarts.
         var position = 0
         return sections.map { section in

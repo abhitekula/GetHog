@@ -86,15 +86,25 @@ enum DemoLaunch {
     /// The Mac shell has no navigation bars — `TabView(.sidebarAdaptable)`
     /// renders a sidebar instead — so there the signal is the first primary
     /// destination that sidebar offers, which nothing before the shell draws.
-    /// Scoped to that sidebar's own outline, the way `MacNavigationTests`
-    /// scopes its clicks: the menu bar carries the same word from launch — Go ▸
-    /// Dashboards is in the accessibility tree before the shell mounts, and
-    /// disabled menu items are in it too — so an app-wide match would return
-    /// this gate on the menu rather than on a rendered screen.
+    ///
+    /// Scoped to the app's *windows*, because the menu bar carries the same
+    /// word: Go ▸ Dashboards is in the accessibility tree before the shell
+    /// mounts, disabled menu items are in it too, and an app-wide match would
+    /// therefore return this gate on the menu rather than on a rendered screen.
+    /// On macOS the menu bar is `app.menuBars`, a sibling of `app.windows`
+    /// under the application element, so scoping to windows excludes it.
+    ///
+    /// Windows rather than `app.outlines`, which is what `MacNavigationTests`
+    /// scopes its *clicks* to. That helper can afford the narrower query
+    /// because it keeps an app-wide fallback behind it; a gate has nowhere to
+    /// fall back to, and if the sidebar ever stopped surfacing as an outline
+    /// this would time out twice and fail pointing at the app rather than at
+    /// the query. Excluding the menu bar is the whole requirement here, and
+    /// windows is the weakest scope that does it.
     private static func waitForScreen(_ app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
         #if os(macOS)
         wait(
-            for: app.outlines.descendants(matching: .any)
+            for: app.windows.descendants(matching: .any)
                 .matching(NSPredicate(format: "label == %@", "Dashboards"))
                 .firstMatch,
             timeout: timeout
