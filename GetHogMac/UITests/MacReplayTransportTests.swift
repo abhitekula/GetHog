@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// The replay transport keys, driven through a real window server.
@@ -236,6 +237,93 @@ final class MacReplayTransportTests: XCTestCase {
             "\(field.value ?? "")".contains("a b"),
             "The query never reached the field: \(field.value ?? "nil")."
         )
+    }
+
+    /// **Opening a session must not resize the window.**
+    ///
+    /// It used to. `.inspector` — present on this screen whether or not it was
+    /// showing — grew a clean 1,280pt shell to 2,102pt on a 1,512pt display,
+    /// which put the toolbar's trailing search field 590pt off the right edge
+    /// where nothing could click it, and AppKit then autosaved that frame for
+    /// the next launch. `testTypingInTheSearchFieldDoesNotDriveTheTransport` was
+    /// the suite's only witness, and it reported the symptom
+    /// ("Neither element nor any descendant has keyboard focus") rather than the
+    /// cause.
+    ///
+    /// Measured as a delta rather than against a literal 1,280: a window frame
+    /// outlives the process and a UI test cannot seed one — the runner is
+    /// sandboxed, so its `defaults write` reaches its own container and never
+    /// the app's. What this can say without seeding anything is the thing that
+    /// was actually wrong: the shell is whatever size it was, and opening a
+    /// recording does not change it.
+    func testOpeningASessionDoesNotResizeTheWindow() {
+        let app = DemoLaunch.launch()
+        app.typeKey("3", modifierFlags: .command)
+        DemoLaunch.settle(app)
+        guard let row = DemoLaunch.waitForContent(containing: "Alex Example", in: app) else {
+            XCTFail("The sessions list never offered its first row.")
+            return
+        }
+        let listed = app.windows.firstMatch.frame
+        row.click()
+        DemoLaunch.settle(app)
+        _ = DemoLaunch.wait(for: app.windows.buttons["Session replay"], timeout: 30)
+        DemoLaunch.pause(3)
+        let opened = app.windows.firstMatch.frame
+        print("PHASEB-WINDOW listed=\(listed) opened=\(opened)")
+        capture("b8-session-opened-window")
+        XCTAssertEqual(
+            opened.width, listed.width, accuracy: 1,
+            "Opening a session grew the window from \(listed.width) to \(opened.width)."
+        )
+
+        // Closed by default is the fix; unreachable would be a regression of
+        // its own. Read off the **stage** rather than off the pane's text: the
+        // words "Console" and "network" both already appear on this screen — in
+        // the stat strip's `Console errors` and in the watch-in-PostHog card —
+        // so a `CONTAINS` match cannot tell the pane from the page it sits
+        // beside. A stage that narrows says the pane took width from the
+        // content, which is the whole of what changed.
+        let toggle = app.windows.descendants(matching: .button)
+            .matching(NSPredicate(
+                format: "label == 'Toggle replay diagnostics' OR label == 'Replay Diagnostics'"
+            ))
+            .firstMatch
+        XCTAssertTrue(toggle.exists, "The diagnostics toggle left the toolbar.")
+        let narrowStage = app.windows.buttons["Session replay"].frame
+        toggle.click()
+        DemoLaunch.settle(app)
+        DemoLaunch.pause(2)
+        let widened = app.windows.firstMatch.frame
+        let squeezedStage = app.windows.buttons["Session replay"].frame
+        print("PHASEB-WINDOW toggled window=\(widened) stage \(narrowStage.width) -> \(squeezedStage.width)")
+        capture("b9-session-diagnostics-open")
+        XCTAssertLessThan(
+            squeezedStage.width, narrowStage.width,
+            "The toolbar toggle opened no diagnostics pane beside the player."
+        )
+        // **Opening the pane is still allowed to widen the window, and does —
+        // measured at +148pt from 1,280.** The page's own minimum is about
+        // 517pt and the pane asks for 320, which is more than the detail column
+        // has at the default size. That is a window growing because somebody
+        // asked for a second column, which is what the toggle is; the defect
+        // was a window growing 822pt because a screen *opened*. What must hold
+        // either way is that nothing lands off the display — 590pt of toolbar
+        // past the right edge is how this was found.
+        //
+        // `NSScreen` rather than `XCUIScreen`, which carries no frame — the
+        // runner is an app on the same display, so its own screen list is the
+        // measure.
+        let display = NSScreen.main?.frame ?? .zero
+        XCTAssertLessThanOrEqual(
+            widened.maxX, display.maxX,
+            "The diagnostics pane pushed the window off the \(display.width)pt display: \(widened)."
+        )
+        // Closed again, so the suite hands the next test the shape it found.
+        // The frame stays where AppKit left it — a window does not shrink back
+        // and a UI test cannot make it — but the pane does not linger.
+        toggle.click()
+        DemoLaunch.settle(app)
     }
 
     /// Scroll wheel over the stage — recorded either way. The question is
