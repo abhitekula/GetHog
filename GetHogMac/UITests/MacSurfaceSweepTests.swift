@@ -378,7 +378,17 @@ final class MacSurfaceSweepTests: XCTestCase {
     @discardableResult
     private func reach(_ title: String, in app: XCUIApplication) -> Bool {
         var item = sidebarItem(title, in: app)
-        guard DemoLaunch.wait(for: item) else { return false }
+        // **A missing row is a reason to try the menu, not to give up.** This
+        // returned `false` here, which is why the narrow and wide passes
+        // produced no screenshots at all: at 800×600 the split view collapses
+        // its sidebar, so *no* destination row exists, the 30-second existence
+        // wait timed out on every screen, and the Go-menu fallback forty lines
+        // below — which needs no sidebar and would have worked — was never
+        // reached. Five seconds, because a row that is going to appear has
+        // appeared by then; the launch gate already waited for the shell.
+        guard DemoLaunch.wait(for: item, timeout: 5) else {
+            return openViaGoMenu(title, in: app)
+        }
 
         // Existence is not reachability in a scrolling outline.
         // Scroll monotonically toward the bottom, then back toward the top.
