@@ -794,18 +794,69 @@ struct WKWebViewRepresentable: UIViewRepresentable {
     }
 }
 #else
-/// Temporary macOS stand-in for the rrweb stage. Task 5 replaces this with an
-/// `NSViewRepresentable` hosting the same player document; keeping the iOS
-/// type name is what lets both call sites compile unchanged until then.
-struct WKWebViewRepresentable: View {
+/// A WKWebView that tells the shim when native layout moved its frame — the
+/// AppKit twin of the iOS subclass above, for the same measured reason: a
+/// SwiftUI-animated frame can settle at a size the shim's debounced
+/// `window.resize` listener never reports.
+final class ReplayStageWebView: WKWebView {
+    var onLayout: ((CGSize) -> Void)?
+    private var lastLayoutSize: CGSize = .zero
+
+    override func layout() {
+        super.layout()
+        guard bounds.size != lastLayoutSize else { return }
+        lastLayoutSize = bounds.size
+        onLayout?(bounds.size)
+    }
+}
+
+/// Hosts the offline rrweb player on the Mac. Same document, same message
+/// bridge, same offline resource policy — `ReplayStageBuilder` is the single
+/// copy of all three — so the only code here is AppKit view plumbing.
+///
+/// No AppKit-side accessibility flag: the shared `.accessibilityRepresentation`
+/// replacement on `stage` is the defence that measured zero leaked elements,
+/// and AppKit's `setAccessibilityElement` changes the element's role rather
+/// than clamping its children, which is not the iOS flag's meaning.
+struct WKWebViewRepresentable: NSViewRepresentable {
     let controller: ReplayPlayerController
 
-    var body: some View {
-        ContentUnavailableView(
-            "Replay playback isn't on the Mac yet",
-            systemImage: "play.slash",
-            description: Text("Watch this session in PostHog in your browser.")
+    func makeCoordinator() -> ReplayWebBridge { ReplayWebBridge() }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let bridge = context.coordinator
+        let configuration = ReplayStageBuilder.makeConfiguration(
+            bridge: bridge,
+            controller: controller
         )
+
+        let webView = ReplayStageWebView(frame: .zero, configuration: configuration)
+        webView.onLayout = { [weak controller] _ in
+            controller?.refit()
+        }
+        webView.navigationDelegate = bridge
+        // The shim's page background is transparent; a clear under-page colour
+        // lets the SwiftUI stage colour behind the representable show through —
+        // the public AppKit route to what iOS reaches with `isOpaque = false`.
+        webView.underPageBackgroundColor = .clear
+        webView.allowsBackForwardNavigationGestures = false
+        webView.allowsMagnification = false
+        #if DEBUG
+        webView.isInspectable = true
+        #endif
+
+        ReplayStageBuilder.beginDocumentLoad(
+            webView: webView,
+            bridge: bridge,
+            controller: controller
+        )
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {}
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: ReplayWebBridge) {
+        ReplayStageBuilder.dismantle(webView: webView, coordinator: coordinator)
     }
 }
 #endif
