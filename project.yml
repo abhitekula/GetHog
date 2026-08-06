@@ -256,6 +256,32 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHog
 
+  # The Mac twin of GetHogTests. Its sources are the whole of `GetHogMac/Tests`
+  # on purpose: the directory is the contract, so a task dropping a test file
+  # there is in the suite the moment the project is regenerated — no per-file
+  # registration to forget.
+  GetHogMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - GetHogMac/Tests
+    dependencies:
+      - target: GetHogMac
+      - package: GetHogKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogMacTests
+        GENERATE_INFOPLIST_FILE: YES
+        # Spelled out because the derived one is wrong here, and wrong in a way
+        # that only shows up at launch. XcodeGen builds a test host path out of
+        # the *target* name — `GetHogMac.app/Contents/MacOS/GetHogMac` — while
+        # `GetHogMac` above sets `PRODUCT_NAME: GetHog`, so the bundle it
+        # actually produces is `GetHog.app/Contents/MacOS/GetHog` and the
+        # derived path names a binary nothing builds. iOS never met this:
+        # `GetHog`'s target and product names agree.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/Contents/MacOS/GetHog"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
 schemes:
   GetHog:
     build:
@@ -272,6 +298,10 @@ schemes:
     build:
       targets:
         GetHogMac: all
+        GetHogMacTests: [test]
+    test:
+      targets:
+        - GetHogMacTests
 
   # `xcodebuild test -project GetHog.xcodeproj -scheme GetHogScreenshots \
   #    -destination 'platform=iOS Simulator,name=iPhone 17'`
