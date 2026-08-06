@@ -350,7 +350,15 @@ public struct SharedSnapshotStore: Sendable {
     public static let bundleAppGroupIdentifier = appGroupIdentifier(teamIDPrefix: teamIDPrefix())
 
     /// True where App Group identifiers carry the Team ID prefix (macOS under
-    /// the sandbox), false where they must not (iOS and its extensions).
+    /// the sandbox), false where they must not (iOS and its extensions, and the
+    /// watchOS, tvOS and visionOS apps).
+    ///
+    /// The `#else` is the answer for four platforms, not one, and that is
+    /// deliberate: only the Mac sandbox demands the prefix, so every other
+    /// shell resolves the same `group.app.gethog` the phone writes and reads
+    /// the phone's snapshot without a line of platform code. `SharedSnapshotTests`
+    /// pins each of those four separately, so an `#elseif` added here for one
+    /// platform cannot quietly rename another's container.
     static var platformRequiresTeamIDPrefix: Bool {
         #if os(macOS)
         true

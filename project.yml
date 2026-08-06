@@ -13,17 +13,32 @@ options:
   # issue #1613). Xcode 26 installs and validates the watch app from PlugIns/
   # — dstSubfolderSpec 13, the same destination the appex embeds already use —
   # so the generated project is patched here until XcodeGen learns this.
-  # Idempotent: once patched, neither pattern matches again. The blanket
-  # second expression is safe because the watch phase is the only spec-16
-  # phase this project generates — measured by generating the same spec with
-  # this command removed, which yields exactly one occurrence, in "Embed Watch
-  # Content". Re-check after any generation with
   #
-  #   grep -c 'dstSubfolderSpec = 16' GetHog.xcodeproj/project.pbxproj
+  # The guard is the load-bearing half, not the sed. Counting *afterwards*
+  # proves nothing — the sed rewrites every spec-16 entry unconditionally, so
+  # "zero remain" is true by construction and stays true through all three
+  # ways this can drift: XcodeGen fixing #1613 (the sed silently no-ops and
+  # nobody learns the patch is dead), a second legitimate spec-16 phase
+  # appearing (an App Clip embed is exactly this shape — the sed would redirect
+  # it into PlugIns/ and break the archive), or the dstPath spelling changing
+  # (half the patch no-ops and the watch app lands where Xcode will not look
+  # for it). So both patterns are counted *before* the rewrite, and anything
+  # but exactly one of each fails generation with the counts in the message.
   #
-  # which must print 0.
+  # Idempotent because XcodeGen rewrites project.pbxproj from this spec on
+  # every run — the counts always see a fresh, unpatched file — not because
+  # the patterns stop matching.
+  #
+  # The path is relative to the working directory, which is the documented
+  # workflow: `xcodegen generate` from the repository root. Run from anywhere
+  # else it fails on the -f test rather than skipping the patch in silence.
   postGenCommand: |
-    sed -i '' -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "";|' -e 's|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|' GetHog.xcodeproj/project.pbxproj
+    project=GetHog.xcodeproj/project.pbxproj
+    [ -f "$project" ] || { echo "XcodeGen#1613 patch: $project not found — run xcodegen from the repository root" >&2; exit 1; }
+    phases=$(grep -c 'dstSubfolderSpec = 16;' "$project" || true)
+    paths=$(grep -c 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";' "$project" || true)
+    [ "$phases" = 1 ] && [ "$paths" = 1 ] || { echo "XcodeGen#1613 patch: expected exactly one legacy watch embed, found $phases spec-16 phase(s) and $paths legacy dstPath(s) — read the comment in project.yml before changing the sed" >&2; exit 1; }
+    sed -i '' -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "";|' -e 's|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|' "$project"
 
 packages:
   GetHogKit:
