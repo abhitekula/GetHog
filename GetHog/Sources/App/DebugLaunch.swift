@@ -57,8 +57,13 @@ enum DebugLaunch {
     /// and split view — the way to tell whether a layout is misbehaving on its
     /// own or only because of what contains it.
     static var soloWindowTarget: WindowTarget? {
-        guard let raw = environment["GETHOG_SOLO_DASHBOARD"], let id = Int(raw) else { return nil }
-        return .dashboard(id: id)
+        if let raw = environment["GETHOG_SOLO_DASHBOARD"], let id = Int(raw) {
+            return .dashboard(id: id)
+        }
+        if let raw = environment["GETHOG_SOLO_RECORDING"], !raw.isEmpty {
+            return .recording(id: raw)
+        }
+        return nil
     }
 
     /// A `gethog://` URL to route at launch, as though it had been opened.
