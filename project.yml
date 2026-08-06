@@ -147,6 +147,8 @@ targets:
         buildPhase: resources
     dependencies:
       - package: GetHogKit
+      - target: GetHogMacWidgets
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
@@ -181,6 +183,58 @@ targets:
           CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac.entitlements
         Release:
           CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac-Distribution.entitlements
+
+  # The Mac desktop widgets: the same three portable widgets, compiled out of
+  # GetHogWidgets/ the way GetHogMac compiles GetHog/Sources — shared files,
+  # not copies, so the two platforms cannot drift. Reads the App Group cache the
+  # app writes and must never call the API itself; here that is structural
+  # rather than merely intended, because the entitlements carry no
+  # network-client key at all.
+  GetHogMacWidgets:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: GetHogMacWidgets/Sources
+      - path: GetHogWidgets
+        excludes:
+          # The iOS bundle registers the Control Center controls, and
+          # `ControlWidget` does not exist on macOS — the SDK marks every
+          # control and accessory surface unavailable rather than unused, so
+          # this file is excluded outright rather than seamed. The Mac bundle
+          # in GetHogMacWidgets/Sources registers the three that do exist.
+          - GetHogWidgetBundle.swift
+          - ControlCenterWidgets.swift
+      # Same token-sharing move as the iOS extension (see the comment on that
+      # target): a widget is the last surface that can afford to be a different
+      # colour from the app it belongs to.
+      - path: GetHog/Sources/Common/Theme.swift
+    dependencies:
+      - package: GetHogKit
+    settings:
+      base:
+        # The same bundle id and product name as the iOS extension, which is
+        # the arrangement the two app targets already use for universal
+        # purchase — and macOS additionally requires an appex id prefixed by
+        # its host app's id, which `app.gethog.GetHog.Widgets` satisfies.
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.Widgets
+        PRODUCT_NAME: GetHogWidgets
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: GetHogMacWidgets/Support/GetHogMacWidgets-Info.plist
+        SKIP_INSTALL: YES
+      # The same two-file split as GetHogMac above, on the same measured axis:
+      # the App Group entitlement alone makes a teamless macOS target refuse to
+      # build, Debug is what a fresh clone builds, and Release always signs with
+      # a team. Compile-check the Release half the same way:
+      #
+      #   xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac \
+      #     -destination 'platform=macOS' -configuration Release \
+      #     CODE_SIGNING_ALLOWED=NO
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements
 
   GetHogTests:
     type: bundle.unit-test

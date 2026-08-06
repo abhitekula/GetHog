@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Debug half of the same two-file split the Mac app carries, for the same
+     measured reason: the App Group entitlement alone makes a teamless macOS
+     target refuse to build, and Debug is what a fresh clone builds. Without the
+     group this process and the app each fall back to a private directory, so a
+     Debug widget honestly renders its "can't share data in this build" empty
+     state rather than pretending an App Group exists — see
+     `WidgetCache.noDataMessage`, whose whole reason for existing is this
+     configuration.
+
+     Two keys the iOS twin carries are absent here on purpose, not forgotten.
+     No `com.apple.security.network.client`: widgets never call the PostHog API,
+     and an extension that cannot open a socket keeps that rule by construction
+     rather than by intention. No keychain group: nothing compiled into this
+     target performs a keychain read — the flag toggle records a
+     `PendingFlagWrite` in the App Group and opens the app, which owns the
+     credential, the rate-limit governor and somewhere to show a 403 (see
+     `ToggleFlagFromWidgetIntent`). -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+</dict>
+</plist>
