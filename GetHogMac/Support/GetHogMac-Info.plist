@@ -10,6 +10,16 @@
      on macOS prompts through its own mechanism). -->
 <plist version="1.0">
 <dict>
+	<!-- The Mac App Store shelf, and an upload requirement rather than a
+	     nicety: a macOS build without this key is rejected on submission, and
+	     the rejection arrives after the archive. iOS needs no counterpart —
+	     its category is App Store Connect metadata, not a bundle key, which is
+	     why the iOS target has never carried one. Developer tools is what a
+	     PostHog client is: it reads a product's own analytics, and it sits
+	     beside the API clients rather than the business dashboards. -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+
 	<!-- Handoff ignores an activity whose type is not declared, so the
 	     `.handoff` modifier advertises nothing without this. -->
 	<key>NSUserActivityTypes</key>
