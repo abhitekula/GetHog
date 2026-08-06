@@ -176,4 +176,141 @@ struct MenuBarContractTests {
         #expect(MacMenuBar.mainWindowID == "main")
         #expect(MacMenuBar.pendingOpenNotification.rawValue == "app.gethog.mac.pendingOpen")
     }
+
+    /// The popover's footer is the only place the Mac says how old its numbers
+    /// are, so the buckets are pinned even though the view around them is not
+    /// mountable here.
+    @Test("the freshness caption buckets: now, minutes, hours, days")
+    func freshnessBuckets() {
+        #expect(MenuBarFreshness.caption(forAge: 0) == "Updated just now")
+        #expect(MenuBarFreshness.caption(forAge: 59) == "Updated just now")
+        #expect(MenuBarFreshness.caption(forAge: 20 * 60) == "Updated 20m ago")
+        #expect(MenuBarFreshness.caption(forAge: 3 * 3_600) == "Updated 3h ago")
+        #expect(MenuBarFreshness.caption(forAge: 2 * 86_400) == "Updated 2d ago")
+    }
+}
+
+/// The popover's write path. The gate is injected rather than run, so every
+/// outcome `BiometricGate` can produce is exercised without a device-owner
+/// prompt — and the point of the suite is that all three outcomes are handled
+/// the way `FlagToggleController.setActive` handles them. The menu bar must not
+/// be the one surface where a security setting is decoration.
+@MainActor
+@Suite("Menu bar flag toggling")
+struct MenuBarFlagTogglerTests {
+
+    private func flag(allowed: Bool = true, active: Bool = true) -> SharedSnapshot.Flag {
+        .init(id: 7, key: "new-onboarding", active: active, quickToggleAllowed: allowed)
+    }
+
+    /// The write the popover would have made, captured instead of made.
+    @MainActor
+    private final class Recorder {
+        var writes: [(id: Int, active: Bool)] = []
+    }
+
+    @Test("a flag without the quick-toggle opt-in never reaches the dialog")
+    func optInIsRequired() {
+        let toggler = MacMenuBarFlagToggler()
+        toggler.request(flag(allowed: false))
+        #expect(toggler.pending == nil)
+    }
+
+    @Test("a request proposes the opposite of the current state")
+    func requestProposesOpposite() {
+        let toggler = MacMenuBarFlagToggler()
+        toggler.request(flag(active: true))
+        #expect(toggler.pending?.desiredActive == false)
+        #expect(toggler.pending?.flag.key == "new-onboarding")
+    }
+
+    @Test("cancel clears the pending request and writes nothing")
+    func cancelClears() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        toggler.request(flag())
+        toggler.cancel()
+        #expect(toggler.pending == nil)
+        await toggler.confirm(isGateEnabled: false) { id, active in
+            recorder.writes.append((id, active))
+        }
+        #expect(recorder.writes.isEmpty)
+    }
+
+    @Test("with the gate off, confirm writes the requested state")
+    func confirmWritesWithoutGate() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        toggler.request(flag(active: true))
+        await toggler.confirm(isGateEnabled: false) { id, active in
+            recorder.writes.append((id, active))
+        }
+        #expect(recorder.writes.count == 1)
+        #expect(recorder.writes.first?.id == 7)
+        #expect(recorder.writes.first?.active == false)
+        #expect(toggler.notice == nil)
+    }
+
+    @Test("a passed gate writes, and says nothing it does not need to")
+    func passedGateWrites() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        toggler.request(flag(active: false))
+        await toggler.confirm(isGateEnabled: true, gate: { .passed }) { id, active in
+            recorder.writes.append((id, active))
+        }
+        #expect(recorder.writes.map(\.active) == [true])
+        #expect(toggler.notice == nil)
+    }
+
+    @Test("a denied gate blocks the write and says so")
+    func deniedGateBlocks() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        toggler.request(flag())
+        await toggler.confirm(
+            isGateEnabled: true,
+            gate: { .denied("Authentication wasn't confirmed.") }
+        ) { id, active in
+            recorder.writes.append((id, active))
+        }
+        #expect(recorder.writes.isEmpty)
+        #expect(toggler.notice?.contains("left unchanged") == true)
+        #expect(toggler.notice?.contains("new-onboarding") == true)
+    }
+
+    @Test("an unavailable gate writes, with an honest notice — never a silent pass")
+    func unavailableGateWritesWithNotice() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        toggler.request(flag())
+        await toggler.confirm(
+            isGateEnabled: true,
+            gate: { .unavailable("no enrolled biometry") }
+        ) { id, active in
+            recorder.writes.append((id, active))
+        }
+        #expect(recorder.writes.count == 1)
+        #expect(toggler.notice?.contains("confirmed by dialog only") == true)
+    }
+
+    @Test("confirm without a pending request is a no-op")
+    func confirmNeedsARequest() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        await toggler.confirm(isGateEnabled: false) { id, active in
+            recorder.writes.append((id, active))
+        }
+        #expect(recorder.writes.isEmpty)
+    }
+
+    @Test("a new request clears the notice the last one left behind")
+    func requestClearsNotice() async {
+        let toggler = MacMenuBarFlagToggler()
+        toggler.request(flag())
+        await toggler.confirm(isGateEnabled: true, gate: { .denied("nope") }) { _, _ in }
+        #expect(toggler.notice != nil)
+        toggler.request(flag())
+        #expect(toggler.notice == nil)
+    }
 }

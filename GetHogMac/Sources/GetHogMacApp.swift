@@ -9,6 +9,10 @@ struct GetHogMacApp: App {
     /// for why a second copy would be a second source of truth.
     @State private var nav = NavPreferences()
 
+    /// The menu bar's reader of the snapshot file; one for the process, owned
+    /// here so the label and the popover observe the same reloads.
+    @State private var menuBar = MacMenuBarController()
+
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -16,7 +20,11 @@ struct GetHogMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        // Named, because the menu bar extra opens this group by id — see
+        // `MacMenuBar.openMainWindow`. One saved window frame resets on the
+        // first launch after the id landed, since the autosave identity is
+        // derived from it; `defaultSize` below still governs.
+        WindowGroup(id: MacMenuBar.mainWindowID) {
             Group {
                 #if DEBUG
                 // Same solo-window diagnostic the iOS app carries, and for the
@@ -112,6 +120,20 @@ struct GetHogMacApp: App {
                 .environment(nav)
                 .tint(Theme.accent)
         }
+
+        // The ambient layer (spec §4): a window-style extra whose label is the
+        // user's headline metric. Reads the same snapshot file the widgets do;
+        // its one refresh affordance routes through the app's own machinery,
+        // and nothing in it calls the API.
+        MenuBarExtra {
+            MacMenuBarPopover(controller: menuBar)
+                .environment(model)
+                .environment(nav)
+                .tint(Theme.accent)
+        } label: {
+            MacMenuBarLabel(controller: menuBar)
+        }
+        .menuBarExtraStyle(.window)
     }
 
     private static func makeModel() -> AppModel {

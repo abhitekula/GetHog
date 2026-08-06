@@ -188,3 +188,463 @@ final class MacMenuBarController {
         }
     }
 }
+
+// MARK: - Label
+
+/// What sits in the menu bar: the headline's value and trend, or the neutral
+/// chart glyph before the first sync. Text-compact by design — the title, the
+/// sparkline and everything else are one click away in the popover.
+struct MacMenuBarLabel: View {
+    let controller: MacMenuBarController
+
+    var body: some View {
+        Group {
+            if let metric = controller.headline {
+                Text(MenuBarHeadline.label(for: metric))
+                    .monospacedDigit()
+            } else {
+                Image(systemName: "chart.xyaxis.line")
+            }
+        }
+        .accessibilityLabel(MenuBarHeadline.accessibilityLabel(for: controller.headline))
+        .onAppear { controller.startTicking() }
+    }
+}
+
+// MARK: - Flag toggling
+
+/// The popover's write path for quick flag toggles, kept as a state machine so
+/// the gate rules are testable without an `LAContext`.
+///
+/// Mirrors `FlagToggleController.setActive`'s outcome handling exactly — denied
+/// blocks the write, unavailable proceeds with an honest notice, passed
+/// proceeds — because the menu bar must not be the one surface where
+/// `BiometricGate` is decoration. `AppModel.setFlag` does not run the gate
+/// itself: it is the landing half of the widget hand-off, where there is no
+/// `LAContext` to run. This popover is in the app process, where there is.
+///
+/// The confirmation dialog is the popover's; nothing in here asks the user
+/// whether they meant it, same contract as the controller it mirrors.
+@MainActor
+@Observable
+final class MacMenuBarFlagToggler {
+
+    struct Request: Equatable {
+        let flag: SharedSnapshot.Flag
+        var desiredActive: Bool { !flag.active }
+    }
+
+    private(set) var pending: Request?
+    private(set) var inFlightFlagID: Int?
+    /// One line the popover shows under the flags; cleared by the next request.
+    private(set) var notice: String?
+
+    /// Only an opted-in flag may even reach the confirmation dialog — the same
+    /// gate `SharedSnapshot.quickToggleFlags` applies, restated here so a caller
+    /// handing in the wrong flag is refused rather than trusted.
+    func request(_ flag: SharedSnapshot.Flag) {
+        guard flag.quickToggleAllowed, inFlightFlagID == nil else { return }
+        notice = nil
+        pending = Request(flag: flag)
+    }
+
+    func cancel() {
+        pending = nil
+    }
+
+    /// Runs the gate, then the write. `gate` and `isGateEnabled` are injectable
+    /// so tests exercise every outcome without device-owner authentication;
+    /// production callers pass neither.
+    func confirm(
+        isGateEnabled: Bool = BiometricGate.isEnabled,
+        gate: () async -> BiometricGate.Outcome = BiometricGate.evaluate,
+        write: (Int, Bool) async -> Void
+    ) async {
+        guard let request = pending, inFlightFlagID == nil else { return }
+        pending = nil
+
+        if isGateEnabled {
+            switch await gate() {
+            case .passed:
+                break
+            case .unavailable(let detail):
+                notice = "Device authentication wasn't available (\(detail)). "
+                    + "This change was confirmed by dialog only."
+            case .denied(let detail):
+                notice = "Not authenticated, so \(request.flag.key) was left unchanged. \(detail)"
+                return
+            }
+        }
+
+        inFlightFlagID = request.flag.id
+        await write(request.flag.id, request.desiredActive)
+        inFlightFlagID = nil
+    }
+}
+
+// MARK: - Popover
+
+/// The mini-dashboard (spec §4): headline metric with its sparkline, the health
+/// verdict, and quick flag toggles — every pixel of it from the snapshot file,
+/// no API call on this render path.
+struct MacMenuBarPopover: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+
+    let controller: MacMenuBarController
+
+    @State private var toggler = MacMenuBarFlagToggler()
+    @State private var isRefreshing = false
+
+    /// The ceiling an ambient surface can honestly manage. The flags screen
+    /// holds the rest, and "Open GetHog" is one click below this list.
+    static let maximumQuickToggles = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            if let snapshot = controller.snapshot {
+                header(snapshot)
+                if let metric = controller.headline {
+                    headlineSection(metric)
+                }
+                Divider()
+                healthRow(snapshot)
+                if !snapshot.quickToggleFlags.isEmpty {
+                    Divider()
+                    flagSection(snapshot)
+                }
+            } else {
+                emptyState
+            }
+            Divider()
+            footer
+        }
+        .padding(Theme.Space.m)
+        .frame(width: 320)
+        .task { controller.reload() }
+        .confirmationDialog(
+            toggler.pending.map { "\($0.desiredActive ? "Enable" : "Disable") \($0.flag.key)?" } ?? "",
+            isPresented: Binding(
+                get: { toggler.pending != nil },
+                set: { if !$0 { toggler.cancel() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                (toggler.pending?.desiredActive ?? true)
+                    ? "Enable for live users" : "Disable for live users",
+                role: .destructive
+            ) {
+                Task {
+                    await toggler.confirm { id, active in
+                        await model.setFlag(id: id, active: active)
+                    }
+                    controller.reload()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            // The same claim the flag detail's dialog makes, because it is the
+            // same write: this changes what production serves, in this project.
+            Text(
+                "This changes what \(controller.snapshot?.projectName ?? "your project") "
+                    + "serves to live users right now."
+            )
+        }
+    }
+
+    // MARK: Sections
+
+    private func header(_ snapshot: SharedSnapshot) -> some View {
+        HStack {
+            Text(snapshot.projectName)
+                .font(.headline)
+                .lineLimit(1)
+            Spacer()
+            Menu {
+                ForEach(snapshot.metrics) { metric in
+                    Button {
+                        controller.headlineMetricID = metric.id
+                    } label: {
+                        if metric.id == controller.headline?.id {
+                            Label(metric.title, systemImage: "checkmark")
+                        } else {
+                            Text(metric.title)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "chart.bar.xaxis")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("Choose the menu bar metric")
+        }
+    }
+
+    private func headlineSection(_ metric: SharedSnapshot.Metric) -> some View {
+        Button {
+            openApp(metricID: metric.id)
+        } label: {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Text(metric.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                    Text(MenuBarHeadline.compact(metric.value, unit: metric.unit))
+                        .font(.title2.weight(.semibold))
+                        .monospacedDigit()
+                    if let glyph = MenuBarHeadline.glyph(for: metric.direction) {
+                        Text(glyph)
+                            .font(.title3)
+                            .foregroundStyle(Theme.Status.accentInk)
+                    }
+                }
+                if metric.sparkline.count >= 2 {
+                    MenuBarSparkline(points: metric.sparkline)
+                        .frame(height: 28)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(MenuBarHeadline.accessibilityLabel(for: metric)). Opens its dashboard in GetHog."
+        )
+    }
+
+    private func healthRow(_ snapshot: SharedSnapshot) -> some View {
+        let verdict = snapshot.healthVerdict
+        return HStack(spacing: Theme.Space.s) {
+            Image(systemName: verdict.symbolName)
+                .foregroundStyle(healthTint(verdict))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(snapshot.healthHeadline)
+                    .font(.callout)
+                Text(snapshot.healthDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(snapshot.healthSpokenLabel)
+    }
+
+    private func flagSection(_ snapshot: SharedSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Text("Quick toggles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(snapshot.quickToggleFlags.prefix(Self.maximumQuickToggles)) { flag in
+                Toggle(isOn: Binding(
+                    get: { flag.active },
+                    set: { _ in toggler.request(flag) }
+                )) {
+                    Text(flag.key)
+                        .font(.callout.monospaced())
+                        .lineLimit(1)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(toggler.inFlightFlagID != nil || model.phase != .ready)
+                .accessibilityLabel(
+                    "Feature flag \(flag.key), \(flag.active ? "enabled" : "disabled")"
+                )
+            }
+            if let notice = toggler.notice {
+                Text(notice)
+                    .font(.caption)
+                    .foregroundStyle(Theme.Status.criticalInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            Text("No data yet")
+                .font(.headline)
+            Text(
+                "Open GetHog and connect to PostHog; the menu bar shows your headline metric "
+                    + "after the first sync."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Text(freshnessCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                Task {
+                    isRefreshing = true
+                    _ = await model.publishWidgetSnapshot()
+                    controller.reload()
+                    isRefreshing = false
+                }
+            } label: {
+                if isRefreshing {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+            .disabled(isRefreshing || model.phase != .ready)
+            .accessibilityLabel("Refresh now")
+            Button("Open GetHog") { openApp(metricID: nil) }
+            Button {
+                MacMenuBar.activateRegular()
+                openSettings()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("GetHog settings")
+        }
+    }
+
+    private var freshnessCaption: String {
+        guard let snapshot = controller.snapshot else { return "Never synced" }
+        let caption = MenuBarFreshness.caption(forAge: snapshot.staleness())
+        return snapshot.isStale() ? caption + " — stale" : caption
+    }
+
+    private func healthTint(_ verdict: SharedSnapshot.HealthVerdict) -> Color {
+        // `WidgetViews.tint(for:)`'s verdict mapping, restated over Theme's
+        // inks — that type lives in the widget appex. Health has a defined
+        // polarity, so red is accurate here; the glyph and the words still carry
+        // the state on their own.
+        switch verdict {
+        case .critical: Theme.Status.criticalInk
+        case .attention: Theme.Status.accentInk
+        case .clear: Theme.Status.goodInk
+        case .unchecked: Color.secondary
+        }
+    }
+
+    // MARK: Deep link
+
+    /// The widget idiom, in-process: record where to land, poke the shell, bring
+    /// a shell window to front. `MacRootView.routePendingLinks` consumes the
+    /// record and routes through the same `PostHogLink` path every other
+    /// entrance uses.
+    private func openApp(metricID: String?) {
+        try? controller.store.enqueue(PendingOpen(metricID: metricID))
+        NotificationCenter.default.post(name: MacMenuBar.pendingOpenNotification, object: nil)
+        MacMenuBar.openMainWindow(using: openWindow)
+    }
+}
+
+/// How old the snapshot reads in a caption one line high. Pure, because the
+/// buckets are the only part of the footer worth pinning and the popover cannot
+/// be mounted in a unit test.
+enum MenuBarFreshness {
+
+    static func caption(forAge age: TimeInterval) -> String {
+        switch age {
+        case ..<60: "Updated just now"
+        case ..<3_600: "Updated \(Int(age / 60))m ago"
+        case ..<86_400: "Updated \(Int(age / 3_600))h ago"
+        default: "Updated \(Int(age / 86_400))d ago"
+        }
+    }
+}
+
+// MARK: - Window plumbing
+
+extension MacMenuBar {
+
+    /// Back into the Dock, and frontmost. Idempotent, and called before
+    /// anything that needs a window: with the keep-in-menu-bar setting on, the
+    /// app may be sitting in `.accessory`, where `openWindow` alone would open a
+    /// window the user cannot reach through the app switcher.
+    @MainActor
+    static func activateRegular() {
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate()
+    }
+
+    /// Fronts an existing main-shell window, or opens one. SwiftUI stamps
+    /// windows from `WindowGroup(id:)` with identifiers prefixed by that id; if
+    /// the prefix rule ever fails, the fallback opens a fresh shell window,
+    /// whose own `onAppear` routing still lands the pending deep link.
+    @MainActor
+    static func openMainWindow(using openWindow: OpenWindowAction) {
+        activateRegular()
+        if let existing = NSApp.windows.first(where: {
+            ($0.identifier?.rawValue.hasPrefix(mainWindowID) ?? false) && $0.isVisible
+        }) {
+            existing.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow(id: mainWindowID)
+        }
+    }
+}
+
+// MARK: - Sparkline
+
+/// The widgets' hand-drawn trend line, restated over Theme's ink — the original
+/// lives in the widget appex, and `IngestionWarningsRoot` already carries its
+/// own copy for the same reason. Same normalisation, same flat-series middle
+/// line, same half-stroke inset.
+private struct MenuBarSparkline: View {
+    let points: [Double]
+
+    var body: some View {
+        GeometryReader { geometry in
+            let coordinates = coordinates(in: geometry.size)
+            if coordinates.count >= 2 {
+                ZStack {
+                    area(through: coordinates, in: geometry.size)
+                        .fill(Theme.Status.accentInk.opacity(0.18))
+                    line(through: coordinates)
+                        .stroke(
+                            Theme.Status.accentInk,
+                            style: StrokeStyle(
+                                lineWidth: Self.lineWidth, lineCap: .round, lineJoin: .round
+                            )
+                        )
+                }
+            }
+        }
+        // The number beside it is the content; this is its shape.
+        .accessibilityHidden(true)
+    }
+
+    private static let lineWidth: CGFloat = 2
+
+    private func coordinates(in size: CGSize) -> [CGPoint] {
+        guard points.count >= 2, let low = points.min(), let high = points.max() else { return [] }
+        let span = high - low
+        let step = size.width / CGFloat(points.count - 1)
+        let inset = Self.lineWidth / 2
+        let usable = max(0, size.height - Self.lineWidth)
+        return points.enumerated().map { index, value in
+            // A flat series draws down the middle rather than along an edge,
+            // where half the stroke would be clipped away.
+            let fraction = span > 0 ? (value - low) / span : 0.5
+            return CGPoint(x: CGFloat(index) * step, y: inset + usable * (1 - fraction))
+        }
+    }
+
+    private func line(through coordinates: [CGPoint]) -> Path {
+        Path { $0.addLines(coordinates) }
+    }
+
+    private func area(through coordinates: [CGPoint], in size: CGSize) -> Path {
+        Path { path in
+            path.addLines(coordinates)
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.addLine(to: CGPoint(x: 0, y: size.height))
+            path.closeSubpath()
+        }
+    }
+}
