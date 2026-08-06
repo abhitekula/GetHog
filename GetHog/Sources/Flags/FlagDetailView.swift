@@ -126,6 +126,10 @@ struct FlagDetailView: View {
         // would say "that didn't work" in the one channel a reader cannot argue
         // with, and the success tap would say the opposite.
         .sensoryFeedback(.warning, trigger: controller.filedCount)
+        // The same three signals in a channel the Mac has. The taps above stay
+        // as they are — they are already silent where unsupported — and this is
+        // the identity on iOS, where they are the confirmation.
+        .flagWriteFeedback(FlagWriteCounts(controller: controller))
         // Offered back from the home screen icon. A flag you were just looking
         // at is the thing most likely to be worth another ten seconds.
         .onAppear {
