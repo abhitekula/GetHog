@@ -6,38 +6,75 @@ import SwiftUI
 /// Showing one project's numbers under another project's name is a correctness
 /// bug, not a cosmetic one, so this sits in the toolbar of every root screen.
 struct ProjectSwitcher: ToolbarContent {
-    @Environment(AppModel.self) private var model
-
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            Menu {
-                projectList
-            } label: {
-                // A glyph, not the project name. The name is permanently
-                // visible as the navigation subtitle, and repeating it here
-                // made the item wide enough that it could not share the bar
-                // with a back button — costing a whole row of chrome on every
-                // pushed screen.
-                BrandProductMarkView(mark: .projectStamp, size: 18)
-            }
-            // The label names the thing; the hint says what happens to it.
-            //
-            // It used to end "Double tap to switch." — which VoiceOver already
-            // appends itself, so the instruction was spoken twice on every
-            // screen in the app, and it named a gesture that Switch Control,
-            // Voice Control and a keyboard do not have.
-            //
-            // The organization is spoken only when there is more than one. For
-            // the single-organization user it is a constant, and a constant read
-            // aloud on every screen is noise; for everyone else it is the half of
-            // the answer that decides whose numbers these are.
-            .accessibilityLabel(spokenLabel)
-            .accessibilityHint(
-                model.isMultiOrganization
-                    ? "Switches to a different project or organization"
-                    : "Switches to a different project"
-            )
+            ProjectSwitcherMenu()
         }
+    }
+}
+
+#if os(macOS)
+/// The same control, declared as an *identified* item, for the two Mac screens
+/// whose toolbars are user-customizable.
+///
+/// Not a second spelling for its own sake. A plain `.toolbar { }` and a
+/// `.toolbar(id:)` applied to one view resolve to a window toolbar with
+/// `allowsUserCustomization == false`, which is what left View ▸ Customize
+/// Toolbar… greyed out on Dashboards and Sessions even after `ToolbarCommands()`
+/// put the item in the menu. Measured with a standalone SwiftUI probe that read
+/// `NSWindow.toolbar` directly: the `.sidebarAdaptable` `TabView`, the
+/// declaration sitting inside a navigation column, `.searchable` and
+/// `.toolbar(removing: .sidebarToggle)` each left the toolbar customizable, and
+/// adding the plain modifier alone was enough to turn it off. So the fixed
+/// items have to *join* the identified toolbar rather than sit beside it.
+///
+/// `.customizationBehavior(.disabled)` is what keeps "fixed" true: the item
+/// cannot be moved or removed and never reaches the customization palette.
+/// Project context is not optional chrome — see `ProjectSwitcher` above for why
+/// that is a correctness rule rather than a preference.
+struct PinnedProjectSwitcher: CustomizableToolbarContent {
+    var body: some CustomizableToolbarContent {
+        ToolbarItem(id: "project", placement: .topBarLeading) {
+            ProjectSwitcherMenu()
+        }
+        .customizationBehavior(.disabled)
+    }
+}
+#endif
+
+/// The control itself, so the plain and the identified item above are two
+/// placements of one menu rather than two menus.
+struct ProjectSwitcherMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            projectList
+        } label: {
+            // A glyph, not the project name. The name is permanently
+            // visible as the navigation subtitle, and repeating it here
+            // made the item wide enough that it could not share the bar
+            // with a back button — costing a whole row of chrome on every
+            // pushed screen.
+            BrandProductMarkView(mark: .projectStamp, size: 18)
+        }
+        // The label names the thing; the hint says what happens to it.
+        //
+        // It used to end "Double tap to switch." — which VoiceOver already
+        // appends itself, so the instruction was spoken twice on every
+        // screen in the app, and it named a gesture that Switch Control,
+        // Voice Control and a keyboard do not have.
+        //
+        // The organization is spoken only when there is more than one. For
+        // the single-organization user it is a constant, and a constant read
+        // aloud on every screen is noise; for everyone else it is the half of
+        // the answer that decides whose numbers these are.
+        .accessibilityLabel(spokenLabel)
+        .accessibilityHint(
+            model.isMultiOrganization
+                ? "Switches to a different project or organization"
+                : "Switches to a different project"
+        )
     }
 
     private var spokenLabel: String {

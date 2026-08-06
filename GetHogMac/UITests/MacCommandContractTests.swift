@@ -272,12 +272,21 @@ final class MacCommandContractTests: XCTestCase {
             // — before that there was no route to toolbar customisation at all,
             // in the menu or in the toolbar's own context menu, despite
             // `DashboardsRoot` and `SessionsRoot` both declaring
-            // `.toolbar(id:)`. It is still *disabled*, measured on both
-            // screens: a `.toolbar(id:)` declared inside a navigation column
-            // does not make the window's toolbar user-customisable. That is a
-            // finding on the toolbar declarations, ledgered rather than
-            // asserted here, because pinning "disabled" as correct would be
-            // writing the defect into the suite.
+            // `.toolbar(id:)`. It was then measured *disabled* on both screens,
+            // and the cause was not the nesting it was first blamed on: a
+            // standalone probe reading `NSWindow.toolbar` found the declaration
+            // inside a navigation column, the `.sidebarAdaptable` `TabView`,
+            // `.searchable` and `.toolbar(removing:)` all harmless, and a plain
+            // `.toolbar { }` beside the `.toolbar(id:)` sufficient on its own to
+            // set `allowsUserCustomization` false. Both screens now declare one
+            // toolbar — see `PinnedProjectSwitcher`.
+            //
+            // `enabled` is printed rather than asserted because this is the
+            // sighted half: the probe measured the toolbar, not this menu item,
+            // and it could not answer whether the *detail* column's own plain
+            // `.toolbar` re-disables the window's once a dashboard or a
+            // recording is open. Pinning either answer here without a screen
+            // would be writing a guess into the suite.
             XCTAssertTrue(present, "View has no Customize Toolbar… on \(anchor)'s screen.")
         }
         XCTAssertEqual(app.state, .runningForeground, "Customising the toolbar took the app down.")

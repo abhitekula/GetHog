@@ -145,22 +145,18 @@ struct SessionsRoot: View {
 
         return content
                 .navigationTitle("Sessions")
-                .toolbar {
-                    ProjectSwitcher()
-                    #if os(iOS)
-                    ToolbarItem(placement: .topBarTrailing) { filterButton }
-                    ToolbarItem(placement: .topBarTrailing) { playlistsLink }
-                    #endif
-                }
 #if os(macOS)
-                // The customizable half — what "Customize Toolbar…"
+                // The whole bar in one declaration — what "Customize Toolbar…"
                 // rearranges: the same two controls the iOS bar pins, made
                 // rearrangeable, plus the Mac-only Refresh, since
-                // pull-to-refresh does not exist here. The `#if os(iOS)` above
-                // is what keeps them from being drawn twice; `ProjectSwitcher`
-                // stays fixed because it is plain `ToolbarContent` and cannot
-                // sit in a `.toolbar(id:)`.
+                // pull-to-refresh does not exist here. One declaration and not
+                // two because a plain `.toolbar { }` beside a `.toolbar(id:)`
+                // leaves the window's toolbar refusing customization outright;
+                // `PinnedProjectSwitcher` is the switcher rejoining this
+                // declaration as an item nobody can move or remove, and carries
+                // the measurement.
                 .toolbar(id: "sessions") {
+                    PinnedProjectSwitcher()
                     ToolbarItem(id: "filter", placement: .primaryAction) { filterButton }
                     ToolbarItem(id: "playlists", placement: .primaryAction) { playlistsLink }
                     ToolbarItem(id: "refresh", placement: .primaryAction) {
@@ -171,6 +167,12 @@ struct SessionsRoot: View {
                         }
                         .accessibilityLabel("Refresh sessions")
                     }
+                }
+#else
+                .toolbar {
+                    ProjectSwitcher()
+                    ToolbarItem(placement: .topBarTrailing) { filterButton }
+                    ToolbarItem(placement: .topBarTrailing) { playlistsLink }
                 }
 #endif
                 .projectSubtitle()
