@@ -97,6 +97,16 @@ struct MacRootView: View {
         ) { _ in
             routePendingLinks()
         }
+        // The menu bar's poke. Needed because a popover click does not
+        // foreground the app the way opening it from the Dock would, so unlike
+        // every other entrance there is no scene-phase change below to
+        // piggyback on — the record would otherwise sit unread until something
+        // else woke this shell.
+        .onReceive(
+            NotificationCenter.default.publisher(for: MacMenuBar.pendingOpenNotification)
+        ) { _ in
+            routePendingLinks()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { routePendingLinks() }
         }
@@ -232,8 +242,24 @@ struct MacRootView: View {
 
     /// Drains everything waiting to be navigated to.
     private func routePendingLinks() {
-        // No Control-Center `pendingOpen` branch here: nothing writes it on a
-        // Mac. The phase-2 menu bar extra revisits this.
+        // The menu bar extra's landing path — the same `PendingOpen` record a
+        // widget writes on iOS, consumed under `RootView`'s rules because it is
+        // the same record: the metric routes to the dashboard it was read from,
+        // carried with the project the snapshot names so `open(_:)` refuses
+        // rather than showing another project's dashboard under the same
+        // number; an unknown id routes one honest level up; and it is consumed
+        // either way, so a stale request cannot redirect a later launch.
+        if let pending = SharedSnapshotStore.shared.pendingOpen() {
+            SharedSnapshotStore.shared.clearPendingOpen()
+            let snapshot = SharedSnapshotStore.shared.loadOrNil()
+            if let metricID = pending.metricID,
+               let dashboardID = snapshot?.metric(id: metricID)?.dashboardID,
+               let projectID = snapshot?.projectID {
+                open(PostHogLinkTarget(projectID: projectID, link: .dashboard(id: dashboardID)))
+            } else {
+                open(.dashboards)
+            }
+        }
         if let target = IntentNavigationTarget.consume() {
             if let staged = target.stagedQuery {
                 LinkInbox.stage(query: staged.term, for: staged.tab)
