@@ -7,13 +7,20 @@ import SwiftUI
 //   \.screenRefresh    — published by every root screen through
 //                        `screenRefreshable(_:)`, beside its `.refreshable`.
 //                        View ▸ Refresh (⌘R); disabled while nil.
-//   \.insightCSVExport — published by insight-detail surfaces closing over the
-//                        window's CSVExportCoordinator (Task 5).
+//   \.insightCSVExport — published by the insight detail surfaces
+//                        (SavedInsightDetailView, the dashboard insight panel)
+//                        and the two query tables (Events, the SQL console),
+//                        all through `InsightCSVExportAction.routing`, closing
+//                        over the window's CSVExportCoordinator.
 //                        File ▸ Export CSV (⌘E); disabled while nil.
 //
 // Menu commands read focused values from the **key window only**, so a tear-off
-// `WindowGroup(for: WindowTarget.self)` window publishes none of these and the
-// items that read them are correctly disabled while one is frontmost.
+// `WindowGroup(for: WindowTarget.self)` window publishes no `\.openTab` and no
+// `\.screenRefresh`, and the items that read them are correctly disabled while
+// one is frontmost. A dashboard tear-off with an insight panel open is the one
+// exception: it *does* publish `\.insightCSVExport`, and the File and Edit
+// items genuinely work there, because that scene attaches its own
+// `insightCSVExporter()` for the save dialog to present from.
 //
 // Shared rather than Mac-only on purpose: the screens that publish
 // `\.screenRefresh` and `\.insightCSVExport` are shared files, and a key that
@@ -50,6 +57,30 @@ struct InsightCSVExportAction {
     let export: CSVExport
     let save: @MainActor () -> Void
     let copy: @MainActor () -> Void
+}
+
+extension InsightCSVExportAction {
+
+    /// The action a screen publishes for its current table: the export, routed
+    /// through the window's own coordinator.
+    ///
+    /// `nil` — which keeps File ▸ Export CSV disabled — when there is no table,
+    /// when the table is empty (the same gate `CSVShareMenu` applies with
+    /// `.disabled(export.isEmpty)`, because a header with no rows is a file
+    /// that says nothing), or when this window never attached `csvExporter()`
+    /// and a save would have nowhere to present.
+    @MainActor
+    static func routing(
+        _ export: CSVExport?,
+        through exporter: CSVExportCoordinator?
+    ) -> InsightCSVExportAction? {
+        guard let export, !export.isEmpty, let exporter else { return nil }
+        return InsightCSVExportAction(
+            export: export,
+            save: { exporter.export(export) },
+            copy: { exporter.copy(export) }
+        )
+    }
 }
 
 extension FocusedValues {

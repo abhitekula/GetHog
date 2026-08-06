@@ -191,6 +191,7 @@ final class SQLConsoleStore {
 struct SQLConsoleRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
     @State private var store = SQLConsoleStore()
     @State private var schema = SchemaStore()
     @State private var sql = SQLConsoleRoot.seedQuery
@@ -277,6 +278,13 @@ struct SQLConsoleRoot: View {
                 Button("Done") { editorFocused = false }
             }
         }
+        // The console's result table behind File ▸ Export CSV and Edit ▸ Copy
+        // CSV — the most obviously exportable table in the app, and the one a
+        // greyed-out Export item would read as broken on.
+        .focusedSceneValue(
+            \.insightCSVExport,
+            InsightCSVExportAction.routing(store.export, through: exporter)
+        )
         .onChange(of: model.projectID) { _, _ in
             store.clearResults()
             // The schema describes the project it was read from. Same reasoning

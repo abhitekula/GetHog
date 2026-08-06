@@ -15,6 +15,7 @@ struct InsightSidePanel: View {
     let onClose: () -> Void
 
     @Environment(AppModel.self) private var model
+    @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +24,17 @@ struct InsightSidePanel: View {
             InsightDetailBody(tile: tile, webURL: webURL)
         }
         .background(Theme.pageBackground)
+        // The panel is only in the hierarchy while an insight is open beside
+        // the grid, so ⌘E appears and retracts with it — including inside a
+        // tear-off dashboard window, which attaches its own exporter and can
+        // therefore genuinely present the save dialog.
+        .focusedSceneValue(
+            \.insightCSVExport,
+            InsightCSVExportAction.routing(
+                ExportableInsight(title: tile.title, model: tile.renderModel).csvExport,
+                through: exporter
+            )
+        )
     }
 
     /// Drawn by hand rather than by a nested `NavigationStack`.

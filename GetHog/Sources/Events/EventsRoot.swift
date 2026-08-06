@@ -274,6 +274,7 @@ struct EventsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(OpenDetails.self) private var openDetails
+    @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
     @State private var store = EventsStore()
     @State private var search = ""
     /// The free text the server has actually been asked about, set by reload.
@@ -362,6 +363,12 @@ struct EventsRoot: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) { liveTailButton }
                 }
+                // The same table the share menu above offers, behind File ▸
+                // Export CSV and Edit ▸ Copy CSV.
+                .focusedSceneValue(
+                    \.insightCSVExport,
+                    InsightCSVExportAction.routing(store.export, through: exporter)
+                )
                 .projectSubtitle()
                 // Placement is pinned rather than left to `.automatic`. Measured
                 // on iPad: with the placement automatic the field was not drawn

@@ -32,6 +32,10 @@ struct SavedInsightDetailView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    /// Optional for the reason `CSVShareMenuItems` reads it optionally: a
+    /// window that never attached `csvExporter()` has nowhere to present a save
+    /// dialog, and ⌘E should be grey there rather than inert.
+    @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
     @State private var store = SavedInsightStore()
 
     /// The narrowing currently applied, and the sheet that edits it.
@@ -67,6 +71,7 @@ struct SavedInsightDetailView: View {
                 DashboardDetailView(dashboardID: reference.id)
             }
             .toolbar { toolbarContent }
+            .focusedSceneValue(\.insightCSVExport, focusedCSVExport)
             // Both sheets are presented from this screen rather than hoisted into
             // `RootView`. `AppTab.presentsDetailAsSheet` exists for a *secondary
             // tab's* own detail, which is torn down and written back through its
@@ -561,6 +566,16 @@ struct SavedInsightDetailView: View {
     /// may already have.
     private var webURL: URL? {
         model.webURL(path: "insights/\(insight?.linkID ?? identifier)")
+    }
+
+    /// What ⌘E exports: the *drawn* table — narrowed if the reader narrowed it
+    /// — for the same honesty reason the share menu exports `drawnModel`.
+    private var focusedCSVExport: InsightCSVExportAction? {
+        guard let insight else { return nil }
+        return .routing(
+            ExportableInsight(title: insight.title, model: drawnModel(for: insight)).csvExport,
+            through: exporter
+        )
     }
 
     private func readableKind(_ sourceKind: String) -> String {
