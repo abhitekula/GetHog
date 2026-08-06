@@ -343,18 +343,31 @@ public struct SharedSnapshotStore: Sendable {
     /// the prefix their signing gave them.
     public static let shared = resolve()
 
-    /// `containerURL(forSecurityApplicationGroupIdentifier:)` returns nil
-    /// without the entitlement — SwiftUI previews, an unsigned simulator build,
-    /// a unit-test host. Falling back to a private directory keeps every call
-    /// site total: nothing traps, nothing force-unwraps, and the widget simply
-    /// renders its no-data state rather than crashing on a locked screen.
+    /// `containerURL(forSecurityApplicationGroupIdentifier:)` answers nil
+    /// without the entitlement on iOS — SwiftUI previews, an unsigned
+    /// simulator build, a unit-test host. **On macOS it does not**: the lookup
+    /// returns a path with or without the entitlement, and the App Sandbox
+    /// then denies creating it — measured on macOS Debug, where the App Group
+    /// is deliberately absent from the entitlements. Before `probe` existed,
+    /// that path was trusted, every write's own `createDirectory` failed, and
+    /// the `try?` at the call sites swallowed it: all snapshot writes silently
+    /// no-oped while `isSharedContainer` claimed otherwise.
+    ///
+    /// So a container is trusted only after it proves it can hold a file:
+    /// `probe` attempts the directory's creation — the exact operation the
+    /// first write would perform — and an unusable container degrades to the
+    /// same private-directory fallback a nil lookup always produced. Nothing
+    /// traps, nothing force-unwraps, and a caller can read
+    /// `isSharedContainer == false` instead of guessing why the widget is
+    /// empty.
     public static func resolve(
         appGroupIdentifier: String = SharedSnapshotStore.appGroupIdentifier,
         container: (String) -> URL? = {
             FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0)
-        }
+        },
+        probe: (URL) -> Bool = SharedSnapshotStore.containerIsUsable
     ) -> SharedSnapshotStore {
-        if let url = container(appGroupIdentifier) {
+        if let url = container(appGroupIdentifier), probe(url) {
             return SharedSnapshotStore(directory: url, isSharedContainer: true)
         }
         let fallback = (try? FileManager.default.url(
@@ -364,6 +377,23 @@ public struct SharedSnapshotStore: Sendable {
             directory: fallback.appendingPathComponent("GetHogShared", isDirectory: true),
             isSharedContainer: false
         )
+    }
+
+    /// Usability is established the way writing would establish it: create the
+    /// directory (a no-op when it already exists), then ask whether it is
+    /// writable. No probe file is left behind.
+    ///
+    /// Public because it is `resolve`'s default argument, and a default
+    /// argument of a public function may not name internal API — which also
+    /// makes it available to a caller that resolves its own store and wants
+    /// the same verdict.
+    public static func containerIsUsable(_ url: URL) -> Bool {
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            return false
+        }
+        return FileManager.default.isWritableFile(atPath: url.path)
     }
 
     public var fileURL: URL { directory.appendingPathComponent(Self.snapshotFileName) }

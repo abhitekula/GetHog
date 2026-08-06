@@ -273,10 +273,72 @@ struct SharedSnapshotTests {
         #expect(SharedSnapshotStore.appGroupIdentifier == "group.app.gethog")
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("group-\(UUID().uuidString)", isDirectory: true)
+        // Resolution now creates the container it trusts, so this test owns a
+        // real directory and has to clean up after itself.
+        defer { try? FileManager.default.removeItem(at: dir) }
         let store = SharedSnapshotStore.resolve(appGroupIdentifier: "group.app.gethog") { _ in dir }
 
         #expect(store.isSharedContainer)
         #expect(store.directory == dir)
+    }
+
+    @Test("a container path that cannot be created is not trusted")
+    func unusableContainerFallsBack() throws {
+        // macOS answers the container lookup with a path even when the App
+        // Group entitlement is absent — measured on macOS Debug, where the
+        // entitlement is deliberately left out — and the sandbox then denies
+        // creating the directory. Simulated portably by parking the container
+        // inside a *file*, where creation must fail on every platform.
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("not-a-directory-\(UUID().uuidString)")
+        try Data().write(to: parent)
+        defer { try? FileManager.default.removeItem(at: parent) }
+
+        let store = SharedSnapshotStore.resolve(appGroupIdentifier: "group.app.gethog") { _ in
+            parent.appendingPathComponent("group.app.gethog", isDirectory: true)
+        }
+
+        // The documented fallback, exactly as if the lookup had answered nil:
+        // an honest "not shared" beats a directory every write bounces off.
+        #expect(store.isSharedContainer == false)
+        #expect(store.directory.lastPathComponent == "GetHogShared")
+    }
+
+    @Test("the usability probe's verdict decides shared-container status")
+    func probeVerdictDecides() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("probe-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let trusted = SharedSnapshotStore.resolve(
+            appGroupIdentifier: "group.app.gethog",
+            container: { _ in dir },
+            probe: { _ in true }
+        )
+        #expect(trusted.isSharedContainer)
+        #expect(trusted.directory == dir)
+
+        let refused = SharedSnapshotStore.resolve(
+            appGroupIdentifier: "group.app.gethog",
+            container: { _ in dir },
+            probe: { _ in false }
+        )
+        #expect(refused.isSharedContainer == false)
+        #expect(refused.directory != dir)
+    }
+
+    @Test("a creatable container is created, then trusted")
+    func creatableContainerIsCreatedAndTrusted() throws {
+        // The entitled case: the directory may not exist yet, and resolution
+        // itself must make it usable rather than deferring to the first write.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("group-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = SharedSnapshotStore.resolve(appGroupIdentifier: "group.app.gethog") { _ in dir }
+
+        #expect(store.isSharedContainer)
+        #expect(FileManager.default.fileExists(atPath: dir.path))
     }
 
     @Test("a pending flag write survives the hand-off to the app and is consumed once")
