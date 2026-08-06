@@ -144,18 +144,32 @@ struct SessionsRoot: View {
                 .navigationTitle("Sessions")
                 .toolbar {
                     ProjectSwitcher()
+                    #if os(iOS)
                     ToolbarItem(placement: .topBarTrailing) { filterButton }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        // Playlists are saved views over these same recordings,
-                        // so they live here rather than competing for a tab.
-                        NavigationLink {
-                            PlaylistsView { store.filter = $0 }
+                    ToolbarItem(placement: .topBarTrailing) { playlistsLink }
+                    #endif
+                }
+#if os(macOS)
+                // The customizable half — what "Customize Toolbar…"
+                // rearranges: the same two controls the iOS bar pins, made
+                // rearrangeable, plus the Mac-only Refresh, since
+                // pull-to-refresh does not exist here. The `#if os(iOS)` above
+                // is what keeps them from being drawn twice; `ProjectSwitcher`
+                // stays fixed because it is plain `ToolbarContent` and cannot
+                // sit in a `.toolbar(id:)`.
+                .toolbar(id: "sessions") {
+                    ToolbarItem(id: "filter", placement: .primaryAction) { filterButton }
+                    ToolbarItem(id: "playlists", placement: .primaryAction) { playlistsLink }
+                    ToolbarItem(id: "refresh", placement: .primaryAction) {
+                        Button {
+                            Task { await load() }
                         } label: {
-                            Image(systemName: "list.star")
+                            Label("Refresh", systemImage: "arrow.clockwise")
                         }
-                        .accessibilityLabel("Playlists")
+                        .accessibilityLabel("Refresh sessions")
                     }
                 }
+#endif
                 .projectSubtitle()
                 // Placement is pinned rather than left to `.automatic`, for the
                 // reason recorded on `EventsRoot`: measured on iPad, the
@@ -282,6 +296,21 @@ struct SessionsRoot: View {
                 ? "Filter sessions, \(store.filter.activeCount) active"
                 : "Filter sessions"
         )
+    }
+
+    /// Playlists are saved views over these same recordings, so they live here
+    /// rather than competing for a tab.
+    ///
+    /// A property rather than inline in the toolbar because two toolbars build
+    /// it now — the fixed one on iOS and the customizable one on the Mac — and
+    /// a copy in each would be two controls to keep in step.
+    private var playlistsLink: some View {
+        NavigationLink {
+            PlaylistsView { store.filter = $0 }
+        } label: {
+            Image(systemName: "list.star")
+        }
+        .accessibilityLabel("Playlists")
     }
 
     @ViewBuilder

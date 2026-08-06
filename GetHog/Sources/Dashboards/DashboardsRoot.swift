@@ -147,6 +147,27 @@ struct DashboardsRoot: View {
             .toolbar(removing: .sidebarToggle)
             .navigationTitle("Dashboards")
             .toolbar { ProjectSwitcher() }
+#if os(macOS)
+            // The customizable half of this bar — what "Customize Toolbar…"
+            // rearranges. The switcher above stays in the fixed toolbar
+            // deliberately: `ProjectSwitcher` is plain `ToolbarContent` and
+            // cannot sit in a `.toolbar(id:)`, and project context is not
+            // optional chrome anyway. Fixed and customizable items coexist.
+            //
+            // Refresh earns a visible control here because pull-to-refresh does
+            // not exist on the Mac — this and ⌘R are the same closure wearing
+            // two coats.
+            .toolbar(id: "dashboards") {
+                ToolbarItem(id: "refresh", placement: .primaryAction) {
+                    Button {
+                        Task { await load() }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh dashboards")
+                }
+            }
+#endif
             .projectSubtitle()
             .searchable(text: $search, prompt: "Search dashboards")
             .screenRefreshable { await load() }
