@@ -695,10 +695,7 @@ struct TimeSeriesChart: View {
         guard let selectedDate else { return [] }
         return series.enumerated().compactMap { index, s in
             guard s.datedPoints != nil,
-                  let nearest = s.points.filter({ $0.date != nil }).min(by: {
-                      abs(($0.date ?? .distantPast).timeIntervalSince(selectedDate))
-                          < abs(($1.date ?? .distantPast).timeIntervalSince(selectedDate))
-                  })
+                  let nearest = ChartScrubMath.nearestDatedPoint(in: s.points, to: selectedDate)
             else { return nil }
             return (s, nearest, index)
         }
