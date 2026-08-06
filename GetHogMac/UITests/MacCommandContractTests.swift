@@ -281,13 +281,24 @@ final class MacCommandContractTests: XCTestCase {
             // set `allowsUserCustomization` false. Both screens now declare one
             // toolbar — see `PinnedProjectSwitcher`.
             //
-            // `enabled` is printed rather than asserted because this is the
-            // sighted half: the probe measured the toolbar, not this menu item,
-            // and it could not answer whether the *detail* column's own plain
-            // `.toolbar` re-disables the window's once a dashboard or a
-            // recording is open. Pinning either answer here without a screen
-            // would be writing a guess into the suite.
+            // `enabled` is asserted as well, which it could not be when this was
+            // written: the standalone probe measured `NSWindow.toolbar` rather
+            // than this menu item, so whether the item itself validates enabled
+            // needed a screen. It has now had one — a sighted run measured
+            // `present=true enabled=true` on both screens, opened the palette on
+            // both ("Drag your favorite items into the toolbar…", offering
+            // Refresh, Flexible Space and Search), dragged a Flexible Space into
+            // the Dashboards bar, and read the result back out of the app's own
+            // `NSToolbar Configuration dashboards` autosave, where the six-item
+            // `TB Item Identifiers` now differs from the five-item default. The
+            // pinned `project` item never reaches the palette, which is what
+            // `.customizationBehavior(.disabled)` is for.
             XCTAssertTrue(present, "View has no Customize Toolbar… on \(anchor)'s screen.")
+            XCTAssertTrue(
+                enabled,
+                "Customize Toolbar… is present but disabled on \(anchor)'s screen — "
+                    + "the window's toolbar is refusing customisation again."
+            )
         }
         XCTAssertEqual(app.state, .runningForeground, "Customising the toolbar took the app down.")
     }
