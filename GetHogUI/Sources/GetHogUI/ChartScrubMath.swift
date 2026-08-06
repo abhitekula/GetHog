@@ -10,7 +10,7 @@ import GetHogKit
 /// path (`chartHoverSelection` converts the pointer location, then resolves
 /// through the same property). One copy is what keeps the value a hover shows
 /// and the value a finger reaches identical by construction.
-enum ChartScrubMath {
+public enum ChartScrubMath {
 
     /// The dated point nearest to `date`, or `nil` when no point carries one.
     ///
@@ -18,7 +18,7 @@ enum ChartScrubMath {
     /// is the shipped one, now stated as a testable fact. Ties resolve to the
     /// earlier point: `min(by:)` keeps the first of two equal elements, and
     /// trends points arrive in chronological order.
-    static func nearestDatedPoint(in points: [Point], to date: Date) -> Point? {
+    public static func nearestDatedPoint(in points: [Point], to date: Date) -> Point? {
         points.filter({ $0.date != nil }).min(by: {
             abs(($0.date ?? .distantPast).timeIntervalSince(date))
                 < abs(($1.date ?? .distantPast).timeIntervalSince(date))
@@ -33,7 +33,7 @@ enum ChartScrubMath {
     /// Both arguments are in the same coordinate space (the chart overlay's);
     /// the result is relative to the plot's leading edge, which is the
     /// coordinate `ChartProxy.value(atX:)` expects.
-    static func plotX(of location: CGPoint, in plotFrame: CGRect) -> CGFloat? {
+    public static func plotX(of location: CGPoint, in plotFrame: CGRect) -> CGFloat? {
         guard plotFrame.contains(location) else { return nil }
         return location.x - plotFrame.minX
     }

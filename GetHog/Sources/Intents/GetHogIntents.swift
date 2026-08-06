@@ -1,6 +1,7 @@
 import AppIntents
 import Foundation
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 // MARK: - Open a dashboard

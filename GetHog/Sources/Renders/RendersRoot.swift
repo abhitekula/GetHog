@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// The render library: session recordings PostHog has turned into video files.

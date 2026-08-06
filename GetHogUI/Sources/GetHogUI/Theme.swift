@@ -10,11 +10,11 @@ import AppKit
 /// Deliberately restrained: chrome stays monochrome and semantic so light and
 /// dark come free, and colour is reserved almost entirely for chart series and
 /// status. Dense dashboards need calm surroundings.
-enum Theme {
+public enum Theme {
 
     /// App tint. Chosen deliberately away from PostHog's blue/orange, both for
     /// trademark distance and so the app never reads as first-party.
-    static let accent = Color(
+    public static let accent = Color(
         light: Color(red: 0.043, green: 0.431, blue: 0.459),   // #0B6E75 deep teal
         dark: Color(red: 0.243, green: 0.773, blue: 0.808)     // #3EC5CE
     )
@@ -25,26 +25,26 @@ enum Theme {
     /// paper tone. It is the single change that stops the app reading as a
     /// default-styled iOS shell, and it makes a plain white card look like a
     /// deliberate surface instead of the absence of one.
-    static let pageBackground = Color(
+    public static let pageBackground = Color(
         light: Color(hex: 0xF2EFE9),
         dark: Color(hex: 0x151413)
     )
 
     /// Cards stay near-white so data sits on the highest-contrast surface
     /// available; the page tone is what does the work of separating them.
-    static let cardBackground = Color(
+    public static let cardBackground = Color(
         light: Color(hex: 0xFFFFFF),
         dark: Color(hex: 0x1F1E1C)
     )
 
     /// Neutral letterbox behind locally rendered session replays.
-    static let replayStageBackground = Color.black
+    public static let replayStageBackground = Color.black
 
     /// Warm border, a shade darker than the page.
     ///
     /// Load-bearing rather than decorative: a white card on a pale ground has no
     /// edge of its own, and the hard-offset shadow below hangs off this line.
-    static let hairline = Color(
+    public static let hairline = Color(
         light: Color(hex: 0xDDD6C9),
         dark: Color(hex: 0x38342F)
     )
@@ -77,10 +77,10 @@ enum Theme {
     /// so hierarchy survives the fix. What changes is that the bottom step now
     /// recedes by being *lighter than the text above it* rather than by being
     /// too faint to read.
-    enum Ink {
+    public enum Ink {
         /// 7.98:1 on `cardBackground`, 6.95:1 on `pageBackground`;
         /// 9.14:1 and 10.09:1 in dark. Replaces `.secondary` on text.
-        static let secondary = Color(
+        public static let secondary = Color(
             light: Color(hex: 0x55504A),
             dark: Color(hex: 0xC6BFB5)
         )
@@ -91,7 +91,7 @@ enum Theme {
         /// Deliberately not parked on the 4.5:1 line: the ratios above are
         /// computed on the flat colours, and rendered glyphs are antialiased
         /// against the surface, so a value that clears exactly can measure under.
-        static let tertiary = Color(
+        public static let tertiary = Color(
             light: Color(hex: 0x6B6259),
             dark: Color(hex: 0x9C948A)
         )
@@ -149,28 +149,28 @@ enum Theme {
     /// `.borderedProminent`/`.glassProminent` and no label drawn over an accent
     /// fill anywhere in `GetHogWidgets/`. See the note on
     /// `WidgetPalette.accent`.
-    static let inkOnAccent = Color(
+    public static let inkOnAccent = Color(
         light: Color(hex: 0xFFFFFF),
         dark: Color(hex: 0x151413)
     )
 
     /// A second accent for chrome that needs warmth without competing with the
     /// data — badges, small-caps section headers, selected pills.
-    static let accentWarm = Color(
+    public static let accentWarm = Color(
         light: Color(hex: 0xC2410C),
         dark: Color(hex: 0xEA8C4F)
     )
 
-    enum SignalChrome {
-        static let teal = Theme.accent
-        static let coral = Theme.accentWarm
-        static let clay = Color(
+    public enum SignalChrome {
+        public static let teal = Theme.accent
+        public static let coral = Theme.accentWarm
+        public static let clay = Color(
             light: Color(hex: 0x865A3B),
             dark: Color(hex: 0xD6A178)
         )
-        static let ink = Theme.Ink.tertiary
+        public static let ink = Theme.Ink.tertiary
 
-        static let all = [teal, coral, clay, ink]
+        public static let all = [teal, coral, clay, ink]
     }
 
     /// Glass tint for a control in its **selected** state.
@@ -184,7 +184,7 @@ enum Theme {
     ///
     /// Warmth now lives entirely in the content layer — ground, cards,
     /// hairlines — and the navigation layer is left as system glass.
-    static let glassActiveTint = Color(
+    public static let glassActiveTint = Color(
         light: Color(red: 0.043, green: 0.431, blue: 0.459).opacity(0.16),
         dark: Color(red: 0.243, green: 0.773, blue: 0.808).opacity(0.20)
     )
@@ -194,37 +194,37 @@ enum Theme {
     /// analytics screen is exactly where that trade goes bad.
     ///
     /// All of them are semantic, so Dynamic Type works without per-screen care.
-    enum Typography {
+    public enum Typography {
         /// Big numbers. Rounded because it reads as a figure rather than prose,
         /// and monospaced digits so a value updating in place doesn't reflow.
-        static let metric = Font.system(.largeTitle, design: .rounded, weight: .semibold)
+        public static let metric = Font.system(.largeTitle, design: .rounded, weight: .semibold)
             .monospacedDigit()
         /// A smaller metric, for tiles that sit several to a row.
-        static let metricSmall = Font.system(.title2, design: .rounded, weight: .semibold)
+        public static let metricSmall = Font.system(.title2, design: .rounded, weight: .semibold)
             .monospacedDigit()
-        static let title = Font.headline
-        static let body = Font.subheadline
-        static let caption = Font.caption
+        public static let title = Font.headline
+        public static let body = Font.subheadline
+        public static let caption = Font.caption
     }
 
     /// One spacing scale, so rhythm is consistent rather than per-screen taste.
     /// Multiples of 4, which is what the system's own metrics are built on.
-    enum Space {
-        static let xs: CGFloat = 4
-        static let s: CGFloat = 8
-        static let m: CGFloat = 12
-        static let l: CGFloat = 16
-        static let xl: CGFloat = 24
-        static let xxl: CGFloat = 32
+    public enum Space {
+        public static let xs: CGFloat = 4
+        public static let s: CGFloat = 8
+        public static let m: CGFloat = 12
+        public static let l: CGFloat = 16
+        public static let xl: CGFloat = 24
+        public static let xxl: CGFloat = 32
     }
 
     /// Corner radii, always drawn `.continuous`. The system's own shapes use
     /// continuous curvature; a circular radius next to them reads as subtly
     /// wrong even when nobody can say why.
-    enum Radius {
-        static let small: CGFloat = 10
-        static let medium: CGFloat = 16
-        static let large: CGFloat = 22
+    public enum Radius {
+        public static let small: CGFloat = 10
+        public static let medium: CGFloat = 16
+        public static let large: CGFloat = 22
     }
 
     /// Depth as a hard offset rather than a blur.
@@ -234,15 +234,19 @@ enum Theme {
     /// paper. A soft radial blur reads as a slide-deck drop shadow instead, and
     /// at these small sizes it just muddies the edge. The tint is warm because a
     /// neutral black shadow on a cream ground goes visibly grey.
-    struct Elevation {
+    /// `Sendable` is spelled out rather than inferred: both members already
+    /// satisfy it, but an internal struct gets the conformance for free and a
+    /// public one does not, so the two statics below stop being concurrency-safe
+    /// globals the moment the type crosses a module boundary.
+    public struct Elevation: Sendable {
         let ambient: (color: Color, radius: CGFloat, y: CGFloat)
         let key: (color: Color, radius: CGFloat, y: CGFloat)
 
-        static let card = Elevation(
+        public static let card = Elevation(
             ambient: (Color(light: Color(hex: 0x4A3F2F).opacity(0.10), dark: .black.opacity(0.5)), 0, 1.5),
             key: (Color(light: Color(hex: 0x4A3F2F).opacity(0.06), dark: .black.opacity(0.35)), 6, 3)
         )
-        static let raised = Elevation(
+        public static let raised = Elevation(
             ambient: (Color(light: Color(hex: 0x4A3F2F).opacity(0.14), dark: .black.opacity(0.6)), 0, 2),
             key: (Color(light: Color(hex: 0x4A3F2F).opacity(0.10), dark: .black.opacity(0.45)), 14, 7)
         )
@@ -284,12 +288,12 @@ enum Theme {
     /// argument about a 9pt word.
     ///
     /// So the marks keep their values and words take `ink(for:)`.
-    enum Status {
-        static let good = Color(
+    public enum Status {
+        public static let good = Color(
             light: Color(red: 0.0, green: 0.514, blue: 0.0),
             dark: Color(red: 0.212, green: 0.729, blue: 0.404)
         )
-        static let critical = Color(
+        public static let critical = Color(
             light: Color(red: 0.890, green: 0.286, blue: 0.282),
             dark: Color(red: 0.902, green: 0.404, blue: 0.404)
         )
@@ -305,21 +309,21 @@ enum Theme {
         // itself and only `critical`, at 4.21:1, needs a lighter partner.
 
         /// 5.70:1 / 5.02:1 on its chip, card and page.
-        static let goodInk = Color(light: Color(hex: 0x006800), dark: good)
+        public static let goodInk = Color(light: Color(hex: 0x006800), dark: good)
 
         /// 5.66:1 / 4.99:1 light; 5.14:1 / 5.75:1 dark, up from 4.21:1 / 4.71:1.
-        static let criticalInk = Color(
+        public static let criticalInk = Color(
             light: Color(hex: 0xA13433),
             dark: Color(hex: 0xF37B7B)
         )
 
         /// Partner to `Theme.accentWarm`, the warning tint. 5.68:1 / 5.01:1.
-        static let warningInk = Color(light: Color(hex: 0x9E350A), dark: Theme.accentWarm)
+        public static let warningInk = Color(light: Color(hex: 0x9E350A), dark: Theme.accentWarm)
 
         /// Partner to `Theme.accent`, which pills use for in-flight states.
         /// 5.70:1 / 5.02:1 — it was the one tint that cleared AA on a card, and
         /// it still failed on the page at 4.24:1.
-        static let accentInk = Color(light: Color(hex: 0x0A6268), dark: Theme.accent)
+        public static let accentInk = Color(light: Color(hex: 0x0A6268), dark: Theme.accent)
 
         /// The ink that belongs with a pill's tint.
         ///
@@ -331,7 +335,7 @@ enum Theme {
         /// chip in the table above, so the fallback is legible by construction
         /// rather than by luck. It gives up the word's hue, which is why the
         /// four tints that carry severity are named here instead.
-        static func ink(for tint: Color) -> Color {
+        public static func ink(for tint: Color) -> Color {
             inkByTint[swatchKey(tint)] ?? Theme.Ink.secondary
         }
 
@@ -381,7 +385,7 @@ enum Theme {
 /// Three light-mode hues sit below 3:1 against the light surface, so the
 /// **relief rule** applies: charts using them always ship a legend and direct
 /// labels, never colour alone.
-enum SeriesPalette {
+public enum SeriesPalette {
     /// Slot order is a brand decision, not alphabetical: slot 0 is what every
     /// single-series tile in the app is painted, which makes it the app's most
     /// visible colour after the accent itself. It used to be the blue — so the
@@ -413,17 +417,17 @@ enum SeriesPalette {
         Color(hex: 0xE66767),
     ]
 
-    static let slotCount = 8
+    public static let slotCount = 8
 
     /// Colour follows the entity's fixed slot, never its rank — filtering a
     /// series list must not repaint the survivors.
-    static func color(at index: Int) -> Color {
+    public static func color(at index: Int) -> Color {
         let slot = index % slotCount
         return Color(light: light[slot], dark: dark[slot])
     }
 
     /// Secondary encoding so identity never rests on hue alone.
-    static func symbol(at index: Int) -> String {
+    public static func symbol(at index: Int) -> String {
         let symbols = ["circle.fill", "square.fill", "triangle.fill", "diamond.fill",
                        "hexagon.fill", "pentagon.fill", "rhombus.fill", "seal.fill"]
         return symbols[index % symbols.count]

@@ -1,4 +1,5 @@
 import CoreGraphics
+import GetHogUI
 import ImageIO
 import GetHogKit
 import SwiftUI

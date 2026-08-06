@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// A saved insight on its own screen.

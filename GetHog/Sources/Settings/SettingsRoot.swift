@@ -1,3 +1,4 @@
+import GetHogUI
 import LocalAuthentication
 import GetHogKit
 import SwiftUI

@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import GetHogKit
+import GetHogUI
 import Testing
 
 @testable import GetHog

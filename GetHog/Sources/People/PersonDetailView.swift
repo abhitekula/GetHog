@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// One person's most recent events, read straight from HogQL.

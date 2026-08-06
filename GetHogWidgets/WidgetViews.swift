@@ -1,5 +1,6 @@
 import AppIntents
 import GetHogKit
+import GetHogUI
 import SwiftUI
 import WidgetKit
 

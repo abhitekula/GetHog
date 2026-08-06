@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// The alerts PostHog is running on one insight — see them, set one, silence one.

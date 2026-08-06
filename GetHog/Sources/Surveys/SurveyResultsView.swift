@@ -1,5 +1,6 @@
 import Charts
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// Loads one survey's results.

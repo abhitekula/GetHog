@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 /// The shared screen vocabulary.

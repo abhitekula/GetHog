@@ -57,7 +57,7 @@ private struct ChartHoverSelection: ViewModifier {
 
 extension View {
     /// Hover-driven twin of `.chartXSelection(value:)` for macOS call sites.
-    func chartHoverSelection(_ selection: Binding<Date?>) -> some View {
+    public func chartHoverSelection(_ selection: Binding<Date?>) -> some View {
         modifier(ChartHoverSelection(selection: selection))
     }
 }
@@ -125,12 +125,12 @@ struct ChartHoverOutlineModifier: ViewModifier {
 
 extension View {
     /// macOS hover highlight for a discrete chart row; no-op on iOS.
-    func chartHoverHighlight() -> some View {
+    public func chartHoverHighlight() -> some View {
         modifier(ChartHoverHighlightModifier())
     }
 
     /// macOS hover outline for a filled cell; no-op on iOS.
-    func chartHoverOutline(cornerRadius: CGFloat = 3) -> some View {
+    public func chartHoverOutline(cornerRadius: CGFloat = 3) -> some View {
         modifier(ChartHoverOutlineModifier(cornerRadius: cornerRadius))
     }
 }

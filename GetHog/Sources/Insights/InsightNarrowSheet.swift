@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// Narrowing the insight in front of you: one property filter, and one breakdown.

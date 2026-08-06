@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// The network pane of the replay screen: a waterfall of everything the

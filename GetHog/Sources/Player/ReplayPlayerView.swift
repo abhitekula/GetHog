@@ -1,3 +1,4 @@
+import GetHogUI
 import Observation
 import GetHogKit
 import SwiftUI

@@ -1,4 +1,5 @@
 import Foundation
+import GetHogUI
 import Testing
 
 @testable import GetHog

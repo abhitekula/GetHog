@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 /// Width caps, and the label/value row that applies them.

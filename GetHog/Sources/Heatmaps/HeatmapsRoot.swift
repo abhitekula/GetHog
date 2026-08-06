@@ -1,6 +1,7 @@
 import Accessibility
 import Charts
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// Which of the three clickmap questions is on screen.

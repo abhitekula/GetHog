@@ -1,5 +1,6 @@
 import AppKit
 import GetHogKit
+import GetHogUI
 import Observation
 import SwiftUI
 

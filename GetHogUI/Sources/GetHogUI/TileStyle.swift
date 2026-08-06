@@ -8,9 +8,9 @@ import SwiftUI
 /// data inside it. Two dashboards showing different numbers should still look
 /// like the same dashboard, and a funnel should be findable at a glance without
 /// reading its title.
-enum TileStyle {
+public enum TileStyle {
 
-    static func symbol(for model: InsightRenderModel) -> String {
+    public static func symbol(for model: InsightRenderModel) -> String {
         switch model {
         case .timeSeries(_, let style):
             switch style {
@@ -31,7 +31,7 @@ enum TileStyle {
 
     /// Spine colour. Chrome stays distinct from the series palette so it never
     /// implies a relationship to the data inside the tile.
-    static func accent(for model: InsightRenderModel) -> Color {
+    public static func accent(for model: InsightRenderModel) -> Color {
         switch model {
         case .timeSeries, .bigNumber: Theme.SignalChrome.teal
         case .barValue, .retention: Theme.SignalChrome.clay
@@ -53,7 +53,7 @@ enum TileStyle {
     /// series — reads fine in half an iPad, and letting charts span too was
     /// worse than not spanning at all: on a two-column grid it made every tile
     /// full width and collapsed the layout back into one tall column.
-    static func preferredColumns(for model: InsightRenderModel) -> Int {
+    public static func preferredColumns(for model: InsightRenderModel) -> Int {
         switch model {
         // Wide by nature: a retention grid is a table, a paths graph is a
         // flow, and lifecycle stacks four series with a four-item legend —

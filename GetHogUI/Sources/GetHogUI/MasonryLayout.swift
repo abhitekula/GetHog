@@ -9,7 +9,7 @@ import SwiftUI
 /// with nothing below it. Placing by shortest column removes the holes; letting
 /// a time series claim two columns stops a month of dates being crushed into a
 /// third of the width.
-struct MasonryLayout: Layout {
+public struct MasonryLayout: Layout {
     /// Upper bound on columns. The layout uses fewer when the width cannot give
     /// each one `minColumnWidth`.
     var columns: Int
@@ -34,6 +34,12 @@ struct MasonryLayout: Layout {
     /// suite pins the 490pt case for exactly this reason.
     var minColumnWidth: CGFloat = 230
 
+    public init(columns: Int, spacing: CGFloat = Theme.Space.l, minColumnWidth: CGFloat = 230) {
+        self.columns = columns
+        self.spacing = spacing
+        self.minColumnWidth = minColumnWidth
+    }
+
     /// Columns that actually fit in `width`.
     ///
     /// The finiteness check is load-bearing, not defensive. A `Layout` is
@@ -44,27 +50,27 @@ struct MasonryLayout: Layout {
     ///
     /// This is the same trap as `JSONValue.stringValue`, fixed earlier in this
     /// project for the same reason: a `> 0` guard does not exclude infinity.
-    func columnCount(for width: CGFloat) -> Int {
+    public func columnCount(for width: CGFloat) -> Int {
         guard width.isFinite, width > 0 else { return columns }
         let fitting = Int((width + spacing) / (minColumnWidth + spacing))
         return max(1, min(columns, fitting))
     }
 
-    struct Cache {
+    public struct Cache {
         var heights: [CGFloat] = []
         var placements: [(x: CGFloat, y: CGFloat, width: CGFloat)] = []
     }
 
-    func makeCache(subviews: Subviews) -> Cache { Cache() }
+    public func makeCache(subviews: Subviews) -> Cache { Cache() }
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
         let width = proposal.replacingUnspecifiedDimensions().width
         let solved = solve(width: width, subviews: subviews)
         cache = solved
         return CGSize(width: width, height: solved.heights.max() ?? 0)
     }
 
-    func placeSubviews(
+    public func placeSubviews(
         in bounds: CGRect,
         proposal: ProposedViewSize,
         subviews: Subviews,
@@ -149,7 +155,7 @@ private struct TileSpanKey: LayoutValueKey {
 }
 
 extension View {
-    func tileSpan(_ span: Int) -> some View {
+    public func tileSpan(_ span: Int) -> some View {
         layoutValue(key: TileSpanKey.self, value: span)
     }
 }

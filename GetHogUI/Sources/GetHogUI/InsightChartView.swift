@@ -24,7 +24,7 @@ import SwiftUI
 /// Multi-series charts always carry a legend plus symbol marks so identity never
 /// rests on colour alone — which is also the relief the light-mode palette's
 /// contrast warning requires.
-struct InsightChartView: View {
+public struct InsightChartView: View {
     let model: InsightRenderModel
     var compact: Bool = true
     var webURL: URL?
@@ -39,7 +39,21 @@ struct InsightChartView: View {
     /// scrub gesture to teach. Off by default — see `TimeSeriesChart.body`.
     var showsScrubTip: Bool = false
 
-    var body: some View {
+    public init(
+        model: InsightRenderModel,
+        compact: Bool = true,
+        webURL: URL? = nil,
+        title: String = "",
+        showsScrubTip: Bool = false
+    ) {
+        self.model = model
+        self.compact = compact
+        self.webURL = webURL
+        self.title = title
+        self.showsScrubTip = showsScrubTip
+    }
+
+    public var body: some View {
         switch model {
         case .timeSeries(let series, let style):
             TimeSeriesChart(

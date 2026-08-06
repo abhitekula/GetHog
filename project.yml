@@ -9,6 +9,8 @@ options:
 packages:
   GetHogKit:
     path: GetHogKit
+  GetHogUI:
+    path: GetHogUI
 
 settings:
   base:
@@ -33,6 +35,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: GetHogKit
+      - package: GetHogUI
       - target: GetHogWidgets
         embed: true
     settings:
@@ -107,14 +110,16 @@ targets:
       # crosses the process boundary anyway. Compiling the file here also pulled
       # `IntentDonations` — and therefore the whole intents directory — in behind
       # it, which is how the two entries kept each other alive.
-      # The one design token file. Two places had hand-copied `Theme.accent`'s
-      # literals under a comment saying importing it here was impossible; it
-      # never was — `Theme.swift` imports only SwiftUI and UIKit and depends on
-      # nothing else in the app target. Compiling it here is what lets a widget
-      # and the app that owns it be the same colour by construction.
-      - path: GetHog/Sources/Common/Theme.swift
     dependencies:
       - package: GetHogKit
+      # The design tokens used to arrive as a single compiled-in file,
+      # `GetHog/Sources/Common/Theme.swift`, because two places had hand-copied
+      # `Theme.accent`'s literals under a comment saying importing it here was
+      # impossible. It never was, and now it is not even a file: `Theme` lives
+      # in GetHogUI, which the app links too — so a widget and the app that
+      # owns it are the same colour by construction, which is what compiling
+      # the file in used to buy.
+      - package: GetHogUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.Widgets
@@ -147,6 +152,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: GetHogKit
+      - package: GetHogUI
       - target: GetHogMacWidgets
         embed: true
     settings:
@@ -205,12 +211,12 @@ targets:
           # in GetHogMacWidgets/Sources registers the three that do exist.
           - GetHogWidgetBundle.swift
           - ControlCenterWidgets.swift
+    dependencies:
+      - package: GetHogKit
       # Same token-sharing move as the iOS extension (see the comment on that
       # target): a widget is the last surface that can afford to be a different
       # colour from the app it belongs to.
-      - path: GetHog/Sources/Common/Theme.swift
-    dependencies:
-      - package: GetHogKit
+      - package: GetHogUI
     settings:
       base:
         # The same bundle id and product name as the iOS extension, which is
@@ -244,6 +250,7 @@ targets:
     dependencies:
       - target: GetHog
       - package: GetHogKit
+      - package: GetHogUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTests

@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 /// The filter chips above the console and network panes, in a strip that says

@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 struct BrandMotionValues: Equatable {

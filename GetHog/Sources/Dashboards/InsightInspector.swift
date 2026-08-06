@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// Insight detail shown beside a dashboard rather than over it.

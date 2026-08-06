@@ -1,5 +1,6 @@
 import Foundation
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 struct SessionReplayMarker: Identifiable, Equatable, Sendable {

@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// The Mac shell. The same one-`TabView` architecture as `RootView` — and the

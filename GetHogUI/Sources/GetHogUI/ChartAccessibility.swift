@@ -86,9 +86,9 @@ enum ChartNaming {
 /// the sentence a reader hears on the grid is the same one the rotor gives them
 /// inside the chart. Two texts saying the same thing in different words is how
 /// they drift apart.
-enum InsightSummary {
+public enum InsightSummary {
 
-    static func spoken(_ model: InsightRenderModel) -> String {
+    public static func spoken(_ model: InsightRenderModel) -> String {
         switch model {
         case .timeSeries(let series, _): timeSeries(series)
         case .barValue(let bars): barValue(bars)
@@ -109,40 +109,40 @@ enum InsightSummary {
     /// middle, where a full stop of its own does no harm. The caller that *does*
     /// need the helper is `TileCard.spokenLabel`, which leads with the insight's
     /// name.
-    static func timeSeries(_ series: [Series]) -> String {
+    public static func timeSeries(_ series: [Series]) -> String {
         series
             .map { "\($0.label) totals \($0.total.formatted())" }
             .joined(separator: ". ")
     }
 
-    static func barValue(_ bars: [BarValue]) -> String {
+    public static func barValue(_ bars: [BarValue]) -> String {
         "\(bars.count) categories, highest \(bars.first?.label ?? "")"
     }
 
-    static func lifecycle(_ series: [LifecycleSeries]) -> String {
+    public static func lifecycle(_ series: [LifecycleSeries]) -> String {
         series
             .map { "\($0.status.title) \($0.total.formatted())" }
             .joined(separator: ", ")
     }
 
-    static func stickiness(_ series: [StickinessSeries]) -> String {
+    public static func stickiness(_ series: [StickinessSeries]) -> String {
         series
             .map { "\($0.label): \($0.total.formatted()) users" }
             .joined(separator: ", ")
     }
 
-    static func funnel(_ groups: [FunnelGroup]) -> String {
+    public static func funnel(_ groups: [FunnelGroup]) -> String {
         let primary = groups.first
         let conversion = (primary?.conversionRate ?? 0)
             .formatted(.percent.precision(.fractionLength(0...1)))
         return "Funnel with \(primary?.steps.count ?? 0) steps, \(conversion) overall conversion"
     }
 
-    static func retention(_ grid: RetentionGrid) -> String {
+    public static func retention(_ grid: RetentionGrid) -> String {
         "\(grid.cohorts.count) cohorts over \(grid.intervalCount) intervals"
     }
 
-    static func paths(_ graph: PathsGraph) -> String {
+    public static func paths(_ graph: PathsGraph) -> String {
         guard let busiest = graph.edges.first else { return "No transitions" }
         return "\(graph.edges.count) transitions, busiest \(busiest.source) to \(busiest.target)"
     }

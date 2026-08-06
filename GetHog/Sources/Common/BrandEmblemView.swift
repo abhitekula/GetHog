@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 enum BrandEmblem: String, CaseIterable, Equatable {

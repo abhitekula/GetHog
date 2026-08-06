@@ -1,5 +1,6 @@
 import Charts
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 // MARK: - Chrome
