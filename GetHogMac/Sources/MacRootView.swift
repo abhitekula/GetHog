@@ -1,36 +1,171 @@
+import GetHogKit
 import SwiftUI
 
-/// Temporary macOS shell: the sidebar-adaptable skeleton over the shared
-/// section model. Task 4 replaces the placeholders with the real screens and
-/// the shared navigation state; this exists so the target has a launchable
-/// root while the seams settle.
+/// The Mac shell. The same one-`TabView` architecture as `RootView` — and the
+/// same `AppTab.sections` source of truth, third consumer — rendered as a real
+/// sidebar by `.sidebarAdaptable`, with every compact-width mechanism deleted
+/// rather than ported: no sheet hoisting (details push inline), no "More"
+/// index, no tab-slot preference. Settings has no sidebar row; the `Settings`
+/// scene owns ⌘,.
 struct MacRootView: View {
-    @State private var selection: AppTab = .dashboards
+    @Environment(AppModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
-    /// Injected now, before any real screen arrives, because ~25 shared
-    /// screens read it non-optionally and the first one Task 4 mounts would
-    /// otherwise trap.
+    @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
+    /// The search tab's stack — heterogeneous for the reason RootView's is:
+    /// screen results push `AppTab`, links push `PostHogLink`.
+    @State private var searchPath = NavigationPath()
     @State private var openDetails = OpenDetails()
+    /// One object above list and detail, as on iOS — see RootView for the
+    /// disagreement this prevents.
+    @State private var surveyLifecycle = SurveyLifecycleController()
+    @State private var experimentLifecycle = ExperimentLifecycleController()
+    /// Same store key as the iPad sidebar, per the spec: one arrangement
+    /// preference, whichever platform is looking at it.
+    @AppStorage("sidebarCustomization") private var sidebarCustomization = TabViewCustomization()
+    /// Set only when a link could not do what it said. Success is silent.
+    @State private var linkNotice: LinkNotice?
+    @State private var hasAppliedDebugTab = false
+
+    /// The sidebar's shape, named statically so shell tests can pin it without
+    /// mounting a view: Search loose at the top, then every section, Settings
+    /// nowhere.
+    static let looseTabs: [AppTab] = [.search]
+    static let sections: [AppTabSection] = AppTab.sections
 
     var body: some View {
-        TabView(selection: $selection) {
+        switch model.phase {
+        case .loading:
+            VStack(spacing: Theme.Space.m) {
+                BrandConnectingAccent()
+                ProgressView("Connecting…")
+                    .controlSize(.large)
+            }
+
+        case .onboarding:
+            OnboardingView()
+
+        case .ready:
+            tabs
+        }
+    }
+
+    private var tabs: some View {
+        TabView(selection: $selectedTab) {
+            searchTab
             sidebarSections
-            tabItems(for: AppTab.utility)
         }
         .tabViewStyle(.sidebarAdaptable)
+        .tabViewCustomization($sidebarCustomization)
+        // Nothing typed into this app is a sentence by default — see RootView's
+        // note for the measurement. The Mac half of that pair is autocorrection;
+        // there is no software keyboard to stop capitalising.
+        .autocorrectionDisabled()
         .environment(openDetails)
+        // The Go menu's whole surface (Task 5). Published from the ready phase
+        // only, so the menu items are correctly disabled while the app is still
+        // connecting or asking for a key.
+        .focusedSceneValue(\.openTab, OpenTabAction { open($0) })
+        .onAppear {
+            // Scene storage can only hold what this shell wrote, but the guard
+            // costs one line and a selection with no sidebar row costs a launch.
+            if selectedTab == .settings { selectedTab = .dashboards }
+            // Cold launch: a URL that started the app arrived before this body
+            // existed, so it is waiting rather than lost.
+            routePendingLinks()
+            #if DEBUG
+            // Last, for the reason RootView records: the mailbox above can
+            // navigate, and an explicitly requested launch destination is the
+            // most specific instruction the process has.
+            if !hasAppliedDebugTab {
+                hasAppliedDebugTab = true
+                if let raw = DebugLaunch.initialTab, let tab = AppTab(rawValue: raw) {
+                    open(tab)
+                }
+            }
+            #endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: LinkInbox.didChangeNotification)) { _ in
+            routePendingLinks()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: IntentNavigationTarget.didChangeNotification
+            )
+        ) { _ in
+            routePendingLinks()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { routePendingLinks() }
+        }
+        .alert(
+            linkNotice?.title ?? "",
+            isPresented: Binding(
+                get: { linkNotice != nil },
+                set: { if !$0 { linkNotice = nil } }
+            ),
+            presenting: linkNotice
+        ) { notice in
+            if let url = notice.webURL {
+                Button("Open in PostHog") { openURL(url) }
+            }
+            Button("OK", role: .cancel) {}
+        } message: { notice in
+            Text(notice.message)
+        }
+        // Beside the link notice for the same reason it is: a failed
+        // organization switch has no screen of its own to report on, and the
+        // switcher that started it is a menu that has already dismissed itself.
+        .alert(
+            "Couldn't switch organization",
+            isPresented: Binding(
+                get: { model.organizationError != nil },
+                set: { if !$0 { model.organizationError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.organizationError ?? "")
+        }
+        .environment(surveyLifecycle)
+        .environment(experimentLifecycle)
+    }
+
+    // MARK: - Structure
+
+    private var searchTab: some TabContent<AppTab> {
+        Tab(AppTab.search.title, systemImage: AppTab.search.systemImage, value: AppTab.search) {
+            NavigationStack(path: $searchPath) {
+                ProjectSearchView()
+                    .navigationDestination(for: AppTab.self) { tab in
+                        TabRootView(tab: tab)
+                            .onAppear { selectedTab = tab }
+                    }
+                    // Where a link lands. On this stack rather than one of its
+                    // own because a link and a search result open the same
+                    // objects — see RootView's twin.
+                    .navigationDestination(for: PostHogLink.self) { LinkDestinationView(link: $0) }
+            }
+        }
     }
 
     /// Written as `@TabContentBuilder<AppTab>` members rather than inline, for
     /// the reason `RootView` writes its own that way: the builder cannot infer
-    /// one tab value type across a `ForEach` of sections and a `ForEach` of
-    /// loose tabs, and naming it is what keeps the two shapes one `TabView`.
+    /// one tab value type across a loose `Tab` and a `ForEach` of sections.
     @TabContentBuilder<AppTab>
     private var sidebarSections: some TabContent<AppTab> {
-        ForEach(AppTab.sections) { section in
+        // Every section, unfiltered — the Mac has no loose product tabs to
+        // exclude, so `AppTab.sections` is used directly rather than through
+        // `groupedScreens(excluding:)`.
+        ForEach(Self.sections) { section in
             TabSection(section.title) {
                 tabItems(for: section.tabs)
             }
+            // The same ids as the iPad sidebar, so one stored arrangement means
+            // the same thing on both.
+            .customizationID("section.\(section.title)")
         }
     }
 
@@ -38,16 +173,105 @@ struct MacRootView: View {
     private func tabItems(for tabs: [AppTab]) -> some TabContent<AppTab> {
         ForEach(tabs, id: \.self) { tab in
             Tab(tab.title, systemImage: tab.systemImage, value: tab) {
-                placeholder(for: tab)
+                container(for: tab)
+            }
+            .customizationID(tab.rawValue)
+        }
+    }
+
+    /// Every Mac window is regular width (`MacAdaptations` pins the size
+    /// class), so the seven split-view screens always own their container.
+    @ViewBuilder
+    private func container(for tab: AppTab) -> some View {
+        if tab.ownsNavigationContainer(compact: false) {
+            TabRootView(tab: tab)
+        } else {
+            NavigationStack {
+                inlineDetailHost(for: tab)
             }
         }
     }
 
-    private func placeholder(for tab: AppTab) -> some View {
-        ContentUnavailableView(
-            tab.title,
-            systemImage: tab.systemImage,
-            description: Text("The macOS shell arrives in a later task.")
+    /// The Mac ending of the sheet-hoisting story: the four screens that write
+    /// a detail into `OpenDetails` and stop get that detail *pushed* here —
+    /// same `DetailSheetView` switch, same clear-on-dismiss contract (a pop
+    /// writes nil back through the binding), no sheet.
+    @ViewBuilder
+    private func inlineDetailHost(for tab: AppTab) -> some View {
+        if tab.presentsDetailAsSheet {
+            TabRootView(tab: tab)
+                .navigationDestination(item: detailBinding(for: tab)) { detail in
+                    DetailSheetView(presented: PresentedDetail(tab: tab, detail: detail))
+                }
+        } else {
+            TabRootView(tab: tab)
+        }
+    }
+
+    private func detailBinding(for tab: AppTab) -> Binding<AnyHashable?> {
+        Binding(
+            get: { openDetails[tab] },
+            set: { openDetails[tab] = $0 }
         )
+    }
+
+    // MARK: - Navigation
+
+    /// Goes to a destination by name — from the Go menu (through `\.openTab`),
+    /// a link, or `GETHOG_TAB`. Settings has no row; ⌘, territory.
+    private func open(_ tab: AppTab) {
+        guard tab != .settings else {
+            openSettings()
+            return
+        }
+        selectedTab = tab
+        // Asking for search means the field, not whatever the stack last held —
+        // same reset, same reason, as RootView.
+        if tab == .search { searchPath = NavigationPath() }
+    }
+
+    /// Drains everything waiting to be navigated to.
+    private func routePendingLinks() {
+        // No Control-Center `pendingOpen` branch here: nothing writes it on a
+        // Mac. The phase-2 menu bar extra revisits this.
+        if let target = IntentNavigationTarget.consume() {
+            if let staged = target.stagedQuery {
+                LinkInbox.stage(query: staged.term, for: staged.tab)
+            }
+            open(target.linkTarget)
+        }
+        if let url = LinkInbox.consume() {
+            guard let target = PostHogLinkParser.parse(url) else {
+                linkNotice = .unrecognised(url)
+                return
+            }
+            open(target)
+        }
+    }
+
+    /// Goes where a link points, or explains why it can't — see RootView's
+    /// twin for the project-first rationale.
+    private func open(_ target: PostHogLinkTarget) {
+        if let projectID = target.projectID, case .inaccessible = model.selectProject(id: projectID) {
+            linkNotice = .inaccessibleProject(id: projectID)
+            return
+        }
+
+        switch target.link {
+        case .screen(let tab):
+            open(tab)
+        default:
+            guard target.link.opensInApp else {
+                linkNotice = .noScreen(
+                    link: target.link,
+                    webURL: target.link.webPath.flatMap(model.webURL(path:))
+                )
+                return
+            }
+            selectedTab = .search
+            var path = NavigationPath()
+            path.append(target.link)
+            searchPath = path
+        }
     }
 }
