@@ -104,6 +104,16 @@ struct MacCommands: Commands {
         // View ▸ Toggle Sidebar (⌃⌘S), the sanctioned SwiftUI item.
         SidebarCommands()
 
+        // View ▸ Show Toolbar / Customize Toolbar…, likewise sanctioned.
+        //
+        // Not optional here: `DashboardsRoot` and `SessionsRoot` both declare
+        // `.toolbar(id:)` with customisable items, and without this group there
+        // is no way at all to reach that customisation — measured, the View
+        // menu carried no toolbar items and the toolbar's own context menu
+        // offered only "Icon and Text" / "Icon Only". A customisable toolbar
+        // nobody can customise is the declaration silently doing nothing.
+        ToolbarCommands()
+
         CommandGroup(after: .sidebar) {
             Button("Refresh") {
                 guard let screenRefresh else { return }
