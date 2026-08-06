@@ -202,14 +202,14 @@ final class MacReplayTransportTests: XCTestCase {
 
         let field = app.windows.searchFields.firstMatch
         XCTAssertTrue(field.exists, "The sessions screen has no search field.")
-        guard field.isHittable else {
-            // Seen once, and worth naming rather than swallowing: a window left
-            // wider than the screen by an earlier resize puts the toolbar's
-            // trailing search field off the right edge.
-            XCTFail("The search field is off screen (window \(app.windows.firstMatch.frame)).")
-            return
-        }
-        field.click()
+        // Clicked through a coordinate rather than `field.click()`. On a window
+        // as wide as the display XCUITest reports the toolbar's *trailing*
+        // search field as not hittable while it is plainly on screen — the same
+        // frame-space disagreement the status item shows — and `click()` refuses
+        // on that judgement alone. The assertion at the end is the real check:
+        // if the click missed, the query never reaches the field and the test
+        // fails on that.
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         DemoLaunch.pause(0.8)
         // Every transport key, typed as a query.
         field.typeText("a b[]")

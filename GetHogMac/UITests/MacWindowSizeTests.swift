@@ -109,14 +109,59 @@ final class MacWindowSizeTests: XCTestCase {
             + "dashboardsRow exists=\(row.exists) hittable=\(row.exists && row.isHittable)"
     }
 
-    func testNarrowAndWideSweep() {
+    /// Full screen survives a relaunch, and a resize *inside* it is nonsense —
+    /// measured: a narrow drag against a full-screen window produced a 3171pt
+    /// frame. The tell is the window's top: outside full screen it sits below
+    /// the menu bar, inside it the menu bar is hidden and the window starts at
+    /// the very top of the display.
+    private func leaveFullScreen(_ app: XCUIApplication) {
+        guard app.windows.firstMatch.frame.minY < 50 else { return }
+        app.typeKey("f", modifierFlags: [.command, .control])
+        DemoLaunch.pause(5)
+        print("PHASEB-SIZE left-full-screen frame=\(app.windows.firstMatch.frame)")
+    }
+
+    /// Opt-in, exactly like `MacSurfaceSweepTests`' own alternate-size pass and
+    /// for a sharper version of the same reason.
+    ///
+    /// This test **mutates state that outlives the process**: a window frame is
+    /// autosaved, full screen is restored across launches, and neither can be
+    /// set back reliably from a UI test — there is no resize API, only a drag,
+    /// and a drag against a full-screen window produced a 3171pt frame here.
+    /// Left in the default suite it hands the next run a window wider than the
+    /// display, whose trailing toolbar search field is then off screen, and
+    /// two unrelated suites fail for a reason neither can see. It is evidence
+    /// for a human reading images, which is what the environment gate says.
+    ///
+    ///     GETHOG_SWEEP_SIZES=all xcodebuild test … \
+    ///       -only-testing:GetHogMacUITests/MacWindowSizeTests
+    ///
+    /// Seed a sane frame first, and expect to seed one after:
+    ///
+    ///     defaults write ~/Library/Containers/app.gethog.GetHog/Data/Library/\
+    ///       Preferences/app.gethog.GetHog.plist \
+    ///       "NSWindow Frame main-AppWindow-1" "0 129 1280 820 0 0 1512 949 "
+    func testNarrowAndWideSweep() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["GETHOG_SWEEP_SIZES"] == "all",
+            "Set GETHOG_SWEEP_SIZES=all to run the size passes; they leave a resized window."
+        )
         let app = DemoLaunch.launch()
         DemoLaunch.settle(app)
+        leaveFullScreen(app)
         print("PHASEB-SIZE default window=\(app.windows.firstMatch.frame) \(sidebarState(app))")
         capture("g0-default-dashboards")
 
-        for (label, size) in [("narrow", CGSize(width: 800, height: 600)),
-                              ("wide", CGSize.zero)] {
+        // **Wide first, narrow last, and the order is load-bearing.** A window
+        // frame outlives the process, so whatever this suite ends at is what
+        // the next run of every other suite starts at — and the wide pass ends
+        // wider than the display, which puts the toolbar's *trailing* search
+        // field off the right edge. Measured: a 1806pt window on a 1512pt
+        // screen took `MacSearchSheetTests` and the replay search-field check
+        // down in a later run, for a reason neither of them could see. Ending
+        // narrow leaves a window that fits.
+        for (label, size) in [("wide", CGSize.zero),
+                              ("narrow", CGSize(width: 800, height: 600))] {
             if label == "wide" {
                 // **Not a drag.** Dragging this window from ~877pt wide up to
                 // 1400 crashed the app twice out of two: `EXC_BREAKPOINT` from
@@ -155,13 +200,10 @@ final class MacWindowSizeTests: XCTestCase {
                     + "\(app.windows.buttons["Session replay"].frame)")
             }
             XCTAssertEqual(app.state, .runningForeground, "The \(label) pass took the app down.")
+            if label == "wide" { leaveFullScreen(app) }
         }
 
-        // Out of full screen before anything else needs a menu bar.
-        app.typeKey("f", modifierFlags: [.command, .control])
-        DemoLaunch.pause(4)
-
-        // Settings at whatever the shell is back to.
+        // Settings at the narrow size the loop ends on.
         let before = app.windows.count
         app.typeKey(",", modifierFlags: .command)
         _ = DemoLaunch.wait(until: { app.windows.count > before })
@@ -170,4 +212,5 @@ final class MacWindowSizeTests: XCTestCase {
         capture("g-settings-default")
         XCTAssertGreaterThan(app.windows.count, before, "⌘, opened no Settings window.")
     }
+
 }

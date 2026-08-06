@@ -220,8 +220,19 @@ final class MacCommandContractTests: XCTestCase {
         let wentAway = !hidden.exists || !hidden.isHittable
         print("PHASEB-SIDEBAR after-toggle hittableDashboards=\(!wentAway)")
 
-        app.typeKey("s", modifierFlags: [.command, .control])
-        DemoLaunch.pause(1.5)
+        // The menu item again, not the raw shortcut: ⌃⌘S is delivered to the
+        // key window and the sidebar's own collapse animation can still own it,
+        // which showed up as a restore that never happened.
+        app.menuBars.menuBarItems["View"].click()
+        let back = app.menuBars.menuItems.matching(
+            NSPredicate(format: "title == 'Show Sidebar' OR title == 'Hide Sidebar'")
+        ).firstMatch
+        if DemoLaunch.wait(for: back, timeout: 5) {
+            back.click()
+        } else {
+            app.typeKey(.escape, modifierFlags: [])
+        }
+        DemoLaunch.pause(2)
         capture("c7-sidebar-restored")
         XCTAssertTrue(
             DemoLaunch.wait(timeout: 10) {
