@@ -21,11 +21,14 @@ struct SessionDetailView: View {
     #endif
     @State private var summaryGenerationTask: Task<Void, Never>?
     #if os(macOS)
-    /// The diagnostics column starts open: the inspector exists because the
-    /// big screen can hold the player and its evidence side by side, and
-    /// hiding the evidence by default would waste the width the layout is
-    /// exploiting.
-    @State private var showsDiagnosticsInspector = true
+    /// The diagnostics column starts **closed**, and the toolbar's
+    /// `sidebar.trailing` button opens it.
+    ///
+    /// The spec offers this pane "at wide widths", and the window's own default
+    /// is 1,280 × 820 — which is not one. Starting open gave the page ~450pt for
+    /// a 16:10 replay stage on the display this app is developed against, which
+    /// is the evidence made unreadable to show the evidence beside it.
+    @State private var showsDiagnosticsPane = false
     #endif
 
     private var replayWebURL: URL? {
@@ -139,7 +142,7 @@ struct SessionDetailView: View {
             #if os(macOS)
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showsDiagnosticsInspector.toggle()
+                    showsDiagnosticsPane.toggle()
                 } label: {
                     Label("Replay Diagnostics", systemImage: "sidebar.trailing")
                 }
@@ -157,8 +160,8 @@ struct SessionDetailView: View {
             }
         }
         #if os(macOS)
-        .inspector(isPresented: $showsDiagnosticsInspector) {
-            ReplayDiagnosticsInspector(
+        .replayDiagnosticsPane(isPresented: $showsDiagnosticsPane) {
+            ReplayDiagnosticsPane(
                 loader: loader,
                 controller: player,
                 duration: recording.recordingDuration ?? loader.bufferedSeconds,
@@ -299,12 +302,57 @@ struct SessionDetailView: View {
 }
 
 #if os(macOS)
-// MARK: - Mac diagnostics inspector
+// MARK: - Mac diagnostics pane
+
+extension View {
+    /// The trailing diagnostics column, as an explicit split rather than
+    /// SwiftUI's `.inspector`.
+    ///
+    /// **`.inspector` resizes the window, and does it whether or not it is
+    /// showing.** Measured on this screen against a clean 1,280 × 820 frame on a
+    /// 1,512pt display, by gating each part of the page behind a launch
+    /// environment variable and reading the window frame after the session
+    /// opened:
+    ///
+    /// | on the screen | window |
+    /// |---|---|
+    /// | every card, no `.inspector` | **1,280** — no growth |
+    /// | every card, `.inspector` present but *closed* | **1,739** |
+    /// | every card, `.inspector` open (what shipped) | **2,102** |
+    /// | no cards at all, `.inspector` closed | **1,473** |
+    ///
+    /// So the page's own content asks for nothing the default window cannot
+    /// give; attaching the modifier is the whole of it, and 193 of those points
+    /// arrive on an *empty* page. `inspectorColumnWidth` does not reach it
+    /// either — `min: 0`, a flat `320`, and dropping the modifier entirely all
+    /// left the same 1,739. A window 590pt wider than the display puts the
+    /// toolbar's trailing search field off the right edge, where nothing can
+    /// click it, and AppKit then autosaves that frame for the next launch.
+    ///
+    /// An `HStack` is what `InsightDetailPresentation` already reached for, one
+    /// screen over, after `.inspector` presented as a dimming overlay there.
+    /// Same conclusion, a different symptom: it is not a column on this
+    /// platform's terms, and asking it to be one costs the window.
+    func replayDiagnosticsPane(
+        isPresented: Binding<Bool>,
+        @ViewBuilder pane: () -> some View
+    ) -> some View {
+        HStack(spacing: 0) {
+            self
+            if isPresented.wrappedValue {
+                Divider()
+                pane()
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: isPresented.wrappedValue)
+    }
+}
 
 /// The console and network cards the iPhone stacks after the timeline, in the
 /// trailing column a Mac window has the width for. Same cards, same stores,
 /// same seek callback — only the placement is the Mac's.
-private struct ReplayDiagnosticsInspector: View {
+private struct ReplayDiagnosticsPane: View {
     let loader: ReplayLoader
     let controller: ReplayPlayerController
     let duration: TimeInterval
@@ -332,7 +380,11 @@ private struct ReplayDiagnosticsInspector: View {
             .padding(Theme.Space.l)
         }
         .pageSurface()
-        .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+        // The same band `InsightSidePanel` takes, for the same reason: wide
+        // enough for a URL and a status beside it, never wide enough to become
+        // the screen. A plain frame rather than `inspectorColumnWidth`, which
+        // only speaks to the modifier this pane no longer uses.
+        .frame(minWidth: 320, idealWidth: 380, maxWidth: 460)
     }
 }
 #endif
