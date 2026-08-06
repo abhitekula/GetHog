@@ -336,7 +336,13 @@ struct SettingsAPIKeySection: View {
         } header: {
             SectionLabel(text: "API key", systemImage: "lock")
         } footer: {
+            #if os(macOS)
+            // The Mac has no Face ID and calls the fallback a password, not a
+            // passcode; naming what this machine cannot offer reads as a bug.
+            Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Touch ID or your password, and it re-hides itself after 30 seconds.")
+            #else
             Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Face ID, Touch ID, or your passcode, and it re-hides itself after 30 seconds.")
+            #endif
         }
     }
 
@@ -348,9 +354,15 @@ struct SettingsAPIKeySection: View {
     private func reveal() async {
         revealError = nil
         do {
-            guard try await DeviceOwnerGate.authenticate(
-                reason: "Reveal your PostHog API key"
-            ) else {
+            // Lower-cased on the Mac for the same reason `BiometricGate.reason`
+            // forks: the system prepends "GetHog is trying to", and the clause
+            // has to read as part of that sentence.
+            #if os(macOS)
+            let reason = "reveal your PostHog API key"
+            #else
+            let reason = "Reveal your PostHog API key"
+            #endif
+            guard try await DeviceOwnerGate.authenticate(reason: reason) else {
                 revealError = "Authentication was cancelled."
                 return
             }
