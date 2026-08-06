@@ -335,15 +335,21 @@ final class MacSurfaceSweepTests: XCTestCase {
     /// `MacNavigationTests.sidebarItem` scopes it — the content area can
     /// legitimately carry the same word, and the menu bar certainly does.
     private func sidebarItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
-        let sidebar = app.outlines.firstMatch
-        if sidebar.exists {
+        // Every outline, not just the first. On a split-view screen the
+        // content list is *also* an outline — measured: the Sessions list
+        // reports `Outline, label: 'Sidebar'` at x=271 — so `firstMatch` can
+        // resolve to the content column, miss the destination, and fall through
+        // to an app-wide query that returns a zero-size off-screen duplicate.
+        // Asking every outline for a hittable match removes the ambiguity.
+        for sidebar in app.outlines.allElementsBoundByIndex {
             let scoped = sidebar.descendants(matching: .any)
-                .matching(NSPredicate(format: "label == %@", title))
-                .firstMatch
-            if scoped.exists { return scoped }
+                .matching(DemoLaunch.macTextPredicate(title))
+            if let hittable = scoped.allElementsBoundByIndex.first(where: { $0.isHittable }) {
+                return hittable
+            }
         }
         return app.windows.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", title))
+            .matching(DemoLaunch.macTextPredicate(title))
             .firstMatch
     }
 
@@ -385,8 +391,14 @@ final class MacSurfaceSweepTests: XCTestCase {
     /// Every element whose label contains the text, of any type — list rows
     /// fold their fields into one label, so an exact match cannot find a row.
     private func element(containing text: String, in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", text))
+        // Scoped to the windows, not the whole application. An app-wide
+        // `descendants(matching: .any)` carrying a compound CONTAINS predicate
+        // has to evaluate the menu bar's entire item tree as well as the
+        // screen's, and measured here that times the query out ("Failed to get
+        // matching snapshots") before it ever reaches the row. The windows hold
+        // everything these assertions are about, including a tear-off.
+        app.windows.descendants(matching: .staticText)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text))
             .firstMatch
     }
 

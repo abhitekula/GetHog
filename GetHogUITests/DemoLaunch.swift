@@ -103,16 +103,93 @@ enum DemoLaunch {
     /// windows is the weakest scope that does it.
     private static func waitForScreen(_ app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
         #if os(macOS)
-        wait(
-            for: app.windows.descendants(matching: .any)
-                .matching(NSPredicate(format: "label == %@", "Dashboards"))
-                .firstMatch,
+        wait(for: app.windows.descendants(matching: .any)
+            .matching(macTextPredicate("Dashboards"))
+            .firstMatch,
             timeout: timeout
         )
         #else
         wait(for: app.navigationBars.firstMatch, timeout: timeout)
         #endif
     }
+
+    #if os(macOS)
+    /// Matches a Mac element carrying the text as **either** its label or its
+    /// value.
+    ///
+    /// The distinction is not cosmetic and it is not a choice this suite makes.
+    /// A SwiftUI sidebar row on macOS lands in the accessibility tree as a
+    /// `StaticText` whose text is its **`value`** and whose `label` is empty,
+    /// while the section headers above it — `Analyze`, `Monitor` — carry theirs
+    /// as `label`. Measured from the real tree:
+    ///
+    ///     OutlineRow → Cell → StaticText, value: Dashboards
+    ///     OutlineRow → Cell → Group → StaticText, label: 'Analyze'
+    ///
+    /// So a `label ==` predicate matches the headings and never the
+    /// destinations. Every Mac query in these targets was written that way,
+    /// which is why the launch gate timed out on a window that had rendered
+    /// perfectly — the sidebar was there, and the query could not see it.
+    ///
+    /// macOS-only on purpose: on iOS a `value` is often a control's state
+    /// ("1 of 5", "on"), so widening the predicate there would match things a
+    /// label-based query deliberately does not.
+    static func macTextPredicate(_ text: String) -> NSPredicate {
+        NSPredicate(format: "label == %@ OR value == %@", text, text)
+    }
+    #endif
+
+    /// The element types a Mac screen puts demo content on, cheapest first.
+    ///
+    /// `.any` is deliberately not among them, and that is a measurement rather
+    /// than a preference: a compound `CONTAINS` predicate over
+    /// `descendants(matching: .any)` on a table-heavy screen — Events — makes
+    /// XCUITest give up with "Failed to get matching snapshots: Timed out while
+    /// evaluating UI query" after nearly two minutes, before it ever reaches the
+    /// row. These three cover what the screens actually produce:
+    ///
+    ///   - `.button` — a row that combined its children, carrying them as one
+    ///     **`label`** ("Alex Example, duration 0:10, 1 clicks");
+    ///   - `.cell` — the outline row either of the others may sit in;
+    ///   - `.staticText` — a plain `Text`, carrying its words as **`value`**.
+    ///
+    /// Containers come before leaves, and the order is load-bearing rather than
+    /// arbitrary. A caller that finds a row usually wants to *click* it, and a
+    /// right-click on the `StaticText` inside a row does not open the row's
+    /// context menu — measured: the dashboard row's menu never appeared while
+    /// the title text was what matched, and appeared as soon as the row did.
+    /// Screens whose anchor is prose and not a row still match on the leaf,
+    /// because neither container carries the words.
+    #if os(macOS)
+    static let macContentTypes: [XCUIElement.ElementType] = [.button, .cell, .staticText]
+
+    /// Polls every content type for an element whose label *or* value contains
+    /// the text, and returns the first that appears.
+    ///
+    /// One deadline covers all three queries rather than each getting its own,
+    /// so a screen that never renders costs the caller one timeout, not three.
+    static func waitForContent(
+        containing text: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 30
+    ) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            for type in macContentTypes {
+                // Built inside the loop rather than hoisted: `NSPredicate` is
+                // not `Sendable`, and hoisting it across the query call is what
+                // Swift 6 flags as a data race.
+                let match = app.windows.descendants(matching: type)
+                    .matching(NSPredicate(
+                        format: "label CONTAINS %@ OR value CONTAINS %@", text, text
+                    ))
+                    .firstMatch
+                if match.exists { return match }
+            }
+        }
+        return nil
+    }
+    #endif
 
     /// Polls for an element instead of calling `waitForExistence`.
     ///
@@ -207,8 +284,15 @@ enum DemoLaunch {
     /// as, and pinning it to `.image` or `.other` would make the test pass or
     /// fail on a SwiftUI implementation detail rather than on the defect.
     static func elements(labelled label: String, in app: XCUIApplication) -> XCUIElementQuery {
-        app.descendants(matching: .any)
+        #if os(macOS)
+        // See `macTextPredicate`: on the Mac the text of a plain `Text` is its
+        // value, not its label, so a label-only query here misses exactly the
+        // elements these assertions are about.
+        return app.descendants(matching: .any).matching(macTextPredicate(label))
+        #else
+        return app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@", label))
+        #endif
     }
 }
 

@@ -21,18 +21,6 @@ final class MacNavigationTests: XCTestCase {
 
     // MARK: - Queries
 
-    /// Every element whose label contains the text, of any type.
-    ///
-    /// List rows fold their fields into one accessibility label, so an
-    /// exact-label query cannot find "the row for this dashboard" — and the
-    /// element type a SwiftUI row lands on is an implementation detail that
-    /// pinning would make this suite fail on.
-    private func element(containing text: String, in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", text))
-            .firstMatch
-    }
-
     /// The sidebar destination carrying an exact title.
     ///
     /// Scoped to the sidebar's outline when one exists, because the content
@@ -42,19 +30,42 @@ final class MacNavigationTests: XCTestCase {
     /// stops being an outline: an element that is not there fails the wait
     /// rather than silently matching something else.
     private func sidebarItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
-        let sidebar = app.outlines.firstMatch
-        if sidebar.exists {
+        // Every outline, not just the first. On a split-view screen the
+        // content list is *also* an outline — measured: the Sessions list
+        // reports `Outline, label: 'Sidebar'` at x=271 — so `firstMatch` can
+        // resolve to the content column, miss the destination, and fall through
+        // to an app-wide query that returns a zero-size off-screen duplicate.
+        // Asking every outline for a hittable match removes the ambiguity.
+        var offscreen: XCUIElement?
+        for sidebar in app.outlines.allElementsBoundByIndex {
             let scoped = sidebar.descendants(matching: .any)
-                .matching(NSPredicate(format: "label == %@", title))
-                .firstMatch
-            if scoped.exists { return scoped }
+                .matching(DemoLaunch.macTextPredicate(title))
+            if let hittable = scoped.allElementsBoundByIndex.first(where: { $0.isHittable }) {
+                return hittable
+            }
+            if offscreen == nil, scoped.firstMatch.exists { offscreen = scoped.firstMatch }
         }
-        return DemoLaunch.elements(labelled: title, in: app).firstMatch
+        // A destination scrolled out of view is still the right element — the
+        // caller scrolls to it. Returning it beats the app-wide fallback, which
+        // matches the Go menu's item of the same name: a zero-size element at
+        // y=982, outside the window, that `click()` rejects as not hittable.
+        return offscreen ?? DemoLaunch.elements(labelled: title, in: app).firstMatch
     }
 
     private func openSidebarItem(_ title: String, in app: XCUIApplication) {
-        let item = sidebarItem(title, in: app)
+        var item = sidebarItem(title, in: app)
         XCTAssertTrue(DemoLaunch.wait(for: item), "No sidebar destination labelled \(title).")
+
+        // Thirty-four destinations do not fit 820pt, and reaching one low in
+        // the list scrolls the ones above it away — so a later step asking for
+        // Dashboards finds it present and unreachable.
+        var scrolls = 0
+        while !item.isHittable && scrolls < 12 {
+            app.outlines.firstMatch.scroll(byDeltaX: 0, deltaY: 120)
+            item = sidebarItem(title, in: app)
+            scrolls += 1
+        }
+
         item.click()
         DemoLaunch.settle(app)
     }
@@ -83,8 +94,8 @@ final class MacNavigationTests: XCTestCase {
         ]
         for screen in screens {
             openSidebarItem(screen.tab, in: app)
-            XCTAssertTrue(
-                DemoLaunch.wait(for: element(containing: screen.fixtureText, in: app)),
+            XCTAssertNotNil(
+                DemoLaunch.waitForContent(containing: screen.fixtureText, in: app),
                 "\(screen.tab) never showed “\(screen.fixtureText)” from its fixture."
             )
         }
@@ -94,13 +105,14 @@ final class MacNavigationTests: XCTestCase {
         let app = DemoLaunch.launch()
 
         openSidebarItem("Dashboards", in: app)
-        let row = element(containing: firstDashboardTitle, in: app)
-        XCTAssertTrue(DemoLaunch.wait(for: row), "The list never offered \(firstDashboardTitle).")
+        guard let row = DemoLaunch.waitForContent(containing: firstDashboardTitle, in: app) else {
+            return XCTFail("The list never offered \(firstDashboardTitle).")
+        }
         row.click()
 
         // The detail fetches on open; its first tile is the proof it loaded.
-        XCTAssertTrue(
-            DemoLaunch.wait(for: element(containing: DemoLaunch.firstTileTitle, in: app)),
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: DemoLaunch.firstTileTitle, in: app),
             "The dashboard detail never rendered its first tile."
         )
 
@@ -123,9 +135,14 @@ final class MacNavigationTests: XCTestCase {
         // same tile renders once per window.
         XCTAssertTrue(
             DemoLaunch.wait(until: {
-                app.descendants(matching: .any)
-                    .matching(NSPredicate(format: "label CONTAINS %@", DemoLaunch.firstTileTitle))
-                    .count >= 2
+                DemoLaunch.macContentTypes.contains { type in
+                    app.windows.descendants(matching: type)
+                        .matching(NSPredicate(
+                            format: "label CONTAINS %@ OR value CONTAINS %@",
+                            DemoLaunch.firstTileTitle, DemoLaunch.firstTileTitle
+                        ))
+                        .count >= 2
+                }
             }),
             "The second window never rendered the dashboard it was opened for."
         )
@@ -141,8 +158,9 @@ final class MacNavigationTests: XCTestCase {
         let app = DemoLaunch.launch()
 
         openSidebarItem("Dashboards", in: app)
-        let row = element(containing: firstDashboardTitle, in: app)
-        XCTAssertTrue(DemoLaunch.wait(for: row), "The list never offered \(firstDashboardTitle).")
+        guard let row = DemoLaunch.waitForContent(containing: firstDashboardTitle, in: app) else {
+            return XCTFail("The list never offered \(firstDashboardTitle).")
+        }
 
         let windowsBefore = app.windows.count
         row.rightClick()
@@ -172,8 +190,9 @@ final class MacNavigationTests: XCTestCase {
         NSPasteboard.general.clearContents()
 
         openSidebarItem("Sessions", in: app)
-        let row = element(containing: Self.firstRecordingPerson, in: app)
-        XCTAssertTrue(DemoLaunch.wait(for: row), "The list never offered a recording for \(Self.firstRecordingPerson).")
+        guard let row = DemoLaunch.waitForContent(containing: Self.firstRecordingPerson, in: app) else {
+            return XCTFail("The list never offered a recording for \(Self.firstRecordingPerson).")
+        }
         row.rightClick()
 
         let copyLink = app.menuItems["Copy link"]

@@ -34,9 +34,13 @@ final class MacSearchSheetTests: XCTestCase {
     private let loadedSurveyProof = "PostHog doesn't store a status for a survey"
 
     private func element(containing text: String, in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", text))
-            .firstMatch
+        // Label *or* value, and never `.any`: see `DemoLaunch.macContentTypes`
+        // — a Mac `Text` carries its words as a value, and an app-wide `.any`
+        // scan of a sheet-bearing window times the query out.
+        DemoLaunch.waitForContent(containing: text, in: app, timeout: 0.1)
+            ?? app.windows.descendants(matching: .staticText)
+                .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text))
+                .firstMatch
     }
 
     private func doneButton(in app: XCUIApplication) -> XCUIElement {
