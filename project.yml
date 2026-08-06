@@ -319,6 +319,12 @@ targets:
     platform: macOS
     sources:
       - GetHogMac/Tests
+      # Compiled in, not imported: the widget extension is an appex, not a
+      # framework, so this is the only route a test has to its pure logic. One
+      # file on purpose — WidgetCache.swift holds the refresh cadence, the
+      # freshness arithmetic and the empty-state words, and references nothing
+      # else in GetHogWidgets/.
+      - GetHogWidgets/WidgetCache.swift
     dependencies:
       - target: GetHogMac
       - package: GetHogKit
