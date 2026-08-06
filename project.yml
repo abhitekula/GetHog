@@ -282,6 +282,24 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/Contents/MacOS/GetHog"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
+  # Demo-mode XCUITests on the macOS destination. `DemoLaunch.swift` is shared
+  # with the iOS targets rather than copied, exactly as `GetHogScreenshots`
+  # shares it: its wait/settle/pause helpers encode measured facts about this
+  # app, and two copies would drift.
+  GetHogMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: GetHogMac/UITests
+      - path: GetHogUITests/DemoLaunch.swift
+    dependencies:
+      - target: GetHogMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogMacUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GetHogMac
+
 schemes:
   GetHog:
     build:
@@ -299,9 +317,11 @@ schemes:
       targets:
         GetHogMac: all
         GetHogMacTests: [test]
+        GetHogMacUITests: [test]
     test:
       targets:
         - GetHogMacTests
+        - GetHogMacUITests
 
   # `xcodebuild test -project GetHog.xcodeproj -scheme GetHogScreenshots \
   #    -destination 'platform=iOS Simulator,name=iPhone 17'`

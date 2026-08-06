@@ -82,8 +82,16 @@ enum DemoLaunch {
     /// and the project, and that phase draws a bare `ProgressView` with no
     /// navigation container at all — so the first navigation bar is the signal
     /// that the app is past it and a screen is rendered.
+    ///
+    /// The Mac shell has no navigation bars — `TabView(.sidebarAdaptable)`
+    /// renders a sidebar instead — so there the signal is the first primary
+    /// destination that sidebar offers, which nothing before the shell draws.
     private static func waitForScreen(_ app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
+        #if os(macOS)
+        wait(for: elements(labelled: "Dashboards", in: app).firstMatch, timeout: timeout)
+        #else
         wait(for: app.navigationBars.firstMatch, timeout: timeout)
+        #endif
     }
 
     /// Polls for an element instead of calling `waitForExistence`.
@@ -143,7 +151,13 @@ enum DemoLaunch {
     static func settle(_ app: XCUIApplication, timeout: TimeInterval = 6) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            // AppKit spells a busy `ProgressView` as a progress indicator, not
+            // an activity indicator, so each platform polls its own name.
+            #if os(macOS)
+            if !app.progressIndicators.firstMatch.exists { break }
+            #else
             if !app.activityIndicators.firstMatch.exists { break }
+            #endif
             pause(0.25)
         }
         // Layout lands a frame or two after the data does, and every frame
@@ -288,6 +302,21 @@ enum ExclusiveRun {
     nonisolated(unsafe) private static var lastStamp = Date.distantPast
     nonisolated(unsafe) private static var lost: String?
 
+    /// Set when the lock file could not be written, so this run proceeds with
+    /// no guard at all.
+    ///
+    /// It has to be remembered rather than inferred, because the two states are
+    /// otherwise indistinguishable from inside `heartbeat`: "there is no lock
+    /// file because this run never managed to write one" reads exactly like
+    /// "there is no lock file because somebody took it and left", and the
+    /// second is a failure while the first is the degradation `claim` chose
+    /// deliberately. Without this, the graceful path defeated itself — every
+    /// test after the first failed claiming the device had been stolen.
+    ///
+    /// The macOS UI runner is what exposed it: it is sandboxed and cannot write
+    /// into the repository's `build/`, so it takes this path on every run.
+    nonisolated(unsafe) private static var unguarded = false
+
     /// Whether it is safe to drive this simulator, claiming it the first time.
     ///
     /// Called before the *first* thing either target does to the device, which is
@@ -324,6 +353,7 @@ enum ExclusiveRun {
             // otherwise fine — the guard is worth having and is not worth
             // becoming a new way to fail. Printed so a run without one says so.
             print("EXCLUSIVE-RUN-UNGUARDED: simulator lock unavailable")
+            unguarded = true
             holds = true
             return true
         }
@@ -352,7 +382,7 @@ enum ExclusiveRun {
     /// lock somebody else now holds would hand the device to a third run while
     /// the second is mid-sweep.
     static func release() {
-        guard holds else { return }
+        guard holds, !unguarded else { return }
         let url = lockFile
         guard (try? String(contentsOf: url, encoding: .utf8)) == identity else { return }
         try? FileManager.default.removeItem(at: url)
@@ -361,7 +391,10 @@ enum ExclusiveRun {
 
     /// Re-stamps this run's claim, and notices if somebody took it.
     static func heartbeat() {
-        guard holds, lost == nil, Date().timeIntervalSince(lastStamp) >= heartbeatEvery
+        // An unguarded run has no lock to re-stamp and no claim to lose; the
+        // absence of the file is its normal state, not a theft.
+        guard holds, !unguarded, lost == nil,
+              Date().timeIntervalSince(lastStamp) >= heartbeatEvery
         else { return }
         lastStamp = Date()
 
