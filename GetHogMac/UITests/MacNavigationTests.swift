@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// The Mac shell in demo mode, driven the way the iOS audit targets drive the
@@ -129,6 +130,75 @@ final class MacNavigationTests: XCTestCase {
             "The second window never rendered the dashboard it was opened for."
         )
     }
+
+    /// The tear-off from the row, not from the detail's toolbar.
+    ///
+    /// `testDashboardTearsOffIntoItsOwnWindow` proves the window opens; this
+    /// proves it can be opened without first navigating into the dashboard,
+    /// which is the route a Mac user reaches for and the one the row did not
+    /// offer until now.
+    func testDashboardRowTearsOffFromItsContextMenu() {
+        let app = DemoLaunch.launch()
+
+        openSidebarItem("Dashboards", in: app)
+        let row = element(containing: firstDashboardTitle, in: app)
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The list never offered \(firstDashboardTitle).")
+
+        let windowsBefore = app.windows.count
+        row.rightClick()
+
+        let tearOff = app.menuItems["Open in new window"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: tearOff, timeout: 5),
+            "The dashboard row's context menu offered no tear-off."
+        )
+        tearOff.click()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { app.windows.count > windowsBefore }),
+            "Open in new window from the row produced no second window."
+        )
+    }
+
+    /// Copy link on a recording row, read back off the real pasteboard.
+    ///
+    /// The runner shares the login session's pasteboard, so what the menu item
+    /// wrote is readable here — which makes this an assertion about the link
+    /// the user gets, not about a menu item existing. Recording rows carried no
+    /// context menu at all before this.
+    func testRecordingRowCopiesItsReplayLink() {
+        let app = DemoLaunch.launch()
+
+        NSPasteboard.general.clearContents()
+
+        openSidebarItem("Sessions", in: app)
+        let row = element(containing: Self.firstRecordingPerson, in: app)
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The list never offered a recording for \(Self.firstRecordingPerson).")
+        row.rightClick()
+
+        let copyLink = app.menuItems["Copy link"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: copyLink, timeout: 5),
+            "The recording row's context menu offered no Copy link."
+        )
+        copyLink.click()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                NSPasteboard.general.string(forType: .string)?
+                    .contains("replay/\(Self.firstRecordingID)") == true
+            }),
+            """
+            Copy link never put the replay URL on the pasteboard \
+            (saw: \(NSPasteboard.general.string(forType: .string) ?? "nothing")).
+            """
+        )
+    }
+
+    /// The pinned first row of `session_recordings.json`, and the id its replay
+    /// link has to carry.
+    private static let firstRecordingPerson = "Alex Example"
+    private static let firstRecordingID = "018f1000-0000-7000-8000-000000000001"
 
     func testSettingsOpensWithCommandComma() {
         let app = DemoLaunch.launch()

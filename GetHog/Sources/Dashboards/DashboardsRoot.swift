@@ -32,6 +32,9 @@ struct DashboardsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(OpenDetails.self) private var openDetails
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @State private var store = DashboardsStore()
     @State private var search = ""
 
@@ -275,6 +278,18 @@ struct DashboardsRoot: View {
         )
         .listRowSeparator(.hidden)
         .contextMenu {
+            // The detail's own toolbar has offered this since the tear-off
+            // landed; the row it was opened from did not, which put the one
+            // affordance a Mac user reaches for behind a navigation step.
+            // iOS keeps the menu it had — iPad parity is a separate question
+            // about where a torn-off window belongs on a touch device.
+            #if os(macOS)
+            Button {
+                openWindow(value: WindowTarget.dashboard(id: dashboard.id))
+            } label: {
+                Label("Open in new window", systemImage: "macwindow.badge.plus")
+            }
+            #endif
             if let url = model.webURL(path: "dashboard/\(dashboard.id)") {
                 Link(destination: url) {
                     Label("Open in PostHog", systemImage: "arrow.up.forward.square")

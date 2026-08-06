@@ -95,6 +95,9 @@ struct SessionsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(OpenDetails.self) private var openDetails
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @State private var store = SessionsStore()
     @State private var showsFilters = false
 
@@ -352,6 +355,30 @@ struct SessionsRoot: View {
                         .padding(.vertical, 1)
                 )
                 .listRowSeparator(.hidden)
+                // A recording row offered nothing on right-click at all, while
+                // the dashboard beside it offered two items and the replay
+                // already resolves as a window target. Mac-only for now: the
+                // whole menu is new, and adding it on iOS would be a product
+                // change rather than the platform fit this is.
+                #if os(macOS)
+                .contextMenu {
+                    Button {
+                        openWindow(value: WindowTarget.recording(id: recording.id))
+                    } label: {
+                        Label("Open in new window", systemImage: "macwindow.badge.plus")
+                    }
+                    if let url = model.webURL(path: "replay/\(recording.id)") {
+                        Link(destination: url) {
+                            Label("Open in PostHog", systemImage: "arrow.up.forward.square")
+                        }
+                        Button {
+                            UIPasteboard.general.url = url
+                        } label: {
+                            Label("Copy link", systemImage: "link")
+                        }
+                    }
+                }
+                #endif
             }
 
             if store.hasMore {
