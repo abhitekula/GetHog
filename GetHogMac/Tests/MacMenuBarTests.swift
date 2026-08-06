@@ -177,9 +177,18 @@ struct MenuBarContractTests {
         #expect(MacMenuBar.pendingOpenNotification.rawValue == "app.gethog.mac.pendingOpen")
     }
 
-    /// The popover's footer is the only place the Mac says how old its numbers
-    /// are, so the buckets are pinned even though the view around them is not
-    /// mountable here.
+    /// Spec §4 calls the popover a mini-dashboard, not a flags screen. The
+    /// ceiling is what stops a project with forty opted-in flags from turning a
+    /// glance into a scroll.
+    @Test("the quick-toggle list has a ceiling")
+    func quickToggleCeiling() {
+        #expect(MacMenuBarPopover.maximumQuickToggles == 5)
+    }
+
+    /// How old the popover admits its numbers are. Pinned even though the view
+    /// around it cannot be mounted here, because a bucket that reads "Updated 0m
+    /// ago" or rounds an hour down to nothing is the kind of wrong that looks
+    /// like working software.
     @Test("the freshness caption buckets: now, minutes, hours, days")
     func freshnessBuckets() {
         #expect(MenuBarFreshness.caption(forAge: 0) == "Updated just now")
@@ -190,9 +199,11 @@ struct MenuBarContractTests {
     }
 }
 
-/// What closing the last window means, as a truth table. The delegate that acts
-/// on it is three lines around these two functions, and neither of those lines
-/// can be run in a unit test without terminating the process it runs in.
+/// What closing the last window means, as a truth table. `MacAppDelegate` is a
+/// few lines around these two functions, and neither of the things it does can
+/// be exercised here — one ends the process the test runs in and the other
+/// mutates that process's Dock presence. Both were measured instead, against an
+/// instrumented Debug build; see the delegate's own note.
 @Suite("Menu bar window policy")
 struct MenuBarWindowPolicyTests {
 
@@ -308,8 +319,9 @@ struct MenuBarFlagTogglerTests {
             recorder.writes.append((id, active))
         }
         #expect(recorder.writes.isEmpty)
-        #expect(toggler.notice?.contains("left unchanged") == true)
-        #expect(toggler.notice?.contains("new-onboarding") == true)
+        #expect(toggler.notice?.kind == .failure)
+        #expect(toggler.notice?.text.contains("left unchanged") == true)
+        #expect(toggler.notice?.text.contains("new-onboarding") == true)
     }
 
     @Test("an unavailable gate writes, with an honest notice — never a silent pass")
@@ -324,7 +336,10 @@ struct MenuBarFlagTogglerTests {
             recorder.writes.append((id, active))
         }
         #expect(recorder.writes.count == 1)
-        #expect(toggler.notice?.contains("confirmed by dialog only") == true)
+        // Not a failure — the write happened. Drawn in the failure ink it would
+        // say the opposite of what it means.
+        #expect(toggler.notice?.kind == .notice)
+        #expect(toggler.notice?.text.contains("confirmed by dialog only") == true)
     }
 
     @Test("confirm without a pending request is a no-op")

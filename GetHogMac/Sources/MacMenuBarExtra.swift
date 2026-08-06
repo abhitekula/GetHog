@@ -234,10 +234,21 @@ final class MacMenuBarFlagToggler {
         var desiredActive: Bool { !flag.active }
     }
 
+    /// One line the popover shows under the flags. Carries its own kind for the
+    /// reason `FlagToggleMessage` does: an unavailable gate is not a failure —
+    /// the write happened — and drawing it in the failure ink would say the
+    /// opposite of what it means.
+    struct Notice: Equatable {
+        enum Kind: Equatable { case notice, failure }
+
+        let kind: Kind
+        let text: String
+    }
+
     private(set) var pending: Request?
     private(set) var inFlightFlagID: Int?
-    /// One line the popover shows under the flags; cleared by the next request.
-    private(set) var notice: String?
+    /// Cleared by the next request.
+    private(set) var notice: Notice?
 
     /// Only an opted-in flag may even reach the confirmation dialog — the same
     /// gate `SharedSnapshot.quickToggleFlags` applies, restated here so a caller
@@ -268,10 +279,16 @@ final class MacMenuBarFlagToggler {
             case .passed:
                 break
             case .unavailable(let detail):
-                notice = "Device authentication wasn't available (\(detail)). "
-                    + "This change was confirmed by dialog only."
+                notice = Notice(
+                    kind: .notice,
+                    text: "Device authentication wasn't available (\(detail)). "
+                        + "This change was confirmed by dialog only."
+                )
             case .denied(let detail):
-                notice = "Not authenticated, so \(request.flag.key) was left unchanged. \(detail)"
+                notice = Notice(
+                    kind: .failure,
+                    text: "Not authenticated, so \(request.flag.key) was left unchanged. \(detail)"
+                )
                 return
             }
         }
@@ -398,7 +415,7 @@ struct MacMenuBarPopover: View {
                     if let glyph = MenuBarHeadline.glyph(for: metric.direction) {
                         Text(glyph)
                             .font(.title3)
-                            .foregroundStyle(Theme.Status.accentInk)
+                            .foregroundStyle(trendTint(metric.direction))
                     }
                 }
                 if metric.sparkline.count >= 2 {
@@ -454,9 +471,11 @@ struct MacMenuBarPopover: View {
                 )
             }
             if let notice = toggler.notice {
-                Text(notice)
+                Text(notice.text)
                     .font(.caption)
-                    .foregroundStyle(Theme.Status.criticalInk)
+                    .foregroundStyle(
+                        notice.kind == .failure ? Theme.Status.criticalInk : Color.secondary
+                    )
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -515,6 +534,18 @@ struct MacMenuBarPopover: View {
         return snapshot.isStale() ? caption + " — stale" : caption
     }
 
+    /// Never green-good / red-bad for a metric. `WidgetViews.tint(for direction:)`
+    /// argues it in full: the snapshot says how a number moved, not whether
+    /// moving that way is desirable — a drop in errors is good news and a rise
+    /// in them is not. So a movement is accented in either direction, and a flat
+    /// line, which is not a movement, is not.
+    private func trendTint(_ direction: SharedSnapshot.Metric.Direction) -> Color {
+        switch direction {
+        case .up, .down: Theme.Status.accentInk
+        case .flat, .unknown: .secondary
+        }
+    }
+
     private func healthTint(_ verdict: SharedSnapshot.HealthVerdict) -> Color {
         // `WidgetViews.tint(for:)`'s verdict mapping, restated over Theme's
         // inks — that type lives in the widget appex. Health has a defined
@@ -534,6 +565,11 @@ struct MacMenuBarPopover: View {
     /// a shell window to front. `MacRootView.routePendingLinks` consumes the
     /// record and routes through the same `PostHogLink` path every other
     /// entrance uses.
+    ///
+    /// Written through the controller's store rather than `.shared` directly so
+    /// this reads from and writes to one place; in the app they are the same
+    /// store, and a controller pointed elsewhere is a test that does not mount
+    /// this view.
     private func openApp(metricID: String?) {
         try? controller.store.enqueue(PendingOpen(metricID: metricID))
         NotificationCenter.default.post(name: MacMenuBar.pendingOpenNotification, object: nil)
