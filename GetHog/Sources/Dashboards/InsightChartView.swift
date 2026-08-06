@@ -612,6 +612,17 @@ struct TimeSeriesChart: View {
     /// is what flattened the lifecycle tile's plot to a 40pt strip.
     private var height: CGFloat { (compact ? 170 : 280) * min(textScale, 1.5) }
 
+    /// The scrub's easing — iOS only. A finger forgives 150ms of retargeting;
+    /// a pointer does not: hover is sampled per pixel, and a rule mark that
+    /// eases toward the cursor reads as latency, not polish.
+    private var scrubAnimation: Animation? {
+        #if os(macOS)
+        nil
+        #else
+        reduceMotion ? nil : .easeOut(duration: 0.15)
+        #endif
+    }
+
     private var xAxisTickCount: Int {
         dynamicTypeSize.thinnedAxisCount(compact ? 3 : 5)
     }
@@ -779,9 +790,15 @@ struct TimeSeriesChart: View {
             // the fold. A coach mark that displaces its subject is the failure
             // this move out of the popover was meant to fix, arriving from the
             // other direction.
+            #if os(iOS)
+            // Mac builds skip the tip rather than reword it: it teaches a
+            // touch gesture the pointer replaces, and hovering needs no
+            // coaching — the readout appears the first time the pointer
+            // crosses a plot.
             if showsScrubTip, !dynamicTypeSize.isAccessibilitySize {
                 AppTipView(ChartScrubTip())
             }
+            #endif
 
             HStack(alignment: .firstTextBaseline) {
                 // Reserve the row unconditionally so the chart never shifts when
@@ -875,7 +892,17 @@ struct TimeSeriesChart: View {
             // container has to say so. `NotebookQueryBlock` draws the same
             // compact chart *outside* any button and scrubbing there is a real
             // feature, which is why this is not gated on `compact`.
+            #if os(iOS)
             .chartXSelection(value: $selectedDate)
+            #else
+            // The pointer's spelling of the same gesture: hover writes the
+            // same `selectedDate` the touch drag writes, so the rule mark,
+            // the readout and the drill are one path with two front doors.
+            // The control trap above applies unchanged — `TileCard` keeps
+            // this unreachable inside its button via hit testing, which
+            // blocks hover exactly as it blocks touch.
+            .chartHoverSelection($selectedDate)
+            #endif
             // Pan. Swift Charts arbitrates the drag between scrolling and
             // scrubbing itself once an axis is scrollable — selection is
             // promoted to press-then-drag — which is why this does not need a
@@ -884,11 +911,15 @@ struct TimeSeriesChart: View {
             .chartXVisibleDomain(length: visibleSpan)
             .frame(height: height)
             .simultaneousGesture(allowsZoom ? magnify : nil)
+            #if os(iOS)
+            // iOS only: on a Force Touch trackpad this would tick on every
+            // pixel of pointer travel. It was tuned for a deliberate drag.
             .sensoryFeedback(.selection, trigger: selectedDate)
+            #endif
             // Fires at the ends of the range, so a pinch that has stopped doing
             // anything says so rather than feeling broken.
             .sensoryFeedback(.levelChange, trigger: isAtZoomLimit)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedDate)
+            .animation(scrubAnimation, value: selectedDate)
             // The descriptor carries the insight's name because the marks
             // underneath it cannot. Swift Charts groups marks into five bands
             // and writes each band's label and value itself: measured here,
