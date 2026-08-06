@@ -277,17 +277,77 @@ public struct SharedSnapshotStore: Sendable {
     /// macOS requires the signing Team ID in front of an App Group identifier
     /// under the App Sandbox — `<TeamID>.group.app.gethog` — while iOS forbids
     /// exactly that. The prefix belongs to whoever signs the app, so the kit
-    /// cannot name it: an app target injects it (typically by publishing
-    /// `$(AppIdentifierPrefix)` through its own `Info.plist`), and a `nil` or
-    /// empty prefix degrades to the unprefixed identifier — today's behavior
-    /// on every platform. On iOS the prefix is ignored outright, so no caller
-    /// can accidentally change what shipping widgets already read.
+    /// cannot name it: a target publishes it through its own `Info.plist` (see
+    /// `teamIDPrefixInfoKey`), and a `nil` or empty prefix degrades to the
+    /// unprefixed identifier — today's behavior on every platform. On iOS the
+    /// prefix is ignored outright, so no caller can accidentally change what
+    /// shipping widgets already read.
     public static func appGroupIdentifier(teamIDPrefix: String?) -> String {
         resolvedAppGroupIdentifier(
             teamIDPrefix: teamIDPrefix,
             requiresTeamIDPrefix: platformRequiresTeamIDPrefix
         )
     }
+
+    /// The `Info.plist` key through which a bundle publishes the Team ID prefix
+    /// its App Group identifier needs.
+    ///
+    /// Only the signer knows the prefix, and a committed Team ID is the one
+    /// thing this repository must never contain — so it cannot be a literal on
+    /// either side. It travels as `$(TeamIdentifierPrefix)`, which is the same
+    /// substitution the Release entitlement performs on
+    /// `$(TeamIdentifierPrefix)group.app.gethog`: the entitlement and this
+    /// lookup are then two spellings of one build setting and cannot disagree
+    /// about the container's name.
+    ///
+    /// Published by the macOS app and its widget extension only. iOS bundles
+    /// do not carry the key, and would ignore it if they did.
+    public static let teamIDPrefixInfoKey = "GetHogTeamIDPrefix"
+
+    /// The prefix `bundle` publishes, or `nil` when it publishes none usable.
+    ///
+    /// `Bundle.main` on purpose: the app and the extension are separate
+    /// processes with separate bundles, and each has to read its *own* — an
+    /// appex asking the host for this would be asking a bundle it cannot see.
+    public static func teamIDPrefix(from bundle: Bundle = .main) -> String? {
+        teamIDPrefix(fromInfoValue: bundle.object(forInfoDictionaryKey: teamIDPrefixInfoKey))
+    }
+
+    /// The rule that turns a raw `Info.plist` value into a prefix, split out so
+    /// every spelling can be pinned without building a bundle.
+    ///
+    /// Three different values all mean "no prefix", and each is a real state:
+    ///
+    /// - **Absent.** Every iOS bundle, deliberately, and any build made before
+    ///   the key existed.
+    /// - **Empty.** What `$(TeamIdentifierPrefix)` substitutes to when there is
+    ///   no team — an unsigned local build, which is what a fresh clone makes.
+    /// - **Unsubstituted.** The literal `$(TeamIdentifierPrefix)`, which is
+    ///   what arrives if `Info.plist` build-setting expansion is ever switched
+    ///   off. Left alone it would name the container
+    ///   `$(TeamIdentifierPrefix).group.app.gethog` — a path that resolves, is
+    ///   creatable, passes the usability probe, and that the *other* process
+    ///   would never look in. Silent and permanent, and indistinguishable from
+    ///   a broken widget: precisely the failure this mechanism exists to
+    ///   prevent, so it is refused rather than trusted. Any `$` is enough to
+    ///   detect it — a Team ID prefix is alphanumerics and a trailing dot.
+    static func teamIDPrefix(fromInfoValue value: Any?) -> String? {
+        guard let raw = value as? String else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("$") else { return nil }
+        return trimmed
+    }
+
+    /// The App Group identifier **this process** resolves: the base spelling,
+    /// plus whatever prefix its own bundle publishes, where the platform
+    /// demands one.
+    ///
+    /// `resolve`'s default and therefore `shared`'s identifier. Public because
+    /// a caller reaching the same container by another route — `UserDefaults`
+    /// with a suite name, say — must not be able to spell it differently by
+    /// accident: two spellings are two containers, and the second one is
+    /// always empty.
+    public static let bundleAppGroupIdentifier = appGroupIdentifier(teamIDPrefix: teamIDPrefix())
 
     /// True where App Group identifiers carry the Team ID prefix (macOS under
     /// the sandbox), false where they must not (iOS and its extensions).
@@ -309,7 +369,7 @@ public struct SharedSnapshotStore: Sendable {
         guard requiresTeamIDPrefix, let teamIDPrefix, !teamIDPrefix.isEmpty else {
             return appGroupIdentifier
         }
-        // `$(AppIdentifierPrefix)` renders with a trailing dot and a raw Team
+        // `$(TeamIdentifierPrefix)` renders with a trailing dot and a raw Team
         // ID has none; accept both rather than let container resolution fail
         // invisibly over punctuation.
         let trimmed = teamIDPrefix.hasSuffix(".")
@@ -336,11 +396,22 @@ public struct SharedSnapshotStore: Sendable {
         self.isSharedContainer = isSharedContainer
     }
 
-    /// The store both processes use in production — on iOS. It resolves the
-    /// unprefixed identifier, which is the wrong spelling for a sandboxed Mac
-    /// app; Mac targets build their store with
-    /// `resolve(appGroupIdentifier: appGroupIdentifier(teamIDPrefix:))` and
-    /// the prefix their signing gave them.
+    /// The store both processes use in production, on every platform.
+    ///
+    /// It resolves `bundleAppGroupIdentifier`, so the spelling follows the
+    /// process it is running in rather than a compile-time guess: unprefixed
+    /// on iOS always, and on macOS prefixed exactly when the bundle publishes
+    /// a substituted `GetHogTeamIDPrefix` — which is exactly when the
+    /// entitlement granting that container was substituted from the same build
+    /// setting.
+    ///
+    /// This used to resolve the unprefixed identifier everywhere, and the two
+    /// halves of that were not equally harmless. On iOS it was correct. On a
+    /// signed Mac Release it asked for a container the entitlement did not
+    /// grant; the usability probe then did its job and sent the process to a
+    /// private caches directory — the app to its own, the widget extension to
+    /// its own — so every widget rendered its empty state forever, with no
+    /// error anywhere, on the one build a user would actually install.
     public static let shared = resolve()
 
     /// `containerURL(forSecurityApplicationGroupIdentifier:)` answers nil
@@ -360,8 +431,12 @@ public struct SharedSnapshotStore: Sendable {
     /// traps, nothing force-unwraps, and a caller can read
     /// `isSharedContainer == false` instead of guessing why the widget is
     /// empty.
+    ///
+    /// The identifier defaults to `bundleAppGroupIdentifier` rather than to the
+    /// bare base spelling: a caller that does not pass one is asking for "this
+    /// process's container", and on a signed Mac that is the prefixed name.
     public static func resolve(
-        appGroupIdentifier: String = SharedSnapshotStore.appGroupIdentifier,
+        appGroupIdentifier: String = SharedSnapshotStore.bundleAppGroupIdentifier,
         container: (String) -> URL? = {
             FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0)
         },

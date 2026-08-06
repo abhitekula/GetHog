@@ -4,6 +4,16 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>GetHog</string>
+	<!-- The same key the host app publishes (GetHogMac-Info.plist), for the
+	     same reason and with the same substitution: this extension is a
+	     separate process reading its own bundle, and it must arrive at the
+	     byte-identical App Group identifier or it reads an empty container the
+	     app never writes. `$(TeamIdentifierPrefix)` is what
+	     GetHogMacWidgets-Distribution.entitlements substitutes into
+	     `$(TeamIdentifierPrefix)group.app.gethog`, so one build setting decides
+	     both. Empty on teamless builds, which the kit reads as "no prefix". -->
+	<key>GetHogTeamIDPrefix</key>
+	<string>$(TeamIdentifierPrefix)</string>
 	<!-- WidgetKit requires this nested inside NSExtension — the same shape and
 	     the same extension point as the iOS twin (GetHogWidgets-Info.plist);
 	     INFOPLIST_KEY_* build settings only write top-level keys. -->

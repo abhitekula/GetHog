@@ -17,6 +17,24 @@
 		<string>app.gethog.browsing</string>
 	</array>
 
+	<!-- The Team ID prefix a macOS App Group identifier must carry under the
+	     App Sandbox: the container is `<TeamID>.group.app.gethog`, and only the
+	     signer knows the team. `$(TeamIdentifierPrefix)` is the same
+	     substitution GetHogMac-Distribution.entitlements performs on
+	     `$(TeamIdentifierPrefix)group.app.gethog`, so the entitlement and
+	     `SharedSnapshotStore.bundleAppGroupIdentifier` are two spellings of one
+	     build setting and cannot name different containers. The widget
+	     extension publishes the identical key — it is a separate bundle and
+	     reads its own Info.plist.
+
+	     Teamless builds substitute the empty string, which the kit reads as
+	     "no prefix": the unprefixed identifier, no entitlement granting it, and
+	     the usability probe sends this process to a private directory — the
+	     honest Debug behavior a fresh clone already has. iOS bundles publish no
+	     such key, and iOS ignores the prefix regardless. -->
+	<key>GetHogTeamIDPrefix</key>
+	<string>$(TeamIdentifierPrefix)</string>
+
 	<!-- The inbound half of `AppModel.webURL(path:)` — same custom scheme as
 	     iOS, same rationale (see GetHog-Info.plist). -->
 	<key>CFBundleURLTypes</key>

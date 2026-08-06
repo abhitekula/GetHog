@@ -268,6 +268,112 @@ struct SharedSnapshotTests {
         #endif
     }
 
+    @Test("every Info.plist spelling of the team prefix has a pinned meaning")
+    func teamIDPrefixFromInfoValue() {
+        // Absent: every iOS bundle, on purpose, and any build made before the
+        // key existed. This is also what the kit's own test host publishes,
+        // which is why the rest of this suite sees the unprefixed spelling.
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: nil) == nil)
+        // Empty: what `$(TeamIdentifierPrefix)` substitutes to when there is
+        // no team — an unsigned local build, which is what a fresh clone makes.
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: "") == nil)
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: "   ") == nil)
+        // Unsubstituted: the literal macro, which is what arrives if Info.plist
+        // build-setting expansion is ever switched off. Pasted into an
+        // identifier it would name a container the *other* process never looks
+        // in — creatable, plausible, and silent, which is the precise failure
+        // this whole mechanism exists to prevent.
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: "$(TeamIdentifierPrefix)") == nil)
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: "${TeamIdentifierPrefix}") == nil)
+        // Not a string at all — a plist edited into a number or an array.
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: 42) == nil)
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: ["EXAMPLETEAM."]) == nil)
+        // Substituted: what a signed build publishes, trailing dot and all.
+        // "EXAMPLETEAM" is one character longer than a real signing prefix on
+        // purpose, so the privacy scanner never needs to exempt it.
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: "EXAMPLETEAM.") == "EXAMPLETEAM.")
+        #expect(SharedSnapshotStore.teamIDPrefix(fromInfoValue: " EXAMPLETEAM. ") == "EXAMPLETEAM.")
+    }
+
+    @Test("the plist value and the platform together decide one container name")
+    func appGroupIdentifierFromInfoValue() {
+        // Composition is the whole point: whatever the plist says, the
+        // identifier must come out as something a container lookup can use.
+        func resolved(_ infoValue: Any?, requiresTeamIDPrefix: Bool) -> String {
+            SharedSnapshotStore.resolvedAppGroupIdentifier(
+                teamIDPrefix: SharedSnapshotStore.teamIDPrefix(fromInfoValue: infoValue),
+                requiresTeamIDPrefix: requiresTeamIDPrefix
+            )
+        }
+
+        // macOS, signed: the one spelling the sandbox accepts, and the exact
+        // string `$(TeamIdentifierPrefix)group.app.gethog` substitutes to in
+        // the Release entitlement — so the two can never disagree.
+        #expect(resolved("EXAMPLETEAM.", requiresTeamIDPrefix: true) == "EXAMPLETEAM.group.app.gethog")
+        // macOS, teamless or unexpanded: the unprefixed spelling, which the
+        // Debug entitlements do not grant, so the usability probe sends both
+        // processes to their private fallbacks — today's honest empty state.
+        for absent: Any? in [nil, "", "$(TeamIdentifierPrefix)"] {
+            #expect(resolved(absent, requiresTeamIDPrefix: true) == "group.app.gethog")
+        }
+        // iOS ignores the prefix outright, so no plist edit anywhere can move
+        // a shipping widget's container.
+        for value: Any? in [nil, "", "$(TeamIdentifierPrefix)", "EXAMPLETEAM."] {
+            #expect(resolved(value, requiresTeamIDPrefix: false) == "group.app.gethog")
+        }
+    }
+
+    @Test("a bundle that publishes no prefix resolves exactly today's identifier")
+    func bundleWithoutPrefixIsUnchanged() {
+        // The test host publishes no `GetHogTeamIDPrefix`, which is the same
+        // state every iOS bundle is in. Both accessors must therefore land on
+        // the identifier the kit shipped before the key existed — on either
+        // platform, since the prefix is what is missing rather than the
+        // platform rule.
+        #expect(SharedSnapshotStore.teamIDPrefix(from: .main) == nil)
+        #expect(SharedSnapshotStore.bundleAppGroupIdentifier == "group.app.gethog")
+    }
+
+    @Test("the key the kit reads is the key both Mac bundles publish")
+    func macBundlesPublishTheTeamPrefixKey() throws {
+        // The mechanism is a name agreed between Swift and two plists, and
+        // nothing at compile time checks the agreement. A rename on one side
+        // costs the Release build its shared container, silently, which is
+        // exactly the bug this task fixes — so the agreement is a test.
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let plists = [
+            "GetHogMac/Support/GetHogMac-Info.plist",
+            "GetHogMacWidgets/Support/GetHogMacWidgets-Info.plist",
+        ]
+        for path in plists {
+            let data = try Data(contentsOf: repositoryRoot.appending(path: path))
+            let plist = try #require(
+                try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            )
+            // The macro, not a literal: a committed Team ID is the one thing
+            // this repository must never contain.
+            #expect(
+                plist[SharedSnapshotStore.teamIDPrefixInfoKey] as? String == "$(TeamIdentifierPrefix)",
+                "\(path) must publish the team-prefix key"
+            )
+        }
+
+        // And the iOS bundles must not publish it: iOS App Group identifiers
+        // are unprefixed, and a key here would only invite someone to "fix"
+        // the platform rule by editing a plist.
+        for path in ["GetHog/Support/GetHog-Info.plist", "GetHog/Support/GetHogWidgets-Info.plist"] {
+            let data = try Data(contentsOf: repositoryRoot.appending(path: path))
+            let plist = try #require(
+                try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            )
+            #expect(plist.keys.contains(SharedSnapshotStore.teamIDPrefixInfoKey) == false, "\(path)")
+        }
+    }
+
     @Test("uses the App Group container when one is available")
     func appGroupContainer() throws {
         #expect(SharedSnapshotStore.appGroupIdentifier == "group.app.gethog")
