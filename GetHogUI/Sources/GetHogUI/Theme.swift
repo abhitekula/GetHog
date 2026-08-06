@@ -346,10 +346,17 @@ public enum Theme {
             swatchKey(Theme.accent): accentInk,
         ]
 
-        /// Packs a colour's light-appearance sRGB into a comparable key. Light
-        /// specifically, because that is the appearance in which the tints are
-        /// furthest apart, and it makes the lookup independent of the appearance
-        /// the pill happens to be drawn in.
+        /// Packs a colour's sRGB into a comparable key, resolved in **one
+        /// fixed appearance** rather than in whichever one the pill happens to
+        /// be drawn in — that fixity is what makes the lookup work at all.
+        ///
+        /// Which appearance is per platform, and it does not matter as long as
+        /// it is the same one on both sides. Where a pair can be resolved it is
+        /// light, because that is where the four tints sit furthest apart. On
+        /// watchOS there is no light appearance to ask for: `Color(light:dark:)`
+        /// has already collapsed every pair to its dark half, so this reads the
+        /// dark value. `inkByTint`'s keys are built by this same function, so a
+        /// query and the table always agree.
         private static func swatchKey(_ color: Color) -> UInt32 {
             // `!os(watchOS)` for the reason `Color(light:dark:)` gives:
             // `UITraitCollection` does not exist on watchOS, so the appearance

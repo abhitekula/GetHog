@@ -848,7 +848,18 @@ struct TimeSeriesChart: View {
                         Label("Show all", systemImage: "arrow.up.left.and.arrow.down.right")
                             .font(Theme.Typography.caption)
                     }
+                    // `.glass` is `@available(visionOS, unavailable)` — the
+                    // only platform it is barred from, because a visionOS
+                    // control is already drawn on glass and the style would be
+                    // asking for a material the window is made of. `.bordered`
+                    // is what that platform gives a secondary action instead,
+                    // so the button keeps its weight rather than falling back
+                    // to a borderless one that reads as plain text.
+                    #if os(visionOS)
+                    .buttonStyle(.bordered)
+                    #else
                     .buttonStyle(.glass)
+                    #endif
                     .accessibilityLabel("Show the full time range")
                     .transition(.opacity)
                 }
@@ -900,12 +911,14 @@ struct TimeSeriesChart: View {
             .chartScrollableAxes(allowsZoom ? .horizontal : [])
             .chartXVisibleDomain(length: visibleSpan)
             .frame(height: height)
-            // Pinch to zoom, where there is something to pinch with. tvOS is a
-            // hard compile error — `MagnifyGesture` is unavailable there — and
-            // watchOS is a lie: the type exists, but a watch face has no room
-            // for the second finger the gesture needs. Both keep the zoom they
-            // can actually reach, which is `accessibilityZoomAction` below and
-            // the scrollable axis above.
+            // Pinch to zoom, on the two platforms that have the gesture.
+            // `MagnifyGesture` is declared
+            // `@available(iOS 17.0, macOS 14.0, *)` with explicit
+            // `@available(watchOS, unavailable)` and
+            // `@available(tvOS, unavailable)`, so naming it on either is a
+            // hard compile error, not a judgement call. Both keep the zoom
+            // they can still reach: the scrollable axis above and
+            // `accessibilityZoomAction` below.
             #if !os(tvOS) && !os(watchOS)
             .simultaneousGesture(allowsZoom ? magnify : nil)
             #endif
@@ -1018,7 +1031,7 @@ struct TimeSeriesChart: View {
     /// `zoomSpan` continuously would re-lay-out the chart on every frame of the
     /// gesture, and Swift Charts re-runs its axis label thinning each time.
     ///
-    /// Built only where the gesture is real — see the call site.
+    /// Built only where `MagnifyGesture` exists — see the call site.
     #if !os(tvOS) && !os(watchOS)
     private var magnify: some Gesture {
         MagnifyGesture()
