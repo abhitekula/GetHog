@@ -648,3 +648,93 @@ private struct MenuBarSparkline: View {
         }
     }
 }
+
+// MARK: - Window-close policy
+
+/// The keep-in-menu-bar rules as one pure truth table, apart from the AppKit
+/// delegate that acts on them — the same split as `MacRefreshSchedule`.
+///
+/// The extra is inserted the whole time the app runs; the single spec §4
+/// setting decides only what closing the *last* window means. Off — the
+/// default, since the spec calls ambient presence optional — the process quits,
+/// which is what "not kept in the menu bar" has to mean if the toggle is to
+/// have any visible effect at all. On, the process stays and drops out of the
+/// Dock, leaving the status item as its whole presence.
+enum MenuBarWindowPolicy {
+
+    /// Off means the menu bar item was never promised past the window, so the
+    /// last close quits. This is deliberately not the delegate-less SwiftUI
+    /// default, which lingers windowless in the Dock — a state in which the
+    /// setting would read the same either way.
+    static func shouldTerminateAfterLastWindowClosed(keepInMenuBar: Bool) -> Bool {
+        !keepInMenuBar
+    }
+
+    /// `.accessory` — leave the Dock, live in the menu bar — exactly when the
+    /// user asked to be kept *and* no main-capable window remains. `nil` means
+    /// change nothing: a policy transition is a one-way door that only those two
+    /// conditions together may open, and a tear-off window left behind is a
+    /// window the Dock icon still belongs to.
+    static func activationPolicy(
+        keepInMenuBar: Bool,
+        visibleMainCapableWindows: Int
+    ) -> NSApplication.ActivationPolicy? {
+        guard keepInMenuBar, visibleMainCapableWindows == 0 else { return nil }
+        return .accessory
+    }
+}
+
+/// The thin AppKit glue over `MenuBarWindowPolicy`. Counts windows that can
+/// become main, which excludes the status item's own window and the popover
+/// panel by construction.
+///
+/// **AppKit does still ask, with a `MenuBarExtra` inserted.** That was the open
+/// question — a status item is a form of presence, and an app holding one might
+/// plausibly never have been asked whether the last window's close should end
+/// it. Measured on this app rather than assumed: closing the only main-capable
+/// window calls the method below both ways round, terminating the process with
+/// the setting off and dropping it to `.accessory` with the setting on. So
+/// there is no second terminate path here; the delegate method is the whole of
+/// the quit half.
+@MainActor
+final class MacAppDelegate: NSObject, NSApplicationDelegate {
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: Self.keepInMenuBar)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            let closing = note.object as? NSWindow
+            // After the close lands rather than during it: the closing window
+            // still counts itself until the next turn of the loop.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    Self.dropToAccessoryIfAsked(excluding: closing)
+                }
+            }
+        }
+    }
+
+    /// Leaves the Dock once nothing is left on screen and the user asked to be
+    /// kept. Idempotent — the notification arrives once per closing window and
+    /// the setter is a no-op when the policy already holds.
+    private static func dropToAccessoryIfAsked(excluding closing: NSWindow?) {
+        let remaining = NSApp.windows.filter {
+            $0 !== closing && $0.isVisible && $0.canBecomeMain
+        }.count
+        guard let policy = MenuBarWindowPolicy.activationPolicy(
+            keepInMenuBar: keepInMenuBar,
+            visibleMainCapableWindows: remaining
+        ) else { return }
+        NSApp.setActivationPolicy(policy)
+    }
+
+    private static var keepInMenuBar: Bool {
+        UserDefaults.standard.bool(forKey: MacMenuBar.keepOnCloseKey)
+    }
+}

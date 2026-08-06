@@ -13,6 +13,12 @@ struct GetHogMacApp: App {
     /// here so the label and the popover observe the same reloads.
     @State private var menuBar = MacMenuBarController()
 
+    /// Owns the last-window-closed rules — see `MenuBarWindowPolicy`. SwiftUI
+    /// alone cannot express them: `applicationShouldTerminateAfterLastWindowClosed`
+    /// has no scene-level equivalent, and the activation-policy drop is AppKit
+    /// by nature.
+    @NSApplicationDelegateAdaptor(MacAppDelegate.self) private var appDelegate
+
     @Environment(\.scenePhase) private var scenePhase
 
     init() {

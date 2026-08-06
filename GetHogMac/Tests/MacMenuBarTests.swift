@@ -190,6 +190,39 @@ struct MenuBarContractTests {
     }
 }
 
+/// What closing the last window means, as a truth table. The delegate that acts
+/// on it is three lines around these two functions, and neither of those lines
+/// can be run in a unit test without terminating the process it runs in.
+@Suite("Menu bar window policy")
+struct MenuBarWindowPolicyTests {
+
+    @Test("quitting on the last close follows the keep toggle, inverted")
+    func quitFollowsToggle() {
+        #expect(MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: false))
+        #expect(
+            MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: true) == false
+        )
+    }
+
+    @Test("accessory mode needs both the toggle and an empty screen")
+    func accessoryNeedsBoth() {
+        #expect(
+            MenuBarWindowPolicy.activationPolicy(keepInMenuBar: true, visibleMainCapableWindows: 0)
+                == .accessory
+        )
+        // A tear-off window left open is still a window; dropping the Dock icon
+        // out from under it would strand it.
+        #expect(
+            MenuBarWindowPolicy.activationPolicy(keepInMenuBar: true, visibleMainCapableWindows: 1)
+                == nil
+        )
+        #expect(
+            MenuBarWindowPolicy.activationPolicy(keepInMenuBar: false, visibleMainCapableWindows: 0)
+                == nil
+        )
+    }
+}
+
 /// The popover's write path. The gate is injected rather than run, so every
 /// outcome `BiometricGate` can produce is exercised without a device-owner
 /// prompt — and the point of the suite is that all three outcomes are handled

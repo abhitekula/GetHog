@@ -68,6 +68,7 @@ struct MacSettingsRoot: View {
                             }
                             if pane == .display {
                                 MacSidebarSection()
+                                MacMenuBarSection()
                             }
                         }
                         .formStyle(.grouped)
@@ -110,6 +111,25 @@ private struct MacSidebarSection: View {
             }
         } footer: {
             Text("Hidden and reordered sidebar items go back to the defaults. Nothing else changes.")
+        }
+    }
+}
+
+/// Mac-only, like the sidebar section above it: the spec §4 ambient-presence
+/// switch. The footer states both halves of the contract, because "off quits on
+/// close" is behaviour a toggle label alone would hide — and a user who closes
+/// the window expecting the app to keep running deserves to have been told.
+private struct MacMenuBarSection: View {
+    @AppStorage(MacMenuBar.keepOnCloseKey) private var keepOnClose = false
+
+    var body: some View {
+        Section {
+            Toggle("Keep GetHog in the menu bar when the window is closed", isOn: $keepOnClose)
+        } footer: {
+            Text(
+                "On: closing the last window leaves your headline metric in the menu bar and "
+                    + "GetHog keeps running. Off: closing the last window quits GetHog."
+            )
         }
     }
 }
