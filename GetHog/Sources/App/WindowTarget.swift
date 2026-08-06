@@ -71,7 +71,14 @@ struct DetachedRecordingView: View {
                     .controlSize(.large)
             }
         }
-        .task(id: recordingID) { await load() }
+        // Keyed on the project as well as the recording, because the guard in
+        // `load()` returns silently when there is no client yet and nothing
+        // else would ever retry it. A window restored at launch mounts before
+        // the app's `bootstrap()` has resolved one — measured through the
+        // solo-window route, where `GETHOG_SOLO_RECORDING` sat on "Loading
+        // recording…" for the life of the window. Adding the project id to the
+        // task's identity re-runs the load the moment bootstrap lands one.
+        .task(id: [recordingID, model.projectID.map(String.init) ?? ""]) { await load() }
     }
 
     private func load() async {
