@@ -4,8 +4,6 @@ import GetHogKit
 import GetHogUI
 import Testing
 
-@testable import GetHog
-
 /// The pure arithmetic under chart scrubbing: nearest-point resolution shared
 /// by the iOS touch path and the macOS hover path, and the hover-only
 /// plot-frame clamp.

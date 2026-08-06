@@ -109,40 +109,40 @@ public enum InsightSummary {
     /// middle, where a full stop of its own does no harm. The caller that *does*
     /// need the helper is `TileCard.spokenLabel`, which leads with the insight's
     /// name.
-    public static func timeSeries(_ series: [Series]) -> String {
+    static func timeSeries(_ series: [Series]) -> String {
         series
             .map { "\($0.label) totals \($0.total.formatted())" }
             .joined(separator: ". ")
     }
 
-    public static func barValue(_ bars: [BarValue]) -> String {
+    static func barValue(_ bars: [BarValue]) -> String {
         "\(bars.count) categories, highest \(bars.first?.label ?? "")"
     }
 
-    public static func lifecycle(_ series: [LifecycleSeries]) -> String {
+    static func lifecycle(_ series: [LifecycleSeries]) -> String {
         series
             .map { "\($0.status.title) \($0.total.formatted())" }
             .joined(separator: ", ")
     }
 
-    public static func stickiness(_ series: [StickinessSeries]) -> String {
+    static func stickiness(_ series: [StickinessSeries]) -> String {
         series
             .map { "\($0.label): \($0.total.formatted()) users" }
             .joined(separator: ", ")
     }
 
-    public static func funnel(_ groups: [FunnelGroup]) -> String {
+    static func funnel(_ groups: [FunnelGroup]) -> String {
         let primary = groups.first
         let conversion = (primary?.conversionRate ?? 0)
             .formatted(.percent.precision(.fractionLength(0...1)))
         return "Funnel with \(primary?.steps.count ?? 0) steps, \(conversion) overall conversion"
     }
 
-    public static func retention(_ grid: RetentionGrid) -> String {
+    static func retention(_ grid: RetentionGrid) -> String {
         "\(grid.cohorts.count) cohorts over \(grid.intervalCount) intervals"
     }
 
-    public static func paths(_ graph: PathsGraph) -> String {
+    static func paths(_ graph: PathsGraph) -> String {
         guard let busiest = graph.edges.first else { return "No transitions" }
         return "\(graph.edges.count) transitions, busiest \(busiest.source) to \(busiest.target)"
     }

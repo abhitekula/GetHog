@@ -144,8 +144,8 @@ public enum Theme {
     /// not silently move a button label's contrast. This token has one job and
     /// one measurement, so it owns its own values.
     ///
-    /// `Theme.swift` compiles into `GetHogWidgets` as well, so this is
-    /// reachable there — but nothing in that target has the defect: there is no
+    /// `GetHogWidgets` links this package too, so the token is reachable
+    /// there — but nothing in that target has the defect: there is no
     /// `.borderedProminent`/`.glassProminent` and no label drawn over an accent
     /// fill anywhere in `GetHogWidgets/`. See the note on
     /// `WidgetPalette.accent`.
@@ -417,7 +417,7 @@ public enum SeriesPalette {
         Color(hex: 0xE66767),
     ]
 
-    public static let slotCount = 8
+    static let slotCount = 8
 
     /// Colour follows the entity's fixed slot, never its rank — filtering a
     /// series list must not repaint the survivors.
