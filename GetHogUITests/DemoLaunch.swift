@@ -86,9 +86,19 @@ enum DemoLaunch {
     /// The Mac shell has no navigation bars — `TabView(.sidebarAdaptable)`
     /// renders a sidebar instead — so there the signal is the first primary
     /// destination that sidebar offers, which nothing before the shell draws.
+    /// Scoped to that sidebar's own outline, the way `MacNavigationTests`
+    /// scopes its clicks: the menu bar carries the same word from launch — Go ▸
+    /// Dashboards is in the accessibility tree before the shell mounts, and
+    /// disabled menu items are in it too — so an app-wide match would return
+    /// this gate on the menu rather than on a rendered screen.
     private static func waitForScreen(_ app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
         #if os(macOS)
-        wait(for: elements(labelled: "Dashboards", in: app).firstMatch, timeout: timeout)
+        wait(
+            for: app.outlines.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", "Dashboards"))
+                .firstMatch,
+            timeout: timeout
+        )
         #else
         wait(for: app.navigationBars.firstMatch, timeout: timeout)
         #endif
