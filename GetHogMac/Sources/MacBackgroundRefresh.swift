@@ -23,8 +23,30 @@ import os
 final class MacBackgroundRefresh {
 
     /// The app-wide instance. `GetHogMacApp` starts it once the model has
-    /// bootstrapped (wired in the Wave 4 sweep); nothing else constructs one.
+    /// bootstrapped and re-starts it whenever the scene goes active; sign-out
+    /// stops it through `BackgroundRefresh.cancel`. Nothing else constructs one
+    /// except a test, through `init(makeScheduler:)`.
     static let shared = MacBackgroundRefresh()
+
+    /// How an activity is obtained, injectable so registration itself can be
+    /// observed.
+    ///
+    /// Everything about this class that is not the pure schedule is
+    /// registration bookkeeping — start is idempotent, stop invalidates and
+    /// forgets, start after stop registers again — and none of it was
+    /// observable while the only way to make a scheduler was to make a real
+    /// one. A real `NSBackgroundActivityScheduler` in a test would register a
+    /// live activity with the system under the app's own identifier, which is
+    /// both a side effect and a race against the running app.
+    private let makeScheduler: (String) -> NSBackgroundActivityScheduler
+
+    init(
+        makeScheduler: @escaping (String) -> NSBackgroundActivityScheduler = {
+            NSBackgroundActivityScheduler(identifier: $0)
+        }
+    ) {
+        self.makeScheduler = makeScheduler
+    }
 
     /// One name for the activity, mirroring the iOS task identifier so the two
     /// schedulers read as the same feature in logs and tests.
@@ -44,7 +66,7 @@ final class MacBackgroundRefresh {
     func start(model: AppModel) {
         guard scheduler == nil else { return }
 
-        let activity = NSBackgroundActivityScheduler(identifier: Self.activityIdentifier)
+        let activity = makeScheduler(Self.activityIdentifier)
         activity.repeats = true
         activity.interval = MacRefreshSchedule.interval
         // The scheduler's tolerance and the policy's due tolerance are the same

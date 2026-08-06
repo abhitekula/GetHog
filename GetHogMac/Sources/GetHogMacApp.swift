@@ -51,6 +51,10 @@ struct GetHogMacApp: App {
                     #endif
                     AppTips.configure()
                     await model.bootstrap()
+                    // After bootstrap, because the schedule stands every wake
+                    // down while there is no credential and the model only
+                    // knows whether it has one once it has looked.
+                    MacBackgroundRefresh.shared.start(model: model)
                     if let projectID = model.projectID {
                         await SpotlightIndexer.reindex(projectID: projectID)
                     }
@@ -61,6 +65,10 @@ struct GetHogMacApp: App {
                     // extension. Inert until phase 2 ships one, cheap now.
                     if phase == .active {
                         Task { await model.consumePendingIntentWork() }
+                        // Idempotent by construction, which is what lets a
+                        // sign-in mid-session re-arm the clock that sign-out
+                        // invalidated without anybody tracking which happened.
+                        MacBackgroundRefresh.shared.start(model: model)
                     }
                 }
                 .onReceive(

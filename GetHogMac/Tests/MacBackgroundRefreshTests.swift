@@ -12,6 +12,11 @@ import Testing
 /// that registration behind. Everything the scheduler would ask is a pure
 /// function in `MacRefreshSchedule`, so the cadence is pinned the way
 /// `BackgroundRefreshPolicy`'s is in the kit.
+///
+/// The class's registration bookkeeping is exercised in
+/// `MacBackgroundRefreshRegistrationTests` below, through a factory seam that
+/// never hands an activity to the daemon. The rule above is unchanged: no real
+/// scheduler is ever scheduled from a test.
 @Suite("Mac refresh schedule")
 @MainActor
 struct MacRefreshScheduleTests {
@@ -129,3 +134,128 @@ struct MacRefreshScheduleTests {
 // migration to `appGroupIdentifier(teamIDPrefix:)` is what makes a Mac
 // snapshot cross a process boundary — and what makes this suite worth
 // restoring.
+
+/// Registration bookkeeping, which is everything `MacBackgroundRefresh` does
+/// that `MacRefreshSchedule` does not decide.
+///
+/// The suite above states why a real `NSBackgroundActivityScheduler` cannot
+/// appear in a test: creating one is harmless, but `schedule` hands a live
+/// activity to a system daemon under the app's own identifier. The factory
+/// seam is what separates those two facts — the class still makes a real
+/// scheduler in the app, and here it makes a counting stub that never
+/// schedules, so start/stop/restart can be observed without registering
+/// anything.
+///
+/// This is the part that was entirely unexercised while the class had no call
+/// sites at all: `start` is documented as idempotent so callers may re-run it
+/// on scene changes without bookkeeping, and `GetHogMacApp` now does exactly
+/// that on every `.active`. If idempotence ever broke, the app would register
+/// a second activity for every window activation.
+@Suite("Mac background refresh registration")
+@MainActor
+struct MacBackgroundRefreshRegistrationTests {
+
+    /// Never scheduled, only counted. Overriding `schedule` is what keeps the
+    /// system daemon out of this: the superclass method is the one that
+    /// registers.
+    private final class StubScheduler: NSBackgroundActivityScheduler {
+        var invalidations = 0
+
+        override func schedule(
+            _ block: @escaping (@escaping NSBackgroundActivityScheduler.CompletionHandler) -> Void
+        ) {}
+
+        override func invalidate() { invalidations += 1 }
+    }
+
+    private final class Factory {
+        private(set) var made: [StubScheduler] = []
+
+        func make(identifier: String) -> NSBackgroundActivityScheduler {
+            let scheduler = StubScheduler(identifier: identifier)
+            made.append(scheduler)
+            return scheduler
+        }
+    }
+
+    private func makeModel() -> AppModel {
+        AppModel(store: InMemoryTokenStore(), transport: URLSessionTransport())
+    }
+
+    @Test("nothing is registered until something starts it")
+    func inertBeforeStart() {
+        let factory = Factory()
+        let refresh = MacBackgroundRefresh(makeScheduler: factory.make)
+
+        #expect(refresh.isActive == false)
+        #expect(factory.made.isEmpty)
+    }
+
+    @Test("start registers exactly one activity, under the shared identifier")
+    func startRegistersOnce() {
+        let factory = Factory()
+        let refresh = MacBackgroundRefresh(makeScheduler: factory.make)
+
+        refresh.start(model: makeModel())
+
+        #expect(refresh.isActive)
+        #expect(factory.made.count == 1)
+        #expect(factory.made.first?.identifier == MacBackgroundRefresh.activityIdentifier)
+    }
+
+    /// The property the doc comment promises and the app now leans on: the
+    /// scene going active re-runs `start` every time.
+    @Test("a second start while one is registered changes nothing")
+    func startIsIdempotent() {
+        let factory = Factory()
+        let refresh = MacBackgroundRefresh(makeScheduler: factory.make)
+        let model = makeModel()
+
+        refresh.start(model: model)
+        refresh.start(model: model)
+        refresh.start(model: model)
+
+        #expect(factory.made.count == 1)
+        #expect(refresh.isActive)
+    }
+
+    @Test("stop invalidates the activity and forgets it")
+    func stopInvalidates() {
+        let factory = Factory()
+        let refresh = MacBackgroundRefresh(makeScheduler: factory.make)
+
+        refresh.start(model: makeModel())
+        refresh.stop()
+
+        #expect(refresh.isActive == false)
+        #expect(factory.made.first?.invalidations == 1)
+    }
+
+    /// Sign-out stops the clock; a sign-in in the same session has to be able
+    /// to start it again, which only holds if `stop` really cleared the slot
+    /// rather than just invalidating what was in it.
+    @Test("starting again after a stop registers a fresh activity")
+    func restartRegistersAgain() {
+        let factory = Factory()
+        let refresh = MacBackgroundRefresh(makeScheduler: factory.make)
+        let model = makeModel()
+
+        refresh.start(model: model)
+        refresh.stop()
+        refresh.start(model: model)
+
+        #expect(factory.made.count == 2)
+        #expect(refresh.isActive)
+    }
+
+    @Test("stop on something never started is harmless")
+    func stopWithoutStart() {
+        let factory = Factory()
+        let refresh = MacBackgroundRefresh(makeScheduler: factory.make)
+
+        refresh.stop()
+
+        #expect(refresh.isActive == false)
+        #expect(factory.made.isEmpty)
+    }
+}
