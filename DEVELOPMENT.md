@@ -34,6 +34,56 @@ output locally; only verified synthetic screenshots may be added to the repo.
 then runs the schema-aware fixture and source privacy suite. Its own unsafe
 corpus can be exercised with `scripts/verify-public-tree --self-test`.
 
+## Building the Mac app
+
+The macOS target builds and tests from the same generated project:
+
+```bash
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS'
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS' \
+  -only-testing:GetHogMacTests
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS' \
+  -parallel-testing-enabled NO -only-testing:GetHogMacUITests
+```
+
+`GetHogMacTests` is a Swift Testing bundle, so its result is the
+`Test run with N tests in M suites passed` line. The `Executed 0 tests` line in
+the same log is the empty XCTest shell around it and is normal — read the
+Swift Testing line, not that one.
+
+Two traps are worth knowing before either command confuses you.
+
+**A stale LaunchServices record launches the Mac app windowless.** The iOS and
+macOS apps deliberately share one bundle identifier, `app.gethog.GetHog`, so a
+record registered against an iOS build can capture a macOS launch: the process
+starts, takes no window, and looks like a hung app rather than a
+misregistration. Re-register the built product and it goes away:
+
+```bash
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f /path/to/Build/Products/Debug/GetHog.app
+```
+
+The same cache is why a freshly-changed app icon can keep showing the old one
+in the Dock; `killall Dock` after the `lsregister` clears that half.
+
+**The Mac UI suite needs an unlocked GUI session.** A locked screen composites
+nothing and hands the automation layer no elements, so every test in
+`GetHogMacUITests` fails identically at launch with
+
+```
+Failed to activate application 'app.gethog.GetHog …' (current state: Running Background)
+```
+
+before reaching a single assertion. That signature means the screen, not the
+code — do not chase it through the queries. Unlock the machine and re-run.
+Unit tests, builds, and `build-for-testing` are all unaffected by the lock.
+
+`GetHogMacUITests/MacSurfaceSweepTests` walks every sidebar screen and attaches
+a full-screen photograph of each. Its narrow and wide passes are off by default;
+turn them on with `TEST_RUNNER_GETHOG_SWEEP_SIZES=all` and export the images
+from the result bundle with `xcrun xcresulttool export attachments`.
+
 ## Architecture
 
 `GetHogKit/` is the UI-free Swift package for authentication, networking,
