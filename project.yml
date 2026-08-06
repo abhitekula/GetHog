@@ -525,6 +525,103 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHogMac
 
+  # The visionOS twin of GetHogTests: the directory is the contract, so a
+  # task dropping a test file there is in the suite on regeneration.
+  GetHogVisionTests:
+    type: bundle.unit-test
+    platform: visionOS
+    sources:
+      - GetHogVision/Tests
+    dependencies:
+      - target: GetHogVision
+      - package: GetHogKit
+      - package: GetHogUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogVisionTests
+        GENERATE_INFOPLIST_FILE: YES
+        # Spelled out for the reason GetHogMacTests documents: XcodeGen
+        # derives the host path from the *target* name, and GetHogVision's
+        # product is GetHog.app. iOS-style bundles are flat — no
+        # Contents/MacOS.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/GetHog"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  GetHogVisionUITests:
+    type: bundle.ui-testing
+    platform: visionOS
+    sources:
+      - path: GetHogVision/UITests
+    dependencies:
+      - target: GetHogVision
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogVisionUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GetHogVision
+
+  # No TEST_HOST override here, unlike its vision and TV siblings: the watch
+  # target's product name *is* GetHogWatch, so XcodeGen's derived path names a
+  # binary that exists. The override is only needed where PRODUCT_NAME
+  # diverges from the target name.
+  GetHogWatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    sources:
+      - GetHogWatch/Tests
+    dependencies:
+      - target: GetHogWatch
+      - package: GetHogKit
+      - package: GetHogUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogWatchTests
+        GENERATE_INFOPLIST_FILE: YES
+
+  GetHogWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    sources:
+      - path: GetHogWatch/UITests
+    dependencies:
+      - target: GetHogWatch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogWatchUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GetHogWatch
+
+  GetHogTVTests:
+    type: bundle.unit-test
+    platform: tvOS
+    sources:
+      - GetHogTV/Tests
+    dependencies:
+      - target: GetHogTV
+      - package: GetHogKit
+      - package: GetHogUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTVTests
+        GENERATE_INFOPLIST_FILE: YES
+        # Same derived-host defect as GetHogVisionTests: the product is
+        # GetHog.app, not GetHogTV.app.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/GetHog"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  GetHogTVUITests:
+    type: bundle.ui-testing
+    platform: tvOS
+    sources:
+      - path: GetHogTV/UITests
+    dependencies:
+      - target: GetHogTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTVUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GetHogTV
+
 schemes:
   GetHog:
     build:
@@ -552,16 +649,34 @@ schemes:
     build:
       targets:
         GetHogVision: all
+        GetHogVisionTests: [test]
+        GetHogVisionUITests: [test]
+    test:
+      targets:
+        - GetHogVisionTests
+        - GetHogVisionUITests
 
   GetHogWatch:
     build:
       targets:
         GetHogWatch: all
+        GetHogWatchTests: [test]
+        GetHogWatchUITests: [test]
+    test:
+      targets:
+        - GetHogWatchTests
+        - GetHogWatchUITests
 
   GetHogTV:
     build:
       targets:
         GetHogTV: all
+        GetHogTVTests: [test]
+        GetHogTVUITests: [test]
+    test:
+      targets:
+        - GetHogTVTests
+        - GetHogTVUITests
 
   # `xcodebuild test -project GetHog.xcodeproj -scheme GetHogScreenshots \
   #    -destination 'platform=iOS Simulator,name=iPhone 17'`
