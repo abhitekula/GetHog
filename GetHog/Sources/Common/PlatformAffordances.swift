@@ -97,6 +97,12 @@ extension View {
 /// inline (`MacRootView` binds `navigationDestination(item:)` to
 /// `OpenDetails`), where the hosting stack already has the bar — a second
 /// stack would nest, and Done would duplicate Back.
+///
+/// **This is a fact about the shell, not about every macOS presentation.** A
+/// Mac caller that genuinely sheets one of these four gets a view with no title
+/// and no way out, and must supply both itself — `SurveySearchSheet` is the one
+/// such caller and `sheetChrome` there is what it does about it. Any new one
+/// has the same obligation.
 struct DetailSheetContainer<Content: View>: View {
     @ViewBuilder let content: Content
 

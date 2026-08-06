@@ -577,10 +577,18 @@ struct SurveySearchRequest: Identifiable, Hashable {
 
 /// The survey screen, reached from an id.
 ///
-/// A sheet rather than a push because `SurveyDetailSheet` is a sheet: it brings
-/// its own `NavigationStack` and its own Done button, and pushing it would draw
-/// a second navigation bar above the first — the exact cost
+/// A sheet rather than a push because on iOS `SurveyDetailSheet` is a sheet: it
+/// brings its own `NavigationStack` and its own Done button, and pushing it
+/// would draw a second navigation bar above the first — the exact cost
 /// `ScreenIndexSections` documents paying on 24 screens.
+///
+/// **On the Mac it brings neither**, and that is the whole of the difference
+/// below. `MacRootView` *pushes* that view into a stack that already has a bar,
+/// so `DetailSheetContainer` gives it none — while this presentation is a real
+/// sheet either way, with nothing above it to inherit chrome from. So the Mac
+/// supplies the stack and the Done button here, around **both** states. Around
+/// only the loaded one and the sheet would arrive with a title bar and lose it
+/// the moment the survey landed; around neither and there is no way to close it.
 struct SurveySearchSheet: View {
     let surveyID: String
     let name: String
@@ -594,13 +602,18 @@ struct SurveySearchSheet: View {
     var body: some View {
         Group {
             if let survey {
-                SurveyDetailSheet(
-                    survey: survey,
-                    webURL: model.webURL(path: "surveys/\(survey.id)")
-                )
+                sheetChrome {
+                    SurveyDetailSheet(
+                        survey: survey,
+                        webURL: model.webURL(path: "surveys/\(survey.id)")
+                    )
+                }
             } else {
-                // One bar in this state too: the loaded state has a navigation
-                // stack of its own, so this branch supplies the only other one.
+                // One bar in this state too: on iOS the loaded state has a
+                // navigation stack of its own, so this branch supplies the only
+                // other one. On the Mac neither state brings one and both get
+                // theirs from `sheetChrome`, which is why this stack is the
+                // iOS spelling of the same job rather than a second one.
                 NavigationStack {
                     placeholder
                         .pageSurface()
@@ -615,6 +628,29 @@ struct SurveySearchSheet: View {
             }
         }
         .task(id: model.projectID) { await load() }
+    }
+
+    /// The chrome a *sheet* needs when the view inside it supplies none.
+    ///
+    /// Nothing on iOS, where `SurveyDetailSheet` still carries its own stack and
+    /// Done button; the stack and the button on macOS, where it carries neither
+    /// because its other host — `MacRootView` — pushes it. Written as a wrapper
+    /// rather than as an `#if` around the whole `body` so the loading branch
+    /// above stays one piece of code on both platforms.
+    @ViewBuilder
+    private func sheetChrome(@ViewBuilder _ content: () -> some View) -> some View {
+        #if os(macOS)
+        NavigationStack {
+            content()
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+        }
+        #else
+        content()
+        #endif
     }
 
     @ViewBuilder
