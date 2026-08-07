@@ -287,6 +287,12 @@ final class WatchModel {
     /// manual live testing — in memory, dying with the process, never written
     /// to the keychain.
     static func live() -> WatchModel {
+        // First, before anything reads the watch list — including
+        // `WatchHandoff.current()` two branches down. A demo launch puts its
+        // thresholds where the complication process can read them; a live
+        // launch takes them straight back out. See
+        // `WatchDemoMode.reconcileSeededWatches`.
+        WatchDemoMode.reconcileSeededWatches(in: .shared)
         if WatchDemoMode.isEnabled {
             return WatchModel(
                 credential: WatchDemoMode.credential,

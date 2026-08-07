@@ -62,6 +62,71 @@ enum WatchDemoMode {
 
     static func transport() -> WatchDemoTransport { WatchDemoTransport() }
 
+    // MARK: - Seeding the file the complications read
+
+    /// The demo's thresholds, put where a *different process* can see them.
+    ///
+    /// Without this the demo is a demo of half the product. `seededWatches`
+    /// reaches `WatchModel` in memory, so the app's Health page shows two
+    /// thresholds and one of them firing — while every complication beside it
+    /// reads `metric-watches.json` in the widget process, finds nothing, and
+    /// says "No metric watches on this watch". The firing glyph, the alert
+    /// card and the Smart Stack promotion are the entire reason those widgets
+    /// exist, and nothing outside a unit test could show them.
+    ///
+    /// The obvious objection is the right one and is what the marker answers:
+    /// synthetic thresholds must never survive into a real session, where they
+    /// would sit in the user's own watch list, evaluate against their own
+    /// numbers, and be indistinguishable from something they typed. So the
+    /// demo *declares* what it wrote, and a live launch drops exactly that and
+    /// nothing else — a watch list from a genuine phone hand-off carries no
+    /// marker and is never touched.
+    static func seedMarkerURL(in store: SharedSnapshotStore) -> URL {
+        store.directory.appendingPathComponent("watch-demo-seeded-watches.json")
+    }
+
+    /// Called once per launch, before anything reads the watch list.
+    ///
+    /// One function rather than two call sites, so the demo branch and the
+    /// live branch cannot drift apart: whichever launch this is, the container
+    /// afterwards holds either the demo's thresholds or none of them.
+    static func reconcileSeededWatches(
+        in store: SharedSnapshotStore,
+        demoEnabled: Bool = WatchDemoMode.isEnabled
+    ) {
+        demoEnabled ? seedWatches(into: store) : clearSeededWatches(from: store)
+    }
+
+    static func seedWatches(into store: SharedSnapshotStore) {
+        // Best-effort, like every other write on this path: a demo that cannot
+        // seed still runs, it just shows the quiet complication.
+        try? store.writeMetricWatches(seededWatches)
+        try? Data(seededWatchIDs.joined(separator: "\n").utf8)
+            .write(to: seedMarkerURL(in: store), options: [.atomic])
+    }
+
+    /// Removes what a previous demo launch seeded, and only that.
+    ///
+    /// The marker alone is not enough to justify deleting the file: a phone
+    /// hand-off may have landed since and replaced the list with the user's
+    /// real thresholds, at which point the marker is stale and the file is
+    /// theirs. So the ids are compared before anything is removed — a demo
+    /// list is dropped, a real one is left exactly where it is, and the stale
+    /// marker goes either way.
+    static func clearSeededWatches(from store: SharedSnapshotStore) {
+        let marker = seedMarkerURL(in: store)
+        guard let data = try? Data(contentsOf: marker) else { return }
+        let seeded = String(decoding: data, as: UTF8.self)
+            .split(separator: "\n")
+            .map(String.init)
+        if store.metricWatches().map(\.id) == seeded {
+            try? FileManager.default.removeItem(at: store.metricWatchesURL)
+        }
+        try? FileManager.default.removeItem(at: marker)
+    }
+
+    private static var seededWatchIDs: [String] { seededWatches.map(\.id) }
+
     #if DEBUG
     /// `GETHOG_WATCH_PAGE=metrics|health|flags|activity` opens the demo on one
     /// page, so all four can be screenshotted phone-free without driving the
