@@ -661,8 +661,9 @@ final class ReplayWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDeleg
 
 /// The halves of the stage web view that must not fork between platforms:
 /// one configuration, one message-handler registration, one resource-policy
-/// installation, one teardown. The iOS and Mac representables own only what
-/// genuinely differs — view plumbing and scroll/gesture suppression.
+/// installation, one teardown. The iOS-family representable (iOS and visionOS
+/// share it) and the Mac one own only what genuinely differs — view plumbing
+/// and scroll/gesture suppression.
 @MainActor
 enum ReplayStageBuilder {
     static func makeConfiguration(
@@ -670,7 +671,11 @@ enum ReplayStageBuilder {
         controller: ReplayPlayerController
     ) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        #if os(iOS)
+        // A recorded page can contain `<video>`, and without this the default
+        // steers playback into the fullscreen presentation — the one WebKit
+        // path that is genuinely broken on visionOS. Inline is also simply
+        // what the stage means: frames belong in the stage's own rectangle.
+        #if os(iOS) || os(visionOS)
         configuration.allowsInlineMediaPlayback = true
         #endif
         configuration.mediaTypesRequiringUserActionForPlayback = .all
@@ -725,13 +730,16 @@ enum ReplayStageBuilder {
     }
 }
 
-#if os(iOS)
+#if os(iOS) || os(visionOS)
 /// A WKWebView that tells the shim when native layout moved its frame.
 ///
 /// The shim's own `window.resize` listener is debounced and fires only once
 /// the web content process notices the change; a SwiftUI-animated frame — the
-/// full-screen cover presenting, an iPad window resize — can settle at a size
-/// the listener never reports, leaving the replay scaled to stale geometry.
+/// full-screen cover presenting, an iPad window resize, a Vision window pulled
+/// to a new size by its corner — can settle at a size the listener never
+/// reports, leaving the replay scaled to stale geometry. A visionOS window is
+/// freely resizable in two dimensions at once and for as long as the drag
+/// lasts, so it is the most exposed of the three, not the least.
 /// Layout is the one place the native side knows the truth first.
 final class ReplayStageWebView: WKWebView {
     var onLayout: ((CGSize) -> Void)?
@@ -747,6 +755,12 @@ final class ReplayStageWebView: WKWebView {
 
 /// Hosts the offline rrweb player. Renders frames only — the transport controls
 /// live outside, in SwiftUI.
+///
+/// visionOS shares this wrapper rather than growing its own: gaze-and-pinch
+/// arrives as the same tap the stage overlay's `onTapGesture(perform: expand)`
+/// already reads, and the stage stays a single accessibility element through
+/// the shared `.accessibilityRepresentation` on `stage`, so neither of the two
+/// things a spatial fork would exist to change actually differs.
 struct WKWebViewRepresentable: UIViewRepresentable {
     let controller: ReplayPlayerController
 
@@ -792,20 +806,6 @@ struct WKWebViewRepresentable: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: ReplayWebBridge) {
         ReplayStageBuilder.dismantle(webView: webView, coordinator: coordinator)
-    }
-}
-#elseif os(visionOS)
-/// Temporary Vision stand-in for the replay stage. Both halves of the real
-/// thing exist on visionOS — WebKit and `UIViewRepresentable` — so what is
-/// missing is not API but the verification a player deserves on a platform
-/// whose geometry, input and window model are all different. It keeps `stage`
-/// and the expanded cover compiling, and it is unreachable while `playerCard`
-/// short-circuits `.ready` below.
-struct WKWebViewRepresentable: View {
-    let controller: ReplayPlayerController
-
-    var body: some View {
-        Rectangle().fill(Theme.replayStageBackground)
     }
 }
 #else
@@ -1004,22 +1004,6 @@ struct ReplayPlayerView: View {
                     if let failure = controller.failure {
                         unavailable(failure)
                     } else {
-                        #if os(visionOS)
-                        // Real playback on Vision is a later task's. Until
-                        // then this is the same honest degradation a mobile
-                        // recording already gets: say what cannot happen here
-                        // and offer where it can, rather than a dead transport
-                        // bar under a spinner that can never stop — with no
-                        // web view attached, `controller.isReady` never turns
-                        // true. That also leaves the header's expand button
-                        // disabled for free, so the expanded cover stays
-                        // unreachable while still compiling.
-                        notice(
-                            icon: "play.slash",
-                            title: "Replay playback isn't on Apple Vision Pro yet",
-                            detail: "The session's timeline, summary and diagnostics are below. Watch the replay itself in PostHog."
-                        )
-                        #else
                         stage
                         PlayerTransportBar(
                             controller: controller,
@@ -1043,7 +1027,6 @@ struct ReplayPlayerView: View {
                             }
                         )
                         streamingFootnote
-                        #endif
                     }
                 }
             }
