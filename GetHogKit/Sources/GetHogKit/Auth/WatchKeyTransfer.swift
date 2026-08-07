@@ -45,17 +45,30 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         /// snapshot it already reads. See the property of the same name on the
         /// enclosing type.
         public let watches: [MetricWatch]
+        /// True when `watches` is empty **because the list could not be read**,
+        /// not because there was none.
+        ///
+        /// The two are the same array and completely different facts, and a
+        /// receiver that cannot tell them apart shows a calm, empty Health
+        /// screen to a user with five alerts armed. Whatever the wrist would
+        /// say for "no watches yet", it must say something else for this.
+        public let watchesDegraded: Bool
 
+        /// Explicit rather than memberwise, and `watchesDegraded` is defaulted,
+        /// so a call site written before the flag existed still compiles and
+        /// still means what it meant.
         public init(
             projectID: Int?,
             projectName: String?,
             headlineMetricID: String?,
-            watches: [MetricWatch]
+            watches: [MetricWatch],
+            watchesDegraded: Bool = false
         ) {
             self.projectID = projectID
             self.projectName = projectName
             self.headlineMetricID = headlineMetricID
             self.watches = watches
+            self.watchesDegraded = watchesDegraded
         }
     }
 
@@ -74,11 +87,22 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
 
     /// The `WCSession` dictionary key both ends use.
     ///
-    /// The kit does not dictate the channel — `transferUserInfo`,
-    /// `updateApplicationContext` and `sendMessage` all take a
-    /// `[String: Any]` — but every one of them needs a key, and a sender and a
-    /// receiver that spell it differently fail silently and permanently. So the
-    /// name is a constant here rather than a literal at each end.
+    /// The kit does not dictate the channel, and does not pretend the three are
+    /// interchangeable. They trade the same thing against each other, and this
+    /// payload is a bearer credential, so the trade has to be made with open
+    /// eyes: `transferUserInfo` queues the dictionary in the WatchConnectivity
+    /// daemon's **on-disk outbox** until it is delivered, surviving relaunch and
+    /// reboot, and `updateApplicationContext` persists its dictionary on both
+    /// devices — in both cases the raw key rests outside the keychain, for a
+    /// window the app does not control. `sendMessage` leaves nothing at rest but
+    /// requires the counterpart to be reachable, so it will simply fail
+    /// whenever the watch is off the wrist or out of range.
+    ///
+    /// Deliverability against the at-rest window, in other words, and the app
+    /// sending the payload owns that choice. What the kit owns is that every
+    /// one of those channels needs a dictionary key, and a sender and receiver
+    /// that spell it differently fail silently and permanently — so the name is
+    /// a constant here rather than a literal at each end.
     public static let userInfoKey = "app.gethog.watchKeyTransfer"
 
     public let version: Int
@@ -95,6 +119,21 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
     /// Sending the ids alone would have made the watch fetch a list the phone
     /// already had in hand at the moment of the hand-off.
     public let watches: [MetricWatch]
+    /// True when `watches` is empty **because the payload's list could not be
+    /// decoded**, false when it is empty because there was nothing to send.
+    ///
+    /// Not a field on the wire and deliberately not one: it is what *this*
+    /// decode found, so a sender cannot claim it and `encoded()` does not
+    /// carry it. Constructing a payload leaves it false.
+    ///
+    /// It exists because the tolerant decode below has a failure mode that
+    /// looks exactly like success. A newer phone adding a `MetricWatch.Condition`
+    /// case makes the whole array undecodable here; swallowing that yields
+    /// `[]`, and `[]` is also what a user with no alerts has. Without this flag
+    /// the wrist shows the same calm, empty Health screen either way — to
+    /// someone who armed five thresholds and will now never hear about any of
+    /// them.
+    public let watchesDegraded: Bool
 
     public init(
         version: Int = WatchKeyTransfer.currentVersion,
@@ -103,7 +142,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         projectID: Int? = nil,
         projectName: String? = nil,
         headlineMetricID: String? = nil,
-        watches: [MetricWatch] = []
+        watches: [MetricWatch] = [],
+        watchesDegraded: Bool = false
     ) {
         self.version = version
         self.key = key
@@ -112,6 +152,7 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         self.projectName = projectName
         self.headlineMetricID = headlineMetricID
         self.watches = watches
+        self.watchesDegraded = watchesDegraded
     }
 
     // MARK: - Wire form
@@ -140,6 +181,9 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         try decoder.decode(WatchKeyTransfer.self, from: data)
     }
 
+    /// `watchesDegraded` is absent on purpose — it is a decode-time
+    /// observation, not a payload field, so the synthesised `encode(to:)`
+    /// leaves it out and no hop can inherit a claim it cannot verify.
     enum CodingKeys: String, CodingKey {
         case version, key, region, projectID, projectName, headlineMetricID, watches
     }
@@ -159,10 +203,29 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         projectID = try c.decodeIfPresent(Int.self, forKey: .projectID)
         projectName = try c.decodeIfPresent(String.self, forKey: .projectName)
         headlineMetricID = try c.decodeIfPresent(String.self, forKey: .headlineMetricID)
-        // `try?`: a watch list this build cannot read — a condition a newer
-        // phone added — costs the thresholds and nothing else. The key still
-        // lands, which is what the user asked for.
-        watches = ((try? c.decodeIfPresent([MetricWatch].self, forKey: .watches)) ?? []) ?? []
+        // Three states, not two, and the middle one is the whole reason this is
+        // written out rather than being a `try?` one-liner:
+        //
+        // - **Absent, or null.** The phone sent no watch list. Empty is the
+        //   truth and nothing was lost.
+        // - **Present and readable.** The ordinary case.
+        // - **Present and undecodable.** A `Condition` case a newer phone
+        //   added, say. The thresholds are lost and the key is not — dropping
+        //   the whole payload would punish the user for a field they never
+        //   touched — but the receiver is *told*, because an empty list it
+        //   cannot explain renders identically to having no alerts at all.
+        if c.contains(.watches), try !c.decodeNil(forKey: .watches) {
+            if let decoded = try? c.decode([MetricWatch].self, forKey: .watches) {
+                watches = decoded
+                watchesDegraded = false
+            } else {
+                watches = []
+                watchesDegraded = true
+            }
+        } else {
+            watches = []
+            watchesDegraded = false
+        }
     }
 
     // MARK: - Ingestion
@@ -189,7 +252,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
             projectID: projectID,
             projectName: projectName,
             headlineMetricID: headlineMetricID,
-            watches: watches
+            watches: watches,
+            watchesDegraded: watchesDegraded
         )
     }
 }

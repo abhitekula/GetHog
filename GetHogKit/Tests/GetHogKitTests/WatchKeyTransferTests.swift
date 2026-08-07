@@ -193,6 +193,118 @@ struct WatchKeyTransferTests {
         }
     }
 
+    // MARK: - Telling an absent watch list from an unreadable one
+
+    /// A `Condition` case this build has no idea about — what a newer phone
+    /// adding, say, `.outsideRange(…)` would put on the wire. Its enclosing
+    /// array decode throws, which is the whole point.
+    private static let unreadableWatchesJSON = """
+        {"key": "\(key)", "region": {"usCloud": {}}, "watches":
+          [{"id": "w1", "metricID": "42", "title": "Example signups",
+            "condition": {"risesFasterThan": {"_0": 5}}, "isEnabled": true}]}
+        """
+
+    @Test("an absent watch list is not a degraded one")
+    func absentWatchesAreNotDegraded() throws {
+        // Nothing was dropped: the phone sent no watches because there are
+        // none, or because it is an older build that never sent any. An empty
+        // Health screen is the truth here.
+        let json = #"{"key": "test-key-0001", "region": {"usCloud": {}}}"#
+        let received = try WatchKeyTransfer.decode(Data(json.utf8))
+
+        #expect(received.watches.isEmpty)
+        #expect(received.watchesDegraded == false)
+    }
+
+    @Test("an explicitly null watch list is not a degraded one either")
+    func nullWatchesAreNotDegraded() throws {
+        let json = #"{"key": "test-key-0001", "region": {"usCloud": {}}, "watches": null}"#
+        let received = try WatchKeyTransfer.decode(Data(json.utf8))
+
+        #expect(received.watches.isEmpty)
+        #expect(received.watchesDegraded == false)
+    }
+
+    @Test("an empty watch list the phone really sent is not a degraded one")
+    func emptyWatchesAreNotDegraded() throws {
+        let json = #"{"key": "test-key-0001", "region": {"usCloud": {}}, "watches": []}"#
+        let received = try WatchKeyTransfer.decode(Data(json.utf8))
+
+        #expect(received.watches.isEmpty)
+        #expect(received.watchesDegraded == false)
+    }
+
+    @Test("a watch list this build cannot read says so instead of reading as empty")
+    func unreadableWatchesAreDegraded() throws {
+        // The failure this flag exists for. Without it the wrist shows a
+        // healthy, empty Health screen to a user who has five alerts armed —
+        // indistinguishable from having none, and silent forever.
+        let received = try WatchKeyTransfer.decode(Data(Self.unreadableWatchesJSON.utf8))
+
+        #expect(received.key == Self.key)
+        #expect(received.watches.isEmpty)
+        #expect(received.watchesDegraded)
+    }
+
+    @Test("a readable watch list is never flagged as degraded")
+    func readableWatchesAreNotDegraded() throws {
+        let received = try WatchKeyTransfer.decode(Self.full(region: .usCloud).encoded())
+
+        #expect(received.watches == Self.watches())
+        #expect(received.watchesDegraded == false)
+    }
+
+    @Test("the degradation flag is an observation, not a field on the wire")
+    func degradedFlagIsNotEncoded() throws {
+        // A sender cannot claim it, and a receiver cannot be told it: the flag
+        // is what *this* decode found, so it must not survive an encode.
+        let encoded = try Self.full(region: .usCloud).encoded()
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        #expect(object["watchesDegraded"] == nil)
+
+        // And re-encoding a degraded value drops the flag rather than
+        // propagating a claim the next hop cannot verify.
+        let degraded = try WatchKeyTransfer.decode(Data(Self.unreadableWatchesJSON.utf8))
+        #expect(degraded.watchesDegraded)
+        let reEncoded = try #require(
+            try JSONSerialization.jsonObject(with: degraded.encoded()) as? [String: Any]
+        )
+        #expect(reEncoded["watchesDegraded"] == nil)
+    }
+
+    @Test("ingestion hands the degradation on so the wrist can say what it lost")
+    func ingestCarriesDegradation() throws {
+        let store = InMemoryTokenStore()
+        let selection = try WatchKeyTransfer
+            .decode(Data(Self.unreadableWatchesJSON.utf8))
+            .ingest(into: store)
+
+        // The key still lands — dropping it would punish the user for a field
+        // they never touched.
+        #expect(try store.load()?.key == Self.key)
+        #expect(selection.watches.isEmpty)
+        #expect(selection.watchesDegraded)
+
+        // And the ordinary path says nothing was lost.
+        #expect(try Self.full(region: .usCloud)
+            .ingest(into: InMemoryTokenStore()).watchesDegraded == false)
+    }
+
+    @Test("a selection built without naming degradation is not degraded")
+    func selectionDefaultsToUndegraded() {
+        // The parameter is defaulted so call sites written before the flag
+        // existed still compile and still mean what they meant.
+        let selection = WatchKeyTransfer.Selection(
+            projectID: 42,
+            projectName: "Synthetic Analytics",
+            headlineMetricID: "42",
+            watches: []
+        )
+        #expect(selection.watchesDegraded == false)
+    }
+
     @Test("both ends of the transport name the payload identically")
     func userInfoKeyIsShared() {
         // The kit owns no transport, so the one thing a sender and a receiver
