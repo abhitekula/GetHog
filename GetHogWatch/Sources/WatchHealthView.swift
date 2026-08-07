@@ -21,7 +21,7 @@ struct WatchHealthView: View {
                         watchRow(row)
                     }
                 }
-                Section("Errors, last 24 h") {
+                Section("Errors, last \(WatchModel.budget.hours) h") {
                     errorPulse
                 }
             }
@@ -34,18 +34,19 @@ struct WatchHealthView: View {
     /// watch app is too old to read", which the user can fix and which would
     /// otherwise render as a clean bill of health.
     @ViewBuilder private var emptyWatches: some View {
-        if model.watchesDegraded {
+        switch WatchHealthCopy.emptyWatches(degraded: model.watchesDegraded) {
+        case .degraded(let headline, let detail):
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text("Thresholds didn't transfer")
+                Text(headline)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.accentWarm)
-                Text("This watch app is older than GetHog on your iPhone. Update it, then send the key again.")
+                Text(detail)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Ink.secondary)
             }
             .accessibilityElement(children: .combine)
-        } else {
-            Text("No metric watches. Add them in GetHog on your iPhone.")
+        case .none(let detail):
+            Text(detail)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Ink.tertiary)
         }
@@ -101,4 +102,38 @@ struct WatchHealthView: View {
                 .foregroundStyle(Theme.Ink.tertiary)
         }
     }
+}
+
+/// The two empty states and the one footnote, as values.
+///
+/// Pure so the branch a degraded hand-off selects is pinned by a test rather
+/// than by reading a screenshot — the whole point of `watchesDegraded` is that
+/// its two outcomes are indistinguishable in a rendered list unless someone
+/// checks which sentence was chosen.
+///
+/// The wording deliberately never says "a newer iPhone sent this". The kit can
+/// tell a version it does not understand from a `Condition` it cannot decode,
+/// but this build cannot, and blaming the phone for what may be a malformed
+/// payload would send the user to the wrong place.
+enum WatchHealthCopy {
+    enum EmptyWatches: Equatable {
+        case none(detail: String)
+        case degraded(headline: String, detail: String)
+    }
+
+    static func emptyWatches(degraded: Bool) -> EmptyWatches {
+        guard degraded else {
+            return .none(detail: "No metric watches. Add them in GetHog on your iPhone.")
+        }
+        return .degraded(
+            headline: "Thresholds didn't transfer",
+            detail: """
+                This watch app is older than GetHog on your iPhone. \
+                Update it, then send the key again.
+                """
+        )
+    }
+
+    static let degradedFooter =
+        "This watch app is older than GetHog on your iPhone; some settings didn't transfer."
 }

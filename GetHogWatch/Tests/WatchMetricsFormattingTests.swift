@@ -81,6 +81,29 @@ struct WatchMetricsFormattingTests {
         )
     }
 
+    // MARK: - Sparkline
+
+    @Test("the sparkline runs oldest first, lowest at the floor and highest at the ceiling")
+    func sparklineNormalisation() {
+        #expect(WatchSparklineMath.fractions([0, 5, 10]) == [0, 0.5, 1])
+        #expect(WatchSparklineMath.fractions([10, 5, 0]) == [1, 0.5, 0])
+    }
+
+    @Test("a series with no range draws down the middle rather than dividing by it")
+    func sparklineHandlesAZeroRange() {
+        #expect(WatchSparklineMath.fractions([7, 7, 7]) == [0.5, 0.5, 0.5])
+    }
+
+    @Test("a sparkline with nothing to draw draws nothing")
+    func sparklineRefusesDegenerateInput() {
+        #expect(WatchSparklineMath.fractions([]).isEmpty)
+        #expect(WatchSparklineMath.fractions([1]).isEmpty)
+        // A malformed tile decodes to infinity or NaN without complaint, and
+        // either bound would put every other point off the strip.
+        #expect(WatchSparklineMath.fractions([.infinity, .nan]).isEmpty)
+        #expect(WatchSparklineMath.fractions([1, 2, .infinity]) == [0, 1])
+    }
+
     @Test("each direction carries its own symbol")
     func symbolPerDirection() {
         #expect(WatchDeltaText.symbol(for: metric(value: 2, previous: 1)) == "arrow.up.right")

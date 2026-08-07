@@ -56,9 +56,13 @@ struct WatchActivityView: View {
 enum WatchActivityFooter {
     static func text(lineCount: Int, capturedAt: Date?, now: Date) -> String {
         guard let capturedAt else { return "Not checked yet" }
-        let age = WatchAge.stamp(capturedAt: capturedAt, now: now)
-        if lineCount == 0 { return "No events in the last 24 hours · \(age.lowercasedStamp)" }
-        return "Last 24 h · newest \(WatchActivity.maxLines) · \(age.lowercasedStamp)"
+        // The window is the budget's, not a literal beside it: the sentence
+        // and the `WHERE timestamp >` floor have to be the same day or the
+        // page is describing a query it did not make.
+        let hours = WatchModel.budget.hours
+        let age = WatchAge.stamp(capturedAt: capturedAt, now: now).lowercasedStamp
+        if lineCount == 0 { return "No events in the last \(hours) h · \(age)" }
+        return "Last \(hours) h · newest \(WatchActivity.maxLines) · \(age)"
     }
 }
 

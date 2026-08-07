@@ -40,8 +40,12 @@ struct ActivityLine: Codable, Equatable, Identifiable, Sendable {
 /// view renders whatever it is handed: a cap enforced only in `WatchModel`
 /// would be one refactor away from a wrist scrolling a thousand rows.
 enum WatchActivity {
-    /// Rows kept, whatever the response carried.
-    static let maxLines = 25
+    /// Rows kept, whatever the response carried — the wrist budget's page size,
+    /// not a second number beside it. The query already asks for no more than
+    /// this; the cap is what stops a response that ignored the limit, or a
+    /// carried file written by a build with a larger one, from reaching a
+    /// screen that can scroll neither.
+    static var maxLines: Int { QueryBudget.wrist.pageSize }
     /// Characters of event name kept per line — one watch line, no wrapping.
     static let maxEventNameLength = 60
 
@@ -94,9 +98,18 @@ enum WatchActivity {
 
     /// Non-throwing: a corrupt feed must degrade to "nothing carried over"
     /// rather than stop the app from launching.
+    ///
+    /// The cap is applied here as well as at the write, and that is not
+    /// belt-and-braces: this file outlives the build that wrote it, so a
+    /// downgrade — or a build whose budget shrank, which is exactly what
+    /// happened when the page size moved from 25 to the wrist budget's ten —
+    /// reads a longer feed than it is willing to draw.
     static func read(from store: SharedSnapshotStore) -> ActivityFeed? {
-        guard let data = try? Data(contentsOf: fileURL(in: store)) else { return nil }
-        return try? JSONDecoder.watchActivity.decode(ActivityFeed.self, from: data)
+        guard let data = try? Data(contentsOf: fileURL(in: store)),
+              let feed = try? JSONDecoder.watchActivity.decode(ActivityFeed.self, from: data)
+        else { return nil }
+        guard feed.lines.count > maxLines else { return feed }
+        return ActivityFeed(lines: Array(feed.lines.prefix(maxLines)), capturedAt: feed.capturedAt)
     }
 }
 
@@ -201,6 +214,51 @@ struct WatchHealth: Equatable, Sendable {
     }
 }
 
+// MARK: - Hand-off
+
+/// Everything about a running model that a phone hand-off can change.
+///
+/// A value rather than five reads scattered across `live()` and the session
+/// listener, so a launch and a mid-flight transfer take the same state from
+/// the same places and cannot diverge. `current()` is the only reader; the
+/// listener writes those stores and posts, and the model reads them back.
+struct WatchHandoff: Sendable, Equatable {
+    let credential: StoredCredential?
+    let projectName: String?
+    let headlineMetricID: String?
+    let watches: [MetricWatch]
+    let watchesDegraded: Bool
+
+    /// What the three stores say right now.
+    ///
+    /// The DEBUG `GETHOG_API_KEY` fallback lives here rather than in `live()`
+    /// so a re-read after a transfer cannot silently lose it — it is in
+    /// memory, dies with the process, and is never written to the keychain,
+    /// which is the whole point of the channel AGENTS.md documents.
+    static func current(
+        credentials: any CredentialStoring = KeychainTokenStore(),
+        defaults: UserDefaults = .standard,
+        snapshots: SharedSnapshotStore = .shared
+    ) -> WatchHandoff {
+        var credential = try? credentials.load()
+        #if DEBUG
+        if credential == nil,
+           let key = ProcessInfo.processInfo.environment["GETHOG_API_KEY"],
+           !key.isEmpty {
+            // No projectID: `refresh` resolves it through `/users/@me/` once.
+            credential = StoredCredential(key: key, region: .usCloud)
+        }
+        #endif
+        return WatchHandoff(
+            credential: credential,
+            projectName: defaults.string(forKey: WatchSettings.projectNameKey),
+            headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey),
+            watches: snapshots.metricWatches(),
+            watchesDegraded: defaults.bool(forKey: WatchSettings.watchesDegradedKey)
+        )
+    }
+}
+
 // MARK: - Model
 
 /// Fetches directly from PostHog with trimmed queries, reduces to the same
@@ -228,15 +286,28 @@ final class WatchModel {
         case failed(String)
     }
 
-    /// One page of dashboards, wide enough that a pinned board is very likely
-    /// on it. The list endpoint has no "pinned first" ordering to ask for, so
-    /// the only lever is how much of the first page we look at.
-    static let dashboardsPageLimit = 20
-    static let flagsPageLimit = 50
-    static let errorPulseLimit = 5
-    static let errorPulseWindow = "-24h"
-    static let activityWindow: TimeInterval = 24 * 3600
-    static let flagShortlistCap = 10
+    /// What one wrist fetch may cost, in one value.
+    ///
+    /// Every range and every page size below comes from here. This started as
+    /// five separate literals — a dashboards limit of 20, a flags limit of 50,
+    /// an events limit of 25, and the string `"-24h"` and the interval
+    /// `24 * 3600` spelling the same day twice — which is precisely the drift
+    /// `QueryBudget` exists to stop: four of them were larger than the wrist
+    /// budget the kit defines, and the flags page fetched fifty rows to render
+    /// ten. The kit's budgeted overloads forward to the same builders, so a
+    /// budgeted request is the ordinary request with smaller arguments rather
+    /// than a second spelling that can drift.
+    /// `nonisolated` because the pure copy builders — the Activity footer, the
+    /// Health section title — are not main-actor code and must still be able to
+    /// name the window they are describing.
+    nonisolated static let budget = QueryBudget.wrist
+
+    /// Deliberately tighter than `budget.pageSize`: the pulse is a count and a
+    /// worst offender, not a triage list, and five rows answer that.
+    nonisolated static let errorPulseLimit = 5
+    /// The flags page fetches exactly what the shortlist draws, so no row is
+    /// paid for and discarded.
+    nonisolated static var flagShortlistCap: Int { budget.pageSize }
     /// A wrist glance does not need numbers fresher than this, and the budget
     /// is organisation-wide.
     static let refreshTolerance: TimeInterval = 15 * 60
@@ -255,20 +326,23 @@ final class WatchModel {
     /// this process happens to still be holding.
     private var renders: [String: InsightRenderModel] = [:]
 
-    let headlineMetricID: String?
+    /// All five change when a hand-off arrives while the app is running, so
+    /// none of them can be `let`. See `adopt(_:)`.
+    private(set) var headlineMetricID: String?
     /// True when the phone's last hand-off carried thresholds this build could
     /// not decode. See `WatchSettings.watchesDegradedKey`; `watches` is then
     /// empty for a reason the user can act on, and the Health page names it.
-    let watchesDegraded: Bool
+    private(set) var watchesDegraded: Bool
     /// Confirms device ownership before a flag write. Injected: live is the
     /// `LAContext` gate below; demo and tests substitute their own verdict, so
     /// no test has to satisfy a passcode prompt.
     let authenticate: @Sendable (String) async -> Bool
 
-    private let client: PostHogClient?
+    private var client: PostHogClient?
     private var projectID: Int?
     private var projectName: String
-    private let watches: [MetricWatch]
+    private var watches: [MetricWatch]
+    private let transport: any HTTPTransport
     private let store: SharedSnapshotStore
     private let now: @Sendable () -> Date
 
@@ -283,16 +357,12 @@ final class WatchModel {
         watchesDegraded: Bool = false,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.client = credential.map {
-            PostHogClient(
-                auth: PersonalKeyAuthProvider(key: $0.key, region: $0.region),
-                transport: transport
-            )
-        }
+        self.client = Self.client(for: credential, transport: transport)
         self.projectID = credential?.projectID
         self.projectName = projectName ?? "PostHog"
         self.headlineMetricID = headlineMetricID
         self.watches = watches
+        self.transport = transport
         self.store = store
         self.authenticate = authenticate
         self.watchesDegraded = watchesDegraded
@@ -328,7 +398,6 @@ final class WatchModel {
     /// manual live testing — in memory, dying with the process, never written
     /// to the keychain.
     static func live() -> WatchModel {
-        let defaults = UserDefaults.standard
         if WatchDemoMode.isEnabled {
             return WatchModel(
                 credential: WatchDemoMode.credential,
@@ -344,25 +413,59 @@ final class WatchModel {
                 authenticate: { _ in true }
             )
         }
-        var credential = try? KeychainTokenStore().load()
-        #if DEBUG
-        if credential == nil,
-           let key = ProcessInfo.processInfo.environment["GETHOG_API_KEY"],
-           !key.isEmpty {
-            // No projectID: `refresh` resolves it through `/users/@me/` once.
-            credential = StoredCredential(key: key, region: .usCloud)
-        }
-        #endif
+        let handoff = WatchHandoff.current()
         return WatchModel(
-            credential: credential,
-            projectName: defaults.string(forKey: WatchSettings.projectNameKey),
-            headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey),
-            watches: SharedSnapshotStore.shared.metricWatches(),
+            credential: handoff.credential,
+            projectName: handoff.projectName,
+            headlineMetricID: handoff.headlineMetricID,
+            watches: handoff.watches,
             transport: URLSessionTransport(),
             store: .shared,
             authenticate: WatchModel.deviceOwnerGate,
-            watchesDegraded: defaults.bool(forKey: WatchSettings.watchesDegradedKey)
+            watchesDegraded: handoff.watchesDegraded
         )
+    }
+
+    private static func client(
+        for credential: StoredCredential?, transport: any HTTPTransport
+    ) -> PostHogClient? {
+        credential.map {
+            PostHogClient(
+                auth: PersonalKeyAuthProvider(key: $0.key, region: $0.region),
+                transport: transport
+            )
+        }
+    }
+
+    // MARK: - Adopting a hand-off that arrived mid-flight
+
+    /// Takes on everything a `WatchKeyTransfer` changed and refetches.
+    ///
+    /// Without this the Metrics page went on saying "Open GetHog on your iPhone
+    /// to hand this watch its key" after the phone had done exactly that: the
+    /// credential and the thresholds were read once, in `init`, and a transfer
+    /// that landed while the app was running only reached the keychain and the
+    /// defaults. The user's remedy was to force-quit the app they had just been
+    /// told to wait on.
+    ///
+    /// Forced, because the throttle is about not re-asking for numbers we
+    /// already have and this is a different project, key or threshold set. A
+    /// hand-off that changed nothing still costs five requests, which is the
+    /// right trade for the one that changed everything.
+    func adopt(_ handoff: WatchHandoff) async {
+        client = Self.client(for: handoff.credential, transport: transport)
+        projectID = handoff.credential?.projectID
+        projectName = handoff.projectName ?? "PostHog"
+        headlineMetricID = handoff.headlineMetricID
+        watches = handoff.watches
+        watchesDegraded = handoff.watchesDegraded
+        // The rows in hand were evaluated against the *previous* thresholds,
+        // so they are not merely stale, they are answers to a question nobody
+        // is asking any more.
+        health = .empty
+        phase = handoff.credential == nil ? .needsKey : Self.idlePhase(for: snapshot)
+        guard handoff.credential != nil else { return }
+        await refresh(force: true)
     }
 
     // MARK: - Derived for the pages
@@ -420,7 +523,7 @@ final class WatchModel {
         // 1 + 2. The pinned (or first) dashboard, cached tile results only —
         // the watch never asks PostHog to recompute anything.
         if let page: Page<DashboardSummary> = try? await client.send(
-            PostHogAPI.dashboards(projectID: projectID, limit: Self.dashboardsPageLimit)
+            PostHogAPI.dashboards(projectID: projectID, budget: Self.budget)
         ) {
             reachedTheAPI = true
             if let chosen = page.results.first(where: \.pinned) ?? page.results.first,
@@ -442,7 +545,7 @@ final class WatchModel {
         // the watch has no UI to grant — written false so a watch-local widget
         // can never offer a toggle the user did not opt into.
         if let page: Page<FeatureFlag> = try? await client.send(
-            PostHogAPI.featureFlags(projectID: projectID, limit: Self.flagsPageLimit)
+            PostHogAPI.featureFlags(projectID: projectID, budget: Self.budget)
         ) {
             reachedTheAPI = true
             flags = page.results
@@ -457,11 +560,14 @@ final class WatchModel {
                 }
         }
 
-        // 4. Error pulse: last 24 h, five issues by occurrences — a pulse, not
-        // the phone's triage screen, and the page says so.
+        // 4. Error pulse: the budget's window, five issues by occurrences — a
+        // pulse, not the phone's triage screen, and the page says so.
+        // `errorTrackingIssues` takes the range as a string, so the budget's
+        // own `dateFrom` is passed rather than a literal that could disagree
+        // with the events feed's floor one block below.
         if let data = try? await client.data(for: PostHogAPI.errorTrackingIssues(
             projectID: projectID,
-            dateFrom: Self.errorPulseWindow,
+            dateFrom: Self.budget.dateFrom,
             orderBy: "occurrences",
             limit: Self.errorPulseLimit
         )), let response = try? ErrorTrackingResponse.decode(from: data) {
@@ -469,13 +575,13 @@ final class WatchModel {
             issues = response.issues
         }
 
-        // 5. Activity: the kit's trimmed feed — four columns, no `properties`,
-        // one bounded window, a caller-written LIMIT. No paging.
+        // 5. Activity: the kit's trimmed, budgeted feed — four columns, no
+        // `properties`, the budget's window and page size. No paging.
         if let response: QueryResponse = try? await client.send(
             PostHogAPI.recentEventLines(
                 projectID: projectID,
-                limit: WatchActivity.maxLines,
-                since: now().addingTimeInterval(-Self.activityWindow)
+                budget: Self.budget,
+                now: now()
             )
         ) {
             reachedTheAPI = true

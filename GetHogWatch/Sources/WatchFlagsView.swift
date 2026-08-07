@@ -7,40 +7,84 @@ import SwiftUI
 ///
 /// A write reaches PostHog only through
 /// `idle → confirming → authenticating → writing`, and each rung can fall back
-/// only to `idle` or `failed`. Nothing here can be skipped by a view: the
-/// mutating methods each guard on the step they are allowed to leave, so a
-/// double tap or a re-entrant task cannot walk the ladder twice.
+/// only to `idle` or `failed`.
 struct FlagToggleFlow: Equatable {
+
+    /// What a tap decided, captured as one value.
+    ///
+    /// It exists because the step alone cannot carry it far enough. SwiftUI
+    /// sets a `confirmationDialog`'s `isPresented` binding to false
+    /// *synchronously with the tap*, before the button's `Task` body runs — so
+    /// the dismissal's `cancel()` had already put the flow back to `.idle` by
+    /// the time the write attempted to read what to write. Every guard
+    /// no-opped, and the toggle silently did nothing at all: safe, because it
+    /// fails closed, and completely dead.
+    ///
+    /// So the tap captures this at dialog-construction time and hands it to
+    /// `confirm(_:)`, which does not consult the step for the values.
+    struct Pending: Equatable {
+        let flagID: Int
+        let key: String
+        let desired: Bool
+    }
 
     enum Step: Equatable {
         case idle
-        case confirming(flagID: Int, key: String, desired: Bool)
-        case authenticating(flagID: Int, key: String, desired: Bool)
-        case writing(flagID: Int, key: String, desired: Bool)
+        case confirming(Pending)
+        case authenticating(Pending)
+        case writing(Pending)
         case failed(String)
     }
 
     private(set) var step: Step = .idle
 
+    /// The proposal the dialog is asking about, and nothing else — after any
+    /// dismissal this is `nil`, which is exactly why the tap must have taken
+    /// its copy before then.
+    var pending: Pending? {
+        if case .confirming(let pending) = step { return pending }
+        return nil
+    }
+
     mutating func propose(flag: SharedSnapshot.Flag) {
         guard case .idle = step else { return }
-        step = .confirming(flagID: flag.id, key: flag.key, desired: !flag.active)
+        step = .confirming(Pending(flagID: flag.id, key: flag.key, desired: !flag.active))
     }
 
     mutating func cancel() { step = .idle }
 
-    mutating func confirm() {
-        guard case .confirming(let id, let key, let desired) = step else { return }
-        step = .authenticating(flagID: id, key: key, desired: desired)
+    /// The dialog going away for any reason other than the action button.
+    mutating func dismissed() {
+        if case .confirming = step { step = .idle }
+    }
+
+    /// Advances from a proposal the caller captured, returning whether it may
+    /// proceed.
+    ///
+    /// `.idle` is accepted, and that is the fix rather than a hole: the only
+    /// way to hold a `Pending` is to have been handed one by a dialog that was
+    /// itself only built from a `.confirming` step, and the dismissal that
+    /// races the tap is precisely what leaves the step at `.idle`. What is
+    /// still refused is a *second* ladder — anything already authenticating,
+    /// writing, or sitting on a failure — so a double tap cannot spend two
+    /// writes.
+    mutating func confirm(_ pending: Pending) -> Bool {
+        switch step {
+        case .idle, .confirming:
+            step = .authenticating(pending)
+            return true
+        case .authenticating, .writing, .failed:
+            return false
+        }
     }
 
     /// Fails **closed**. A gate that could not confirm the wearer is not a
-    /// reason to proceed on a credential that can change a flag for everybody
+    /// reason to proceed on a credential that can change a flag for everyone
     /// in the project.
     mutating func authenticated(_ ok: Bool) {
-        guard case .authenticating(let id, let key, let desired) = step else { return }
+        guard case .authenticating(let pending) = step else { return }
         step = ok
-            ? .writing(flagID: id, key: key, desired: desired)
+            ? .writing(pending)
             : .failed("Couldn't confirm it's you. The flag was not changed.")
     }
 
@@ -50,22 +94,50 @@ struct FlagToggleFlow: Equatable {
     }
 }
 
+/// Owns the ladder and drives it.
+///
+/// A reference type rather than the view's own `@State` value because the
+/// drive is asynchronous and `inout` cannot cross an `await` — and because the
+/// ordering that broke this feature (dismissal first, tap's `Task` second) is
+/// only testable if a test can reach the same object the view mutates, in the
+/// same order the runtime does.
+@MainActor
+@Observable
+final class FlagToggleController {
+    private(set) var flow = FlagToggleFlow()
+
+    func propose(flag: SharedSnapshot.Flag) { flow.propose(flag: flag) }
+    func cancel() { flow.cancel() }
+    func dismissed() { flow.dismissed() }
+
+    /// The whole of what the confirm button does, taking the proposal it
+    /// captured rather than re-reading a step the dismissal has already reset.
+    func run(_ pending: FlagToggleFlow.Pending, on model: WatchModel) async {
+        guard flow.confirm(pending) else { return }
+        let ok = await model.authenticate("Confirm changing the \(pending.key) flag")
+        flow.authenticated(ok)
+        guard case .writing = flow.step else { return }
+        flow.finished(error: await model.setFlag(id: pending.flagID, active: pending.desired))
+    }
+}
+
 /// Page 3: a shortlist read view.
 ///
 /// Tapping a row *proposes* a toggle; nothing is written without the dialog and
-/// the device-owner gate behind it. The list is capped rather than scrollable
-/// to the end of the project's flags — a wrist is not where anyone audits a
-/// hundred flags, and the footer says which ones these are.
+/// the device-owner gate behind it. The list is capped at what one budgeted
+/// page fetches rather than scrolling the project's whole flag set — a wrist is
+/// not where anyone audits a hundred flags, and the footer says which these
+/// are.
 struct WatchFlagsView: View {
     let model: WatchModel
-    @State private var flow = FlagToggleFlow()
+    @State private var toggle = FlagToggleController()
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(model.shortlistFlags) { flag in
                     Button {
-                        flow.propose(flag: flag)
+                        toggle.propose(flag: flag)
                     } label: {
                         HStack(spacing: Theme.Space.s) {
                             Circle()
@@ -87,18 +159,26 @@ struct WatchFlagsView: View {
                 isPresented: confirmingBinding,
                 titleVisibility: .visible
             ) {
-                Button(dialogVerb) { Task { await run() } }
-                Button("Cancel", role: .cancel) { flow.cancel() }
+                // `pending` is read here, while the dialog is being built and
+                // the step is still `.confirming`, and captured by the action
+                // closure. Reading it inside the closure would read it after
+                // the dismissal, which is the bug this shape exists to close.
+                if let pending = toggle.flow.pending {
+                    Button(pending.desired ? "Turn on" : "Turn off") {
+                        Task { await toggle.run(pending, on: model) }
+                    }
+                }
+                Button("Cancel", role: .cancel) { toggle.cancel() }
             } message: {
                 Text("This changes the flag for everyone in this project.")
             }
             .alert("Flag not changed", isPresented: failedBinding) {
-                Button("OK") { flow.cancel() }
+                Button("OK") { toggle.cancel() }
             } message: {
-                if case .failed(let message) = flow.step { Text(message) }
+                if case .failed(let message) = toggle.flow.step { Text(message) }
             }
             .overlay {
-                if case .writing = flow.step { ProgressView() }
+                if case .writing = toggle.flow.step { ProgressView() }
             }
         }
     }
@@ -117,42 +197,28 @@ struct WatchFlagsView: View {
             // Same fact the Health page states, said once more where a write
             // is possible: an out-of-date watch app took only part of what the
             // phone sent, and this is the page that changes shared state.
-            Text("This watch app is older than GetHog on your iPhone; some settings didn't transfer.")
+            Text(WatchHealthCopy.degradedFooter)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Ink.tertiary)
         }
     }
 
     private var dialogTitle: String {
-        guard case .confirming(_, let key, let desired) = flow.step else { return "" }
-        return "Turn \(key) \(desired ? "on" : "off")?"
-    }
-
-    private var dialogVerb: String {
-        guard case .confirming(_, _, let desired) = flow.step else { return "Confirm" }
-        return desired ? "Turn on" : "Turn off"
+        guard let pending = toggle.flow.pending else { return "" }
+        return "Turn \(pending.key) \(pending.desired ? "on" : "off")?"
     }
 
     private var confirmingBinding: Binding<Bool> {
         Binding(
-            get: { if case .confirming = flow.step { true } else { false } },
-            set: { if !$0, case .confirming = flow.step { flow.cancel() } }
+            get: { toggle.flow.pending != nil },
+            set: { if !$0 { toggle.dismissed() } }
         )
     }
 
     private var failedBinding: Binding<Bool> {
         Binding(
-            get: { if case .failed = flow.step { true } else { false } },
-            set: { if !$0 { flow.cancel() } }
+            get: { if case .failed = toggle.flow.step { true } else { false } },
+            set: { if !$0 { toggle.cancel() } }
         )
-    }
-
-    private func run() async {
-        flow.confirm()
-        guard case .authenticating(let id, let key, let desired) = flow.step else { return }
-        let ok = await model.authenticate("Confirm changing the \(key) flag")
-        flow.authenticated(ok)
-        guard case .writing = flow.step else { return }
-        flow.finished(error: await model.setFlag(id: id, active: desired))
     }
 }

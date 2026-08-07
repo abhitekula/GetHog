@@ -2,6 +2,17 @@ import Foundation
 import GetHogKit
 import WatchConnectivity
 
+extension Notification.Name {
+    /// Posted after a hand-off has been written to all three stores.
+    ///
+    /// The notification carries no payload on purpose: the stores are the
+    /// single source of truth and `WatchHandoff.current()` is the single
+    /// reader, so a running model refetches its state rather than being handed
+    /// a second copy that could disagree with what a relaunch would read.
+    static let gethogWatchKeyTransferApplied =
+        Notification.Name("app.gethog.watchKeyTransferApplied")
+}
+
 /// Receives the phone's `WatchKeyTransfer` and applies it.
 ///
 /// Deliberately thin, and split in two on one line: activation and routing are
@@ -54,10 +65,17 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     /// nothing: a malformed hand-off must not be able to clear a working
     /// credential.
     nonisolated static func route(_ payload: [String: Any]) {
-        guard let data = payload[WatchKeyTransfer.userInfoKey] as? Data,
-              let transfer = try? WatchKeyTransfer.decode(data)
-        else { return }
+        guard let transfer = transfer(from: payload) else { return }
         apply(transfer)
+    }
+
+    /// The decode half of `route`, split out so the wire can be tested end to
+    /// end without a `WCSession` **and** without the real keychain: `route`
+    /// itself takes the production stores by design, and a test that called it
+    /// would write a credential into the device's own keychain.
+    nonisolated static func transfer(from payload: [String: Any]) -> WatchKeyTransfer? {
+        guard let data = payload[WatchKeyTransfer.userInfoKey] as? Data else { return nil }
+        return try? WatchKeyTransfer.decode(data)
     }
 
     /// The testable half.
@@ -75,7 +93,8 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         _ transfer: WatchKeyTransfer,
         credentials: any CredentialStoring = KeychainTokenStore(),
         snapshots: SharedSnapshotStore = .shared,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
     ) {
         guard let selection = try? transfer.ingest(into: credentials) else { return }
         try? snapshots.writeMetricWatches(selection.watches)
@@ -90,5 +109,18 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         } else {
             defaults.removeObject(forKey: WatchSettings.headlineMetricKey)
         }
+        // Last, and only on a complete write: a running model that adopted
+        // half a hand-off would show the new project's name over the old
+        // project's numbers. Posted rather than called directly, because this
+        // runs on a `WCSession` queue with no reference to what is on screen.
+        notify()
+    }
+
+    /// The default announcement, named so a test can pass its own and assert
+    /// that a refused ingestion announces nothing — a listener that posted
+    /// anyway would send a live model to refetch with a credential it does not
+    /// have.
+    static let postAppliedNotification: @Sendable () -> Void = {
+        NotificationCenter.default.post(name: .gethogWatchKeyTransferApplied, object: nil)
     }
 }

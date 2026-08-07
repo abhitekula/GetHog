@@ -16,6 +16,7 @@ enum WatchPage: String, CaseIterable, Hashable {
 struct WatchRootView: View {
     let model: WatchModel
     @State private var page: WatchPage = WatchRootView.initialPage()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $page) {
@@ -26,6 +27,32 @@ struct WatchRootView: View {
         }
         .tabViewStyle(.verticalPage)
         .task { await model.refresh() }
+        .task { await adoptHandoffs() }
+        // A watch app is suspended the moment the wrist drops and resumed on
+        // the next raise, without the scene being rebuilt — so `.task` fires
+        // once and only once, and every glance after the first was rendering
+        // whatever the launch had fetched. The 15-minute throttle is what
+        // makes this safe to attach: a resume asks the store how old the
+        // snapshot is before it asks PostHog anything.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await model.refresh() }
+        }
+    }
+
+    /// Adopts a hand-off that landed while the app was running.
+    ///
+    /// The `WCSession` callback writes the keychain, the watch list and the
+    /// defaults from a background queue and posts; this is the only thing
+    /// listening, and it re-reads all three rather than trusting a payload —
+    /// so a running app and a fresh launch resolve their state identically.
+    private func adoptHandoffs() async {
+        let applied = NotificationCenter.default.notifications(
+            named: .gethogWatchKeyTransferApplied
+        )
+        for await _ in applied {
+            await model.adopt(WatchHandoff.current())
+        }
     }
 
     /// Always `.metrics` in a shipped build. The DEBUG branch exists so each

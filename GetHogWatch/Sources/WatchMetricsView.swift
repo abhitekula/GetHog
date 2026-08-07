@@ -2,13 +2,14 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
-/// Page 1: the headline metric — big number, delta, the real GetHogUI chart
-/// over the tile's own dated series, and an honest age stamp.
+/// Page 1: the headline metric — big number, delta, a trend, and an honest age
+/// stamp.
 ///
-/// The chart is `InsightChartView` in its compact form rather than a bespoke
-/// wrist sparkline: the phone and the wrist then draw the same series with the
-/// same rules, and a shape drawn from `sparkline` alone would have no dates
-/// under it to be right or wrong about.
+/// The trend has two forms and `trend(for:)` explains the choice: the compact
+/// `InsightChartView` over the tile's own dated series while this process still
+/// holds one, so the phone and the wrist draw the same chart with the same
+/// rules; and the snapshot's persisted `sparkline` as a plain shape once it
+/// does not, which is what a throttled relaunch has.
 struct WatchMetricsView: View {
     let model: WatchModel
 
@@ -55,9 +56,7 @@ struct WatchMetricsView: View {
                 .foregroundStyle(Theme.accent)
                 .accessibilityLabel("\(metric.title), \(metric.value.compactFormatted)")
             deltaLine(metric)
-            if let render = model.headlineRender {
-                InsightChartView(model: render, compact: true, title: metric.title)
-            }
+            trend(for: metric)
             if let snapshot = model.snapshot {
                 ageStamp(snapshot)
             }
@@ -69,6 +68,30 @@ struct WatchMetricsView: View {
                     "The pinned dashboard has no tile this watch can reduce to a number."
                 )
             )
+        }
+    }
+
+    /// The dated chart when this process still has one, and the snapshot's own
+    /// sparkline when it does not.
+    ///
+    /// The fallback is not a nicety — it is the *common* path. `renders` is
+    /// in-memory only, and a refresh inside the 15-minute throttle window
+    /// spends no requests, so every glance-again launch had the headline
+    /// number, its delta and then nothing where the trend belongs. The
+    /// snapshot's `sparkline` is persisted for exactly this, and drawing it
+    /// makes the second glance look like the first.
+    ///
+    /// A shape rather than a chart, because that is all the data supports: a
+    /// sparkline is values without days, so there is no axis to label and none
+    /// is drawn. Inventing dates to reach `InsightChartView`'s dated form
+    /// would put a time axis under numbers whose times were never stored.
+    @ViewBuilder private func trend(for metric: SharedSnapshot.Metric) -> some View {
+        if let render = model.headlineRender {
+            InsightChartView(model: render, compact: true, title: metric.title)
+        } else if metric.sparkline.count > 1 {
+            WatchSparkline(values: metric.sparkline)
+                .frame(height: 44)
+                .accessibilityLabel("\(metric.title) trend, \(metric.sparkline.count) points")
         }
     }
 
@@ -135,5 +158,67 @@ enum WatchAge {
         if age < 3600 { return "Updated \(Int(age / 60)) min ago" }
         if age < 48 * 3600 { return "Updated \(Int(age / 3600)) h ago" }
         return "Updated \(Int(age / 86_400)) d ago"
+    }
+}
+
+/// The persisted sparkline, drawn as a shape.
+///
+/// GetHogUI has no sparkline component and `InsightChartView`'s forms all want
+/// a `Series`, whose `Point` derives its date from a day string — a sparkline
+/// has no day strings, so reaching that type means either inventing days or
+/// handing the chart an undated series and letting it fall back to a
+/// categorical axis on a 46mm screen. Neither is worth it for a trace with no
+/// axis, no legend and no scrub.
+struct WatchSparkline: View {
+    let values: [Double]
+
+    var body: some View {
+        GeometryReader { proxy in
+            Path { path in
+                let fractions = WatchSparklineMath.fractions(values)
+                guard fractions.count > 1, proxy.size.width > 0, proxy.size.height > 0
+                else { return }
+                let step = proxy.size.width / CGFloat(fractions.count - 1)
+                let point = { (index: Int, fraction: Double) in
+                    CGPoint(
+                        x: CGFloat(index) * step,
+                        y: proxy.size.height - CGFloat(fraction) * proxy.size.height
+                    )
+                }
+                path.move(to: point(0, fractions[0]))
+                for (index, fraction) in fractions.enumerated().dropFirst() {
+                    path.addLine(to: point(index, fraction))
+                }
+            }
+            .stroke(Theme.accent, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+        }
+        .accessibilityElement()
+    }
+}
+
+/// The sparkline's arithmetic, outside the view that draws it.
+///
+/// Separate for a measured reason, not for tidiness: naming `WatchSparkline`
+/// from `GetHogWatchTests` crashed the watchOS test host on the first
+/// expectation that touched it — `NSMapGet … map table argument is NULL`, then
+/// a restart, repeatedly. Merely referencing a SwiftUI `View` type from a
+/// non-UI test on this platform is enough to do it. A plain enum has no such
+/// metadata to initialise, so the part worth testing is testable and the view
+/// keeps only the drawing.
+enum WatchSparklineMath {
+
+    /// Values to vertical fractions — 0 at the bottom of the strip, 1 at the
+    /// top, oldest first. A zero range draws down the middle rather than
+    /// dividing by it, and non-finite values are dropped before the bounds are
+    /// taken: a malformed tile decodes to infinity without complaint, and one
+    /// infinite bound would put every other point off the strip.
+    static func fractions(_ values: [Double]) -> [Double] {
+        let usable = values.filter(\.isFinite)
+        guard usable.count > 1 else { return [] }
+        let lowest = usable.min() ?? 0
+        let highest = usable.max() ?? 0
+        let range = highest - lowest
+        guard range != 0 else { return Array(repeating: 0.5, count: usable.count) }
+        return usable.map { ($0 - lowest) / range }
     }
 }

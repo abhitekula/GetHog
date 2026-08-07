@@ -65,12 +65,13 @@ struct WatchActivityTests {
         #expect(
             WatchActivityFooter.text(
                 lineCount: 0, capturedAt: now.addingTimeInterval(-600), now: now
-            ) == "No events in the last 24 hours · updated 10 min ago"
+            ) == "No events in the last \(QueryBudget.wrist.hours) h · updated 10 min ago"
         )
         #expect(
             WatchActivityFooter.text(
                 lineCount: 4, capturedAt: now.addingTimeInterval(-600), now: now
-            ) == "Last 24 h · newest 25 · updated 10 min ago"
+            ) == "Last \(QueryBudget.wrist.hours) h · newest \(QueryBudget.wrist.pageSize) "
+                + "· updated 10 min ago"
         )
     }
 
@@ -86,6 +87,36 @@ struct WatchActivityTests {
         try WatchActivity.write(feed, to: store)
 
         #expect(WatchActivity.read(from: store) == feed)
+    }
+
+    /// The file outlives the build that wrote it, so the cap has to hold on
+    /// the way in as well as on the way out — a downgrade, or the page-size
+    /// reduction this app has already been through, hands the reader a longer
+    /// feed than it is willing to draw.
+    @Test("a longer feed than this build draws is cut on read, not trusted")
+    func readEnforcesTheCapAsWellAsWrite() throws {
+        let store = WatchFixtures.tempStore()
+        let overlong = (0..<(WatchActivity.maxLines + 15)).map { index in
+            ActivityLine(
+                id: "example-row-\(String(format: "%04d", index))",
+                event: "example_event_\(index)",
+                timestamp: nil
+            )
+        }
+        try WatchActivity.write(
+            ActivityFeed(lines: overlong, capturedAt: WatchFixtures.now), to: store
+        )
+
+        let read = try #require(WatchActivity.read(from: store))
+        #expect(read.lines.count == WatchActivity.maxLines)
+        // Cut from the tail: the newest rows are the ones worth keeping.
+        #expect(read.lines.first?.event == "example_event_0")
+        #expect(read.capturedAt == WatchFixtures.now)
+    }
+
+    @Test("the cap is the wrist budget's page size, not a number beside it")
+    func capComesFromTheBudget() {
+        #expect(WatchActivity.maxLines == QueryBudget.wrist.pageSize)
     }
 
     @Test("a row with no event name says so rather than rendering blank")
