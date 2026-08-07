@@ -360,4 +360,14 @@ struct WatchModelTests {
         #expect(model.phase == .needsKey)
         #expect(await transport.requests.isEmpty)
     }
+
+    @Test("a rejected credential keeps the replacement form available")
+    func failedPhaseOffersCredentialReplacement() {
+        let message = "The synthetic key was rejected."
+
+        #expect(WatchCredentialEntryState(phase: .needsKey) == .missing)
+        #expect(WatchCredentialEntryState(phase: .failed(message)) == .replacement(message))
+        #expect(WatchCredentialEntryState(phase: .loading) == nil)
+        #expect(WatchCredentialEntryState(phase: .ready) == nil)
+    }
 }

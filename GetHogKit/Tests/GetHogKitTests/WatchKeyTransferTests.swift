@@ -39,6 +39,8 @@ struct WatchKeyTransferTests {
         WatchKeyTransfer(
             key: key,
             region: region,
+            organizationID: "org-synthetic-1001",
+            organizationName: "Synthetic Labs",
             projectID: 42,
             projectName: "Synthetic Analytics",
             headlineMetricID: "42",
@@ -60,6 +62,8 @@ struct WatchKeyTransferTests {
             #expect(received.version == WatchKeyTransfer.currentVersion)
             #expect(received.key == Self.key)
             #expect(received.region == region)
+            #expect(received.organizationID == "org-synthetic-1001")
+            #expect(received.organizationName == "Synthetic Labs")
             #expect(received.projectID == 42)
             #expect(received.projectName == "Synthetic Analytics")
             #expect(received.headlineMetricID == "42")
@@ -77,6 +81,8 @@ struct WatchKeyTransferTests {
 
         #expect(received.projectID == nil)
         #expect(received.projectName == nil)
+        #expect(received.organizationID == nil)
+        #expect(received.organizationName == nil)
         #expect(received.headlineMetricID == nil)
         #expect(received.watches.isEmpty)
     }
@@ -105,12 +111,33 @@ struct WatchKeyTransferTests {
         // The receiver may want to say "sent by a newer phone", so the number
         // survives rather than being clamped to what this build understands.
         let json = """
-            {"version": 2, "key": "\(Self.key)", "region": {"euCloud": {}}}
+            {"version": 3, "key": "\(Self.key)", "region": {"euCloud": {}}}
             """
         let received = try WatchKeyTransfer.decode(Data(json.utf8))
 
-        #expect(received.version == 2)
+        #expect(received.version == 3)
         #expect(received.region == .euCloud)
+    }
+
+    @Test("the organization revision remains compatible with version one payloads")
+    func versionOneWithoutOrganizationDecodes() throws {
+        let json = """
+            {
+              "version": 1,
+              "key": "\(Self.key)",
+              "region": {"usCloud": {}},
+              "projectID": 42,
+              "projectName": "Synthetic Analytics"
+            }
+            """
+
+        let received = try WatchKeyTransfer.decode(Data(json.utf8))
+
+        #expect(WatchKeyTransfer.currentVersion == 2)
+        #expect(received.version == 1)
+        #expect(received.organizationID == nil)
+        #expect(received.organizationName == nil)
+        #expect(received.projectID == 42)
     }
 
     @Test("a missing version reads as the first one")
@@ -150,6 +177,8 @@ struct WatchKeyTransferTests {
         // Everything the caller is handed back, and no key anywhere in it —
         // the type has no such property by construction.
         #expect(selection == WatchKeyTransfer.Selection(
+            organizationID: "org-synthetic-1001",
+            organizationName: "Synthetic Labs",
             projectID: 42,
             projectName: "Synthetic Analytics",
             headlineMetricID: "42",

@@ -35,6 +35,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
     /// nowhere else, so a receiver that logs, renders or persists what it got
     /// back cannot leak the credential by accident.
     public struct Selection: Sendable, Equatable {
+        public let organizationID: String?
+        public let organizationName: String?
         public let projectID: Int?
         public let projectName: String?
         /// `SharedSnapshot.Metric.id` — the same value the Mac menu bar keeps
@@ -58,12 +60,16 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         /// so a call site written before the flag existed still compiles and
         /// still means what it meant.
         public init(
+            organizationID: String? = nil,
+            organizationName: String? = nil,
             projectID: Int?,
             projectName: String?,
             headlineMetricID: String?,
             watches: [MetricWatch],
             watchesDegraded: Bool = false
         ) {
+            self.organizationID = organizationID
+            self.organizationName = organizationName
             self.projectID = projectID
             self.projectName = projectName
             self.headlineMetricID = headlineMetricID
@@ -83,7 +89,7 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
 
     /// What this build writes. A receiver reading a higher number is looking at
     /// a payload from a newer phone and may say so; it is not an error.
-    public static let currentVersion = 1
+    public static let currentVersion = 2
 
     /// The `WCSession` dictionary key both ends use.
     ///
@@ -108,6 +114,10 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
     public let version: Int
     public let key: String
     public let region: PostHogRegion
+    /// The organization whose project selection follows. Optional for v1
+    /// compatibility and for independent watch entry, which has no selection.
+    public let organizationID: String?
+    public let organizationName: String?
     public let projectID: Int?
     public let projectName: String?
     /// `SharedSnapshot.Metric.id` of the metric the wrist leads with.
@@ -139,6 +149,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         version: Int = WatchKeyTransfer.currentVersion,
         key: String,
         region: PostHogRegion,
+        organizationID: String? = nil,
+        organizationName: String? = nil,
         projectID: Int? = nil,
         projectName: String? = nil,
         headlineMetricID: String? = nil,
@@ -148,6 +160,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         self.version = version
         self.key = key
         self.region = region
+        self.organizationID = organizationID
+        self.organizationName = organizationName
         self.projectID = projectID
         self.projectName = projectName
         self.headlineMetricID = headlineMetricID
@@ -185,7 +199,9 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
     /// observation, not a payload field, so the synthesised `encode(to:)`
     /// leaves it out and no hop can inherit a claim it cannot verify.
     enum CodingKeys: String, CodingKey {
-        case version, key, region, projectID, projectName, headlineMetricID, watches
+        case version, key, region
+        case organizationID, organizationName
+        case projectID, projectName, headlineMetricID, watches
     }
 
     public init(from decoder: any Decoder) throws {
@@ -200,6 +216,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         key = try c.decode(String.self, forKey: .key)
         region = try c.decode(PostHogRegion.self, forKey: .region)
 
+        organizationID = try c.decodeIfPresent(String.self, forKey: .organizationID)
+        organizationName = try c.decodeIfPresent(String.self, forKey: .organizationName)
         projectID = try c.decodeIfPresent(Int.self, forKey: .projectID)
         projectName = try c.decodeIfPresent(String.self, forKey: .projectName)
         headlineMetricID = try c.decodeIfPresent(String.self, forKey: .headlineMetricID)
@@ -249,6 +267,8 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         )
 
         return Selection(
+            organizationID: organizationID,
+            organizationName: organizationName,
             projectID: projectID,
             projectName: projectName,
             headlineMetricID: headlineMetricID,

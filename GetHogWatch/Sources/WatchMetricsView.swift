@@ -2,6 +2,26 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+/// The phases that must expose the on-watch credential form.
+///
+/// Kept as a pure mapping so a rejected nonblank key cannot regress into a
+/// failure-only screen with no path to replace it.
+enum WatchCredentialEntryState: Equatable {
+    case missing
+    case replacement(String)
+
+    init?(phase: WatchModel.Phase) {
+        switch phase {
+        case .needsKey:
+            self = .missing
+        case .failed(let message):
+            self = .replacement(message)
+        case .loading, .ready:
+            return nil
+        }
+    }
+}
+
 /// Page 1: the headline metric — big number, delta, a trend, and an honest age
 /// stamp.
 ///
@@ -17,19 +37,12 @@ struct WatchMetricsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
-                    switch model.phase {
-                    case .needsKey:
-                        WatchManualKeyEntryView()
-                    case .failed(let message):
-                        ContentUnavailableView(
-                            "Couldn't refresh",
-                            systemImage: "wifi.exclamationmark",
-                            description: Text(message)
-                        )
-                    case .loading where model.headlineMetric == nil:
+                    if let entry = WatchCredentialEntryState(phase: model.phase) {
+                        WatchManualKeyEntryView(state: entry)
+                    } else if model.phase == .loading, model.headlineMetric == nil {
                         ProgressView()
                             .frame(maxWidth: .infinity)
-                    default:
+                    } else {
                         headline
                     }
                 }
@@ -110,6 +123,8 @@ struct WatchMetricsView: View {
 /// iPhone hand-off yet. The `SecureField` owns the plaintext only while the
 /// user is entering it and clears it before every save attempt.
 private struct WatchManualKeyEntryView: View {
+    let state: WatchCredentialEntryState
+
     @State private var key = ""
     @State private var region = WatchManualRegion.usCloud
     @State private var selfHostedURL = ""
@@ -117,11 +132,23 @@ private struct WatchManualKeyEntryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            ContentUnavailableView(
-                "No key yet",
-                systemImage: "key.radiowaves.forward",
-                description: Text("Open GetHog on your iPhone to send its key, or enter one here.")
-            )
+            switch state {
+            case .missing:
+                ContentUnavailableView(
+                    "No key yet",
+                    systemImage: "key.radiowaves.forward",
+                    description: Text("Open GetHog on your iPhone to send its key, or enter one here.")
+                )
+            case .replacement(let message):
+                ContentUnavailableView(
+                    "Couldn't refresh",
+                    systemImage: "wifi.exclamationmark",
+                    description: Text(message)
+                )
+                Text("Replace the API key below, or send it again from your iPhone.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+            }
 
             SecureField("API key", text: $key)
 

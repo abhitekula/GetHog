@@ -2,6 +2,15 @@ import Foundation
 import GetHogKit
 import WatchConnectivity
 
+/// The one throwable snapshot operation a hand-off needs. Keeping this seam
+/// narrower than `SharedSnapshotStore` lets the receiver prove that a failed
+/// file write does not publish a half-applied selection.
+protocol MetricWatchWriting: Sendable {
+    func writeMetricWatches(_ watches: [MetricWatch]) throws
+}
+
+extension SharedSnapshotStore: MetricWatchWriting {}
+
 extension Notification.Name {
     /// Posted after a hand-off has been written to all three stores.
     ///
@@ -30,6 +39,13 @@ extension Notification.Name {
 /// and the `WCSession` callbacks arrive on a queue the delegate does not choose.
 final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendable {
     static let shared = WatchSessionListener()
+
+    /// One process-wide boundary for every source of a hand-off: durable
+    /// WCSession delivery, application context, and manual entry. The three
+    /// stores have no shared transaction primitive, so excluding another apply
+    /// from credential save through the final defaults write is what prevents
+    /// one scope's key from being paired with another scope's snapshot.
+    private static let applyLock = NSLock()
 
     func activate() {
         guard WCSession.isSupported() else { return }
@@ -82,40 +98,92 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     ///
     /// Credential through the kit's ingestion helper — which trims, refuses an
     /// empty key *before* touching the store, and hands back only the
-    /// non-secret half. Watches into the snapshot store's own file, where a
+    /// non-secret half. Watches go into the snapshot store's own file, where a
     /// widget or a background wake can read them without the app running. The
-    /// two non-secrets into defaults.
+    /// selected organization, project, headline and degradation state go into
+    /// defaults.
     ///
-    /// Ingestion failing aborts the whole apply: a receiver that stored a
-    /// project name for a key it never saved would show the right heading over
-    /// numbers it cannot fetch.
+    /// Ingestion or snapshot writing failing aborts the whole apply. Because
+    /// ingestion has already touched the keychain by the time the file write
+    /// can fail, the previous credential is restored before returning false;
+    /// defaults and the live-model notification remain untouched.
     @discardableResult
     static func apply(
         _ transfer: WatchKeyTransfer,
         credentials: any CredentialStoring = KeychainTokenStore(),
-        snapshots: SharedSnapshotStore = .shared,
+        snapshots: any MetricWatchWriting = SharedSnapshotStore.shared,
         defaults: UserDefaults = .standard,
         notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
     ) -> Bool {
-        guard let selection = try? transfer.ingest(into: credentials) else { return false }
-        try? snapshots.writeMetricWatches(selection.watches)
-        defaults.set(selection.projectName, forKey: WatchSettings.projectNameKey)
+        let applied = applyLock.withLock {
+            applyStores(
+                transfer,
+                credentials: credentials,
+                snapshots: snapshots,
+                defaults: defaults
+            )
+        }
+        guard applied else { return false }
+
+        // NotificationCenter delivers synchronously and observers may trigger
+        // work of their own. The stores are now coherent, so release the lock
+        // before announcing rather than making re-entry a deadlock.
+        notify()
+        return true
+    }
+
+    private static func applyStores(
+        _ transfer: WatchKeyTransfer,
+        credentials: any CredentialStoring,
+        snapshots: any MetricWatchWriting,
+        defaults: UserDefaults
+    ) -> Bool {
+        let previousCredential: StoredCredential?
+        do {
+            previousCredential = try credentials.load()
+        } catch {
+            return false
+        }
+
+        let selection: WatchKeyTransfer.Selection
+        do {
+            selection = try transfer.ingest(into: credentials)
+        } catch {
+            return false
+        }
+
+        do {
+            try snapshots.writeMetricWatches(selection.watches)
+        } catch {
+            // Best-effort rollback across two stores that have no shared
+            // transaction primitive. The return value remains failure even if
+            // the keychain itself refuses this restoration.
+            if let previousCredential {
+                try? credentials.save(previousCredential)
+            } else {
+                try? credentials.clear()
+            }
+            return false
+        }
+
+        replace(selection.organizationID, forKey: WatchSettings.organizationIDKey, in: defaults)
+        replace(selection.organizationName, forKey: WatchSettings.organizationNameKey, in: defaults)
+        replace(selection.projectName, forKey: WatchSettings.projectNameKey, in: defaults)
         // Recorded rather than inferred. An empty watch list means "no
         // thresholds" and a *degraded* one means "your phone sent thresholds
         // this build cannot read" — the two look identical from here, and only
         // the second is something the user can do anything about.
         defaults.set(selection.watchesDegraded, forKey: WatchSettings.watchesDegradedKey)
-        if let id = selection.headlineMetricID {
-            defaults.set(id, forKey: WatchSettings.headlineMetricKey)
-        } else {
-            defaults.removeObject(forKey: WatchSettings.headlineMetricKey)
-        }
-        // Last, and only on a complete write: a running model that adopted
-        // half a hand-off would show the new project's name over the old
-        // project's numbers. Posted rather than called directly, because this
-        // runs on a `WCSession` queue with no reference to what is on screen.
-        notify()
+        replace(selection.headlineMetricID, forKey: WatchSettings.headlineMetricKey, in: defaults)
         return true
+    }
+
+    private static func replace(_ value: String?, forKey key: String, in defaults: UserDefaults) {
+        if let value {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     /// The default announcement, named so a test can pass its own and assert
@@ -137,7 +205,7 @@ enum WatchManualKeyEntry {
         key: String,
         region: PostHogRegion,
         credentials: any CredentialStoring = KeychainTokenStore(),
-        snapshots: SharedSnapshotStore = .shared,
+        snapshots: any MetricWatchWriting = SharedSnapshotStore.shared,
         defaults: UserDefaults = .standard,
         notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
     ) -> Bool {

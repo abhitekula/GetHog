@@ -28,10 +28,46 @@ struct WatchTransferPayload: Sendable, Equatable {
     var userInfo: [String: Any] { [key: data] }
 }
 
+/// Opaque correlation only. The controller may retain this value safely: it
+/// contains no payload bytes, credential, project, or other user data.
+struct WatchTransferID: Sendable, Hashable {
+    private let rawValue: UUID
+
+    init() {
+        rawValue = UUID()
+    }
+}
+
+/// Associates an in-process `WCSessionUserInfoTransfer` object with an opaque
+/// ID without retaining the transfer object or its key-bearing `userInfo`.
+///
+/// `WCSessionUserInfoTransfer` exposes no stable identifier. `ObjectIdentifier`
+/// is therefore used only as the dictionary key for that object's lifetime;
+/// the value crossing into controller state is a random, data-free UUID.
+final class WatchTransferIdentityMap: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ids: [ObjectIdentifier: WatchTransferID] = [:]
+
+    func id(for transfer: AnyObject) -> WatchTransferID {
+        lock.withLock {
+            let objectID = ObjectIdentifier(transfer)
+            if let existing = ids[objectID] { return existing }
+            let id = WatchTransferID()
+            ids[objectID] = id
+            return id
+        }
+    }
+
+    @discardableResult
+    func remove(_ transfer: AnyObject) -> WatchTransferID? {
+        lock.withLock { ids.removeValue(forKey: ObjectIdentifier(transfer)) }
+    }
+}
+
 enum WatchSendEvent: Sendable, Equatable {
     case pairingChanged(WatchPairing)
     /// `nil` means the WatchConnectivity daemon reported delivery.
-    case transferFinished(failure: String?)
+    case didFinish(id: WatchTransferID, failure: String?)
 }
 
 /// The slice of `WCSession` this feature uses, and nothing else.
@@ -42,11 +78,13 @@ protocol WatchSending: AnyObject, Sendable {
     var pairing: WatchPairing { get }
     /// Idempotent: assigns the delegate and activates on every appearance.
     func activate()
-    /// Transfers in the daemon's persistent outbox, including a prior launch's.
-    var queuedCount: Int { get }
+    /// Opaque IDs for every transfer in the daemon's persistent outbox,
+    /// including a prior launch's. A set because WCSession promises no order.
+    var queuedTransferIDs: Set<WatchTransferID> { get }
     /// Discards every waiting transfer before a replacement or sign-out.
     func cancelQueued()
-    func queue(_ payload: WatchTransferPayload)
+    /// Queues the payload and returns only its opaque, key-free correlation ID.
+    func queue(_ payload: WatchTransferPayload) -> WatchTransferID?
     /// Replaces the observer; `nil` unsubscribes.
     func observe(_ sink: (@MainActor @Sendable (WatchSendEvent) -> Void)?)
 }
@@ -65,6 +103,8 @@ final class LiveWatchSender: NSObject, WCSessionDelegate, WatchSending, @uncheck
 
     private let session = WCSession.default
     private let observerLock = NSLock()
+    private let transferStateLock = NSLock()
+    private let transferIdentities = WatchTransferIdentityMap()
     private var sink: (@MainActor @Sendable (WatchSendEvent) -> Void)?
 
     var pairing: WatchPairing {
@@ -81,9 +121,15 @@ final class LiveWatchSender: NSObject, WCSessionDelegate, WatchSending, @uncheck
         )
     }
 
-    var queuedCount: Int {
-        guard WCSession.isSupported() else { return 0 }
-        return session.outstandingUserInfoTransfers.count
+    var queuedTransferIDs: Set<WatchTransferID> {
+        guard WCSession.isSupported() else { return [] }
+        // Read the framework's unordered snapshot and map it under the same
+        // lock completion uses. Either this snapshot wins and completion emits
+        // one of these IDs, or completion wins and the finished transfer is no
+        // longer selected; there is no first/last ordering assumption.
+        return transferStateLock.withLock {
+            Set(session.outstandingUserInfoTransfers.map { transferIdentities.id(for: $0) })
+        }
     }
 
     func activate() {
@@ -97,12 +143,27 @@ final class LiveWatchSender: NSObject, WCSessionDelegate, WatchSending, @uncheck
 
     func cancelQueued() {
         guard WCSession.isSupported() else { return }
-        session.outstandingUserInfoTransfers.forEach { $0.cancel() }
+        let transfers = transferStateLock.withLock {
+            let transfers = session.outstandingUserInfoTransfers
+            transfers.forEach { transfer in
+                transferIdentities.remove(transfer)
+            }
+            return transfers
+        }
+        transfers.forEach { transfer in
+            // A cancellation may still produce a late callback. Removing now
+            // prevents unbounded growth; that callback receives a fresh,
+            // necessarily stale ID and cannot match the replacement.
+            transfer.cancel()
+        }
     }
 
-    func queue(_ payload: WatchTransferPayload) {
-        guard WCSession.isSupported(), session.activationState == .activated else { return }
-        _ = session.transferUserInfo(payload.userInfo)
+    func queue(_ payload: WatchTransferPayload) -> WatchTransferID? {
+        guard WCSession.isSupported(), session.activationState == .activated else { return nil }
+        return transferStateLock.withLock {
+            let transfer = session.transferUserInfo(payload.userInfo)
+            return transferIdentities.id(for: transfer)
+        }
     }
 
     func observe(_ sink: (@MainActor @Sendable (WatchSendEvent) -> Void)?) {
@@ -124,7 +185,13 @@ final class LiveWatchSender: NSObject, WCSessionDelegate, WatchSending, @uncheck
     func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
         // The system's error can include transport details. The status surface
         // is deliberately a fixed sentence, never an error description.
-        emit(.transferFinished(failure: error == nil ? nil : "The transfer could not be delivered."))
+        let id = transferStateLock.withLock {
+            transferIdentities.remove(userInfoTransfer) ?? WatchTransferID()
+        }
+        emit(.didFinish(
+            id: id,
+            failure: error == nil ? nil : "The transfer could not be delivered."
+        ))
     }
 
     func sessionDidBecomeInactive(_ session: WCSession) {}
@@ -159,6 +226,14 @@ final class WatchHandoffController {
 
     private let sender: any WatchSending
     private let credentials: any CredentialStoring
+    /// Opaque and key-free. This is a set because WCSession documents no order
+    /// for `outstandingUserInfoTransfers`; membership, never first/last, decides
+    /// whether a completion belongs to the queue Settings is describing.
+    private var activeTransferIDs: Set<WatchTransferID> = []
+    /// LiveWatchSender supplies only one fixed failure sentence. Keep the first
+    /// while other outstanding transfers drain, without carrying system error
+    /// details into observable state.
+    private var pendingFailure: String?
 
     init(
         sender: any WatchSending = LiveWatchSender.shared,
@@ -168,7 +243,9 @@ final class WatchHandoffController {
         self.credentials = credentials
     }
 
-    var canSend: Bool { pairing.canReach && status != .queued }
+    /// A queued transfer is replaceable by design: pressing again cancels the
+    /// old outbox item before queueing the newly selected scope and key.
+    var canSend: Bool { pairing.canReach }
 
     func start() {
         sender.observe { [weak self] event in
@@ -176,12 +253,23 @@ final class WatchHandoffController {
         }
         sender.activate()
         pairing = sender.pairing
-        status = sender.queuedCount > 0 ? .queued : .idle
+        activeTransferIDs = sender.queuedTransferIDs
+        pendingFailure = nil
+        status = activeTransferIDs.isEmpty ? .idle : .queued
     }
 
-    func send(project: Project?, headlineMetricID: String?, watches: [MetricWatch]) {
+    func send(
+        organization: OrganizationSummary?,
+        project: Project?,
+        headlineMetricID: String?,
+        watches: [MetricWatch]
+    ) {
         guard let credential = try? credentials.load() else {
             status = .failed("There's no API key on this iPhone to send.")
+            return
+        }
+        guard let organization else {
+            status = .failed("Choose an organization above before sending it to your watch.")
             return
         }
         guard let project else {
@@ -191,6 +279,8 @@ final class WatchHandoffController {
         let transfer = WatchKeyTransfer(
             key: credential.key,
             region: credential.region,
+            organizationID: organization.id,
+            organizationName: organization.name,
             projectID: project.id,
             projectName: project.name,
             headlineMetricID: headlineMetricID,
@@ -203,12 +293,22 @@ final class WatchHandoffController {
         // Rotation: cancelling before queueing leaves no superseded bearer key
         // at rest in WatchConnectivity's outbox.
         sender.cancelQueued()
-        sender.queue(WatchTransferPayload(key: WatchKeyTransfer.userInfoKey, data: data))
+        activeTransferIDs = []
+        pendingFailure = nil
+        guard let id = sender.queue(
+            WatchTransferPayload(key: WatchKeyTransfer.userInfoKey, data: data)
+        ) else {
+            status = .failed("The watch session isn't ready to queue a transfer.")
+            return
+        }
+        activeTransferIDs = [id]
         status = .queued
     }
 
     func cancelQueued() {
         sender.cancelQueued()
+        activeTransferIDs = []
+        pendingFailure = nil
         status = .idle
     }
 
@@ -216,12 +316,16 @@ final class WatchHandoffController {
         switch event {
         case .pairingChanged(let pairing):
             self.pairing = pairing
-        case .transferFinished(let failure):
-            if let failure {
-                status = .failed(failure)
-            } else {
-                status = .delivered(Date())
+        case .didFinish(let id, let failure):
+            guard activeTransferIDs.remove(id) != nil else { return }
+            if let failure, pendingFailure == nil { pendingFailure = failure }
+            guard activeTransferIDs.isEmpty else {
+                status = .queued
+                return
             }
+            let finalFailure = pendingFailure
+            pendingFailure = nil
+            status = finalFailure.map(Status.failed) ?? .delivered(Date())
         }
     }
 }
@@ -244,6 +348,7 @@ struct SettingsWatchSection: View {
 
                     Button {
                         handoff.send(
+                            organization: model.selectedOrganization,
                             project: model.selectedProject,
                             headlineMetricID: headlineMetricID.isEmpty ? nil : headlineMetricID,
                             watches: SharedSnapshotStore.shared.metricWatches()
@@ -261,7 +366,7 @@ struct SettingsWatchSection: View {
                     SectionLabel(text: "Apple Watch", systemImage: "applewatch")
                 } footer: {
                     Text(
-                        "Sends this iPhone's key, the current project, and your thresholds to GetHog on your Apple Watch, where the key is stored in that watch's Keychain, device-only. Until the watch collects it, iOS holds the queued copy in WatchConnectivity's own on-disk queue — outside the Keychain, for a window this app doesn't control. Sending again cancels the copy that was waiting and replaces it, and so does signing out."
+                        "Sends this iPhone's key, the current organization and project, and your thresholds to GetHog on your Apple Watch, where the key is stored in that watch's Keychain, device-only. Until the watch collects it, iOS holds the queued copy in WatchConnectivity's own on-disk queue — outside the Keychain, for a window this app doesn't control. Sending again cancels the copy that was waiting and replaces it, and so does signing out."
                     )
                 }
             }

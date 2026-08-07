@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import GetHogKit
 @testable import GetHogWatch
@@ -16,6 +17,8 @@ struct WatchSessionListenerTests {
     private let transfer = WatchKeyTransfer(
         key: "test-key-0001",
         region: .usCloud,
+        organizationID: "org-synthetic-1001",
+        organizationName: "Synthetic Labs",
         projectID: 1001,
         projectName: "Synthetic Analytics",
         headlineMetricID: "720101",
@@ -45,14 +48,15 @@ struct WatchSessionListenerTests {
         #expect(saved.projectID == 1001)
     }
 
-    @Test("applying a transfer persists the thresholds and the two non-secrets")
+    @Test("applying a transfer persists the thresholds and selected scope")
     func applyPersistsSelections() throws {
         let snapshots = WatchFixtures.tempStore()
         let defaults = try defaults()
+        let credentials = InMemoryTokenStore()
 
         WatchSessionListener.apply(
             transfer,
-            credentials: InMemoryTokenStore(),
+            credentials: credentials,
             snapshots: snapshots,
             defaults: defaults,
             notify: {}
@@ -60,15 +64,25 @@ struct WatchSessionListenerTests {
 
         #expect(snapshots.metricWatches().count == 1)
         #expect(snapshots.metricWatches().first?.id == "example-watch-1")
+        #expect(defaults.string(forKey: WatchSettings.organizationIDKey) == "org-synthetic-1001")
+        #expect(defaults.string(forKey: WatchSettings.organizationNameKey) == "Synthetic Labs")
         #expect(defaults.string(forKey: WatchSettings.projectNameKey) == "Synthetic Analytics")
         #expect(defaults.string(forKey: WatchSettings.headlineMetricKey) == "720101")
         #expect(defaults.bool(forKey: WatchSettings.watchesDegradedKey) == false)
+
+        let handoff = WatchHandoff.current(
+            credentials: credentials, defaults: defaults, snapshots: snapshots
+        )
+        #expect(handoff.organizationID == "org-synthetic-1001")
+        #expect(handoff.organizationName == "Synthetic Labs")
     }
 
     @Test("a transfer with no headline clears the one that was there")
     func applyClearsAStaleHeadline() throws {
         let defaults = try defaults()
         defaults.set("720999", forKey: WatchSettings.headlineMetricKey)
+        defaults.set("org-stale", forKey: WatchSettings.organizationIDKey)
+        defaults.set("Stale Organization", forKey: WatchSettings.organizationNameKey)
 
         WatchSessionListener.apply(
             WatchKeyTransfer(key: "test-key-0001", region: .usCloud, projectID: 1001),
@@ -79,6 +93,119 @@ struct WatchSessionListenerTests {
         )
 
         #expect(defaults.string(forKey: WatchSettings.headlineMetricKey) == nil)
+        #expect(defaults.string(forKey: WatchSettings.organizationIDKey) == nil)
+        #expect(defaults.string(forKey: WatchSettings.organizationNameKey) == nil)
+    }
+
+    @Test("a failed threshold write restores the credential and publishes no partial selection")
+    func failedSnapshotWriteRollsBack() throws {
+        let original = StoredCredential(
+            key: "test-key-original", region: .euCloud, projectID: 42
+        )
+        let credentials = InMemoryTokenStore(credential: original)
+        let defaults = try defaults()
+        defaults.set("org-original", forKey: WatchSettings.organizationIDKey)
+        defaults.set("Original Organization", forKey: WatchSettings.organizationNameKey)
+        defaults.set("Original Project", forKey: WatchSettings.projectNameKey)
+        defaults.set("metric-original", forKey: WatchSettings.headlineMetricKey)
+        defaults.set(true, forKey: WatchSettings.watchesDegradedKey)
+        let notifications = ManualEntryNotifications()
+
+        let applied = WatchSessionListener.apply(
+            transfer,
+            credentials: credentials,
+            snapshots: RefusingMetricWatchWriter(),
+            defaults: defaults,
+            notify: { notifications.count += 1 }
+        )
+
+        #expect(!applied)
+        #expect(try credentials.load() == original)
+        #expect(defaults.string(forKey: WatchSettings.organizationIDKey) == "org-original")
+        #expect(defaults.string(forKey: WatchSettings.organizationNameKey) == "Original Organization")
+        #expect(defaults.string(forKey: WatchSettings.projectNameKey) == "Original Project")
+        #expect(defaults.string(forKey: WatchSettings.headlineMetricKey) == "metric-original")
+        #expect(defaults.bool(forKey: WatchSettings.watchesDegradedKey))
+        #expect(notifications.count == 0)
+    }
+
+    @Test("overlapping applies publish one whole scope at a time")
+    func overlappingAppliesRemainCoherent() throws {
+        let credentials = InMemoryTokenStore()
+        let defaults = try defaults()
+        let snapshots = PausingMetricWatchWriter()
+        let results = ConcurrentApplyResults()
+
+        let first = WatchKeyTransfer(
+            key: "test-key-overlap-a",
+            region: .usCloud,
+            organizationID: "org-synthetic-a",
+            organizationName: "Synthetic A",
+            projectID: 1001,
+            projectName: "Synthetic Project A",
+            headlineMetricID: "metric-a",
+            watches: [
+                MetricWatch(
+                    id: "watch-a", metricID: "metric-a",
+                    title: "Synthetic metric A", condition: .above(10)
+                ),
+            ]
+        )
+        let second = WatchKeyTransfer(
+            key: "test-key-overlap-b",
+            region: .euCloud,
+            organizationID: "org-synthetic-b",
+            organizationName: "Synthetic B",
+            projectID: 42,
+            projectName: "Synthetic Project B",
+            headlineMetricID: "metric-b",
+            watches: [
+                MetricWatch(
+                    id: "watch-b", metricID: "metric-b",
+                    title: "Synthetic metric B", condition: .below(20)
+                ),
+            ]
+        )
+
+        let applies = DispatchGroup()
+        applies.enter()
+        DispatchQueue.global().async {
+            results.append(WatchSessionListener.apply(
+                first, credentials: credentials, snapshots: snapshots,
+                defaults: defaults, notify: {}
+            ))
+            applies.leave()
+        }
+        #expect(snapshots.firstWriteEntered.wait(timeout: .now() + 2) == .success)
+
+        let secondFinished = DispatchSemaphore(value: 0)
+        applies.enter()
+        DispatchQueue.global().async {
+            results.append(WatchSessionListener.apply(
+                second, credentials: credentials, snapshots: snapshots,
+                defaults: defaults, notify: {}
+            ))
+            secondFinished.signal()
+            applies.leave()
+        }
+
+        // Without one transaction lock, B completes while A is paused and A
+        // then overwrites only the snapshot/default half. With serialization,
+        // B cannot finish until A is released and commits wholly after it.
+        let secondInterleaved = secondFinished.wait(timeout: .now() + 1) == .success
+        snapshots.releaseFirstWrite.signal()
+        #expect(applies.wait(timeout: .now() + 2) == .success)
+
+        #expect(!secondInterleaved)
+        #expect(results.values == [true, true])
+        #expect(try credentials.load() == StoredCredential(
+            key: "test-key-overlap-b", region: .euCloud, projectID: 42
+        ))
+        #expect(snapshots.watches.map(\.id) == ["watch-b"])
+        #expect(defaults.string(forKey: WatchSettings.organizationIDKey) == "org-synthetic-b")
+        #expect(defaults.string(forKey: WatchSettings.organizationNameKey) == "Synthetic B")
+        #expect(defaults.string(forKey: WatchSettings.projectNameKey) == "Synthetic Project B")
+        #expect(defaults.string(forKey: WatchSettings.headlineMetricKey) == "metric-b")
     }
 
     @Test("a key that ingestion refuses leaves every store untouched")
@@ -295,4 +422,50 @@ struct WatchSessionListenerTests {
 
 private final class ManualEntryNotifications: @unchecked Sendable {
     var count = 0
+}
+
+private struct RefusingMetricWatchWriter: MetricWatchWriting {
+    struct Refused: Error {}
+
+    func writeMetricWatches(_ watches: [MetricWatch]) throws {
+        throw Refused()
+    }
+}
+
+private final class PausingMetricWatchWriter: MetricWatchWriting, @unchecked Sendable {
+    let firstWriteEntered = DispatchSemaphore(value: 0)
+    let releaseFirstWrite = DispatchSemaphore(value: 0)
+
+    private let lock = NSLock()
+    private var writeCount = 0
+    private var storedWatches: [MetricWatch] = []
+
+    var watches: [MetricWatch] {
+        lock.withLock { storedWatches }
+    }
+
+    func writeMetricWatches(_ watches: [MetricWatch]) throws {
+        let isFirst = lock.withLock {
+            writeCount += 1
+            return writeCount == 1
+        }
+        if isFirst {
+            firstWriteEntered.signal()
+            releaseFirstWrite.wait()
+        }
+        lock.withLock { storedWatches = watches }
+    }
+}
+
+private final class ConcurrentApplyResults: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValues: [Bool] = []
+
+    var values: [Bool] {
+        lock.withLock { storedValues }
+    }
+
+    func append(_ value: Bool) {
+        lock.withLock { storedValues.append(value) }
+    }
 }

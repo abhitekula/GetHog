@@ -5,12 +5,14 @@ import Observation
 
 /// Keys the watch persists outside the snapshot file.
 ///
-/// `UserDefaults`, not the keychain: neither of these is a secret, and the
+/// `UserDefaults`, not the keychain: none of these is a secret, and the
 /// session listener writes them from a nonisolated `WCSession` callback that
 /// has no actor to hop to. The credential itself never comes near this type —
 /// that goes through `WatchKeyTransfer.ingest(into:)` and into the keychain.
 enum WatchSettings {
     static let headlineMetricKey = "watchHeadlineMetricID"
+    static let organizationIDKey = "watchOrganizationID"
+    static let organizationNameKey = "watchOrganizationName"
     static let projectNameKey = "watchProjectName"
     /// Set when the last hand-off carried a watch list this build could not
     /// read — a phone running a newer GetHog than the wrist. The key still
@@ -106,10 +108,30 @@ struct WatchHealth: Equatable, Sendable {
 /// listener writes those stores and posts, and the model reads them back.
 struct WatchHandoff: Sendable, Equatable {
     let credential: StoredCredential?
+    let organizationID: String?
+    let organizationName: String?
     let projectName: String?
     let headlineMetricID: String?
     let watches: [MetricWatch]
     let watchesDegraded: Bool
+
+    init(
+        credential: StoredCredential?,
+        organizationID: String? = nil,
+        organizationName: String? = nil,
+        projectName: String?,
+        headlineMetricID: String?,
+        watches: [MetricWatch],
+        watchesDegraded: Bool
+    ) {
+        self.credential = credential
+        self.organizationID = organizationID
+        self.organizationName = organizationName
+        self.projectName = projectName
+        self.headlineMetricID = headlineMetricID
+        self.watches = watches
+        self.watchesDegraded = watchesDegraded
+    }
 
     /// What the three stores say right now.
     ///
@@ -133,6 +155,8 @@ struct WatchHandoff: Sendable, Equatable {
         #endif
         return WatchHandoff(
             credential: credential,
+            organizationID: defaults.string(forKey: WatchSettings.organizationIDKey),
+            organizationName: defaults.string(forKey: WatchSettings.organizationNameKey),
             projectName: defaults.string(forKey: WatchSettings.projectNameKey),
             headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey),
             watches: snapshots.metricWatches(),
