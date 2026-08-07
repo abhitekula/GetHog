@@ -42,6 +42,24 @@ struct TopShelfArtwork: Equatable {
     let scale2x: URL
 }
 
+/// Fixed semantic colours for the generated Top Shelf card.
+///
+/// Top Shelf artwork is a persisted bitmap rendered by a background extension,
+/// so dynamic SwiftUI colours are the wrong input: their appearance depends on
+/// the extension process's current trait collection and would make identical
+/// snapshots generate different files. The literals live once behind names
+/// that describe their role instead of leaking RGB and white through drawing
+/// code.
+private enum TopShelfArtworkPalette {
+    private static let fixedTraits = UITraitCollection(userInterfaceStyle: .light)
+    private static let foreground = UIColor(Theme.inkOnAccent)
+        .resolvedColor(with: fixedTraits)
+
+    static let canvas = UIColor(Theme.accent).resolvedColor(with: fixedTraits)
+    static let cardWash = foreground.withAlphaComponent(0.11)
+    static let dataInk = foreground
+}
+
 /// Produces one generic, deterministic GetHog card for every shelf item.
 ///
 /// Nothing from the snapshot enters these pixels: no project name, metric
@@ -94,16 +112,7 @@ enum TopShelfArtworkStore {
         format.scale = scale
 
         return UIGraphicsImageRenderer(size: size, format: format).pngData { context in
-            // The same fixed brand teal as the committed synthetic TV artwork.
-            // Literal here because dynamic UI colours would make the file
-            // depend on the extension's current appearance and stop being
-            // deterministic.
-            UIColor(
-                red: 6.0 / 255.0,
-                green: 94.0 / 255.0,
-                blue: 112.0 / 255.0,
-                alpha: 1
-            ).setFill()
+            TopShelfArtworkPalette.canvas.setFill()
             context.fill(CGRect(origin: .zero, size: size))
 
             let inset = min(size.width, size.height) * 0.13
@@ -111,7 +120,7 @@ enum TopShelfArtworkStore {
                 roundedRect: CGRect(origin: .zero, size: size).insetBy(dx: inset, dy: inset),
                 cornerRadius: size.height * 0.08
             )
-            UIColor.white.withAlphaComponent(0.11).setFill()
+            TopShelfArtworkPalette.cardWash.setFill()
             card.fill()
 
             let plot = CGRect(origin: .zero, size: size).insetBy(dx: inset * 1.55, dy: inset * 1.65)
@@ -126,7 +135,7 @@ enum TopShelfArtworkStore {
             line.lineWidth = max(4, size.height * 0.035)
             line.lineCapStyle = .round
             line.lineJoinStyle = .round
-            UIColor.white.setStroke()
+            TopShelfArtworkPalette.dataInk.setStroke()
             line.stroke()
 
             let endpoint = line.currentPoint
@@ -138,7 +147,7 @@ enum TopShelfArtworkStore {
                     height: line.lineWidth * 2
                 )
             )
-            UIColor.white.setFill()
+            TopShelfArtworkPalette.dataInk.setFill()
             dot.fill()
         }
     }

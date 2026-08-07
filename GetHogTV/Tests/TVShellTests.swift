@@ -1,4 +1,5 @@
 import Foundation
+import GetHogKit
 import Testing
 @testable import GetHog
 
@@ -11,6 +12,29 @@ import Testing
 /// case is what makes that a test failure rather than a bug report.
 @Suite("TV destinations")
 struct TVDestinationTests {
+
+    @Test("the running tvOS host resolves the phone's exact App Group identifier")
+    func hostRuntimeUsesSharedSnapshotAppGroup() throws {
+        // `GetHogTVTests` is a hosted bundle. Checking `Bundle.main` first
+        // makes this an assertion about the running TV app process, rather than
+        // another source-file or plist inspection from a macOS test runner.
+        #expect(Bundle.main.bundleIdentifier == "app.gethog.GetHog")
+        #expect(SharedSnapshotStore.bundleAppGroupIdentifier == "group.app.gethog")
+        #expect(
+            SharedSnapshotStore.bundleAppGroupIdentifier
+                == SharedSnapshotStore.appGroupIdentifier
+        )
+        let expectedDirectory = try #require(
+            FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: "group.app.gethog"
+            )
+        )
+        #expect(SharedSnapshotStore.shared.isSharedContainer)
+        #expect(
+            SharedSnapshotStore.shared.directory.standardizedFileURL
+                == expectedDirectory.standardizedFileURL
+        )
+    }
 
     @Test("every destination survives the round trip scene restoration makes")
     func rawValueRoundTrip() {

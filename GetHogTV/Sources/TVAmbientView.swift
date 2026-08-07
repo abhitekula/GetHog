@@ -81,6 +81,19 @@ final class TVAmbientCycler {
     }
 }
 
+/// Identity and gate for Ambient's retained-tab task.
+///
+/// `TabView` may retain a destination after selection moves away. Including
+/// the combined presentation-and-active hold in the task identity makes either
+/// transition cancel the old loop, while `shouldRun` prevents a freshly-created
+/// retained task from doing any work until Ambient is genuinely active again.
+struct TVAmbientCycleTaskID: Equatable {
+    let clock: Int
+    let isHeld: Bool
+
+    var shouldRun: Bool { isHeld }
+}
+
 /// Whether the wallboard is currently entitled to keep the screen awake.
 ///
 /// A separate type because the failure it prevents is a *lifecycle* bug, and
@@ -134,6 +147,8 @@ struct TVAmbientView: View {
     let exit: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(AppModel.self) private var model
+    @Environment(TVSnapshotRefreshCoordinator.self) private var snapshotRefresh
 
     @State private var cycler = TVAmbientCycler()
     /// Owned by the shell, which has the only synchronous hook for a direct
@@ -148,6 +163,13 @@ struct TVAmbientView: View {
     init(exit: @escaping () -> Void, awake: Binding<TVScreenAwake>) {
         self.exit = exit
         _awake = awake
+    }
+
+    /// The modelled hold is the lifecycle source of truth; the direct phase
+    /// check closes the brief update window before `onChange` has copied a new
+    /// environment phase into that model.
+    private var mayCycle: Bool {
+        awake.isHeld && scenePhase == .active
     }
 
     var body: some View {
@@ -185,10 +207,30 @@ struct TVAmbientView: View {
                 awake.sceneBecame(active: phase == .active)
                 applyHold()
             }
-            .task(id: clock) {
+            .task(id: TVAmbientCycleTaskID(clock: clock, isHeld: mayCycle)) {
+                guard mayCycle else { return }
                 while !Task.isCancelled {
                     try? await Task.sleep(for: TVAmbientCycler.interval)
-                    guard !Task.isCancelled else { return }
+                    // `awake.isHeld` is an explicit second gate as well as part
+                    // of the task id. Even if a retained TabView delays task
+                    // cancellation, leaving Ambient *or resigning active*
+                    // cannot issue another refresh, advance a hidden metric,
+                    // or reassert the hold after the app-level cancellation.
+                    guard !Task.isCancelled, mayCycle else { return }
+                    // The screen clock is twelve seconds; the API clock is the
+                    // shared two-hour floor. Every cycle offers a refresh, and
+                    // the coordinator coalesces it with foreground work and
+                    // remembers failed attempts so an outage cannot turn into
+                    // a twelve-second retry loop. Starting is deliberately
+                    // non-blocking: API latency must not stretch the visual
+                    // cadence or delay the idle-timer reassertion below.
+                    let now = Date()
+                    snapshotRefresh.startIfDue(
+                        now: now,
+                        lastSnapshotAt: model.lastSnapshotDate
+                    ) {
+                        await model.performBackgroundRefresh(now: now)
+                    }
                     // Re-read before advancing. This is the screen most likely
                     // to be left up for a day, and reading the snapshot once at
                     // `onAppear` meant it would cycle day-old numbers forever on

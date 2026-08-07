@@ -157,6 +157,39 @@ struct TVAmbientCyclerTests {
         #expect(TVAmbientCycler.interval < .seconds(30))
     }
 
+    @Test("leaving Ambient invalidates its retained tick task")
+    func leavingInvalidatesTickTask() {
+        let presented = TVAmbientCycleTaskID(clock: 3, isHeld: true)
+        let left = TVAmbientCycleTaskID(clock: 3, isHeld: false)
+
+        #expect(presented != left)
+        #expect(presented.shouldRun)
+        #expect(!left.shouldRun)
+    }
+
+    @Test("a manual skip restarts only a presented Ambient tick task")
+    func manualSkipChangesPresentedTaskIdentity() {
+        let before = TVAmbientCycleTaskID(clock: 3, isHeld: true)
+        let after = TVAmbientCycleTaskID(clock: 4, isHeld: true)
+
+        #expect(before != after)
+        #expect(after.shouldRun)
+    }
+
+    @Test("an inactive scene invalidates Ambient even while its tab is retained")
+    func inactivePresentedSceneCannotTick() {
+        var awake = TVScreenAwake()
+        awake.present()
+        let active = TVAmbientCycleTaskID(clock: 3, isHeld: awake.isHeld)
+
+        awake.sceneBecame(active: false)
+        let inactive = TVAmbientCycleTaskID(clock: 3, isHeld: awake.isHeld)
+
+        #expect(active.shouldRun)
+        #expect(active != inactive)
+        #expect(!inactive.shouldRun)
+    }
+
     // MARK: - Keeping the screen awake
 
     /// The never-sleeping-TV failure mode, as transitions rather than as three
@@ -259,5 +292,185 @@ struct TVAmbientCyclerTests {
         // headline of "4.2K" with the label thrown away is a number about
         // nothing.
         #expect(TVAmbientView.headline(metric).contains("/pricing"))
+    }
+}
+
+/// Pins the extra gate the TV shell puts in front of `AppModel`'s shared
+/// background-refresh path. Ambient ticks every twelve seconds, but a failed
+/// request must not turn that display cadence into an API retry cadence.
+@Suite("TV snapshot refresh coordinator")
+@MainActor
+struct TVSnapshotRefreshCoordinatorTests {
+
+    private let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+    @Test("the API floor is the shared unattended-refresh policy")
+    func floorUsesSharedPolicy() {
+        #expect(
+            TVSnapshotRefreshCoordinator.minimumInterval
+                == BackgroundRefreshPolicy.minimumInterval
+        )
+    }
+
+    @Test("a TV with no previous refresh attempts immediately")
+    func firstAttemptIsDue() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        var calls = 0
+
+        let result = await coordinator.refreshIfDue(now: now, lastSnapshotAt: nil) {
+            calls += 1
+            return true
+        }
+
+        #expect(result == .refreshed)
+        #expect(calls == 1)
+        #expect(coordinator.lastAttemptAt == now)
+    }
+
+    @Test("a recent snapshot keeps foreground and Ambient triggers below the floor")
+    func recentSnapshotIsNotDue() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        var calls = 0
+
+        let result = await coordinator.refreshIfDue(
+            now: now,
+            lastSnapshotAt: now.addingTimeInterval(-TVSnapshotRefreshCoordinator.minimumInterval + 1)
+        ) {
+            calls += 1
+            return true
+        }
+
+        #expect(result == .notDue)
+        #expect(calls == 0)
+    }
+
+    @Test("a failed attempt is not retried on the next Ambient cycle")
+    func failedAttemptStillStartsTheFloor() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        var calls = 0
+        let failed = await coordinator.refreshIfDue(now: now, lastSnapshotAt: nil) {
+            calls += 1
+            return false
+        }
+        let nextCycle = await coordinator.refreshIfDue(
+            now: now.addingTimeInterval(12),
+            lastSnapshotAt: nil
+        ) {
+            calls += 1
+            return true
+        }
+
+        #expect(failed == .attempted)
+        #expect(nextCycle == .notDue)
+        #expect(calls == 1)
+    }
+
+    @Test("an Ambient trigger starts API work without waiting for it")
+    func detachedTriggerDoesNotBlockVisualCadence() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+
+        let result = coordinator.startIfDue(now: now, lastSnapshotAt: nil) {
+            while !Task.isCancelled { await Task.yield() }
+            return false
+        }
+
+        #expect(result == .started)
+        #expect(coordinator.isRefreshing)
+        coordinator.cancel()
+        while coordinator.isRefreshing { await Task.yield() }
+    }
+
+    @Test("the exact shared policy interval opens the gate again")
+    func exactFloorIsDue() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        _ = await coordinator.refreshIfDue(now: now, lastSnapshotAt: nil) { false }
+
+        let result = await coordinator.refreshIfDue(
+            now: now.addingTimeInterval(TVSnapshotRefreshCoordinator.minimumInterval),
+            lastSnapshotAt: nil
+        ) { true }
+
+        #expect(result == .refreshed)
+    }
+
+    @Test("a second trigger coalesces while the first request is in flight")
+    func concurrentTriggersCoalesce() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        let first = Task {
+            await coordinator.refreshIfDue(now: now, lastSnapshotAt: nil) {
+                while !Task.isCancelled { await Task.yield() }
+                return false
+            }
+        }
+        while !coordinator.isRefreshing { await Task.yield() }
+
+        var secondCalls = 0
+        let second = await coordinator.refreshIfDue(
+            now: now.addingTimeInterval(TVSnapshotRefreshCoordinator.minimumInterval),
+            lastSnapshotAt: nil
+        ) {
+            secondCalls += 1
+            return true
+        }
+
+        #expect(second == .inFlight)
+        #expect(secondCalls == 0)
+        coordinator.cancel()
+        _ = await first.value
+    }
+
+    @Test("leaving the active scene cancels the operation and permits a later retry")
+    func cancellationEndsLifecycle() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        let first = Task {
+            await coordinator.refreshIfDue(now: now, lastSnapshotAt: nil) {
+                while !Task.isCancelled { await Task.yield() }
+                return false
+            }
+        }
+        while !coordinator.isRefreshing { await Task.yield() }
+
+        coordinator.cancel(resetAttempt: true)
+        let cancelled = await first.value
+        let replacement = await coordinator.refreshIfDue(
+            now: now.addingTimeInterval(1),
+            lastSnapshotAt: nil
+        ) { true }
+
+        #expect(cancelled == .cancelled)
+        #expect(replacement == .refreshed)
+        #expect(!coordinator.isRefreshing)
+    }
+
+    @Test("cancelling an outer waiter cannot cancel its replacement generation")
+    func outerCancellationDoesNotKillReplacement() async {
+        let coordinator = TVSnapshotRefreshCoordinator()
+        let first = Task {
+            await coordinator.refreshIfDue(now: now, lastSnapshotAt: nil) {
+                while !Task.isCancelled { await Task.yield() }
+                return false
+            }
+        }
+        while !coordinator.isRefreshing { await Task.yield() }
+
+        // This is the exact race the old cancellation handler lost: it queued
+        // an actor hop that called the coordinator's unconditional `cancel()`.
+        // A replacement could start before that hop ran, then the stale hop
+        // cancelled the replacement instead of the child it belonged to.
+        first.cancel()
+        coordinator.cancel(resetAttempt: true)
+        let replacement = coordinator.startIfDue(
+            now: now.addingTimeInterval(1),
+            lastSnapshotAt: nil
+        ) {
+            while !Task.isCancelled { await Task.yield() }
+            return true
+        }
+        #expect(replacement == .started)
+        for _ in 0..<100 { await Task.yield() }
+
+        #expect(coordinator.isRefreshing)
+        coordinator.cancel()
+        #expect(await first.value == .cancelled)
     }
 }
