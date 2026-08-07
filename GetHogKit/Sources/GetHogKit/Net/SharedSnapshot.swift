@@ -167,6 +167,75 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
 
 extension SharedSnapshot.Metric {
 
+    /// Reduces a dashboard tile to a single headline figure, when it has one.
+    ///
+    /// In the kit because four surfaces need it and none of them is the phone's
+    /// `AppModel`: the widget extension, the Mac menu bar, the watch and the TV
+    /// all render this value, and an appex cannot reach the app's model at all.
+    ///
+    /// `dashboardID` is threaded in rather than looked up: every caller is
+    /// iterating one dashboard's tiles, so the answer is already in hand and
+    /// costs neither a request nor a guess. `nil` is a real answer — "which
+    /// dashboard this came from is not known" — and routes to the dashboards
+    /// home rather than to an invented destination.
+    ///
+    /// **What each branch may fill is the whole subject here.** `previous`
+    /// documents nil as "the comparison-period value is not known", which is
+    /// not "unchanged"; `sparkline` documents "oldest to newest". Only a trends
+    /// series has a time axis, so only a trends series may fill either. The
+    /// funnel branch once filled `previous` with the funnel's *step-1 count* —
+    /// a funnel is monotonically non-increasing and its steps arrive
+    /// step-1-first, so the derived delta was negative with a guaranteed sign
+    /// and a large magnitude on every funnel tile, forever. It reached the
+    /// widget's change label, VoiceOver, Smart Stack ranking (whose bonus is
+    /// `abs(deltaFraction)`, so the fake movement actively promoted funnels
+    /// over metrics that genuinely moved) and a Lock Screen notification
+    /// reading "… is 750, down 85% from 5,000."
+    ///
+    /// Retention grids, lifecycle bands, stickiness curves and path graphs have
+    /// no single headline figure, so they are not offered rather than reduced
+    /// to a number that would be a choice rather than a measurement. Nor is an
+    /// empty series reduced to zero: zero is a measurement and "nothing came
+    /// back" is not.
+    ///
+    /// - Note: `AppModel.metric(from:on:)` in the iOS app still carries its own
+    ///   copy of this rule, pinned by `TileMetricTests`. Retiring that copy in
+    ///   favour of this initialiser is an app-side change and belongs with
+    ///   whoever owns that file; until then the two are pinned separately and
+    ///   must be changed together.
+    public init?(tile: Tile, dashboardID: Int?) {
+        guard let insight = tile.insight else { return nil }
+        let id = String(insight.id)
+
+        switch tile.renderModel {
+        case .bigNumber(let number):
+            self.init(id: id, title: tile.title, value: number.value,
+                      unit: nil, previous: nil, sparkline: [], dashboardID: dashboardID)
+
+        case .timeSeries(let series, _):
+            guard let first = series.first, !first.points.isEmpty else { return nil }
+            let values = first.points.map(\.value)
+            self.init(id: id, title: tile.title,
+                      value: values.last ?? 0, unit: nil,
+                      previous: values.count > 1 ? values[values.count - 2] : nil,
+                      sparkline: Array(values.suffix(24)), dashboardID: dashboardID)
+
+        case .barValue(let bars):
+            guard let top = bars.first else { return nil }
+            self.init(id: id, title: tile.title, value: top.value,
+                      unit: top.label, previous: nil, sparkline: bars.map(\.value),
+                      dashboardID: dashboardID)
+
+        case .funnel(let groups):
+            guard let group = groups.first, let last = group.steps.last else { return nil }
+            self.init(id: id, title: tile.title, value: last.count,
+                      unit: nil, previous: nil, sparkline: [], dashboardID: dashboardID)
+
+        default:
+            return nil
+        }
+    }
+
     public enum Direction: Sendable, Equatable {
         case up, down, flat
         /// No comparison value. The widget says so instead of drawing an arrow.
