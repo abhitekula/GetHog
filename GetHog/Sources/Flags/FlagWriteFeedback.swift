@@ -83,16 +83,16 @@ extension FlagWriteSignal {
     }
 }
 
-#if os(macOS)
+#if os(macOS) || os(visionOS)
 
 /// Says out loud what the haptic says on a phone.
 ///
 /// `FlagDetailView` confirms a flag write with three `sensoryFeedback` taps.
-/// On the Mac those are inert — most Macs have no haptic engine — so flipping a
-/// flag produced no confirmation beyond the toggle settling, and the
-/// `approval_required` case produced *nothing at all* even though the flag did
-/// not change. This is the same three signals in the channel this platform
-/// actually has.
+/// On platforms without a haptic engine — most Macs, and Vision Pro, where the
+/// taps compile but play nothing — flipping a flag produced no confirmation
+/// beyond the toggle settling, and the `approval_required` case produced
+/// *nothing at all* even though the flag did not change. This is the same
+/// three signals in the channel those platforms actually have.
 ///
 /// iOS keeps the haptics and compiles nothing from here: the modifier is the
 /// identity on every other platform.
@@ -155,7 +155,7 @@ extension View {
     /// Shows a transient confirmation of the last flag write on platforms where
     /// the haptic that says the same thing does not play. The identity on iOS.
     func flagWriteFeedback(_ counts: FlagWriteCounts) -> some View {
-        #if os(macOS)
+        #if os(macOS) || os(visionOS)
         modifier(FlagWriteFeedbackModifier(counts: counts))
         #else
         self

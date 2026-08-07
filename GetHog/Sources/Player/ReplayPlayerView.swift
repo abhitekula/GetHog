@@ -794,6 +794,20 @@ struct WKWebViewRepresentable: UIViewRepresentable {
         ReplayStageBuilder.dismantle(webView: webView, coordinator: coordinator)
     }
 }
+#elseif os(visionOS)
+/// Temporary Vision stand-in for the replay stage. Both halves of the real
+/// thing exist on visionOS — WebKit and `UIViewRepresentable` — so what is
+/// missing is not API but the verification a player deserves on a platform
+/// whose geometry, input and window model are all different. It keeps `stage`
+/// and the expanded cover compiling, and it is unreachable while `playerCard`
+/// short-circuits `.ready` below.
+struct WKWebViewRepresentable: View {
+    let controller: ReplayPlayerController
+
+    var body: some View {
+        Rectangle().fill(Theme.replayStageBackground)
+    }
+}
 #else
 /// A WKWebView that tells the shim when native layout moved its frame — the
 /// AppKit twin of the iOS subclass above, for the same measured reason: a
@@ -990,6 +1004,22 @@ struct ReplayPlayerView: View {
                     if let failure = controller.failure {
                         unavailable(failure)
                     } else {
+                        #if os(visionOS)
+                        // Real playback on Vision is a later task's. Until
+                        // then this is the same honest degradation a mobile
+                        // recording already gets: say what cannot happen here
+                        // and offer where it can, rather than a dead transport
+                        // bar under a spinner that can never stop — with no
+                        // web view attached, `controller.isReady` never turns
+                        // true. That also leaves the header's expand button
+                        // disabled for free, so the expanded cover stays
+                        // unreachable while still compiling.
+                        notice(
+                            icon: "play.slash",
+                            title: "Replay playback isn't on Apple Vision Pro yet",
+                            detail: "The session's timeline, summary and diagnostics are below. Watch the replay itself in PostHog."
+                        )
+                        #else
                         stage
                         PlayerTransportBar(
                             controller: controller,
@@ -1013,6 +1043,7 @@ struct ReplayPlayerView: View {
                             }
                         )
                         streamingFootnote
+                        #endif
                     }
                 }
             }

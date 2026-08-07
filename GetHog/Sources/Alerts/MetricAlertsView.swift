@@ -198,11 +198,21 @@ struct MetricAlertsView: View {
                     .font(Theme.Typography.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                #if os(iOS)
+                // visionOS joins iOS here rather than falling to the else:
+                // `openSettingsURLString` is real and functional there, while
+                // the `x-apple.systempreferences:` URL below means nothing.
+                // Only the label differs, and the iOS string is left exactly
+                // as it was — UI tests may pin it.
+                #if os(iOS) || os(visionOS)
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     Link(destination: url) {
+                        #if os(iOS)
                         Label("Open iOS Settings", systemImage: "arrow.up.forward.square")
                             .font(Theme.Typography.body)
+                        #else
+                        Label("Open Settings", systemImage: "arrow.up.forward.square")
+                            .font(Theme.Typography.body)
+                        #endif
                     }
                 }
                 #else

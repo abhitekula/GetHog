@@ -50,14 +50,18 @@ extension View {
         }
     }
 
-    /// Pointer highlight for iPad, Stage Manager and Mac.
+    /// Pointer highlight for iPad, Stage Manager, Vision Pro and Mac.
     ///
     /// A no-op on touch-only devices, so this needs no size-class branching.
     /// The shape is set with `contentShape(.hoverEffect:)` rather than by
     /// clipping, so the highlight follows the card's corner radius instead of
     /// the square bounding box the pointer would otherwise light up.
+    ///
+    /// visionOS takes the UIKit branch deliberately, not incidentally: the
+    /// hover effect *is* the gaze feedback primitive there, so a card that
+    /// opts out of it is a card the eye cannot tell it has landed on.
     func pointerHighlight(cornerRadius: CGFloat = 14) -> some View {
-        #if os(iOS)
+        #if os(iOS) || os(visionOS)
         contentShape(.hoverEffect, RoundedRectangle(cornerRadius: cornerRadius))
             .hoverEffect(.highlight)
         #else
@@ -93,16 +97,17 @@ extension View {
 ///
 /// iOS presents the four `presentsDetailAsSheet` details as sheets, which
 /// arrive with no navigation chrome of their own, so the container supplies a
-/// stack for the title and the Done button. macOS pushes the same detail
-/// inline (`MacRootView` binds `navigationDestination(item:)` to
-/// `OpenDetails`), where the hosting stack already has the bar — a second
-/// stack would nest, and Done would duplicate Back.
+/// stack for the title and the Done button. macOS and visionOS push the same
+/// detail inline (`MacRootView` and `VisionRootView` both bind
+/// `navigationDestination(item:)` to `OpenDetails`), where the hosting stack
+/// already has the bar — a second stack would nest, and Done would duplicate
+/// Back.
 ///
-/// **This is a fact about the shell, not about every macOS presentation.** A
-/// Mac caller that genuinely sheets one of these four gets a view with no title
-/// and no way out, and must supply both itself — `SurveySearchSheet` is the one
-/// such caller and `sheetChrome` there is what it does about it. Any new one
-/// has the same obligation.
+/// **This is a fact about those shells, not about every non-iOS
+/// presentation.** A Mac or Vision caller that genuinely sheets one of these
+/// four gets a view with no title and no way out, and must supply both itself
+/// — `SurveySearchSheet` is the one such caller and `sheetChrome` there is
+/// what it does about it. Any new one has the same obligation.
 struct DetailSheetContainer<Content: View>: View {
     @ViewBuilder let content: Content
 

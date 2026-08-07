@@ -15,9 +15,10 @@ struct SessionDetailView: View {
     @State private var loader = ReplayLoader()
     @State private var player = ReplayPlayerController()
     @State private var webLink: WebLink?
-    #if os(macOS)
-    /// The Mac has no in-app Safari; the web fallback opens the default
-    /// browser instead.
+    #if os(macOS) || os(visionOS)
+    /// Neither the Mac nor Vision Pro has an in-app Safari to present; the web
+    /// fallback opens the default browser instead — a real browsing window,
+    /// which on Vision is the better answer anyway.
     @Environment(\.openURL) private var openURL
     #endif
     @State private var summaryGenerationTask: Task<Void, Never>?
@@ -115,7 +116,12 @@ struct SessionDetailView: View {
                 )
                 .padding(.horizontal, Theme.Space.l)
 
-                #if os(iOS)
+                // Inline on iOS and visionOS. The Mac's trailing pane below is
+                // the same content in a place only a resizable window has, so
+                // it stays macOS-only; Vision would otherwise have no console
+                // or network diagnostics at all, and the loader still fetches
+                // and parses there even while the stage is a placeholder.
+                #if os(iOS) || os(visionOS)
                 ReplayDiagnosticsSection(
                     loader: loader,
                     controller: player,

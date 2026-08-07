@@ -634,13 +634,14 @@ struct SurveySearchSheet: View {
     /// The chrome a *sheet* needs when the view inside it supplies none.
     ///
     /// Nothing on iOS, where `SurveyDetailSheet` still carries its own stack and
-    /// Done button; the stack and the button on macOS, where it carries neither
-    /// because its other host — `MacRootView` — pushes it. Written as a wrapper
-    /// rather than as an `#if` around the whole `body` so the loading branch
-    /// above stays one piece of code on both platforms.
+    /// Done button; the stack and the button on macOS and visionOS, where it
+    /// carries neither because its other host — `MacRootView`, `VisionRootView`
+    /// — pushes it. Written as a wrapper rather than as an `#if` around the
+    /// whole `body` so the loading branch above stays one piece of code on
+    /// every platform.
     @ViewBuilder
     private func sheetChrome(@ViewBuilder _ content: () -> some View) -> some View {
-        #if os(macOS)
+        #if os(macOS) || os(visionOS)
         NavigationStack {
             content()
                 .toolbar {
