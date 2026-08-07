@@ -2,11 +2,12 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
-/// The Vision shell. The same one-`TabView` architecture as `RootView` and
-/// `MacRootView`, and the same `AppTab.sections` source of truth — fourth
-/// consumer — rendered as a sidebar by `.sidebarAdaptable`. Details push inline
-/// as they do on the Mac: no sheet hoisting, no "More" index, no tab-slot
-/// preference.
+/// The Vision shell. Like `RootView` and `MacRootView`, one outer `TabView`
+/// consumes the shared `AppTab.sections` source of truth. `.sidebarAdaptable`
+/// renders each section as a spatial ornament control; the selected section
+/// keeps its rows visible in a native list beside the shared product screen.
+/// Details push inline as they do on the Mac: no sheet hoisting, no "More"
+/// index, no tab-slot preference.
 ///
 /// Three deliberate differences from the Mac shell, each commented where it
 /// happens: Settings keeps a sidebar row, because visionOS has no `Settings`
@@ -20,7 +21,21 @@ struct VisionRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
+    /// Per-window selection. `selectionInitialized` distinguishes an actual
+    /// restored scene (whose value wins) from a new scene created after a hard
+    /// process termination (which has only the default value).
+    @SceneStorage("selectedTab") private var sceneSelectedTab: AppTab = .dashboards
+    @SceneStorage("vision.selectionInitialized") private var selectionInitialized = false
+    /// A process-durable seed for that genuinely new scene. Stored as the raw
+    /// value so an unknown value degrades honestly to the scene's default.
+    @AppStorage("vision.lastSelectedTab") private var durableSelectedRaw =
+        AppTab.dashboards.rawValue
+    /// What the outer ornament selects. A `TabSection` has no selection value;
+    /// on visionOS its generated ornament button accepts a tap without changing
+    /// the bound `AppTab`, leaving the previous section mounted. Each section is
+    /// therefore a value-bearing outer tab, while `selectedTab` owns the row in
+    /// that section's native sidebar.
+    @State private var selectedDestinationID = "section.Analyze"
     /// The search tab's stack — heterogeneous for the reason the other two
     /// shells' are: screen results push `AppTab`, links push `PostHogLink`.
     @State private var searchPath = NavigationPath()
@@ -46,6 +61,40 @@ struct VisionRootView: View {
     static let sections: [AppTabSection] = AppTab.sections
     static let utilityTabs: [AppTab] = AppTab.utility
 
+    private var selectedTab: AppTab {
+        get { sceneSelectedTab }
+        nonmutating set {
+            sceneSelectedTab = newValue
+            durableSelectedRaw = newValue.rawValue
+        }
+    }
+
+    static func restoredTab(
+        sceneTab: AppTab,
+        sceneInitialized: Bool,
+        durableRawValue: String
+    ) -> AppTab {
+        guard !sceneInitialized else { return sceneTab }
+        return AppTab(rawValue: durableRawValue) ?? sceneTab
+    }
+
+    static func destinationID(for tab: AppTab) -> String {
+        if tab == .search || tab == .settings { return tab.rawValue }
+        return sections.first(where: { $0.tabs.contains(tab) })
+            .map { "section.\($0.title)" }
+            ?? tab.rawValue
+    }
+
+    static func resolvedTab(forDestinationID destinationID: String, current: AppTab) -> AppTab {
+        if destinationID == AppTab.search.rawValue { return .search }
+        if destinationID == AppTab.settings.rawValue { return .settings }
+
+        guard let section = sections.first(where: {
+            destinationID == "section.\($0.title)"
+        }) else { return current }
+        return section.tabs.contains(current) ? current : section.tabs.first ?? current
+    }
+
     var body: some View {
         switch model.phase {
         case .loading:
@@ -64,7 +113,7 @@ struct VisionRootView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: destinationSelection) {
             searchTab
             sidebarSections
             utilitySection
@@ -79,6 +128,15 @@ struct VisionRootView: View {
         .autocorrectionDisabled()
         .environment(openDetails)
         .onAppear {
+            if !selectionInitialized {
+                selectedTab = Self.restoredTab(
+                    sceneTab: sceneSelectedTab,
+                    sceneInitialized: false,
+                    durableRawValue: durableSelectedRaw
+                )
+                selectionInitialized = true
+            }
+            selectedDestinationID = Self.destinationID(for: selectedTab)
             // Cold launch: a URL that started the app arrived before this body
             // existed, so it is waiting rather than lost.
             routePendingLinks()
@@ -93,6 +151,15 @@ struct VisionRootView: View {
                 }
             }
             #endif
+        }
+        .onChange(of: searchPath.isEmpty) { _, isEmpty in
+            // A pushed screen records itself in `selectedTab` for scene
+            // restoration. Once the user returns to the search root, that
+            // destination is no longer showing and must not restore as the
+            // selected section on the next launch.
+            if isEmpty, selectedDestinationID == AppTab.search.rawValue {
+                selectedTab = .search
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: LinkInbox.didChangeNotification)) { _ in
             routePendingLinks()
@@ -146,8 +213,32 @@ struct VisionRootView: View {
 
     // MARK: - Structure
 
-    private var searchTab: some TabContent<AppTab> {
-        Tab(AppTab.search.title, systemImage: AppTab.search.systemImage, value: AppTab.search) {
+    /// Translates the ornament's section-level selection into the screen row
+    /// that section should show. The work happens in the binding setter rather
+    /// than a later `onChange`: a deep link selects Search, clears its old
+    /// stack, and appends the new object synchronously; a deferred reset could
+    /// otherwise erase that just-appended destination.
+    private var destinationSelection: Binding<String> {
+        Binding(
+            get: { selectedDestinationID },
+            set: { destinationID in
+                selectedDestinationID = destinationID
+                let resolved = Self.resolvedTab(
+                    forDestinationID: destinationID,
+                    current: selectedTab
+                )
+                if resolved != selectedTab { selectedTab = resolved }
+                if resolved == .search { searchPath = NavigationPath() }
+            }
+        )
+    }
+
+    private var searchTab: some TabContent<String> {
+        Tab(
+            AppTab.search.title,
+            systemImage: AppTab.search.systemImage,
+            value: AppTab.search.rawValue
+        ) {
             NavigationStack(path: $searchPath) {
                 ProjectSearchView()
                     .navigationDestination(for: AppTab.self) { tab in
@@ -164,22 +255,27 @@ struct VisionRootView: View {
         }
     }
 
-    /// Written as `@TabContentBuilder<AppTab>` members rather than inline, for
+    /// Written as `@TabContentBuilder<String>` members rather than inline, for
     /// the reason the other two shells write theirs that way: the builder
     /// cannot infer one tab value type across a loose `Tab` and a `ForEach` of
     /// sections.
-    @TabContentBuilder<AppTab>
-    private var sidebarSections: some TabContent<AppTab> {
-        // Every section, unfiltered — there are no loose product tabs here to
-        // exclude, so `AppTab.sections` is used directly rather than through
-        // `groupedScreens(excluding:)`.
+    @TabContentBuilder<String>
+    private var sidebarSections: some TabContent<String> {
+        // Every section, unfiltered. Each is an actual value-bearing Tab rather
+        // than a `TabSection`: the latter's generated visionOS ornament control
+        // has no value to write into `TabView(selection:)`, so activating it can
+        // leave the prior section selected. The tab's content below is the
+        // native sidebar of rows that `TabSection` would otherwise synthesize.
         ForEach(Self.sections) { section in
-            TabSection(section.title) {
-                tabItems(for: section.tabs)
+            Tab(
+                section.title,
+                systemImage: section.tabs.first?.systemImage ?? "square.grid.2x2",
+                value: "section.\(section.title)"
+            ) {
+                sectionContainer(for: section)
             }
-            // The same ids as the iPad and Mac sidebars, so one stored
-            // arrangement means the same thing on all three.
             .customizationID("section.\(section.title)")
+            .accessibilityIdentifier("section.\(section.title)")
         }
     }
 
@@ -187,19 +283,46 @@ struct VisionRootView: View {
     /// `AppTab.utility` convention, and the difference from the Mac shell,
     /// which has a `Settings` scene on ⌘, to route to instead. visionOS has no
     /// such scene, so a row is the only way in.
-    @TabContentBuilder<AppTab>
-    private var utilitySection: some TabContent<AppTab> {
-        tabItems(for: Self.utilityTabs)
+    private var utilitySection: some TabContent<String> {
+        Tab(
+            AppTab.settings.title,
+            systemImage: AppTab.settings.systemImage,
+            value: AppTab.settings.rawValue
+        ) {
+            container(for: .settings)
+        }
+        .customizationID(AppTab.settings.rawValue)
     }
 
-    @TabContentBuilder<AppTab>
-    private func tabItems(for tabs: [AppTab]) -> some TabContent<AppTab> {
-        ForEach(tabs, id: \.self) { tab in
-            Tab(tab.title, systemImage: tab.systemImage, value: tab) {
-                container(for: tab)
+    private func sectionContainer(for section: AppTabSection) -> some View {
+        HStack(spacing: 0) {
+            NavigationStack {
+                List(selection: tabSelection(in: section)) {
+                    ForEach(section.tabs, id: \.self) { tab in
+                        Label(tab.title, systemImage: tab.systemImage)
+                            .tag(tab)
+                    }
+                }
+                .navigationTitle(section.title)
             }
-            .customizationID(tab.rawValue)
+            .frame(width: 280)
+
+            Divider()
+
+            container(
+                for: Self.resolvedTab(
+                    forDestinationID: "section.\(section.title)",
+                    current: selectedTab
+                )
+            )
         }
+    }
+
+    private func tabSelection(in section: AppTabSection) -> Binding<AppTab?> {
+        Binding(
+            get: { section.tabs.contains(selectedTab) ? selectedTab : nil },
+            set: { if let tab = $0 { selectedTab = tab } }
+        )
     }
 
     /// Vision windows are regular width today, but unlike the Mac — where
@@ -247,6 +370,7 @@ struct VisionRootView: View {
     /// selection with no ⌘, special case.
     private func open(_ tab: AppTab) {
         selectedTab = tab
+        selectedDestinationID = Self.destinationID(for: tab)
         // Asking for search means the field, not whatever the stack last held —
         // same reset, same reason, as the other two shells.
         if tab == .search { searchPath = NavigationPath() }
@@ -307,7 +431,11 @@ struct VisionRootView: View {
                 )
                 return
             }
-            selectedTab = .search
+            // The outer TabView selects destinations rather than individual
+            // screens, so a deep link must select Search as well as build its
+            // navigation path. Assigning `selectedTab` alone leaves whichever
+            // product section was previously mounted on screen.
+            open(.search)
             var path = NavigationPath()
             path.append(target.link)
             searchPath = path

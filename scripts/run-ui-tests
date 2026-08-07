@@ -1,53 +1,117 @@
 #!/usr/bin/env bash
 
-# Runs a UI test target across cloned simulators and verifies from the log that
-# tests actually ran.
+# Runs a UI test target and verifies that tests actually ran.
 #
-# **Both halves are the point, and the second is why this exists.** Parallel
-# testing is a 2.5x cut on this target — measured on a 14-core machine, iPhone
-# 17, GetHogUITests: 576s serially against 230s with four workers, same 73 test
-# cases, no `ExclusiveRun` collisions because that lock keys on `SIMULATOR_UDID`
-# and each clone gets its own.
+# Parallel testing is a 2.5x cut on the iOS target — measured on a 14-core
+# machine, iPhone 17, GetHogUITests: 576s serially against 230s with four
+# workers, the same revision and test selection, and no `ExclusiveRun`
+# collisions. Its console is not a countable artifact, though. Serial writes
+# `Test Case` lines and an `Executed N tests` tally; parallel workers share
+# stdout and write `Test case` lines which can be dropped or spliced. Two
+# identical parallel runs measured 71 and 72 passing lines, neither a superset
+# of the other.
 #
-# But `-parallel-testing-enabled YES` changes the log format, and the repository
-# rule for reading test results does not survive it:
+# Both console formats remain useful witnesses, but neither is the verdict.
+# The result bundle records one entry per test regardless of stdout multiplexing,
+# so its summary is the authoritative count. A filter that names nothing still
+# exits xcodebuild successfully; the zero guard below is why this wrapper exists.
 #
-#   serial:   Test Case '-[GetHogUITests.FooTests testBar]' passed (1.234 seconds).
-#             Executed 78 tests, with 5 tests skipped and 0 failures ...
-#   parallel: Test case 'FooTests.testBar()' passed on 'Clone 1 of iPhone 17 - ...'
-#             (no "Executed N tests" line is emitted at all)
-#
-# A filter that names nothing still prints `** TEST SUCCEEDED **` and exits 0, so
-# the count is the only honest signal — and every count grep written for the
-# serial format silently reports zero under parallel. That is the failure this
-# wrapper removes: it counts both formats, and it fails when the count is zero
-# no matter what xcodebuild's exit status says.
-#
-#   scripts/run-ui-tests                                  # whole UI target
+#   scripts/run-ui-tests
 #   scripts/run-ui-tests GetHogUITests/TabBarCustomisationTests
+#   PLATFORM=vision scripts/run-ui-tests
+#   PLATFORM=tv scripts/run-ui-tests GetHogTVUITests/TVAmbientTests
+#   PLATFORM=watch scripts/run-ui-tests
 #   DESTINATION_NAME='iPad Air 11-inch (M4)' scripts/run-ui-tests
-#   WORKERS=1 scripts/run-ui-tests                        # serial, for debugging
-#
-# Every argument is passed to `-only-testing:` in order, so several suites can be
-# named. With none, the whole target runs.
+#   WORKERS=1 scripts/run-ui-tests
 
 set -uo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 
-scheme=${SCHEME:-GetHog}
-project=${PROJECT:-GetHog.xcodeproj}
-destination_name=${DESTINATION_NAME:-iPhone 17}
-target=${TARGET:-GetHogUITests}
+platform=${PLATFORM:-ios}
+case "$platform" in
+ios)
+    d_scheme=GetHog
+    d_target=GetHogUITests
+    d_plat='iOS Simulator'
+    d_name='iPhone 17'
+    d_workers=4
+    ;;
+mac)
+    d_scheme=GetHogMac
+    d_target=GetHogMacUITests
+    d_plat=macOS
+    d_name=''
+    d_workers=1
+    ;;
+vision)
+    d_scheme=GetHogVision
+    d_target=GetHogVisionUITests
+    d_plat='visionOS Simulator'
+    d_name='Apple Vision Pro'
+    d_workers=1
+    ;;
+tv)
+    d_scheme=GetHogTV
+    d_target=GetHogTVUITests
+    d_plat='tvOS Simulator'
+    # The acceptance sweep is explicitly 1080p. Keep this aligned with the
+    # unit-test and documentation destinations so a bare PLATFORM=tv run does
+    # not silently exercise the 4K simulator instead.
+    d_name='Apple TV 4K (3rd generation) (at 1080p)'
+    d_workers=1
+    ;;
+watch)
+    d_scheme=GetHogWatch
+    d_target=GetHogWatchUITests
+    d_plat='watchOS Simulator'
+    d_name='Apple Watch Series 11 (46mm)'
+    d_workers=1
+    ;;
+*)
+    printf 'Unknown PLATFORM "%s". One of: ios mac vision tv watch.\n' "$platform" >&2
+    exit 2
+    ;;
+esac
 
-# Four was the measured sweet spot; each worker is a booted simulator clone, so
-# raising this past the machine's performance cores buys queueing rather than
-# throughput. `WORKERS=1` disables cloning entirely and restores the serial log
-# format, which is what to use when a failure needs reading in order.
-workers=${WORKERS:-4}
+scheme=${SCHEME:-$d_scheme}
+project=${PROJECT:-GetHog.xcodeproj}
+target=${TARGET:-$d_target}
+destination_platform=${DESTINATION_PLATFORM:-$d_plat}
+destination_name=${DESTINATION_NAME:-$d_name}
+workers=${WORKERS:-$d_workers}
+
+case "$workers" in
+''|*[!0-9]*|0)
+    printf 'WORKERS must be a positive integer; got "%s".\n' "$workers" >&2
+    exit 2
+    ;;
+esac
+
+if [ -n "$destination_name" ]; then
+    destination="platform=$destination_platform,name=$destination_name"
+else
+    destination="platform=$destination_platform"
+fi
 
 log_file=${LOG_FILE:-$(mktemp "${TMPDIR:-/tmp}/gethog-ui-tests.XXXXXX")}
+results_root=$repository_root/build/TestResults
+mkdir -p "$results_root"
+if [ -n "${RESULT_BUNDLE:-}" ]; then
+    case "$RESULT_BUNDLE" in
+    /*) result_bundle=$RESULT_BUNDLE ;;
+    *) result_bundle=$(pwd -P)/$RESULT_BUNDLE ;;
+    esac
+    if [ -e "$result_bundle" ]; then
+        printf 'RESULT_BUNDLE already exists; refusing to overwrite it: %s\n' "$result_bundle" >&2
+        exit 2
+    fi
+    mkdir -p "$(dirname "$result_bundle")"
+else
+    result_parent=$(mktemp -d "$results_root/$target-$(date +%Y%m%d-%H%M%S).XXXXXX")
+    result_bundle=$result_parent/Test.xcresult
+fi
 
 only_testing=()
 if [ "$#" -eq 0 ]; then
@@ -65,20 +129,17 @@ else
     parallel_flags+=(-parallel-testing-enabled NO)
 fi
 
-printf 'Running %s on "%s" with %s worker(s)\n' "${only_testing[*]}" "$destination_name" "$workers"
-printf 'Log: %s\n\n' "$log_file"
+printf 'Running %s on "%s" with %s worker(s)\n' "${only_testing[*]}" "$destination" "$workers"
+printf 'Log: %s\n' "$log_file"
+printf 'Result bundle: %s\n\n' "$result_bundle"
 
 started=$SECONDS
-
-# Redirected to a file rather than piped, deliberately: a pipeline reports the
-# *reader's* exit status, and this script has to be able to tell a build failure
-# from a test failure. The two debugger-version lines Xcode 26 emits on every
-# XCUIApplication launch are dropped on the way through; nothing else is.
 (
     cd "$repository_root" && xcodebuild test \
         -project "$project" \
         -scheme "$scheme" \
-        -destination "platform=iOS Simulator,name=$destination_name" \
+        -destination "$destination" \
+        -resultBundlePath "$result_bundle" \
         "${only_testing[@]}" \
         "${parallel_flags[@]}"
 ) > "$log_file" 2>&1
@@ -86,35 +147,93 @@ xcodebuild_status=$?
 
 elapsed=$((SECONDS - started))
 
-# Serial format, parallel format, and xcodebuild's own tally. Counted separately
-# so a format change shows up as a zero here rather than as a silent pass.
-serial_passed=$(grep -cE "^Test Case '-\[.*\]' passed" "$log_file")
-serial_failed=$(grep -cE "^Test Case '-\[.*\]' failed" "$log_file")
+# Console greps are witnesses only. They make a format change or interleaved
+# parallel output visible, but do not decide whether a test ran.
+serial_passed=$(grep -cE "^Test Case '-\\[.*\\]' passed" "$log_file")
+serial_failed=$(grep -cE "^Test Case '-\\[.*\\]' failed" "$log_file")
 parallel_passed=$(grep -cE "^Test case '.*' passed on '" "$log_file")
 parallel_failed=$(grep -cE "^Test case '.*' failed on '" "$log_file")
+log_passed=$((serial_passed + parallel_passed))
+log_failed=$((serial_failed + parallel_failed))
+log_executed=$((log_passed + log_failed))
 
-passed=$((serial_passed + parallel_passed))
-failed=$((serial_failed + parallel_failed))
-executed=$((passed + failed))
-
-printf 'elapsed   %ss\n' "$elapsed"
-printf 'passed    %s\n' "$passed"
-printf 'failed    %s\n' "$failed"
-
-if [ "$failed" -gt 0 ]; then
-    printf '\nFailures:\n'
-    grep -hE "^Test Case '-\[.*\]' failed|^Test case '.*' failed on '" "$log_file" | sed 's/^/  /'
-    printf '\nMessages:\n'
-    grep -hE "error: -\[|error: .*\.swift:[0-9]+" "$log_file" | sort -u | sed "s|$repository_root/||" | head -20 | sed 's/^/  /'
+if [ ! -d "$result_bundle" ]; then
+    printf 'elapsed   %ss\n' "$elapsed"
+    printf '\nResult bundle is missing; xcodebuild did not produce an authoritative test count.\n'
+    printf 'This is usually a build failure before tests started, not a suite-name error.\n'
+    printf 'xcodebuild exited %s. Full log: %s\n' "$xcodebuild_status" "$log_file"
+    exit 1
 fi
 
-# **A run that executed nothing is a failure here even when xcodebuild says
-# otherwise.** `-only-testing:` naming a suite or method that does not exist —
-# a typo, or a rename the command line did not follow — runs zero tests, prints
-# `** TEST SUCCEEDED **` and exits 0. Only a wrong *target* is caught by
-# xcodebuild itself, because that one is checked against the scheme.
-if [ "$executed" -eq 0 ]; then
+summary=$(xcrun xcresulttool get test-results summary --path "$result_bundle" --compact 2>/dev/null)
+bundle_passed=$(printf '%s' "$summary" | plutil -extract passedTests raw -o - - 2>/dev/null)
+bundle_failed=$(printf '%s' "$summary" | plutil -extract failedTests raw -o - - 2>/dev/null)
+bundle_skipped=$(printf '%s' "$summary" | plutil -extract skippedTests raw -o - - 2>/dev/null)
+bundle_expected=$(printf '%s' "$summary" | plutil -extract expectedFailures raw -o - - 2>/dev/null)
+bundle_total=$(printf '%s' "$summary" | plutil -extract totalTestCount raw -o - - 2>/dev/null)
+
+is_count() {
+    case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+    esac
+}
+
+if ! is_count "$bundle_passed" || ! is_count "$bundle_failed" || \
+    ! is_count "$bundle_skipped" || ! is_count "$bundle_expected" || \
+    ! is_count "$bundle_total"; then
+    printf 'elapsed   %ss\n' "$elapsed"
+    printf '\nResult bundle is unparseable; xcresulttool did not return a usable test summary.\n'
+    printf 'A counter that cannot count must not report success. Bundle: %s\n' "$result_bundle"
+    printf 'Full log: %s\n' "$log_file"
+    exit 1
+fi
+
+asserted=$((bundle_passed + bundle_failed + bundle_expected))
+accounted=$((asserted + bundle_skipped))
+
+printf 'elapsed   %ss\n' "$elapsed"
+printf 'passed    %s        (xcresult)\n' "$bundle_passed"
+printf 'failed    %s\n' "$bundle_failed"
+printf 'skipped   %s\n' "$bundle_skipped"
+printf 'expected  %s        (expected failures)\n' "$bundle_expected"
+printf 'total     %s\n' "$bundle_total"
+if [ "$log_executed" -ne "$asserted" ]; then
+    printf 'log said  %s\n' "$log_executed"
+    printf '  Parallel workers share stdout, so lines may be dropped or spliced; xcresult is per-test.\n'
+fi
+
+if [ "$bundle_failed" -gt 0 ]; then
+    printf '\nFailures (xcresult):\n'
+    printf '%s' "$summary" | plutil -extract testFailures json -o - - 2>/dev/null | sed 's/^/  /'
+    printf '\nConsole witnesses:\n'
+    grep -hE "^Test Case '-\\[.*\\]' failed|^Test case '.*' failed on '" "$log_file" | sed 's/^/  /'
+    printf '\nMessages:\n'
+    grep -hE "error: -\\[|error: .*\\.swift:[0-9]+" "$log_file" | sort -u | sed "s|$repository_root/||" | head -20 | sed 's/^/  /'
+fi
+
+if [ "$accounted" -ne "$bundle_total" ]; then
+    printf '\nResult bundle counts disagree: passed + failed + expected + skipped = %s, totalTestCount = %s.\n' \
+        "$accounted" "$bundle_total"
+    printf 'A counter that cannot reconcile its own summary must not report success.\n'
+    printf 'Full log: %s\n' "$log_file"
+    exit 1
+fi
+
+# A build or test-process failure is not a suite-name error, even when no test
+# reached execution. Report xcodebuild's failure before applying the zero-test
+# guard so the operator follows the right evidence.
+if [ "$xcodebuild_status" -ne 0 ]; then
+    printf '\nxcodebuild exited %s. Full log: %s\n' "$xcodebuild_status" "$log_file"
+    exit 1
+fi
+
+# The bundle's total, rather than passed + failed, is the selection witness.
+# An intentionally skipped test still proves that the filter named a real
+# test; a non-existent filter produces a true zero while xcodebuild exits 0.
+if [ "$bundle_total" -eq 0 ]; then
     printf '\nNO TESTS RAN.\n'
+    printf 'The authoritative xcresult summary reported totalTestCount=%s.\n' "$bundle_total"
     printf 'xcodebuild exited %s, which proves nothing on its own: a filter that\n' "$xcodebuild_status"
     printf 'names nothing still succeeds. Check the suite and method names in:\n'
     printf '  %s\n' "${only_testing[*]}"
@@ -122,9 +241,10 @@ if [ "$executed" -eq 0 ]; then
     exit 1
 fi
 
-if [ "$xcodebuild_status" -ne 0 ] || [ "$failed" -gt 0 ]; then
+if [ "$bundle_failed" -gt 0 ]; then
     printf '\nFull log: %s\n' "$log_file"
     exit 1
 fi
 
-printf '\nAll %s tests passed.\n' "$executed"
+printf '\nAll %s selected tests completed without unexpected failure (xcresult); %s ran assertions.\n' \
+    "$bundle_total" "$asserted"

@@ -42,6 +42,81 @@ struct VisionShellStructureTests {
     func sectionsAreTheSharedOnes() {
         #expect(VisionRootView.sections.map(\.id) == AppTab.sections.map(\.id))
     }
+
+    @Test("restored scenes win; genuinely new scenes use the durable selection")
+    func restorationSourceIsUnambiguous() {
+        #expect(
+            VisionRootView.restoredTab(
+                sceneTab: .surveys,
+                sceneInitialized: true,
+                durableRawValue: AppTab.flags.rawValue
+            ) == .surveys
+        )
+        #expect(
+            VisionRootView.restoredTab(
+                sceneTab: .dashboards,
+                sceneInitialized: false,
+                durableRawValue: AppTab.flags.rawValue
+            ) == .flags
+        )
+        #expect(
+            VisionRootView.restoredTab(
+                sceneTab: .dashboards,
+                sceneInitialized: false,
+                durableRawValue: "not-a-tab"
+            ) == .dashboards
+        )
+    }
+
+    @Test("each product screen selects the section that contains it")
+    func productScreensSelectTheirSection() {
+        for section in VisionRootView.sections {
+            for tab in section.tabs {
+                #expect(
+                    VisionRootView.destinationID(for: tab) == "section.\(section.title)",
+                    "\(tab) did not map to its containing section."
+                )
+            }
+        }
+        #expect(VisionRootView.destinationID(for: .search) == AppTab.search.rawValue)
+        #expect(VisionRootView.destinationID(for: .settings) == AppTab.settings.rawValue)
+    }
+
+    @Test("entering a section keeps its current screen or chooses its first row")
+    func enteringSectionResolvesAVisibleScreen() {
+        #expect(
+            VisionRootView.resolvedTab(
+                forDestinationID: AppTab.search.rawValue,
+                current: .dashboards
+            ) == .search
+        )
+        #expect(
+            VisionRootView.resolvedTab(
+                forDestinationID: AppTab.settings.rawValue,
+                current: .dashboards
+            ) == .settings
+        )
+
+        for section in VisionRootView.sections {
+            let destinationID = "section.\(section.title)"
+            let outside = AppTab.allCases.first { !section.tabs.contains($0) } ?? .search
+
+            #expect(
+                VisionRootView.resolvedTab(
+                    forDestinationID: destinationID,
+                    current: outside
+                ) == section.tabs.first
+            )
+            for tab in section.tabs {
+                #expect(
+                    VisionRootView.resolvedTab(
+                        forDestinationID: destinationID,
+                        current: tab
+                    ) == tab
+                )
+            }
+        }
+    }
 }
 
 /// The cadence, asserted against `BackgroundRefreshPolicy`'s own functions

@@ -119,6 +119,9 @@ is_allowed_png_path() {
     case "$1" in
         GetHog/Resources/Assets.xcassets/*.appiconset/*.png|\
         GetHog/Resources/Assets.xcassets/*.imageset/*.png|\
+        GetHogTV/Resources/Assets.xcassets/*.brandassets/*.png|\
+        GetHogVision/Resources/Assets.xcassets/*.solidimagestack/*.png|\
+        GetHogWatch/Resources/Assets.xcassets/*.appiconset/*.png|\
         docs/images/*.png|.github/assets/*.png)
             return 0
             ;;

@@ -19,7 +19,9 @@ struct FlagDetailView: View {
     /// the dialog's wording doesn't flicker while it animates away.
     @State private var requestedActivation = false
     @State private var isConfirming = false
+    #if !os(tvOS)
     @State private var allowsQuickToggle: Bool
+    #endif
 
     /// Which release-condition group the rollout editor is aimed at, and the
     /// value it is aimed with. Two pieces of state rather than one because there
@@ -37,7 +39,9 @@ struct FlagDetailView: View {
     init(flag: FeatureFlag, controller: FlagToggleController) {
         self.flag = flag
         self.controller = controller
+        #if !os(tvOS)
         _allowsQuickToggle = State(initialValue: FlagQuickToggle.isAllowed(flagID: flag.id))
+        #endif
     }
 
     private var isActive: Bool { controller.effectiveActive(flag) }
@@ -52,7 +56,9 @@ struct FlagDetailView: View {
             identitySection
             reachRow
             toggleSection
+            #if !os(tvOS)
             quickToggleSection
+            #endif
             releaseConditionsSection
             rolloutSection
             if flag.isMultivariate { variantsSection }
@@ -242,6 +248,7 @@ struct FlagDetailView: View {
         }
     }
 
+    #if !os(tvOS)
     private var quickToggleSection: some View {
         Section {
             Toggle("Allow quick toggle", isOn: $allowsQuickToggle)
@@ -254,6 +261,7 @@ struct FlagDetailView: View {
             )
         }
     }
+    #endif
 
     private var releaseConditionsSection: some View {
         Section {

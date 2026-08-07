@@ -34,10 +34,12 @@ actor RouteTransport: HTTPTransport {
     }
 
     private let routes: [Route]
+    private let unmatchedError: PostHogError?
     private(set) var requests: [URLRequest] = []
 
-    init(routes: [Route]) {
+    init(routes: [Route], unmatchedError: PostHogError? = nil) {
         self.routes = routes
+        self.unmatchedError = unmatchedError
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -47,6 +49,7 @@ actor RouteTransport: HTTPTransport {
         guard let route = routes.first(where: {
             path.contains($0.pathContains) && ($0.bodyContains.map(body.contains) ?? true)
         }) else {
+            if let unmatchedError { throw unmatchedError }
             throw PostHogError.transport("no route for \(path)")
         }
         return (
@@ -80,8 +83,194 @@ actor RouteTransport: HTTPTransport {
 /// a specific and load-bearing answer for.
 struct OfflineTransport: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        throw PostHogError.transport("offline")
+        throw PostHogError.network(
+            code: NSURLErrorNotConnectedToInternet,
+            description: "Synthetic offline failure"
+        )
     }
+}
+
+/// A non-URL failure, so the Watch tests prove that only Foundation's -1009
+/// branch earns iPhone-offline guidance.
+struct UnavailableTransport: HTTPTransport {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        throw PostHogError.transport("synthetic unavailable failure")
+    }
+}
+
+/// Holds the old project's first request until a replacement hand-off has
+/// completed its own refresh. The model test can then release the stale
+/// response and prove it is ignored rather than racing the adopted project.
+actor HandoffRaceTransport: HTTPTransport {
+    private let backing = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+    private var heldRequest: CheckedContinuation<Void, Never>?
+    private var suspensionWaiter: CheckedContinuation<Void, Never>?
+    private var isHoldingOldRequest = false
+
+    func waitUntilOldRequestIsHeld() async {
+        guard !isHoldingOldRequest else { return }
+        await withCheckedContinuation { continuation in
+            suspensionWaiter = continuation
+        }
+    }
+
+    func releaseOldRequest() {
+        heldRequest?.resume()
+        heldRequest = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        if path.contains("/api/projects/1001/dashboards/") && path.hasSuffix("/dashboards/") {
+            await withCheckedContinuation { continuation in
+                heldRequest = continuation
+                isHoldingOldRequest = true
+                suspensionWaiter?.resume()
+                suspensionWaiter = nil
+            }
+        }
+        return try await backing.send(request)
+    }
+}
+
+/// A credential store that freezes one load after capturing its value.
+///
+/// The `/me` persistence race test uses this to hold the old credential load,
+/// then starts a phone hand-off. The hand-off announces its revision before it
+/// waits for the outer lock, so the test can positively observe both intent and
+/// blocked state before releasing the old response to make its atomic choice.
+final class HeldCredentialLoadStore: CredentialStoring, @unchecked Sendable {
+    private let stateLock = NSLock()
+    private var credential: StoredCredential?
+    private var shouldHoldNextLoad = false
+    private let heldLoadCaptured = DispatchSemaphore(value: 0)
+    private let releaseHeldLoad = DispatchSemaphore(value: 0)
+    private let handoffIntentAnnounced = DispatchSemaphore(value: 0)
+    private var announcedRevision: UInt64?
+    private var synchronizationTimedOut = false
+
+    init(credential: StoredCredential?) {
+        self.credential = credential
+    }
+
+    func holdNextLoad() {
+        stateLock.withLock { shouldHoldNextLoad = true }
+    }
+
+    var didSynchronizationTimeout: Bool {
+        stateLock.withLock { synchronizationTimedOut }
+    }
+
+    func waitUntilHeldLoadIsCaptured(timeout: TimeInterval = 5) throws {
+        guard heldLoadCaptured.wait(timeout: .now() + timeout) == .success else {
+            // Always release the producer even when the observation failed, so
+            // a regression records a bounded failure instead of hanging the
+            // rest of the target behind this test.
+            releaseLoad()
+            throw WatchTestSynchronizationError.heldLoadNotCaptured
+        }
+    }
+
+    func releaseLoad() {
+        releaseHeldLoad.signal()
+    }
+
+    func recordHandoffIntent(revision: UInt64) {
+        stateLock.withLock { announcedRevision = revision }
+        handoffIntentAnnounced.signal()
+    }
+
+    func waitUntilHandoffIntentIsAnnounced(timeout: TimeInterval = 5) throws -> UInt64 {
+        guard handoffIntentAnnounced.wait(timeout: .now() + timeout) == .success,
+              let revision = stateLock.withLock({ announcedRevision }) else {
+            releaseLoad()
+            throw WatchTestSynchronizationError.intentNotAnnounced
+        }
+        return revision
+    }
+
+    func currentCredential() -> StoredCredential? {
+        stateLock.withLock { credential }
+    }
+
+    func load() throws -> StoredCredential? {
+        let (captured, shouldHold) = stateLock.withLock {
+            let shouldHold = shouldHoldNextLoad
+            shouldHoldNextLoad = false
+            return (credential, shouldHold)
+        }
+        if shouldHold {
+            heldLoadCaptured.signal()
+            if releaseHeldLoad.wait(timeout: .now() + 5) == .timedOut {
+                stateLock.withLock { synchronizationTimedOut = true }
+            }
+        }
+        return captured
+    }
+
+    func save(_ credential: StoredCredential) throws {
+        stateLock.withLock { self.credential = credential }
+    }
+
+    func clear() throws {
+        stateLock.withLock { credential = nil }
+    }
+}
+
+/// A keychain stand-in whose read fails rather than returning an empty slot.
+/// Identity bootstrap must treat both outcomes as unverified stored state and
+/// keep quarantined project files out of the active widget container.
+final class ThrowingCredentialLoadStore: CredentialStoring, @unchecked Sendable {
+    enum Failure: Error { case syntheticReadFailure }
+
+    func load() throws -> StoredCredential? {
+        throw Failure.syntheticReadFailure
+    }
+
+    func save(_ credential: StoredCredential) throws {}
+    func clear() throws {}
+}
+
+/// Pauses an apply after it has registered pending intent but before it can
+/// enter credential serialization. The inverse race test can then start an old
+/// model refresh in the exact window that previously captured the new revision
+/// and incorrectly treated the old client as current.
+final class PausedMutationIntent: @unchecked Sendable {
+    private let lock = NSLock()
+    private let announced = DispatchSemaphore(value: 0)
+    private let release = DispatchSemaphore(value: 0)
+    private var revision: UInt64?
+    private var synchronizationTimedOut = false
+
+    var didSynchronizationTimeout: Bool {
+        lock.withLock { synchronizationTimedOut }
+    }
+
+    func pause(revision: UInt64) {
+        lock.withLock { self.revision = revision }
+        announced.signal()
+        if release.wait(timeout: .now() + 5) == .timedOut {
+            lock.withLock { synchronizationTimedOut = true }
+        }
+    }
+
+    func waitUntilAnnounced(timeout: TimeInterval = 5) throws -> UInt64 {
+        guard announced.wait(timeout: .now() + timeout) == .success,
+              let revision = lock.withLock({ revision }) else {
+            resume()
+            throw WatchTestSynchronizationError.intentNotAnnounced
+        }
+        return revision
+    }
+
+    func resume() {
+        release.signal()
+    }
+}
+
+enum WatchTestSynchronizationError: Error {
+    case heldLoadNotCaptured
+    case intentNotAnnounced
 }
 
 /// Synthetic fixtures, valid against the kit's real decoders. Every id, name
@@ -120,6 +309,15 @@ enum WatchFixtures {
           {"id":2,"key":"example-b","active":false},
           {"id":3,"key":"example-dead","active":true,"deleted":true}]}
         """#
+
+    /// The identity bootstrap used by a manually entered or DEBUG-only key.
+    /// The real decoder reads the current project from `team`.
+    static func me(
+        projectID: Int,
+        name: String = "Synthetic Analytics"
+    ) -> String {
+        #"{"team":{"id":\#(projectID),"name":"\#(name)"}}"#
+    }
 
     static let errors = #"""
         {"results":[
@@ -183,6 +381,8 @@ enum WatchFixtures {
         watches: [MetricWatch] = [],
         authenticate: @escaping @Sendable (String) async -> Bool = { _ in true },
         watchesDegraded: Bool = false,
+        snapshotDidChange: @escaping () -> Void = {},
+        mutationCoordinator: WatchCredentialMutationCoordinator = .init(),
         now: Date = WatchFixtures.now
     ) -> WatchModel {
         WatchModel(
@@ -192,8 +392,10 @@ enum WatchFixtures {
             watches: watches,
             transport: transport,
             store: store,
+            mutationCoordinator: mutationCoordinator,
             authenticate: authenticate,
             watchesDegraded: watchesDegraded,
+            snapshotDidChange: snapshotDidChange,
             now: { now }
         )
     }
@@ -207,13 +409,16 @@ enum WatchFixtures {
                 previous: 2, sparkline: [1, 2, 3], dashboardID: 9001
             ),
         ],
+        flags: [SharedSnapshot.Flag] = [],
+        projectRegion: PostHogRegion? = .usCloud,
         capturedAt: Date = WatchFixtures.now
     ) -> SharedSnapshot {
         SharedSnapshot(
             projectID: 1001,
             projectName: "Synthetic Analytics",
             metrics: metrics,
-            flags: [],
+            flags: flags,
+            projectRegion: projectRegion,
             capturedAt: capturedAt
         )
     }

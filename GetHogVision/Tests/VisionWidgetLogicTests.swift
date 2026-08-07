@@ -17,6 +17,7 @@ struct VisionWidgetLogicTests {
     /// otherwise discover separately, and only as missing data.
     @Test("the App Group container is real on this platform")
     func sharedContainerResolves() {
+        #expect(SharedSnapshotStore.bundleAppGroupIdentifier == "group.app.gethog")
         #expect(SharedSnapshotStore.shared.isSharedContainer)
     }
 

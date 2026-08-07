@@ -27,6 +27,12 @@ final class AppModel {
     var selectedProject: Project? {
         didSet {
             guard let selectedProject, selectedProject.id != oldValue?.id else { return }
+            if !isRuntimeDemo,
+               let published = snapshotStore.loadOrNil(),
+               published.projectID != selectedProject.id
+                || published.projectRegion != activeRegion {
+                clearPublishedProjectData()
+            }
             persistSelectedProject(selectedProject.id)
             Task { await refreshCapabilities() }
         }
@@ -86,6 +92,8 @@ final class AppModel {
     let store: any CredentialStoring
     let cache = ResponseCache()
     private let governor = RateLimitGovernor()
+    private let snapshotStore: SharedSnapshotStore
+    private var activeRegion: PostHogRegion?
 
     /// The transport the model was built with, kept so `signOut()` can restore
     /// it after a runtime demo session swapped it out.
@@ -106,17 +114,20 @@ final class AppModel {
 
     init(
         store: any CredentialStoring = KeychainTokenStore(),
-        transport: any HTTPTransport = URLSessionTransport()
+        transport: any HTTPTransport = URLSessionTransport(),
+        snapshotStore: SharedSnapshotStore = .shared
     ) {
         self.store = store
         self.baseTransport = transport
         self.transport = transport
+        self.snapshotStore = snapshotStore
     }
 
     // MARK: - Bootstrap
 
     func bootstrap() async {
         guard let credential = try? store.load() else {
+            clearPublishedProjectData()
             phase = .onboarding
             return
         }
@@ -127,6 +138,7 @@ final class AppModel {
             // onboarding with an explanation, not an empty dashboard.
             connectionError = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
+            clearPublishedProjectData()
             phase = .onboarding
         }
     }
@@ -167,6 +179,7 @@ final class AppModel {
         let me: MeResponse = try await client.send(PostHogAPI.me())
 
         self.client = client
+        self.activeRegion = credential.region
         self.me = me
         self.projects = me.projects.isEmpty
             ? [me.currentProject].compactMap { $0 }
@@ -329,8 +342,13 @@ final class AppModel {
         // fiction that would outlive the visit; the launch-argument demo keeps
         // publishing, because tests and screenshots own their whole simulator.
         guard !isRuntimeDemo else { return false }
-        guard let client, let project = selectedProject else { return false }
-        return await publish(using: client, projectID: project.id, projectName: project.name)
+        guard let client, let project = selectedProject, let activeRegion else { return false }
+        return await publish(
+            using: client,
+            projectID: project.id,
+            projectName: project.name,
+            projectRegion: activeRegion
+        )
     }
 
     /// The fetch itself, decoupled from the session so a background wake can run
@@ -339,7 +357,8 @@ final class AppModel {
     private func publish(
         using client: PostHogClient,
         projectID: Int,
-        projectName: String
+        projectName: String,
+        projectRegion: PostHogRegion
     ) async -> Bool {
         var metrics: [SharedSnapshot.Metric] = []
         var flags: [SharedSnapshot.Flag] = []
@@ -347,10 +366,15 @@ final class AppModel {
 
         // Read once, for three separate jobs: the guard below, and carrying both
         // health sections forward when their own fetch is skipped or refused.
-        let previous = SharedSnapshotStore.shared.loadOrNil()
-        // A snapshot for a different project describes a different business. Its
-        // quota and warnings are carried forward for nobody.
-        let carried = previous?.projectID == projectID ? previous : nil
+        let previous = snapshotStore.loadOrNil()
+        // Project ids are only meaningful inside one PostHog installation. A
+        // same-numbered project on another region is a different security
+        // scope, just as surely as a different id is.
+        let carried = previous?.projectID == projectID
+            && previous?.projectRegion == projectRegion ? previous : nil
+        if previous != nil, carried == nil {
+            clearPublishedProjectData()
+        }
 
         // Reuse the dashboard the user pinned; its tiles already carry results,
         // so this costs one request rather than one per metric.
@@ -448,9 +472,10 @@ final class AppModel {
             flags: flags,
             ingestion: ingestion,
             quota: quota,
+            projectRegion: projectRegion,
             capturedAt: now
         )
-        try? SharedSnapshotStore.shared.write(snapshot)
+        try? snapshotStore.write(snapshot)
         #if !os(tvOS)
         // Every publish evaluates, foreground included. A background wake is the
         // usual trigger, but a user who opens the app and watches a metric
@@ -482,7 +507,7 @@ final class AppModel {
     ///
     /// The snapshot is its own record of freshness, so the refresh cadence needs
     /// no separate bookkeeping that could disagree with it.
-    var lastSnapshotDate: Date? { SharedSnapshotStore.shared.loadOrNil()?.capturedAt }
+    var lastSnapshotDate: Date? { snapshotStore.loadOrNil()?.capturedAt }
 
     /// One coalesced refresh for a background wake.
     ///
@@ -497,7 +522,21 @@ final class AppModel {
     /// rebuilt from the stored credential alone and the wake costs exactly the
     /// three requests the refresh needs.
     func performBackgroundRefresh(now: Date = Date()) async -> Bool {
-        let lastRefreshedAt = lastSnapshotDate
+        let previous = snapshotStore.loadOrNil()
+        let storedCredential = try? store.load()
+        let currentRegion = activeRegion ?? storedCredential?.region
+
+        // Validate scope before the cadence shortcut. Otherwise a recent US
+        // snapshot can survive an EU credential rotation merely because it is
+        // not due yet, and every extension keeps rendering the old account.
+        if let previous,
+           previous.projectRegion != currentRegion
+            || selectedProject.map({ $0.id != previous.projectID }) == true {
+            clearPublishedProjectData()
+            return false
+        }
+
+        let lastRefreshedAt = previous?.capturedAt
 
         // The app may have been in the foreground minutes ago and published a
         // snapshot itself. Then this wake has nothing to add, and the cheapest
@@ -506,15 +545,20 @@ final class AppModel {
             return true
         }
 
-        if let client, let project = selectedProject {
-            return await publish(using: client, projectID: project.id, projectName: project.name)
+        if let client, let project = selectedProject, let activeRegion {
+            return await publish(
+                using: client,
+                projectID: project.id,
+                projectName: project.name,
+                projectRegion: activeRegion
+            )
         }
 
-        guard let credential = try? store.load() else { return false }
+        guard let credential = storedCredential else { return false }
         // Without a previous snapshot there is no project to refresh and no
         // widget showing anything to correct. Discovering one would cost six
         // requests to learn what the next foreground launch learns for free.
-        guard let previous = SharedSnapshotStore.shared.loadOrNil() else { return false }
+        guard let previous else { return false }
 
         // Built here rather than stored: the wake must not leave a half-started
         // session behind for the next foreground launch to inherit. It shares
@@ -528,7 +572,8 @@ final class AppModel {
         return await publish(
             using: client,
             projectID: previous.projectID,
-            projectName: previous.projectName
+            projectName: previous.projectName,
+            projectRegion: credential.region
         )
     }
 
@@ -561,8 +606,8 @@ final class AppModel {
         // Consuming it against the demo fixtures would both lose the request
         // and claim it was honored; it stays pending for the real session.
         guard !isRuntimeDemo else { return }
-        if let pending = SharedSnapshotStore.shared.pendingFlagWrite() {
-            SharedSnapshotStore.shared.clearPendingFlagWrite()
+        if let pending = snapshotStore.pendingFlagWrite() {
+            snapshotStore.clearPendingFlagWrite()
             guard FlagQuickToggle.isAllowed(flagID: pending.flagID) else { return }
             await setFlag(id: pending.flagID, active: pending.desiredActive)
         }
@@ -577,6 +622,7 @@ final class AppModel {
     }
 
     func signOut() {
+        let preserveSharedProjectData = isRuntimeDemo
         // Also the exit from a runtime demo: the fixtures must not answer the
         // next connection's requests.
         transport = baseTransport
@@ -587,10 +633,16 @@ final class AppModel {
         BackgroundRefresh.cancel()
         // Dashboard and flag names are project data — they name a customer's
         // business — and must not survive on the home screen past the credential
-        // that could read them.
+        // that could read them. A runtime demo has no credential to revoke and
+        // deliberately never took ownership of the real workspace's shared
+        // snapshot or pending records, so leaving it must not clear them.
         QuickActions.clear()
+        if !preserveSharedProjectData {
+            clearPublishedProjectData()
+        }
         Task { await cache.clear() }
         client = nil
+        activeRegion = nil
         me = nil
         capabilities = nil
         projects = []
@@ -604,6 +656,13 @@ final class AppModel {
         organizationError = nil
         UserDefaults.standard.removeObject(forKey: "selectedOrganizationID")
         phase = .onboarding
+    }
+
+    private func clearPublishedProjectData() {
+        snapshotStore.clearProjectData()
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     // MARK: - Convenience

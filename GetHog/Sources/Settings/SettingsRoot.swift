@@ -1,5 +1,7 @@
 import GetHogUI
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
 import GetHogKit
 import SwiftUI
 import TipKit

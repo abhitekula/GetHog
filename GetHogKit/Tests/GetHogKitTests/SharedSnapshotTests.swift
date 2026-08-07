@@ -484,4 +484,31 @@ struct SharedSnapshotTests {
         #expect(store.pendingOpen() == nil)
         #expect(store.pendingFlagWrite()?.flagID == 7)
     }
+
+    @Test("clearing project data removes every cross-process record")
+    func clearProjectData() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try store.write(sample())
+        try store.enqueue(PendingFlagWrite(flagID: 7, key: "synthetic-flag", desiredActive: true))
+        try store.enqueue(PendingOpen(metricID: "42"))
+        try store.writeMetricWatches([
+            MetricWatch(
+                id: "synthetic-watch",
+                metricID: "42",
+                title: "Example metric",
+                condition: .above(100)
+            )
+        ])
+        try store.writeBreachingWatchIDs(["synthetic-watch"])
+
+        store.clearProjectData()
+
+        #expect(store.loadOrNil() == nil)
+        #expect(store.pendingFlagWrite() == nil)
+        #expect(store.pendingOpen() == nil)
+        #expect(store.metricWatches().isEmpty)
+        #expect(store.breachingWatchIDs().isEmpty)
+    }
 }

@@ -9,11 +9,10 @@ import XCTest
 /// process started and nothing about the sidebar. "Dashboards" is the first
 /// sidebar row and the default selection, so its presence is the shell
 /// standing up end to end.
+@MainActor
 final class TVScaffoldUITests: XCTestCase {
     func testDemoShellLaunchesToTheSidebar() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-GetHogDemo"]
-        app.launch()
-        XCTAssertTrue(app.staticTexts["Dashboards"].waitForExistence(timeout: 60))
+        let app = DemoLaunch.launch()
+        XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Dashboards"], timeout: 60))
     }
 }

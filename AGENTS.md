@@ -2,7 +2,8 @@
 
 ## Structure
 
-GetHog is a native SwiftUI app for iPhone, iPad and Mac with no backend.
+GetHog is a native SwiftUI app for iPhone, iPad, Mac, Apple Vision Pro,
+Apple TV, and Apple Watch with no backend.
 `GetHogKit/` contains the UI-free authentication, networking, API-model,
 insight-rendering, and replay-parsing package. App code lives in
 `GetHog/Sources/`, the WidgetKit extension in `GetHogWidgets/`, and deterministic
@@ -14,9 +15,20 @@ holds only what is Mac-shaped — the sidebar shell, the menu bar, the commands,
 the Settings scene — and `GetHogMacWidgets/` is its widget extension. Anything
 both platforms draw stays in `GetHog/Sources/` behind `#if os(macOS)`.
 
-`project.yml` is the source of truth; `GetHog.xcodeproj` is generated. Tests
-live in `GetHogKit/Tests/`, `GetHog/Tests/`, `GetHogUITests/`, and — for the Mac
-shell — `GetHogMac/Tests/` and `GetHogMac/UITests/`.
+Vision is a spatial catalog over those shared screens; TV is a curated,
+read-mostly focus shell; Watch is a glanceable metrics, flags, health, and
+activity client with its own query budget. `GetHogUI/` holds presentation
+primitives shared across shells. `GetHogVision/`, `GetHogTV/`, and
+`GetHogWatch/` hold only platform-shaped roots and adaptations. Their widgets
+and Top Shelf extension read the shared snapshot and never call PostHog.
+
+`project.yml` is the source of truth; `GetHog.xcodeproj` is generated with
+XcodeGen 2.46.0 or newer. Its guarded `postGenCommand` temporarily rewrites the
+legacy watch embed into Xcode 26's `PlugIns/` destination (XcodeGen issue
+#1613); if that guard fails, inspect the generated phase instead of weakening
+the check or editing the project by hand. Tests
+live beside each target, including `GetHogVision/{Tests,UITests}`,
+`GetHogTV/{Tests,UITests}`, and `GetHogWatch/{Tests,UITests}`.
 
 ## Commands
 
@@ -33,6 +45,35 @@ xcodebuild test -project GetHog.xcodeproj -scheme GetHog \
 Use `-only-testing:GetHogUITests` for rendered accessibility behavior and the
 `GetHogScreenshots` scheme for visual sweeps. Do not pass `-derivedDataPath`.
 Report nonzero executed test counts, not just exit status.
+
+The new platform unit suites use their corresponding schemes and simulator
+destinations. Their rendered UI suites go through the same count-checking
+wrapper:
+
+```bash
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogVision \
+  -destination 'platform=visionOS Simulator,name=Apple Vision Pro' \
+  -only-testing:GetHogVisionTests
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogTV \
+  -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation) (at 1080p)' \
+  -only-testing:GetHogTVTests
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogWatch \
+  -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' \
+  -only-testing:GetHogWatchTests
+PLATFORM=vision scripts/run-ui-tests
+PLATFORM=tv scripts/run-ui-tests
+PLATFORM=watch scripts/run-ui-tests
+```
+
+The Vision, TV, and Watch unit targets use Swift Testing. Count the
+`Test run with N tests` result; the adjacent `Executed 0 tests` is their empty
+XCTest shell, just as it is for `GetHogMacTests`.
+
+Serialize `xcodebuild` invocations in one checkout: the schemes share default
+DerivedData and concurrent builds can lock its database. A WatchConnectivity
+simulator pair does not prove delivery; the final hand-off and complication
+check needs a paired physical Apple Watch. DEVELOPMENT.md carries the full
+platform matrix, Release compile checks, and surface-specific traps.
 
 The Mac builds and tests from the same generated project, and the third command
 is the Release compile-check — the half no Debug build covers, and the only one
@@ -104,9 +145,11 @@ to
 with **no `Executed N tests` line emitted at all**. Every count grep written for
 the serial format silently reports zero, which is indistinguishable from a
 filter that named nothing — the exact failure the count rule exists to catch.
-`scripts/run-ui-tests` counts both formats and fails on zero regardless of
-`xcodebuild`'s exit status; verified against `-only-testing:` a suite that does
-not exist, where `xcodebuild` exits 0.
+`scripts/run-ui-tests` prints both console formats as witnesses but takes its
+authoritative pass, fail, skip, expected-failure, and total counts from the
+xcresult summary. It rejects a missing, unreadable, internally inconsistent, or
+zero-test result regardless of `xcodebuild`'s exit status; verified against
+`-only-testing:` a suite that does not exist, where `xcodebuild` exits 0.
 
 Compilation is not the bottleneck: an incremental `build-for-testing` is ~2s,
 against ~8–9s per UI test, which is app-launch dominated. Wait on conditions

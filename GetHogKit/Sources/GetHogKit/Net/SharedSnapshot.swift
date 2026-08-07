@@ -94,6 +94,15 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
 
     public let projectID: Int
     public let projectName: String
+    /// Endpoint provenance for the project id.
+    ///
+    /// PostHog project ids are scoped to an installation, not globally unique:
+    /// US Cloud, EU Cloud, and a self-hosted instance may all have project
+    /// `1001`. Keeping this in the same atomically written JSON document as the
+    /// metrics prevents a client from trusting one host's data under another
+    /// host's credential. `nil` is a legacy snapshot and callers that need
+    /// isolation must treat it as untrusted.
+    public let projectRegion: PostHogRegion?
     public let metrics: [Metric]
     public let flags: [Flag]
     /// Ingestion warnings, reduced. `nil` means **not checked** — an app build
@@ -113,10 +122,12 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         flags: [Flag],
         ingestion: IngestionDigest? = nil,
         quota: QuotaDigest? = nil,
+        projectRegion: PostHogRegion? = nil,
         capturedAt: Date
     ) {
         self.projectID = projectID
         self.projectName = projectName
+        self.projectRegion = projectRegion
         self.metrics = metrics
         self.flags = flags
         self.ingestion = ingestion
@@ -152,6 +163,7 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         projectID = try c.decode(Int.self, forKey: .projectID)
         projectName = try c.decode(String.self, forKey: .projectName)
+        projectRegion = (try? c.decodeIfPresent(PostHogRegion.self, forKey: .projectRegion)) ?? nil
         capturedAt = try c.decode(Date.self, forKey: .capturedAt)
         metrics = try c.decodeIfPresent([Metric].self, forKey: .metrics) ?? []
         flags = try c.decodeIfPresent([Flag].self, forKey: .flags) ?? []
@@ -611,6 +623,13 @@ public struct SharedSnapshotStore: Sendable {
         try? read()
     }
 
+    /// Removes project-scoped widget data when the authenticated project
+    /// changes. Keeping the previous project's file is not a stale fallback —
+    /// it is data from a scope the current credential did not select.
+    public func clearSnapshot() {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
     // MARK: Pending flag write
 
     public func enqueue(_ request: PendingFlagWrite) throws {
@@ -669,6 +688,24 @@ public struct SharedSnapshotStore: Sendable {
 
     public func breachingWatchIDs() -> Set<String> {
         (try? readJSON(Set<String>.self, from: breachingWatchIDsURL)) ?? []
+    }
+
+    public func clearBreachingWatchIDs() {
+        try? FileManager.default.removeItem(at: breachingWatchIDsURL)
+    }
+
+    /// Removes every record whose meaning belongs to the selected project.
+    ///
+    /// These files are deliberately separate for atomic hand-offs, but their
+    /// security boundary is one unit. Keeping a pending flag id, metric watch,
+    /// or breach latch while replacing the snapshot can apply one customer's
+    /// intent to another project that happens to reuse the same numeric ids.
+    public func clearProjectData() {
+        clearSnapshot()
+        clearPendingFlagWrite()
+        clearPendingOpen()
+        try? FileManager.default.removeItem(at: metricWatchesURL)
+        clearBreachingWatchIDs()
     }
 
     // MARK: Plumbing

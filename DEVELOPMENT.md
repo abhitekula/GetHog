@@ -2,8 +2,10 @@
 
 ## Prerequisites
 
-- Xcode with an iOS simulator installed.
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+- Xcode with the iOS, visionOS, tvOS, and watchOS simulator runtimes used by
+  the commands below.
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.46.0 or newer
+  (`brew install xcodegen`; verify with `xcodegen --version`).
 - Swift, included with Xcode.
 
 ## Build graph and local commands
@@ -11,9 +13,18 @@
 `project.yml` is the source of truth. Generate `GetHog.xcodeproj` after a
 change to it or after adding project files; do not edit the generated project.
 
+Generation currently contains one guarded XcodeGen 2.46 workaround. XcodeGen
+still emits the watch-app embed into the legacy `Watch/` destination; the
+`postGenCommand` in `project.yml` verifies that exactly one legacy phase exists
+and rewrites it to Xcode 26's `PlugIns/` destination. If generation stops with
+an `XcodeGen#1613 patch` error, do not weaken the counts or hand-edit the
+project: inspect the generated phase and remove or revise the workaround only
+when XcodeGen's output has actually changed.
+
 ```bash
 xcodegen generate
 swift test --package-path GetHogKit
+swift test --package-path GetHogUI
 xcodebuild build -project GetHog.xcodeproj -scheme GetHog \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 xcodebuild test -project GetHog.xcodeproj -scheme GetHog \
@@ -84,12 +95,91 @@ a full-screen photograph of each. Its narrow and wide passes are off by default;
 turn them on with `TEST_RUNNER_GETHOG_SWEEP_SIZES=all` and export the images
 from the result bundle with `xcrun xcresulttool export attachments`.
 
+## Building the Vision, TV, and Watch apps
+
+The three purpose-built shells use the same generated project and shared
+packages as iOS and macOS. These destinations match the simulator models used
+by the repository's visual sweeps:
+
+```bash
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogVision \
+  -destination 'platform=visionOS Simulator,name=Apple Vision Pro' \
+  -only-testing:GetHogVisionTests
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogTV \
+  -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation) (at 1080p)' \
+  -only-testing:GetHogTVTests
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogWatch \
+  -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' \
+  -only-testing:GetHogWatchTests
+
+PLATFORM=vision scripts/run-ui-tests
+PLATFORM=tv scripts/run-ui-tests
+PLATFORM=watch scripts/run-ui-tests
+```
+
+The wrapper's xcresult summary is the authoritative UI-test count. A missing,
+unreadable, or zero-test result bundle is a failure even if `xcodebuild` exits
+successfully. Use `DESTINATION_NAME` to exercise the 40mm watch or another
+installed runtime without changing the script.
+
+`GetHogVisionTests`, `GetHogTVTests`, and `GetHogWatchTests` are Swift Testing
+bundles, just like `GetHogMacTests`. Their nonzero count is the
+`Test run with N tests in M suites passed` line; an `Executed 0 tests` line is
+the empty XCTest shell and is not the target's count.
+
+Do not run these `xcodebuild` commands concurrently in one checkout. They share
+Xcode's default DerivedData database, and overlapping builds can fail with a
+database lock before testing the app. This is why the final matrix is serial.
+
+The WatchConnectivity simulator pair is useful for inspecting support,
+pairing, activation, and queued-transfer state, but it is not acceptance
+evidence for delivery. Complete the credential hand-off and complication
+finale on a paired physical Apple Watch. A key waiting in WatchConnectivity's
+durable outbox can briefly exist outside the Keychain; re-send and sign-out
+cancel the old queued transfer before rotating or deleting the phone key.
+
+Three visual acceptance limits are hardware-only. The Vision simulator cannot
+prove Optic ID, and `XCUIScreen.main` currently produces a 1 x 1 black image
+there; use the external simulator screenshot command for a sighted sweep rather
+than attaching that black pixel as evidence. The TV simulator cannot prove a
+physical Siri Remote or Type with iPhone. The Watch simulator cannot prove the
+phone-to-watch delivery or a real complication refresh. Record those as
+hardware gaps instead of translating simulator process launch into a pass.
+
+Top Shelf intentionally returns no dynamic content before the TV app has
+written a shared snapshot, allowing the system's static Top Shelf image to be
+honest. Watch widgets and Top Shelf read the shared cache; neither surface calls
+PostHog directly.
+
+Release compile checks for every app shell require no signing identity:
+
+```bash
+xcodebuild build -project GetHog.xcodeproj -scheme GetHog \
+  -destination 'generic/platform=iOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogMac \
+  -destination 'platform=macOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogVision \
+  -destination 'generic/platform=visionOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogTV \
+  -destination 'generic/platform=tvOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project GetHog.xcodeproj -scheme GetHogWatch \
+  -destination 'generic/platform=watchOS' -configuration Release CODE_SIGNING_ALLOWED=NO
+```
+
 ## Architecture
 
 `GetHogKit/` is the UI-free Swift package for authentication, networking,
-PostHog API models, insight render models, and replay parsing. `GetHog/`
-contains the SwiftUI app and local demo resources. `GetHogWidgets/` reads the
-shared cache and must not call PostHog directly.
+PostHog API models, insight render models, and replay parsing. `GetHogUI/`
+contains cross-platform presentation primitives without owning a platform
+shell. `GetHog/` contains the shared SwiftUI product surfaces and local demo
+resources. `GetHogMac/`, `GetHogVision/`, `GetHogTV/`, and `GetHogWatch/` are
+native shells shaped for their platforms. Their widget and Top Shelf
+extensions read the shared cache and must not call PostHog directly.
+
+Saved event filters are user-authored and therefore not size-bounded. TV omits
+that authoring surface: tvOS persists only about 500 KB of preferences, while
+its other local storage is purgeable and cannot be the sole copy of user data.
+Keep new unbounded content out of the TV defaults domain.
 
 The app, package, widgets, fixtures, and UI tests intentionally stay in one
 repository. They change as one product and share a single synthetic-data
@@ -148,10 +238,11 @@ xcodebuild archive -project GetHog.xcodeproj -scheme GetHog \
   DEVELOPMENT_TEAM=<team id>
 ```
 
-`-allowProvisioningUpdates` lets automatic signing register the two bundle
-ids, the `group.app.gethog` App Group, and the shared keychain access group
-under that team on first archive. Upload the archive from Xcode's Organizer
-or with `xcodebuild -exportArchive`.
+`-allowProvisioningUpdates` lets automatic signing register the four iOS
+archive bundle ids — phone app, phone widget, Watch app, and Watch widget —
+plus the `group.app.gethog` App Group and shared keychain access group under
+that team on first archive. Upload the archive from Xcode's Organizer or with
+`xcodebuild -exportArchive`.
 
 ### The Mac app's two entitlements files
 
@@ -199,5 +290,8 @@ The upload-facing compliance lives in the repository already:
 `GetHog/Resources/PrivacyInfo.xcprivacy` declares the required-reason APIs the
 app uses, and `ITSAppUsesNonExemptEncryption` in `project.yml` answers the
 export question (TLS only, exempt). If a change starts using a new
-required-reason API — file timestamps, disk space, active keyboards — the
-manifest must grow with it, or the upload is rejected with ITMS-91053.
+required-reason API — disk space, active keyboards, or another category — the
+manifest must grow with it, or the upload is rejected with ITMS-91053. The
+current file-timestamp declaration covers only app-container cache eviction;
+disk-space or active-keyboard access would still require its own category and
+approved reason.

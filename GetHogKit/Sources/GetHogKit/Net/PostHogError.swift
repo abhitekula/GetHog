@@ -43,6 +43,11 @@ public enum PostHogError: Error, Equatable, Sendable {
     /// source-derived and never observed.
     case editConflict(detail: String?)
     case http(status: Int, detail: String?)
+    /// A Foundation URL-loading failure whose numeric code must survive the
+    /// transport boundary. Some device-specific recovery depends on that code:
+    /// watchOS uses `NSURLErrorNotConnectedToInternet` (-1009) to explain that
+    /// a Bluetooth-proxied request may be waiting on an offline iPhone.
+    case network(code: Int, description: String)
     case transport(String)
     /// Carries a `DecodingError` description — written for a compiler, never for
     /// a reader. See `errorDescription` and `technicalDetail`.
@@ -52,7 +57,7 @@ public enum PostHogError: Error, Equatable, Sendable {
         switch self {
         // Rate limits, transport failures, and query timeouts are transient
         // conditions for which retrying can be a real remedy.
-        case .rateLimited, .transport, .queryTimeout: true
+        case .rateLimited, .network, .transport, .queryTimeout: true
         case .http(let status, _): status >= 500
         default: false
         }
@@ -86,9 +91,16 @@ public enum PostHogError: Error, Equatable, Sendable {
     public var technicalDetail: String? {
         switch self {
         case .decoding(let message): message
+        case .network(_, let description): description
         case .queryTimeout(let detail): detail
         default: nil
         }
+    }
+
+    /// Foundation's `NSURLErrorDomain` code when the transport reached URL
+    /// loading. `nil` for HTTP failures and non-URL transports.
+    public var networkErrorCode: Int? {
+        if case .network(let code, _) = self { code } else { nil }
     }
 
     /// Recognises the execution-budget failure from PostHog's message.
@@ -142,6 +154,8 @@ extension PostHogError: LocalizedError {
             detail ?? "Somebody else changed this while you were looking at it. Reload and try again."
         case .http(let status, let detail):
             detail ?? "PostHog returned an error (\(status))."
+        case .network(_, let description):
+            "Couldn't reach PostHog: \(description)"
         case .transport(let message):
             "Couldn't reach PostHog: \(message)"
         // Deliberately says nothing about *what* was malformed. Measured on the

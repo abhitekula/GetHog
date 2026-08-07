@@ -36,7 +36,10 @@ struct WatchRootView: View {
         // snapshot is before it asks PostHog anything.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                Task { await model.refresh() }
+                Task {
+                    await model.reconcile(WatchHandoff.current())
+                    await model.refresh()
+                }
                 return
             }
             // Leaving the wrist is the moment to ask for the next unattended
@@ -61,15 +64,20 @@ struct WatchRootView: View {
         let applied = NotificationCenter.default.notifications(
             named: .gethogWatchKeyTransferApplied
         )
+        // Subscription exists before this read. If activation delivered and
+        // committed a transfer before the view was built, its notification is
+        // gone but its higher committed revision and stores remain; reconcile
+        // adopts them before waiting for the next notification.
+        await model.reconcile(WatchHandoff.current())
         for await _ in applied {
-            await model.adopt(WatchHandoff.current())
+            await model.reconcile(WatchHandoff.current())
         }
     }
 
-    /// Always `.metrics` in a shipped build. The DEBUG branch exists so each
-    /// page can be screenshotted from a single `simctl launch` without driving
-    /// the crown, which is the only way to capture a watch surface that no
-    /// XCUITest gesture reaches reliably.
+    /// Always `.metrics` in a shipped build. The DEBUG branch isolates each
+    /// page for deterministic render checks and manual screenshots; the UI
+    /// suite separately proves the real vertical pager with bounded right-edge
+    /// swipes on both the 46 mm and 40 mm simulators.
     private static func initialPage() -> WatchPage {
         #if DEBUG
         if let raw = WatchDemoMode.initialPage, let chosen = WatchPage(rawValue: raw) {

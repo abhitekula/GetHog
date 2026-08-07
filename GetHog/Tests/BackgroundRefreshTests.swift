@@ -33,8 +33,32 @@ struct BackgroundRefreshTests {
         Date().addingTimeInterval(BackgroundRefreshPolicy.minimumInterval + 60)
     }
 
-    private func demoModel() -> AppModel {
-        AppModel(store: InMemoryTokenStore(), transport: DemoTransport())
+    private func demoModel(snapshotStore: SharedSnapshotStore = .shared) -> AppModel {
+        AppModel(
+            store: InMemoryTokenStore(),
+            transport: DemoTransport(),
+            snapshotStore: snapshotStore
+        )
+    }
+
+    private func makeSnapshotStore() throws -> (SharedSnapshotStore, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BackgroundRefreshTests-\(UUID().uuidString)", isDirectory: true)
+        return (SharedSnapshotStore(directory: directory), directory)
+    }
+
+    private func snapshot(
+        region: PostHogRegion?,
+        capturedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    ) -> SharedSnapshot {
+        SharedSnapshot(
+            projectID: 1001,
+            projectName: "Example App",
+            metrics: [],
+            flags: [],
+            projectRegion: region,
+            capturedAt: capturedAt
+        )
     }
 
     @Test("does nothing without a stored credential")
@@ -56,6 +80,41 @@ struct BackgroundRefreshTests {
         #expect(!snapshot.flags.isEmpty)
         // Reduced from tiles, so every metric has to carry something drawable.
         #expect(snapshot.metrics.allSatisfy { !$0.title.isEmpty })
+        #expect(snapshot.projectRegion == .usCloud)
+    }
+
+    @Test("a same-id snapshot from another region is cleared before an offline wake")
+    func regionChangeFailsClosedBeforeRefresh() async throws {
+        let (snapshots, directory) = try makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try snapshots.write(snapshot(region: .usCloud, capturedAt: Date()))
+
+        let model = AppModel(
+            store: InMemoryTokenStore(
+                credential: StoredCredential(key: "synthetic-eu-key", region: .euCloud, projectID: 1001)
+            ),
+            transport: OfflineTransport(),
+            snapshotStore: snapshots
+        )
+
+        #expect(await model.performBackgroundRefresh(now: Date()) == false)
+        #expect(snapshots.loadOrNil() == nil)
+    }
+
+    @Test("sign out clears the shared snapshot")
+    func signOutClearsSnapshot() throws {
+        let (snapshots, directory) = try makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try snapshots.write(snapshot(region: .usCloud))
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: OfflineTransport(),
+            snapshotStore: snapshots
+        )
+
+        model.signOut()
+
+        #expect(snapshots.loadOrNil() == nil)
     }
 
     @Test("a wake landing just after a foreground sync spends nothing")

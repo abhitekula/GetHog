@@ -247,6 +247,7 @@ struct FlagsRoot: View {
             // tip, and the widget it advertises is not the reason anyone came
             // here. TipKit keeps its own display state, so a user who has never
             // seen it still gets it at a text size where it fits.
+            #if !os(tvOS)
             if !dynamicTypeSize.isAccessibilitySize {
                 // `AppTipView`, not `TipView`. The surface used to be corrected
                 // here with `.tipBackground(Theme.cardBackground)` — TipKit's own
@@ -260,6 +261,7 @@ struct FlagsRoot: View {
                 AppTipView(FlagWidgetTip())
                     .listRowBackground(Color.clear)
             }
+            #endif
             ForEach(FlagStatusGroup.allCases) { group in
                 let items = store.flags(in: group, search: search)
                 if !items.isEmpty {

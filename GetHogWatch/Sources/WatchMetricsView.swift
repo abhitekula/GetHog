@@ -10,15 +10,73 @@ enum WatchCredentialEntryState: Equatable {
     case missing
     case replacement(String)
 
-    init?(phase: WatchModel.Phase) {
+    init?(
+        phase: WatchModel.Phase,
+        refreshGuidance: WatchRefreshGuidance? = nil,
+        refreshFailure: WatchRefreshFailure? = nil
+    ) {
+        // A network failure is not evidence that the key is wrong. Offering a
+        // replacement form here would send the user toward a destructive and
+        // unrelated remedy instead of the paired iPhone named by the error.
+        guard refreshGuidance == nil else { return nil }
         switch phase {
         case .needsKey:
             self = .missing
-        case .failed(let message):
+        case .failed(let message) where refreshFailure?.permitsCredentialReplacement == true:
             self = .replacement(message)
-        case .loading, .ready:
+        case .failed, .loading, .ready:
             return nil
         }
+    }
+}
+
+/// The Metrics page's mutually exclusive primary content.
+///
+/// Kept pure because `Phase.ready` means at least one best-effort section
+/// answered, not that a metric exists. In particular, Activity can succeed
+/// while Metrics and Flags return a permission error. Choosing from `phase`
+/// alone used to turn that truthful error into the unrelated "No metrics"
+/// empty state.
+enum WatchMetricsContentState: Equatable {
+    case offline(String)
+    case credential(WatchCredentialEntryState)
+    case failure(String)
+    case loading
+    case headline
+    case noMetrics
+
+    init(
+        phase: WatchModel.Phase,
+        hasHeadline: Bool,
+        refreshGuidance: WatchRefreshGuidance?,
+        refreshFailure: WatchRefreshFailure?,
+        refreshFailureMessage: String?
+    ) {
+        if !hasHeadline, let refreshGuidance {
+            self = .offline(refreshGuidance.message)
+            return
+        }
+        if let entry = WatchCredentialEntryState(
+            phase: phase,
+            refreshGuidance: refreshGuidance,
+            refreshFailure: refreshFailure
+        ) {
+            self = .credential(entry)
+            return
+        }
+        if !hasHeadline, let refreshFailureMessage {
+            self = .failure(refreshFailureMessage)
+            return
+        }
+        if !hasHeadline, case .failed(let message) = phase {
+            self = .failure(message)
+            return
+        }
+        if !hasHeadline, phase == .loading {
+            self = .loading
+            return
+        }
+        self = hasHeadline ? .headline : .noMetrics
     }
 }
 
@@ -37,13 +95,42 @@ struct WatchMetricsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
-                    if let entry = WatchCredentialEntryState(phase: model.phase) {
+                    switch WatchMetricsContentState(
+                        phase: model.phase,
+                        hasHeadline: model.headlineMetric != nil,
+                        refreshGuidance: model.refreshGuidance,
+                        refreshFailure: model.refreshFailure,
+                        refreshFailureMessage: model.refreshFailureMessage
+                    ) {
+                    case .offline(let message):
+                        ContentUnavailableView(
+                            "iPhone offline",
+                            systemImage: "wifi.exclamationmark",
+                            description: Text(message)
+                        )
+                    case .credential(let entry):
                         WatchManualKeyEntryView(state: entry)
-                    } else if model.phase == .loading, model.headlineMetric == nil {
+                    case .failure(let message):
+                        ContentUnavailableView(
+                            "Couldn't refresh",
+                            systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90",
+                            description: Text(message)
+                        )
+                    case .loading:
                         ProgressView()
                             .frame(maxWidth: .infinity)
-                    } else {
+                    case .headline, .noMetrics:
                         headline
+                    }
+
+                    if model.canRetryRefresh {
+                        Button {
+                            Task { await model.retry() }
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("watch-refresh-retry")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,6 +153,15 @@ struct WatchMetricsView: View {
             trend(for: metric)
             if let snapshot = model.snapshot {
                 ageStamp(snapshot)
+            }
+            if let guidance = model.refreshGuidance {
+                Label(guidance.message, systemImage: "wifi.exclamationmark")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.accentWarm)
+            } else if let message = model.refreshFailureMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.accentWarm)
             }
         } else {
             ContentUnavailableView(

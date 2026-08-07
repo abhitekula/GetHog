@@ -2,17 +2,169 @@ import Foundation
 import GetHogKit
 import WatchConnectivity
 
-/// The one throwable snapshot operation a hand-off needs. Keeping this seam
+/// The throwable snapshot operations a hand-off needs. Keeping this seam
 /// narrower than `SharedSnapshotStore` lets the receiver prove that a failed
-/// file write does not publish a half-applied selection.
+/// threshold write or project-data cleanup cannot publish a half-applied
+/// selection.
 protocol MetricWatchWriting: Sendable {
     func writeMetricWatches(_ watches: [MetricWatch]) throws
+    func clearProjectScopedData() throws
 }
 
-extension SharedSnapshotStore: MetricWatchWriting {}
+extension SharedSnapshotStore: MetricWatchWriting {
+    /// Removes every file a widget could render under the active project.
+    /// All removals are attempted before the first error is rethrown, so a
+    /// failed scope change leaves as little stale material as possible. The
+    /// caller restores the old credential, making any surviving file belong
+    /// to the still-active old scope rather than exposing it under the new one.
+    func clearProjectScopedData() throws {
+        var firstFailure: (any Error)?
+        for url in [
+            fileURL,
+            WatchActivity.fileURL(in: self),
+            breachingWatchIDsURL,
+            metricWatchesURL,
+        ] {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch let error as CocoaError where error.code == .fileNoSuchFile {
+                continue
+            } catch {
+                if firstFailure == nil { firstFailure = error }
+            }
+        }
+        if let firstFailure { throw firstFailure }
+    }
+}
+
+/// Coordinates credential intent, commitment, and store serialization.
+/// Production uses `.shared`; tests inject one instance per case so pending
+/// intent and revisions cannot leak across independently running suites.
+final class WatchCredentialMutationCoordinator: @unchecked Sendable {
+    struct Intent: Sendable {
+        let revision: UInt64
+    }
+
+    private final class State: @unchecked Sendable {
+        let lock = NSLock()
+        var nextRevision: UInt64 = 0
+        var currentRevision: UInt64 = 0
+        var pending: Set<UInt64> = []
+        var settlementWaiters: [CheckedContinuation<Void, Never>] = []
+    }
+
+    static let shared = WatchCredentialMutationCoordinator()
+
+    private let serializationLock = NSLock()
+    private let state = State()
+
+    init() {}
+
+    /// The latest successfully committed credential mutation. A pending intent
+    /// is tracked separately so a failed transfer does not permanently move
+    /// the revision beyond what any model could adopt.
+    var currentRevision: UInt64 {
+        state.lock.withLock { state.currentRevision }
+    }
+
+    var hasPendingMutation: Bool {
+        state.lock.withLock { !state.pending.isEmpty }
+    }
+
+    var hasSettlementWaiters: Bool {
+        state.lock.withLock { !state.settlementWaiters.isEmpty }
+    }
+
+    /// Registers before waiting for serialization. This is the load-bearing
+    /// inverse-ordering guarantee: an old model sees pending intent even when
+    /// the incoming apply has not touched a store yet.
+    func registerIntent() -> Intent {
+        state.lock.withLock {
+            state.nextRevision &+= 1
+            let intent = Intent(revision: state.nextRevision)
+            state.pending.insert(intent.revision)
+            return intent
+        }
+    }
+
+    func withSerializationLock<Result>(_ operation: () -> Result) -> Result {
+        serializationLock.withLock(operation)
+    }
+
+    /// A later-registered intent may acquire the non-fair lock first. Once it
+    /// commits, an older waiter must be refused rather than overwrite newer
+    /// stores while leaving the committed revision pointing at that newer
+    /// value.
+    func canApply(_ intent: Intent) -> Bool {
+        state.lock.withLock {
+            state.pending.contains(intent.revision)
+                && intent.revision > state.currentRevision
+        }
+    }
+
+    /// Called from inside serialization on every apply result. Committing under
+    /// that same lock makes the stores and their revision one coherent value
+    /// for `WatchHandoff.current`; failure only clears pending intent.
+    func complete(_ intent: Intent, succeeded: Bool) {
+        let waiters: [CheckedContinuation<Void, Never>] = state.lock.withLock {
+            state.pending.remove(intent.revision)
+            if succeeded {
+                state.currentRevision = max(state.currentRevision, intent.revision)
+            }
+            guard state.pending.isEmpty else {
+                return [CheckedContinuation<Void, Never>]()
+            }
+            defer { state.settlementWaiters.removeAll() }
+            return state.settlementWaiters
+        }
+        // A resumed model can immediately try to register another read of the
+        // stores, so continuations run outside the state lock.
+        waiters.forEach { $0.resume() }
+    }
+
+    func isSettled(at adoptedRevision: UInt64) -> Bool {
+        state.lock.withLock {
+            state.pending.isEmpty && state.currentRevision == adoptedRevision
+        }
+    }
+
+    /// Suspends an adoption refresh until every intent that was already
+    /// announced has either committed or been refused. This is distinct from
+    /// an "applied" notification: an older rev-1 waiter can be refused after
+    /// rev-2 committed, and that refusal is precisely what makes rev-2 safe to
+    /// publish even though no second successful notification is emitted.
+    func waitUntilSettled(at adoptedRevision: UInt64) async -> Bool {
+        if hasPendingMutation {
+            await withCheckedContinuation { continuation in
+                let resumeImmediately = state.lock.withLock {
+                    guard !state.pending.isEmpty else { return true }
+                    state.settlementWaiters.append(continuation)
+                    return false
+                }
+                if resumeImmediately { continuation.resume() }
+            }
+        }
+        return isSettled(at: adoptedRevision)
+    }
+
+    /// Linearizes final identity acceptance or refresh publication against a
+    /// new intent. Once this guard succeeds, registration waits until the
+    /// operation finishes; if intent registered first, the operation refuses.
+    func performIfSettled(
+        at adoptedRevision: UInt64,
+        _ operation: () -> Void
+    ) -> Bool {
+        state.lock.withLock {
+            guard state.pending.isEmpty,
+                  state.currentRevision == adoptedRevision else { return false }
+            operation()
+            return true
+        }
+    }
+}
 
 extension Notification.Name {
-    /// Posted after a hand-off has been written to all three stores.
+    /// Posted after a hand-off changes the effective credential or completes.
     ///
     /// The notification carries no payload on purpose: the stores are the
     /// single source of truth and `WatchHandoff.current()` is the single
@@ -39,13 +191,6 @@ extension Notification.Name {
 /// and the `WCSession` callbacks arrive on a queue the delegate does not choose.
 final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendable {
     static let shared = WatchSessionListener()
-
-    /// One process-wide boundary for every source of a hand-off: durable
-    /// WCSession delivery, application context, and manual entry. The three
-    /// stores have no shared transaction primitive, so excluding another apply
-    /// from credential save through the final defaults write is what prevents
-    /// one scope's key from being paired with another scope's snapshot.
-    private static let applyLock = NSLock()
 
     func activate() {
         guard WCSession.isSupported() else { return }
@@ -105,31 +250,59 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     ///
     /// Ingestion or snapshot writing failing aborts the whole apply. Because
     /// ingestion has already touched the keychain by the time the file write
-    /// can fail, the previous credential is restored before returning false;
-    /// defaults and the live-model notification remain untouched.
+    /// can fail, the previous credential is restored before returning false.
+    /// If that best-effort restoration fails, the effective credential has
+    /// still changed and the running model is notified to reconcile fail-closed
+    /// state even though the transactional apply reports failure.
     @discardableResult
     static func apply(
         _ transfer: WatchKeyTransfer,
         credentials: any CredentialStoring = KeychainTokenStore(),
         snapshots: any MetricWatchWriting = SharedSnapshotStore.shared,
         defaults: UserDefaults = .standard,
+        mutationCoordinator: WatchCredentialMutationCoordinator = .shared,
+        mutationDidAnnounce: @Sendable (UInt64) -> Void = { _ in },
+        projectDataDidChange: @Sendable () -> Void = WatchSessionListener.reloadProjectData,
         notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
     ) -> Bool {
-        let applied = applyLock.withLock {
-            applyStores(
+        let intent = mutationCoordinator.registerIntent()
+        mutationDidAnnounce(intent.revision)
+        let outcome = mutationCoordinator.withSerializationLock {
+            var applied = false
+            defer { mutationCoordinator.complete(intent, succeeded: applied) }
+            guard mutationCoordinator.canApply(intent) else { return ApplyOutcome.refused }
+            let outcome = applyStores(
                 transfer,
                 credentials: credentials,
                 snapshots: snapshots,
                 defaults: defaults
             )
+            applied = outcome.applied
+            return outcome
         }
-        guard applied else { return false }
+        // A scope clear becomes visible to the widget process immediately,
+        // including a safe partial clear followed by rollback. Reload only
+        // after credential serialization is released.
+        if outcome.projectDataChanged { projectDataDidChange() }
 
         // NotificationCenter delivers synchronously and observers may trigger
-        // work of their own. The stores are now coherent, so release the lock
-        // before announcing rather than making re-entry a deadlock.
-        notify()
-        return true
+        // work of their own. Store mutation is finished, so release the lock
+        // before announcing the effective state rather than making re-entry a
+        // deadlock.
+        if outcome.applied || outcome.credentialChangedAfterFailure { notify() }
+        return outcome.applied
+    }
+
+    private struct ApplyOutcome {
+        let applied: Bool
+        let projectDataChanged: Bool
+        let credentialChangedAfterFailure: Bool
+
+        static let refused = ApplyOutcome(
+            applied: false,
+            projectDataChanged: false,
+            credentialChangedAfterFailure: false
+        )
     }
 
     private static func applyStores(
@@ -137,19 +310,56 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         credentials: any CredentialStoring,
         snapshots: any MetricWatchWriting,
         defaults: UserDefaults
-    ) -> Bool {
+    ) -> ApplyOutcome {
         let previousCredential: StoredCredential?
         do {
             previousCredential = try credentials.load()
         } catch {
-            return false
+            return .refused
+        }
+
+        // Validate before cleanup. An empty hand-off is not an incoming scope
+        // and must not be able to erase a working project's widget files.
+        guard !transfer.key.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty else { return .refused }
+
+        // A verified same-project key rotation may keep its stale fallback.
+        // Every other transition — including an unverified manual key — must
+        // blank all active project files before the new credential is saved.
+        // Cleanup therefore cannot need credential rollback, and even a later
+        // save/write failure that cannot restore the old key leaves widgets
+        // fail-closed on blank files.
+        let preservesProjectData = previousCredential?.projectID != nil
+            && previousCredential?.projectID == transfer.projectID
+            && previousCredential?.region == transfer.region
+        let shouldClearProjectData = !preservesProjectData
+
+        if shouldClearProjectData {
+            do {
+                try snapshots.clearProjectScopedData()
+            } catch {
+                return ApplyOutcome(
+                    applied: false,
+                    projectDataChanged: true,
+                    credentialChangedAfterFailure: false
+                )
+            }
+            clearScopeDefaults(in: defaults)
         }
 
         let selection: WatchKeyTransfer.Selection
         do {
             selection = try transfer.ingest(into: credentials)
         } catch {
-            return false
+            restore(previousCredential, to: credentials)
+            return ApplyOutcome(
+                applied: false,
+                projectDataChanged: shouldClearProjectData,
+                credentialChangedAfterFailure: credentialDiffers(
+                    from: previousCredential, in: credentials
+                )
+            )
         }
 
         do {
@@ -158,12 +368,14 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
             // Best-effort rollback across two stores that have no shared
             // transaction primitive. The return value remains failure even if
             // the keychain itself refuses this restoration.
-            if let previousCredential {
-                try? credentials.save(previousCredential)
-            } else {
-                try? credentials.clear()
-            }
-            return false
+            restore(previousCredential, to: credentials)
+            return ApplyOutcome(
+                applied: false,
+                projectDataChanged: shouldClearProjectData,
+                credentialChangedAfterFailure: credentialDiffers(
+                    from: previousCredential, in: credentials
+                )
+            )
         }
 
         replace(selection.organizationID, forKey: WatchSettings.organizationIDKey, in: defaults)
@@ -175,7 +387,49 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         // the second is something the user can do anything about.
         defaults.set(selection.watchesDegraded, forKey: WatchSettings.watchesDegradedKey)
         replace(selection.headlineMetricID, forKey: WatchSettings.headlineMetricKey, in: defaults)
-        return true
+        return ApplyOutcome(
+            applied: true,
+            projectDataChanged: shouldClearProjectData,
+            credentialChangedAfterFailure: false
+        )
+    }
+
+    /// A failed write is still a live configuration change when its attempted
+    /// credential rollback did not restore the value observed before the
+    /// transaction. If the final read itself fails, reconcile conservatively:
+    /// the listener cannot prove that the running model still matches storage.
+    private static func credentialDiffers(
+        from previousCredential: StoredCredential?,
+        in store: any CredentialStoring
+    ) -> Bool {
+        do {
+            return try store.load() != previousCredential
+        } catch {
+            return true
+        }
+    }
+
+    private static func restore(
+        _ credential: StoredCredential?,
+        to store: any CredentialStoring
+    ) {
+        if let credential {
+            try? store.save(credential)
+        } else {
+            try? store.clear()
+        }
+    }
+
+    /// Metadata and thresholds are just as project-scoped as the rendered
+    /// snapshot. Once file cleanup succeeds, blank these before installing the
+    /// new credential so any later ingest/write failure leaves a relaunch with
+    /// no old selection to pair with that replacement key.
+    private static func clearScopeDefaults(in defaults: UserDefaults) {
+        defaults.removeObject(forKey: WatchSettings.organizationIDKey)
+        defaults.removeObject(forKey: WatchSettings.organizationNameKey)
+        defaults.removeObject(forKey: WatchSettings.projectNameKey)
+        defaults.removeObject(forKey: WatchSettings.headlineMetricKey)
+        defaults.removeObject(forKey: WatchSettings.watchesDegradedKey)
     }
 
     private static func replace(_ value: String?, forKey key: String, in defaults: UserDefaults) {
@@ -187,11 +441,21 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     }
 
     /// The default announcement, named so a test can pass its own and assert
-    /// that a refused ingestion announces nothing — a listener that posted
-    /// anyway would send a live model to refetch with a credential it does not
-    /// have.
+    /// whether the effective credential changed. An ordinary refusal announces
+    /// nothing; a failed rollback announces so the live model cannot keep using
+    /// the credential and project scope it held before the transaction.
     static let postAppliedNotification: @Sendable () -> Void = {
         NotificationCenter.default.post(name: .gethogWatchKeyTransferApplied, object: nil)
+    }
+
+    /// WidgetKit is main-actor isolated under the target's Swift 6 defaults,
+    /// while WCSession applies arrive on a queue it owns. The nonisolated
+    /// callback only schedules after serialization has ended; the extension
+    /// APIs themselves remain on MainActor rather than being unsafely erased.
+    static let reloadProjectData: @Sendable () -> Void = {
+        Task { @MainActor in
+            WatchRefresh.snapshotDidPublish()
+        }
     }
 }
 
@@ -207,6 +471,7 @@ enum WatchManualKeyEntry {
         credentials: any CredentialStoring = KeychainTokenStore(),
         snapshots: any MetricWatchWriting = SharedSnapshotStore.shared,
         defaults: UserDefaults = .standard,
+        mutationCoordinator: WatchCredentialMutationCoordinator = .shared,
         notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
     ) -> Bool {
         WatchSessionListener.apply(
@@ -214,6 +479,7 @@ enum WatchManualKeyEntry {
             credentials: credentials,
             snapshots: snapshots,
             defaults: defaults,
+            mutationCoordinator: mutationCoordinator,
             notify: notify
         )
     }

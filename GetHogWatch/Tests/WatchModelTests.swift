@@ -42,6 +42,7 @@ struct WatchModelTests {
         let written = try #require(store.loadOrNil())
         #expect(written.projectID == 1001)
         #expect(written.projectName == "Synthetic Analytics")
+        #expect(written.projectRegion == .usCloud)
         #expect(written.capturedAt == WatchFixtures.now)
         #expect(written.metrics.count == 2)
     }
@@ -88,9 +89,12 @@ struct WatchModelTests {
         #expect(model.phase == .ready)
         #expect(store.loadOrNil() == seeded)
         #expect(model.snapshot == seeded)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(model.refreshGuidance?.message ==
+            "Your iPhone may be offline. Connect it to the internet, then try again.")
     }
 
-    @Test("an offline refresh with nothing to fall back on says so")
+    @Test("an offline refresh with nothing to fall back on guides the user to the iPhone")
     func offlineRefreshWithNoSnapshotFails() async {
         let model = WatchFixtures.model(
             transport: OfflineTransport(), store: WatchFixtures.tempStore()
@@ -98,7 +102,330 @@ struct WatchModelTests {
 
         await model.refresh()
 
+        let copy = "Your iPhone may be offline. Connect it to the internet, then try again."
+        #expect(model.phase == .failed(copy))
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase,
+                refreshGuidance: model.refreshGuidance
+            ) == nil
+        )
+    }
+
+    @Test("a non-offline request failure keeps generic copy without blaming the credential")
+    func genericRequestFailureDoesNotBlameThePhone() async {
+        let model = WatchFixtures.model(
+            transport: UnavailableTransport(), store: WatchFixtures.tempStore()
+        )
+
+        await model.refresh()
+
         #expect(model.phase == .failed("PostHog couldn't be reached."))
+        #expect(model.refreshGuidance == nil)
+        #expect(model.refreshFailure == .retryable)
+        #expect(model.canRetryRefresh)
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase,
+                refreshGuidance: model.refreshGuidance,
+                refreshFailure: model.refreshFailure
+            ) == nil
+        )
+    }
+
+    @Test("only a genuine authentication rejection offers credential replacement")
+    func onlyAuthenticationFailureOffersCredentialReplacement() async {
+        let model = WatchFixtures.model(
+            transport: RouteTransport(routes: [], unmatchedError: .unauthorized),
+            store: WatchFixtures.tempStore()
+        )
+
+        await model.refresh()
+
+        let message = "Your API key was rejected. Check the key and try again."
+        #expect(model.phase == .failed(message))
+        #expect(model.refreshFailure == .authentication)
+        #expect(!model.canRetryRefresh)
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase,
+                refreshFailure: model.refreshFailure
+            ) == .replacement(message)
+        )
+    }
+
+    @Test("authentication rejection stays actionable when stale metrics exist")
+    func authenticationFailureWithSnapshotOffersReplacement() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot(
+            capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        try store.write(seeded)
+        let model = WatchFixtures.model(
+            transport: RouteTransport(routes: [], unmatchedError: .unauthorized),
+            store: store
+        )
+
+        await model.refresh(force: true)
+
+        let message = "Your API key was rejected. Check the key and try again."
+        #expect(model.snapshot == seeded)
+        #expect(model.phase == .failed(message))
+        #expect(model.refreshFailure == .authentication)
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase, refreshFailure: model.refreshFailure
+            ) == .replacement(message)
+        )
+    }
+
+    @Test("rate limits, server errors, and malformed responses never offer key replacement")
+    func nonAuthenticationFailuresNeverOfferCredentialReplacement() async {
+        let cases: [(PostHogError, WatchRefreshFailure)] = [
+            (.rateLimited(retryAfter: 30), .retryable),
+            (.http(status: 503, detail: nil), .retryable),
+            (.decoding("Synthetic malformed payload"), .invalidResponse),
+            (.forbidden(missingScope: "insight:read"), .other),
+        ]
+
+        for (error, expected) in cases {
+            let model = WatchFixtures.model(
+                transport: RouteTransport(routes: [], unmatchedError: error),
+                store: WatchFixtures.tempStore()
+            )
+
+            await model.refresh()
+
+            #expect(model.refreshFailure == expected)
+            #expect(
+                WatchCredentialEntryState(
+                    phase: model.phase,
+                    refreshFailure: model.refreshFailure
+                ) == nil
+            )
+        }
+    }
+
+    @Test("a malformed decoded section is retained as invalid response recovery")
+    func malformedSectionIsClassifiedWithoutReplacingTheKey() async {
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/query/",
+                    bodyContains: "ErrorTrackingQuery",
+                    body: "not-json"
+                ),
+            ],
+            unmatchedError: .transport("Synthetic unavailable failure")
+        )
+        let model = WatchFixtures.model(
+            transport: transport, store: WatchFixtures.tempStore()
+        )
+
+        await model.refresh()
+
+        let message = "PostHog's response wasn't in a shape this app could read."
+        #expect(model.phase == .failed(message))
+        #expect(model.refreshFailure == .invalidResponse)
+        #expect(model.canRetryRefresh)
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase, refreshFailure: model.refreshFailure
+            ) == nil
+        )
+    }
+
+    @Test("a partial refresh still surfaces the offline sections")
+    func partialRefreshKeepsOfflineGuidance() async {
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/feature_flags/",
+                    body: WatchFixtures.flags
+                ),
+            ],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let model = WatchFixtures.model(
+            transport: transport, store: WatchFixtures.tempStore()
+        )
+
+        await model.refresh()
+
+        // Flags answered, so this is a real partial snapshot rather than the
+        // stale fallback branch. The sections that hit -1009 still need their
+        // actionable recovery instead of disappearing behind `.ready`.
+        #expect(model.phase == .ready)
+        #expect(model.snapshot?.flags.count == 2)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+    }
+
+    @Test("a partial activity response cannot hide permission failures behind no metrics")
+    func partialActivityPermissionFailureHasTruthfulPresentation() async {
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/query/",
+                    bodyContains: "HogQLQuery",
+                    body: WatchFixtures.events(1)
+                ),
+            ],
+            unmatchedError: .forbidden(missingScope: "insight:read")
+        )
+        let model = WatchFixtures.model(
+            transport: transport, store: WatchFixtures.tempStore()
+        )
+
+        await model.refresh()
+
+        let message = "Your API key is missing the insight:read scope."
+        #expect(model.phase == .ready)
+        #expect(model.headlineMetric == nil)
+        #expect(model.activity.count == 1)
+        #expect(model.refreshFailure == .other)
+        #expect(model.refreshFailureMessage == message)
+        #expect(
+            WatchMetricsContentState(
+                phase: model.phase,
+                hasHeadline: model.headlineMetric != nil,
+                refreshGuidance: model.refreshGuidance,
+                refreshFailure: model.refreshFailure,
+                refreshFailureMessage: model.refreshFailureMessage
+            ) == .failure(message)
+        )
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase,
+                refreshGuidance: model.refreshGuidance,
+                refreshFailure: model.refreshFailure
+            ) == nil
+        )
+    }
+
+    @Test("partial success never hides an authentication rejection")
+    func partialSuccessWithAuthenticationFailureOffersReplacement() async {
+        let transport = RouteTransport(
+            routes: [
+                .init(pathContains: "/feature_flags/", body: WatchFixtures.flags),
+            ],
+            unmatchedError: .unauthorized
+        )
+        let model = WatchFixtures.model(
+            transport: transport, store: WatchFixtures.tempStore()
+        )
+
+        await model.refresh()
+
+        let message = "Your API key was rejected. Check the key and try again."
+        #expect(model.snapshot?.flags.count == 2)
+        #expect(model.snapshot?.projectRegion == .usCloud)
+        #expect(model.phase == .failed(message))
+        #expect(model.refreshFailure == .authentication)
+        #expect(
+            WatchCredentialEntryState(
+                phase: model.phase, refreshFailure: model.refreshFailure
+            ) == .replacement(message)
+        )
+    }
+
+    @Test("a partial offline refresh merges fresh flags with carried metrics")
+    func partialOfflineRefreshMergesTheCarriedSnapshot() async throws {
+        let store = WatchFixtures.tempStore()
+        let carriedAt = WatchFixtures.now.addingTimeInterval(-3600)
+        let carriedFlag = SharedSnapshot.Flag(
+            id: 77, key: "carried-flag", active: false, quickToggleAllowed: false
+        )
+        let seeded = WatchFixtures.snapshot(flags: [carriedFlag], capturedAt: carriedAt)
+        try store.write(seeded)
+        let transport = RouteTransport(
+            routes: [.init(pathContains: "/feature_flags/", body: WatchFixtures.flags)],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let model = WatchFixtures.model(transport: transport, store: store)
+
+        await model.refresh(force: true)
+
+        let merged = try #require(model.snapshot)
+        #expect(merged.metrics == seeded.metrics)
+        #expect(merged.flags.count == 2)
+        #expect(merged.flags != seeded.flags)
+        // One timestamp cannot claim the carried metrics became fresh merely
+        // because flags answered, so the conservative age is retained.
+        #expect(merged.capturedAt == carriedAt)
+        #expect(store.loadOrNil() == merged)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+    }
+
+    @Test("an unrelated partial response never replaces a carried snapshot with fresh empties")
+    func unrelatedPartialResponseDoesNotStampAnEmptySnapshotFresh() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot(
+            flags: [
+                SharedSnapshot.Flag(
+                    id: 77, key: "carried-flag", active: true, quickToggleAllowed: false
+                ),
+            ],
+            capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        try store.write(seeded)
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/query/",
+                    bodyContains: "ErrorTrackingQuery",
+                    body: WatchFixtures.errors
+                ),
+            ],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let model = WatchFixtures.model(transport: transport, store: store)
+
+        await model.refresh(force: true)
+
+        #expect(model.snapshot == seeded)
+        #expect(store.loadOrNil() == seeded)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(model.phase == .ready)
+    }
+
+    @Test("offline recovery bypasses the freshness throttle and exposes a forced retry")
+    func offlineRecoveryCanRetryImmediately() async throws {
+        let store = WatchFixtures.tempStore()
+        try store.write(
+            WatchFixtures.snapshot(capturedAt: WatchFixtures.now.addingTimeInterval(-300))
+        )
+        let transport = RouteTransport(
+            routes: [],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let model = WatchFixtures.model(transport: transport, store: store)
+
+        await model.refresh(force: true)
+        let firstAttemptCount = await transport.requests.count
+        #expect(firstAttemptCount > 0)
+        #expect(model.canRetryRefresh)
+
+        // The ordinary lifecycle refresh must not hide behind the 15-minute
+        // freshness throttle while actionable offline guidance is visible.
+        await model.refresh()
+        #expect(await transport.requests.count == firstAttemptCount * 2)
+
+        // The visible Retry control calls this explicitly forced action.
+        await model.retry()
+        #expect(await transport.requests.count == firstAttemptCount * 3)
     }
 
     @Test("a refresh spends exactly five requests, each within its budget")
@@ -245,6 +572,11 @@ struct WatchModelTests {
     @Test("an events query that failed leaves the feed and its age alone")
     func failedEventsQueryKeepsTheCarriedFeed() async throws {
         let store = WatchFixtures.tempStore()
+        // Activity has no project id of its own, so it is trusted only beside
+        // the matching project snapshot that gives the file its scope.
+        try store.write(
+            WatchFixtures.snapshot(capturedAt: WatchFixtures.now.addingTimeInterval(-3600))
+        )
         let seeded = ActivityFeed(
             lines: [ActivityLine(id: "example-row-0001", event: "carried_event", timestamp: nil)],
             capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
@@ -268,6 +600,7 @@ struct WatchModelTests {
     /// keychain and the running model went on saying the same sentence.
     @Test("a hand-off that lands while the app is running resolves the empty state")
     func adoptingAHandoffResolvesNeedsKey() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
         let store = WatchFixtures.tempStore()
         let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
         let model = WatchModel(
@@ -277,6 +610,7 @@ struct WatchModelTests {
             watches: [],
             transport: transport,
             store: store,
+            mutationCoordinator: mutationCoordinator,
             authenticate: { _ in true },
             now: { WatchFixtures.now }
         )
@@ -298,12 +632,14 @@ struct WatchModelTests {
                     ),
                 ]
             ),
-            credentials: credentials, snapshots: store, defaults: defaults, notify: {}
+            credentials: credentials, snapshots: store, defaults: defaults,
+            mutationCoordinator: mutationCoordinator, notify: {}
         )
 
         await model.adopt(
             WatchHandoff.current(
-                credentials: credentials, defaults: defaults, snapshots: store
+                credentials: credentials, defaults: defaults, snapshots: store,
+                mutationCoordinator: mutationCoordinator
             )
         )
 
@@ -318,6 +654,1217 @@ struct WatchModelTests {
         // with: 393 is above 40.
         #expect(model.health.rows.count == 1)
         #expect(model.health.firingCount == 1)
+    }
+
+    @Test("a refresh started before hand-off cannot overwrite the adopted project")
+    func preHandoffRefreshCannotOverwriteAdoptedProject() async {
+        let transport = HandoffRaceTransport()
+        let store = WatchFixtures.tempStore()
+        let model = WatchFixtures.model(transport: transport, store: store)
+
+        let staleRefresh = Task { @MainActor in
+            await model.refresh(force: true)
+        }
+        await transport.waitUntilOldRequestIsHeld()
+
+        let adoptedRefresh = Task { @MainActor in
+            await model.adopt(
+                WatchHandoff(
+                    credential: StoredCredential(
+                        key: "test-key-adopted-0002", region: .usCloud, projectID: 42
+                    ),
+                    projectName: "Adopted Synthetic Project",
+                    headlineMetricID: "502",
+                    watches: [],
+                    watchesDegraded: false
+                )
+            )
+        }
+        await adoptedRefresh.value
+
+        // Deliver the old project's response last. It is no longer allowed to
+        // mutate model state or the widget file.
+        await transport.releaseOldRequest()
+        await staleRefresh.value
+
+        #expect(model.snapshot?.projectID == 42)
+        #expect(model.snapshot?.projectName == "Adopted Synthetic Project")
+        #expect(store.loadOrNil()?.projectID == 42)
+        #expect(model.phase == .ready)
+    }
+
+    @Test("offline adoption clears the previous project from UI and widget storage")
+    func offlineAdoptionClearsThePreviousProject() async throws {
+        let store = WatchFixtures.tempStore()
+        let oldFlag = SharedSnapshot.Flag(
+            id: 77, key: "project-a-flag", active: true, quickToggleAllowed: false
+        )
+        let projectA = WatchFixtures.snapshot(
+            flags: [oldFlag], capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        try store.write(projectA)
+        try WatchActivity.write(
+            ActivityFeed(
+                lines: [
+                    ActivityLine(
+                        id: "project-a-event", event: "project_a_event", timestamp: nil
+                    ),
+                ],
+                capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+            ),
+            to: store
+        )
+        try store.writeBreachingWatchIDs(["project-a-watch"])
+        var reloadCount = 0
+        var everyReloadFollowedClearing = true
+        let model = WatchFixtures.model(
+            transport: OfflineTransport(),
+            store: store,
+            snapshotDidChange: {
+                reloadCount += 1
+                everyReloadFollowedClearing = everyReloadFollowedClearing
+                    && store.loadOrNil() == nil
+                    && WatchActivity.read(from: store) == nil
+                    && store.breachingWatchIDs().isEmpty
+            }
+        )
+        #expect(model.headlineMetric != nil)
+        #expect(!model.activity.isEmpty)
+
+        await model.adopt(
+            WatchHandoff(
+                credential: StoredCredential(
+                    key: "test-key-project-b", region: .usCloud, projectID: 42
+                ),
+                projectName: "Synthetic Project B",
+                headlineMetricID: nil,
+                watches: [],
+                watchesDegraded: false
+            )
+        )
+
+        #expect(model.snapshot == nil)
+        #expect(model.headlineMetric == nil)
+        #expect(model.shortlistFlags.isEmpty)
+        #expect(model.activity.isEmpty)
+        #expect(model.activityCapturedAt == nil)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(reloadCount == 1)
+        #expect(everyReloadFollowedClearing)
+    }
+
+    @Test("same numeric project in another region clears data and cannot write the old flag")
+    func sameProjectIDDifferentRegionClearsAndRefusesOldFlag() async throws {
+        let store = WatchFixtures.tempStore()
+        try store.write(
+            WatchFixtures.snapshot(
+                flags: [
+                    SharedSnapshot.Flag(
+                        id: 77, key: "us-project-flag", active: true,
+                        quickToggleAllowed: false
+                    ),
+                ],
+                projectRegion: .usCloud
+            )
+        )
+        let transport = RouteTransport(
+            routes: [],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let model = WatchFixtures.model(transport: transport, store: store)
+
+        await model.adopt(
+            WatchHandoff(
+                credential: StoredCredential(
+                    key: "eu-test-key", region: .euCloud, projectID: 1001
+                ),
+                projectName: "Synthetic EU Project",
+                headlineMetricID: nil,
+                watches: [],
+                watchesDegraded: false
+            )
+        )
+        let requestsAfterAdoption = await transport.requests.count
+        let failure = await model.setFlag(id: 77, active: false)
+
+        #expect(model.snapshot == nil)
+        #expect(store.loadOrNil() == nil)
+        #expect(failure == "Refresh this project before changing a flag.")
+        #expect(await transport.requests.count == requestsAfterAdoption)
+        #expect(await transport.requests.allSatisfy { $0.url?.host == "eu.posthog.com" })
+    }
+
+    @Test("relaunch rejects same-id snapshot and activity from another region")
+    func relaunchRejectsMismatchedStoredProvenance() async throws {
+        let store = WatchFixtures.tempStore()
+        try store.write(
+            WatchFixtures.snapshot(
+                flags: [
+                    SharedSnapshot.Flag(
+                        id: 77, key: "project-a-flag", active: true,
+                        quickToggleAllowed: false
+                    ),
+                ],
+                projectRegion: .usCloud
+            )
+        )
+        try WatchActivity.write(
+            ActivityFeed(
+                lines: [
+                    ActivityLine(
+                        id: "project-a-event", event: "project_a_event", timestamp: nil
+                    ),
+                ],
+                capturedAt: WatchFixtures.now
+            ),
+            to: store
+        )
+        try store.writeBreachingWatchIDs(["project-a-watch"])
+        let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+        var reloadCount = 0
+        var reloadedAfterClearing = false
+        let model = WatchModel(
+            credential: StoredCredential(
+                key: "test-key-project-b", region: .euCloud, projectID: 1001
+            ),
+            projectName: "Synthetic Project B",
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            authenticate: { _ in true },
+            snapshotDidChange: {
+                reloadCount += 1
+                reloadedAfterClearing = store.loadOrNil() == nil
+                    && WatchActivity.read(from: store) == nil
+                    && store.breachingWatchIDs().isEmpty
+            },
+            now: { WatchFixtures.now }
+        )
+
+        #expect(model.snapshot == nil)
+        #expect(model.headlineMetric == nil)
+        #expect(model.shortlistFlags.isEmpty)
+        #expect(model.activity.isEmpty)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadCount == 1)
+        #expect(reloadedAfterClearing)
+
+        let failure = await model.setFlag(id: 77, active: false)
+        #expect(failure == "Refresh this project before changing a flag.")
+        #expect(await transport.requests.isEmpty)
+    }
+
+    @Test("verified manual credential restores matching stale data on an offline restart")
+    func verifiedManualCredentialRestoresMatchingDataOnOfflineRestart() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot(
+            flags: [
+                SharedSnapshot.Flag(
+                    id: 77, key: "matching-project-flag", active: true,
+                    quickToggleAllowed: false
+                ),
+            ],
+            capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        let feed = ActivityFeed(
+            lines: [
+                ActivityLine(
+                    id: "matching-project-event",
+                    event: "matching_project_event",
+                    timestamp: nil
+                ),
+            ],
+            capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        try store.write(seeded)
+        try WatchActivity.write(feed, to: store)
+        try store.writeBreachingWatchIDs(["matching-project-watch"])
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 1001)
+                ),
+            ],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let credentials = InMemoryTokenStore(
+            credential: StoredCredential(
+                key: "manual-test-key", region: .usCloud, projectID: nil
+            )
+        )
+        var reloadSnapshots: [SharedSnapshot?] = []
+        var reloadActivities: [ActivityFeed?] = []
+        var reloadBreaches: [Set<String>] = []
+        let model = WatchModel(
+            credential: try #require(try credentials.load()),
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            authenticate: { _ in true },
+            snapshotDidChange: {
+                reloadSnapshots.append(store.loadOrNil())
+                reloadActivities.append(WatchActivity.read(from: store))
+                reloadBreaches.append(store.breachingWatchIDs())
+            },
+            now: { WatchFixtures.now }
+        )
+
+        // The unverified credential may belong to another project. The files
+        // survive only in the model's private quarantine. Their active App
+        // Group URLs must be empty too, or a widget could still render a
+        // different project's metric before `/me` proves the full identity.
+        #expect(model.snapshot == nil)
+        #expect(model.shortlistFlags.isEmpty)
+        #expect(model.activity.isEmpty)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadSnapshots.count == 1)
+        #expect(reloadSnapshots[0] == nil)
+        #expect(reloadActivities[0] == nil)
+        #expect(reloadBreaches[0].isEmpty)
+
+        await model.refresh()
+
+        #expect(model.snapshot == seeded)
+        #expect(model.shortlistFlags.map(\.id) == [77])
+        #expect(model.activity == feed.lines)
+        #expect(model.activityCapturedAt == feed.capturedAt)
+        #expect(model.phase == .ready)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(store.loadOrNil() == seeded)
+        #expect(WatchActivity.read(from: store) == feed)
+        #expect(store.breachingWatchIDs() == ["matching-project-watch"])
+        #expect(reloadSnapshots.count == 2)
+        #expect(reloadSnapshots[1] == seeded)
+        #expect(reloadActivities[1] == feed)
+        #expect(reloadBreaches[1] == ["matching-project-watch"])
+
+        let persisted = try #require(try credentials.load())
+        #expect(persisted.projectID == 1001)
+        #expect(persisted.key == "manual-test-key")
+        #expect(persisted.region == .usCloud)
+
+        // A subsequent launch no longer has to resolve identity before it can
+        // trust this same-scope fallback. Even fully offline, it renders the
+        // stale snapshot immediately and retains it through the failed refresh.
+        let restarted = WatchModel(
+            credential: persisted,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: OfflineTransport(),
+            store: store,
+            credentialStore: credentials,
+            authenticate: { _ in true },
+            snapshotDidChange: {},
+            now: { WatchFixtures.now }
+        )
+        #expect(restarted.snapshot == seeded)
+        #expect(restarted.activity == feed.lines)
+        #expect(restarted.phase == .ready)
+
+        await restarted.refresh(force: true)
+
+        #expect(restarted.snapshot == seeded)
+        #expect(restarted.activity == feed.lines)
+        #expect(restarted.phase == .ready)
+        #expect(restarted.refreshGuidance == .iPhoneOffline)
+    }
+
+    @Test("manual credential clears mismatching quarantine after identity resolves")
+    func manualCredentialClearsMismatchingQuarantineAfterMe() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot()
+        try store.write(seeded)
+        try WatchActivity.write(
+            ActivityFeed(
+                lines: [
+                    ActivityLine(
+                        id: "old-project-event", event: "old_project_event", timestamp: nil
+                    ),
+                ],
+                capturedAt: WatchFixtures.now
+            ),
+            to: store
+        )
+        try store.writeBreachingWatchIDs(["old-project-watch"])
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 42, name: "Synthetic Project B")
+                ),
+            ],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let credentials = InMemoryTokenStore(
+            credential: StoredCredential(
+                key: "manual-test-key", region: .usCloud, projectID: nil
+            )
+        )
+        var reloadCount = 0
+        var reloadFollowedClearing = false
+        let model = WatchModel(
+            credential: try #require(try credentials.load()),
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            authenticate: { _ in true },
+            snapshotDidChange: {
+                reloadCount += 1
+                reloadFollowedClearing = store.loadOrNil() == nil
+                    && WatchActivity.read(from: store) == nil
+                    && store.breachingWatchIDs().isEmpty
+            },
+            now: { WatchFixtures.now }
+        )
+
+        #expect(model.snapshot == nil)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadCount == 1)
+        #expect(reloadFollowedClearing)
+
+        await model.refresh()
+
+        #expect(model.snapshot == nil)
+        #expect(model.activity.isEmpty)
+        #expect(model.phase == .failed(
+            "Your iPhone may be offline. Connect it to the internet, then try again."
+        ))
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadCount == 1)
+        #expect(reloadFollowedClearing)
+        let persisted = try #require(try credentials.load())
+        #expect(persisted.projectID == 42)
+    }
+
+    @Test("offline identity lookup preserves manual credential quarantine without rendering it")
+    func offlineMePreservesInvisibleManualCredentialQuarantine() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot(
+            flags: [
+                SharedSnapshot.Flag(
+                    id: 77, key: "unverified-project-flag", active: true,
+                    quickToggleAllowed: false
+                ),
+            ]
+        )
+        try store.write(seeded)
+        try WatchActivity.write(
+            ActivityFeed(
+                lines: [
+                    ActivityLine(
+                        id: "unverified-event", event: "unverified_event", timestamp: nil
+                    ),
+                ],
+                capturedAt: WatchFixtures.now
+            ),
+            to: store
+        )
+        try store.writeBreachingWatchIDs(["unverified-watch"])
+        let transport = RouteTransport(
+            routes: [],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let credentials = InMemoryTokenStore(
+            credential: StoredCredential(
+                key: "manual-test-key", region: .usCloud, projectID: nil
+            )
+        )
+        var reloadCount = 0
+        var everyReloadSawEmptyActiveFiles = true
+        let model = WatchModel(
+            credential: try #require(try credentials.load()),
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            authenticate: { _ in true },
+            snapshotDidChange: {
+                reloadCount += 1
+                everyReloadSawEmptyActiveFiles = everyReloadSawEmptyActiveFiles
+                    && store.loadOrNil() == nil
+                    && WatchActivity.read(from: store) == nil
+                    && store.breachingWatchIDs().isEmpty
+            },
+            now: { WatchFixtures.now }
+        )
+
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadCount == 1)
+        #expect(everyReloadSawEmptyActiveFiles)
+
+        await model.refresh()
+        let requestCount = await transport.requests.count
+        let flagFailure = await model.setFlag(id: 77, active: false)
+
+        #expect(model.snapshot == nil)
+        #expect(model.shortlistFlags.isEmpty)
+        #expect(model.activity.isEmpty)
+        #expect(model.phase == .failed(
+            "Your iPhone may be offline. Connect it to the internet, then try again."
+        ))
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(flagFailure == "Not signed in.")
+        #expect(await transport.requests.count == requestCount)
+        #expect(reloadCount == 1)
+        #expect(everyReloadSawEmptyActiveFiles)
+        let unresolved = try #require(try credentials.load())
+        #expect(unresolved.projectID == nil)
+    }
+
+    @Test("identity resolution never persists a DEBUG-only credential")
+    func resolvedDebugCredentialRemainsInMemoryOnly() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot()
+        try store.write(seeded)
+        let emptyKeychain = InMemoryTokenStore()
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 1001)
+                ),
+            ],
+            unmatchedError: .network(
+                code: NSURLErrorNotConnectedToInternet,
+                description: "Synthetic offline failure"
+            )
+        )
+        let model = WatchModel(
+            // Mirrors WatchHandoff.current's DEBUG environment fallback: the
+            // running model has a key, but the keychain does not.
+            credential: StoredCredential(
+                key: "debug-environment-key", region: .usCloud, projectID: nil
+            ),
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: emptyKeychain,
+            credentialSource: .processOnly,
+            authenticate: { _ in true },
+            snapshotDidChange: {},
+            now: { WatchFixtures.now }
+        )
+
+        await model.refresh()
+
+        #expect(model.snapshot == seeded)
+        #expect(model.phase == .ready)
+        #expect(model.refreshGuidance == .iPhoneOffline)
+        let storedCredential = try emptyKeychain.load()
+        #expect(storedCredential == nil)
+    }
+
+    @Test("a stored credential missing before identity resolves cannot restore quarantine")
+    func missingStoredCredentialCannotRestoreQuarantine() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot()
+        let seededActivity = ActivityFeed(
+            lines: [
+                ActivityLine(
+                    id: "missing-key-event", event: "missing_key_event", timestamp: nil
+                ),
+            ],
+            capturedAt: WatchFixtures.now
+        )
+        try store.write(seeded)
+        try WatchActivity.write(seededActivity, to: store)
+        try store.writeBreachingWatchIDs(["missing-key-watch"])
+        let unresolved = StoredCredential(
+            key: "removed-manual-key", region: .usCloud, projectID: nil
+        )
+        let credentials = InMemoryTokenStore(credential: unresolved)
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 1001)
+                ),
+            ]
+        )
+        var reloadSnapshots: [SharedSnapshot?] = []
+        var reloadActivities: [ActivityFeed?] = []
+        var reloadBreaches: [Set<String>] = []
+        let model = WatchModel(
+            credential: unresolved,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: {
+                reloadSnapshots.append(store.loadOrNil())
+                reloadActivities.append(WatchActivity.read(from: store))
+                reloadBreaches.append(store.breachingWatchIDs())
+            },
+            now: { WatchFixtures.now }
+        )
+
+        // Simulates a real Keychain record disappearing after launch but
+        // before `/me` answers. That is not the explicit DEBUG process-only
+        // path and must never inherit its permission to restore old files.
+        try credentials.clear()
+        await model.refresh()
+
+        #expect(model.snapshot == nil)
+        #expect(model.activity.isEmpty)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadSnapshots == [nil])
+        #expect(reloadActivities == [nil])
+        #expect(reloadBreaches == [[]])
+        #expect(try credentials.load() == nil)
+        #expect(await transport.requests.count == 1)
+        #expect(model.phase == .needsKey)
+        #expect(!model.hasCredential)
+    }
+
+    @Test("a stored credential read failure cannot restore quarantine")
+    func throwingStoredCredentialCannotRestoreQuarantine() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let store = WatchFixtures.tempStore()
+        try store.write(WatchFixtures.snapshot())
+        let unresolved = StoredCredential(
+            key: "unreadable-manual-key", region: .usCloud, projectID: nil
+        )
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 1001)
+                ),
+            ]
+        )
+        var reloads: [SharedSnapshot?] = []
+        let model = WatchModel(
+            credential: unresolved,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: ThrowingCredentialLoadStore(),
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: { reloads.append(store.loadOrNil()) },
+            now: { WatchFixtures.now }
+        )
+
+        await model.refresh()
+
+        #expect(model.snapshot == nil)
+        #expect(store.loadOrNil() == nil)
+        #expect(reloads == [nil])
+        #expect(await transport.requests.count == 1)
+        #expect(model.phase == .failed(
+            "The Watch couldn't read its saved API key. Try again."
+        ))
+        #expect(model.refreshFailure == .retryable)
+        #expect(model.canRetryRefresh)
+    }
+
+    @Test("a replaced stored credential cannot restore the old credential's quarantine")
+    func replacedStoredCredentialCannotRestoreOldQuarantine() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let store = WatchFixtures.tempStore()
+        try store.write(WatchFixtures.snapshot())
+        let unresolved = StoredCredential(
+            key: "old-manual-key", region: .usCloud, projectID: nil
+        )
+        let replacement = StoredCredential(
+            key: "replacement-key", region: .euCloud, projectID: 42
+        )
+        let credentials = InMemoryTokenStore(credential: unresolved)
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 1001)
+                ),
+            ]
+        )
+        var reloads: [SharedSnapshot?] = []
+        let model = WatchModel(
+            credential: unresolved,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: { reloads.append(store.loadOrNil()) },
+            now: { WatchFixtures.now }
+        )
+        try credentials.save(replacement)
+
+        await model.refresh()
+
+        #expect(model.snapshot == nil)
+        #expect(store.loadOrNil() == nil)
+        #expect(reloads == [nil])
+        #expect(try credentials.load() == replacement)
+        #expect(await transport.requests.count == 1)
+        #expect(model.phase == .failed(
+            "The saved API key changed before project verification finished. Try again."
+        ))
+        #expect(model.refreshFailure == .retryable)
+        #expect(model.canRetryRefresh)
+    }
+
+    @Test("new hand-off intent blocks old identity credential and quarantine publication")
+    func handoffAndResolvedIdentityMutateCredentialsAtomically() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let oldCredential = StoredCredential(
+            key: "old-manual-key", region: .usCloud, projectID: nil
+        )
+        let credentials = HeldCredentialLoadStore(credential: oldCredential)
+        credentials.holdNextLoad()
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot(
+            flags: [
+                SharedSnapshot.Flag(
+                    id: 77, key: "old-project-flag", active: true,
+                    quickToggleAllowed: false
+                ),
+            ]
+        )
+        let seededActivity = ActivityFeed(
+            lines: [
+                ActivityLine(
+                    id: "old-project-event", event: "old_project_event", timestamp: nil
+                ),
+            ],
+            capturedAt: WatchFixtures.now
+        )
+        try store.write(seeded)
+        try WatchActivity.write(seededActivity, to: store)
+        try store.writeBreachingWatchIDs(["old-project-watch"])
+        var reloadSnapshots: [SharedSnapshot?] = []
+        var reloadActivities: [ActivityFeed?] = []
+        var reloadBreaches: [Set<String>] = []
+        let model = WatchModel(
+            credential: oldCredential,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: RouteTransport(
+                routes: [
+                    .init(
+                        pathContains: "/users/@me/",
+                        body: WatchFixtures.me(projectID: 1001)
+                    ),
+                ],
+                unmatchedError: .network(
+                    code: NSURLErrorNotConnectedToInternet,
+                    description: "Synthetic offline failure"
+                )
+            ),
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: {
+                reloadSnapshots.append(store.loadOrNil())
+                reloadActivities.append(WatchActivity.read(from: store))
+                reloadBreaches.append(store.breachingWatchIDs())
+            },
+            now: { WatchFixtures.now }
+        )
+        let handoffDefaultsSuite = "GetHogWatchTests-\(UUID().uuidString)"
+        let refreshRevision = mutationCoordinator.currentRevision
+
+        #expect(reloadSnapshots == [nil])
+        #expect(reloadActivities == [nil])
+        #expect(reloadBreaches == [[]])
+
+        let coordination = Task.detached { () throws -> (UInt64, StoredCredential?, Bool) in
+            try credentials.waitUntilHeldLoadIsCaptured()
+            defer { credentials.releaseLoad() }
+            let apply = Task.detached {
+                guard let handoffDefaults = UserDefaults(
+                    suiteName: handoffDefaultsSuite
+                ) else { return false }
+                return WatchSessionListener.apply(
+                    WatchKeyTransfer(
+                        key: "new-handoff-key",
+                        region: .euCloud,
+                        projectID: 42,
+                        projectName: "Synthetic Replacement"
+                    ),
+                    credentials: credentials,
+                    snapshots: store,
+                    defaults: handoffDefaults,
+                    mutationCoordinator: mutationCoordinator,
+                    mutationDidAnnounce: { revision in
+                        credentials.recordHandoffIntent(revision: revision)
+                    },
+                    notify: {}
+                )
+            }
+
+            // Intent is announced before the hand-off waits for the mutation
+            // lock. That positive revision, plus the still-old credential,
+            // proves the replacement is queued behind the frozen `/me` load
+            // without using a timeout as a proxy for blocked state.
+            let announcedRevision = try credentials.waitUntilHandoffIntentIsAnnounced()
+            let credentialWhileBlocked = credentials.currentCredential()
+            credentials.releaseLoad()
+            return (announcedRevision, credentialWhileBlocked, await apply.value)
+        }
+        let refresh = Task { @MainActor in await model.refresh() }
+        let (announcedRevision, credentialWhileBlocked, applied) = try await coordination.value
+        await refresh.value
+
+        let finalCredential = try #require(try credentials.load())
+        #expect(announcedRevision > refreshRevision)
+        #expect(credentialWhileBlocked == oldCredential)
+        #expect(applied)
+        #expect(finalCredential.key == "new-handoff-key")
+        #expect(finalCredential.region == .euCloud)
+        #expect(finalCredential.projectID == 42)
+        #expect(model.snapshot == nil)
+        #expect(model.activity.isEmpty)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadSnapshots == [nil])
+        #expect(reloadActivities == [nil])
+        #expect(reloadBreaches == [[]])
+        #expect(!credentials.didSynchronizationTimeout)
+    }
+
+    @Test("a hand-off queued before refresh blocks the old client before its first request")
+    func queuedHandoffBlocksOldRefreshAtEntry() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let pause = PausedMutationIntent()
+        let store = WatchFixtures.tempStore()
+        try store.write(WatchFixtures.snapshot())
+        try WatchActivity.write(
+            ActivityFeed(
+                lines: [
+                    ActivityLine(
+                        id: "queued-old-event", event: "queued_old_event", timestamp: nil
+                    ),
+                ],
+                capturedAt: WatchFixtures.now
+            ),
+            to: store
+        )
+        try store.writeBreachingWatchIDs(["queued-old-watch"])
+        let oldCredential = StoredCredential(
+            key: "queued-old-key", region: .usCloud, projectID: nil
+        )
+        let credentials = InMemoryTokenStore(credential: oldCredential)
+        let transport = RouteTransport(
+            routes: [
+                .init(
+                    pathContains: "/users/@me/",
+                    body: WatchFixtures.me(projectID: 1001)
+                ),
+            ]
+        )
+        var reloadSnapshots: [SharedSnapshot?] = []
+        let model = WatchModel(
+            credential: oldCredential,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: { reloadSnapshots.append(store.loadOrNil()) },
+            now: { WatchFixtures.now }
+        )
+        let defaultsSuite = "GetHogWatchTests-\(UUID().uuidString)"
+        let apply = Task.detached {
+            guard let defaults = UserDefaults(suiteName: defaultsSuite) else { return false }
+            return WatchSessionListener.apply(
+                WatchKeyTransfer(
+                    key: "queued-new-key", region: .euCloud, projectID: 42,
+                    projectName: "Queued Synthetic Replacement"
+                ),
+                credentials: credentials,
+                snapshots: store,
+                defaults: defaults,
+                mutationCoordinator: mutationCoordinator,
+                mutationDidAnnounce: { revision in pause.pause(revision: revision) },
+                notify: {}
+            )
+        }
+        defer { pause.resume() }
+        let announcedRevision = try await Task.detached {
+            try pause.waitUntilAnnounced()
+        }.value
+
+        let refresh = Task { @MainActor in await model.refresh() }
+        for _ in 0..<100 where !mutationCoordinator.hasSettlementWaiters {
+            await Task.yield()
+        }
+
+        #expect(announcedRevision > 0)
+        #expect(mutationCoordinator.hasPendingMutation)
+        #expect(mutationCoordinator.hasSettlementWaiters)
+        #expect(await transport.requests.isEmpty)
+        #expect(model.snapshot == nil)
+        #expect(model.activity.isEmpty)
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadSnapshots == [nil])
+
+        pause.resume()
+        #expect(await apply.value)
+        await refresh.value
+        #expect(!mutationCoordinator.hasPendingMutation)
+        #expect(mutationCoordinator.currentRevision == announcedRevision)
+        #expect(try credentials.load() == StoredCredential(
+            key: "queued-new-key", region: .euCloud, projectID: 42
+        ))
+        #expect(store.loadOrNil() == nil)
+        #expect(WatchActivity.read(from: store) == nil)
+        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(reloadSnapshots == [nil])
+        #expect(!pause.didSynchronizationTimeout)
+    }
+
+    @Test("a transfer committed before notification observation is reconciled from stores")
+    func missedTransferNotificationIsReconciled() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let credentials = InMemoryTokenStore()
+        let store = WatchFixtures.tempStore()
+        let defaultsSuite = "GetHogWatchTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsSuite))
+        let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+        let model = WatchModel(
+            credential: nil,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: {},
+            now: { WatchFixtures.now }
+        )
+
+        // The callback is intentionally swallowed: this is the launch window
+        // after WCSession activation and before the view subscribes.
+        let applied = WatchSessionListener.apply(
+            WatchKeyTransfer(
+                key: "missed-notification-key", region: .euCloud,
+                projectID: 42, projectName: "Missed Synthetic Project"
+            ),
+            credentials: credentials,
+            snapshots: store,
+            defaults: defaults,
+            mutationCoordinator: mutationCoordinator,
+            projectDataDidChange: {},
+            notify: {}
+        )
+        #expect(applied)
+        #expect(model.phase == .needsKey)
+
+        await model.reconcile(WatchHandoff.current(
+            credentials: credentials,
+            defaults: defaults,
+            snapshots: store,
+            mutationCoordinator: mutationCoordinator
+        ))
+
+        #expect(model.phase == .ready)
+        #expect(model.hasCredential)
+        #expect(model.snapshot?.projectID == 42)
+        #expect(model.snapshot?.projectRegion == .euCloud)
+        #expect(await transport.requests.count == 5)
+    }
+
+    @Test("a failed rollback at the same revision adopts the replacement credential")
+    func equalRevisionReplacementCredentialIsReconciled() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let oldCredential = StoredCredential(
+            key: "failed-rollback-old-key", region: .usCloud, projectID: 1001
+        )
+        let replacement = StoredCredential(
+            key: "failed-rollback-new-key", region: .euCloud, projectID: 42
+        )
+        let credentials = InMemoryTokenStore(credential: oldCredential)
+        let store = WatchFixtures.tempStore()
+        let oldSnapshot = WatchFixtures.snapshot()
+        try store.write(oldSnapshot)
+        let defaultsSuite = "GetHogWatchTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsSuite))
+        let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+        let model = WatchModel(
+            credential: oldCredential,
+            projectName: "Old Synthetic Project",
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: {},
+            now: { WatchFixtures.now }
+        )
+        #expect(model.snapshot == oldSnapshot)
+
+        // A failed changed-scope apply does not advance the committed revision.
+        // If its credential rollback also fails, however, the replacement key
+        // remains beside the deliberately blanked project files and defaults.
+        store.clearSnapshot()
+        WatchActivity.clear(from: store)
+        store.clearBreachingWatchIDs()
+        try store.writeMetricWatches([])
+        try credentials.save(replacement)
+
+        let failedRollbackHandoff = WatchHandoff.current(
+            credentials: credentials,
+            defaults: defaults,
+            snapshots: store,
+            mutationCoordinator: mutationCoordinator
+        )
+        #expect(failedRollbackHandoff.credentialRevision == 0)
+        #expect(failedRollbackHandoff.credential == replacement)
+
+        await model.reconcile(failedRollbackHandoff)
+
+        #expect(model.phase == .ready)
+        #expect(model.snapshot?.projectID == 42)
+        #expect(model.snapshot?.projectRegion == .euCloud)
+        #expect(model.snapshot?.projectName == "PostHog")
+        let requestedPaths = await transport.requestedPaths()
+        #expect(requestedPaths.count == 5)
+        #expect(requestedPaths.allSatisfy { $0.contains("/api/projects/42/") })
+        #expect(requestedPaths.allSatisfy { !$0.contains("/api/projects/1001/") })
+    }
+
+    @Test("an unchanged credential at the same revision remains a reconciliation no-op")
+    func equalRevisionUnchangedCredentialDoesNotRefresh() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let credentials = InMemoryTokenStore(credential: WatchFixtures.credential)
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot()
+        try store.write(seeded)
+        let defaultsSuite = "GetHogWatchTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsSuite))
+        defaults.set("Synthetic Analytics", forKey: WatchSettings.projectNameKey)
+        let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+        let model = WatchModel(
+            credential: WatchFixtures.credential,
+            projectName: "Synthetic Analytics",
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: {},
+            now: { WatchFixtures.now }
+        )
+
+        await model.reconcile(WatchHandoff.current(
+            credentials: credentials,
+            defaults: defaults,
+            snapshots: store,
+            mutationCoordinator: mutationCoordinator
+        ))
+
+        #expect(model.snapshot == seeded)
+        #expect(model.phase == .ready)
+        #expect(await transport.requests.isEmpty)
+    }
+
+    @Test("a later committed intent refreshes after an older waiter is refused")
+    func laterIntentWinsAndPublishesAfterSettlement() async throws {
+        let mutationCoordinator = WatchCredentialMutationCoordinator()
+        let pause = PausedMutationIntent()
+        let credentials = InMemoryTokenStore()
+        let store = WatchFixtures.tempStore()
+        let defaultsSuite = "GetHogWatchTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsSuite))
+        let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+        let model = WatchModel(
+            credential: nil,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: transport,
+            store: store,
+            credentialStore: credentials,
+            mutationCoordinator: mutationCoordinator,
+            authenticate: { _ in true },
+            snapshotDidChange: {},
+            now: { WatchFixtures.now }
+        )
+
+        let olderApply = Task.detached {
+            guard let queuedDefaults = UserDefaults(suiteName: defaultsSuite) else {
+                return false
+            }
+            return WatchSessionListener.apply(
+                WatchKeyTransfer(
+                    key: "older-queued-key", region: .usCloud,
+                    projectID: 1001, projectName: "Older Synthetic Project"
+                ),
+                credentials: credentials,
+                snapshots: store,
+                defaults: queuedDefaults,
+                mutationCoordinator: mutationCoordinator,
+                mutationDidAnnounce: { revision in pause.pause(revision: revision) },
+                projectDataDidChange: {},
+                notify: {}
+            )
+        }
+        defer { pause.resume() }
+        let olderRevision = try await Task.detached {
+            try pause.waitUntilAnnounced()
+        }.value
+
+        // The coordinator lock is deliberately non-fair. Revision 2 reaches
+        // it while revision 1 is paused, commits, and announces an adoption
+        // that cannot publish until the older pending intent is disposed of.
+        let newerApplied = WatchSessionListener.apply(
+            WatchKeyTransfer(
+                key: "newer-winning-key", region: .euCloud,
+                projectID: 42, projectName: "Newer Synthetic Project"
+            ),
+            credentials: credentials,
+            snapshots: store,
+            defaults: defaults,
+            mutationCoordinator: mutationCoordinator,
+            projectDataDidChange: {},
+            notify: {}
+        )
+        let winningRevision = mutationCoordinator.currentRevision
+        #expect(newerApplied)
+        #expect(winningRevision > olderRevision)
+        #expect(mutationCoordinator.hasPendingMutation)
+
+        let reconciliation = Task { @MainActor in
+            await model.reconcile(WatchHandoff.current(
+                credentials: credentials,
+                defaults: defaults,
+                snapshots: store,
+                mutationCoordinator: mutationCoordinator
+            ))
+        }
+        for _ in 0..<100 where !mutationCoordinator.hasSettlementWaiters {
+            await Task.yield()
+        }
+        #expect(model.hasCredential)
+        #expect(mutationCoordinator.hasSettlementWaiters)
+        #expect(await transport.requests.isEmpty)
+
+        pause.resume()
+        #expect(!(await olderApply.value))
+        await reconciliation.value
+
+        #expect(!mutationCoordinator.hasPendingMutation)
+        #expect(mutationCoordinator.currentRevision == winningRevision)
+        #expect(try credentials.load() == StoredCredential(
+            key: "newer-winning-key", region: .euCloud, projectID: 42
+        ))
+        #expect(model.phase == .ready)
+        #expect(model.snapshot?.projectID == 42)
+        #expect(model.snapshot?.projectRegion == .euCloud)
+        #expect(await transport.requests.count == 5)
+        #expect(!pause.didSynchronizationTimeout)
+    }
+
+    @Test("legacy snapshot without region provenance is cleared conservatively")
+    func relaunchRejectsLegacySnapshotWithoutProvenance() {
+        let store = WatchFixtures.tempStore()
+        try? store.write(WatchFixtures.snapshot(projectRegion: nil))
+
+        let model = WatchFixtures.model(
+            transport: OfflineTransport(), store: store
+        )
+
+        #expect(model.snapshot == nil)
+        #expect(model.headlineMetric == nil)
+        #expect(store.loadOrNil() == nil)
+    }
+
+    @Test("same-project credential rotation keeps its stale fallback")
+    func sameProjectCredentialRotationKeepsStaleFallback() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = WatchFixtures.snapshot(
+            capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        try store.write(seeded)
+        let model = WatchFixtures.model(transport: OfflineTransport(), store: store)
+
+        await model.adopt(
+            WatchHandoff(
+                credential: StoredCredential(
+                    key: "rotated-test-key", region: .usCloud, projectID: 1001
+                ),
+                projectName: "Synthetic Analytics",
+                headlineMetricID: nil,
+                watches: [],
+                watchesDegraded: false
+            )
+        )
+
+        #expect(model.snapshot == seeded)
+        #expect(model.headlineMetric?.id == seeded.metrics.first?.id)
+        #expect(store.loadOrNil() == seeded)
+        #expect(model.phase == .ready)
+        #expect(model.refreshGuidance == .iPhoneOffline)
     }
 
     @Test("a hand-off that cleared the credential returns to the empty state")
@@ -366,8 +1913,19 @@ struct WatchModelTests {
         let message = "The synthetic key was rejected."
 
         #expect(WatchCredentialEntryState(phase: .needsKey) == .missing)
-        #expect(WatchCredentialEntryState(phase: .failed(message)) == .replacement(message))
+        #expect(WatchCredentialEntryState(phase: .failed(message)) == nil)
+        #expect(
+            WatchCredentialEntryState(
+                phase: .failed(message), refreshFailure: .authentication
+            ) == .replacement(message)
+        )
         #expect(WatchCredentialEntryState(phase: .loading) == nil)
         #expect(WatchCredentialEntryState(phase: .ready) == nil)
+    }
+
+    @Test("the Watch test host resolves the exact iOS-style App Group identifier")
+    func watchHostUsesTheUnprefixedAppGroupIdentifier() {
+        #expect(SharedSnapshotStore.bundleAppGroupIdentifier == "group.app.gethog")
+        #expect(SharedSnapshotStore.shared.isSharedContainer)
     }
 }

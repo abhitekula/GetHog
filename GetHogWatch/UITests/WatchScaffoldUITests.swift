@@ -7,13 +7,12 @@ import XCTest
 /// than about whatever credential the simulator happens to hold — a launch with
 /// no key renders a perfectly correct empty state, which would make this test
 /// pass while proving nothing about the page it is meant to cover.
+@MainActor
 final class WatchScaffoldUITests: XCTestCase {
     func testDemoShellRendersTheHeadlineMetric() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-GetHogDemo"]
-        app.launch()
+        let app = DemoLaunch.launch()
         XCTAssertTrue(
-            app.staticTexts["Example daily engagement"].waitForExistence(timeout: 30)
+            DemoLaunch.wait(for: app.staticTexts["Example daily engagement"], timeout: 30)
         )
     }
 }

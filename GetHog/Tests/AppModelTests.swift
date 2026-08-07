@@ -42,6 +42,67 @@ private let meJSON = """
 @MainActor
 struct AppModelTests {
 
+    private struct SeededProjectRecords {
+        let snapshot: SharedSnapshot
+        let flagWrite: PendingFlagWrite
+        let open: PendingOpen
+        let watches: [MetricWatch]
+        let breaching: Set<String>
+    }
+
+    private func makeSnapshotStore() -> (SharedSnapshotStore, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppModelTests-\(UUID().uuidString)", isDirectory: true)
+        return (SharedSnapshotStore(directory: directory), directory)
+    }
+
+    private func seedProjectRecords(
+        in store: SharedSnapshotStore,
+        projectID: Int
+    ) throws -> SeededProjectRecords {
+        let snapshot = SharedSnapshot(
+            projectID: projectID,
+            projectName: "Synthetic Workspace",
+            metrics: [],
+            flags: [],
+            projectRegion: .usCloud,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let flagWrite = PendingFlagWrite(
+            flagID: 71,
+            key: "synthetic-rollout",
+            desiredActive: true,
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        let open = PendingOpen(
+            metricID: "synthetic-metric",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_200)
+        )
+        let watches = [
+            MetricWatch(
+                id: "synthetic-watch",
+                metricID: "synthetic-metric",
+                title: "Synthetic metric",
+                condition: .above(100)
+            )
+        ]
+        let breaching: Set<String> = ["synthetic-watch"]
+
+        try store.write(snapshot)
+        try store.enqueue(flagWrite)
+        try store.enqueue(open)
+        try store.writeMetricWatches(watches)
+        try store.writeBreachingWatchIDs(breaching)
+
+        return SeededProjectRecords(
+            snapshot: snapshot,
+            flagWrite: flagWrite,
+            open: open,
+            watches: watches,
+            breaching: breaching
+        )
+    }
+
     @Test("starts in onboarding when no credential is stored")
     func noCredentialMeansOnboarding() async {
         let model = AppModel(
@@ -100,9 +161,23 @@ struct AppModelTests {
 
     @Test("signing out clears the credential and the session")
     func signOutClearsEverything() async throws {
+        let (snapshots, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let seeded = try seedProjectRecords(in: snapshots, projectID: 42)
         let store = InMemoryTokenStore()
-        let model = AppModel(store: store, transport: ScriptedTransport([(200, meJSON)]))
+        let model = AppModel(
+            store: store,
+            transport: ScriptedTransport([(200, meJSON)]),
+            snapshotStore: snapshots
+        )
         try await model.connect(key: "phx_abc", region: .usCloud)
+        // Connecting may publish a fresher snapshot for the same scope. The
+        // sign-out contract is that whatever project data is current is wiped.
+        #expect(snapshots.loadOrNil() != nil)
+        #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)
+        #expect(snapshots.pendingOpen() == seeded.open)
+        #expect(snapshots.metricWatches() == seeded.watches)
+        #expect(snapshots.breachingWatchIDs() == seeded.breaching)
 
         model.signOut()
 
@@ -110,6 +185,11 @@ struct AppModelTests {
         #expect(model.me == nil)
         #expect(model.projects.isEmpty)
         #expect(try store.load() == nil)
+        #expect(snapshots.loadOrNil() == nil)
+        #expect(snapshots.pendingFlagWrite() == nil)
+        #expect(snapshots.pendingOpen() == nil)
+        #expect(snapshots.metricWatches().isEmpty)
+        #expect(snapshots.breachingWatchIDs().isEmpty)
     }
 
     @Test("entering the demo becomes ready without persisting a credential")
@@ -144,6 +224,30 @@ struct AppModelTests {
         try await model.connect(key: "phx_abc", region: .usCloud)
         #expect(model.phase == .ready)
         #expect(try store.load()?.key == "phx_abc")
+    }
+
+    @Test("signing out of a runtime demo preserves real shared project records")
+    func runtimeDemoSignOutPreservesSharedProjectRecords() async throws {
+        let (snapshots, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Deliberately differ from the demo's 1001/US scope. Entering an
+        // ephemeral demo must not take ownership of real project records.
+        let seeded = try seedProjectRecords(in: snapshots, projectID: 42)
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: ScriptedTransport([(500, "{}")]),
+            snapshotStore: snapshots
+        )
+
+        await model.enterDemo()
+        #expect(snapshots.loadOrNil() == seeded.snapshot)
+        model.signOut()
+
+        #expect(snapshots.loadOrNil() == seeded.snapshot)
+        #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)
+        #expect(snapshots.pendingOpen() == seeded.open)
+        #expect(snapshots.metricWatches() == seeded.watches)
+        #expect(snapshots.breachingWatchIDs() == seeded.breaching)
     }
 
     @Test("self-hosted regions are preserved, since OAuth can never reach them")

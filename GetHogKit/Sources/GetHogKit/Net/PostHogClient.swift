@@ -18,11 +18,23 @@ public struct URLSessionTransport: HTTPTransport {
                 throw PostHogError.transport("Non-HTTP response")
             }
             return (data, http)
-        } catch let error as PostHogError {
-            throw error
         } catch {
-            throw PostHogError.transport(error.localizedDescription)
+            throw Self.postHogError(from: error)
         }
+    }
+
+    /// Maps URL loading without throwing away the numeric Foundation code.
+    ///
+    /// Internal so the package tests can exercise the same boundary without a
+    /// real request or a custom `URLProtocol`; the live `send` path above is
+    /// the sole caller in production.
+    static func postHogError(from error: any Error) -> PostHogError {
+        if let error = error as? PostHogError { return error }
+        let foundation = error as NSError
+        if foundation.domain == NSURLErrorDomain {
+            return .network(code: foundation.code, description: foundation.localizedDescription)
+        }
+        return .transport(error.localizedDescription)
     }
 }
 

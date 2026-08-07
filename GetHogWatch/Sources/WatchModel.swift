@@ -100,6 +100,17 @@ struct WatchHealth: Equatable, Sendable {
 
 // MARK: - Hand-off
 
+/// Provenance of the credential held by a running Watch model.
+///
+/// A missing value in a real credential store is not equivalent to the DEBUG
+/// environment fallback. Keeping that distinction explicit prevents a keychain
+/// record that vanished during `/me` from inheriting the process-only path's
+/// permission to resolve without persistence and restore quarantined files.
+enum WatchCredentialSource: Sendable, Equatable {
+    case stored
+    case processOnly
+}
+
 /// Everything about a running model that a phone hand-off can change.
 ///
 /// A value rather than five reads scattered across `live()` and the session
@@ -108,6 +119,8 @@ struct WatchHealth: Equatable, Sendable {
 /// listener writes those stores and posts, and the model reads them back.
 struct WatchHandoff: Sendable, Equatable {
     let credential: StoredCredential?
+    let credentialSource: WatchCredentialSource
+    let credentialRevision: UInt64
     let organizationID: String?
     let organizationName: String?
     let projectName: String?
@@ -117,6 +130,8 @@ struct WatchHandoff: Sendable, Equatable {
 
     init(
         credential: StoredCredential?,
+        credentialSource: WatchCredentialSource = .stored,
+        credentialRevision: UInt64 = 0,
         organizationID: String? = nil,
         organizationName: String? = nil,
         projectName: String?,
@@ -125,6 +140,8 @@ struct WatchHandoff: Sendable, Equatable {
         watchesDegraded: Bool
     ) {
         self.credential = credential
+        self.credentialSource = credentialSource
+        self.credentialRevision = credentialRevision
         self.organizationID = organizationID
         self.organizationName = organizationName
         self.projectName = projectName
@@ -142,26 +159,158 @@ struct WatchHandoff: Sendable, Equatable {
     static func current(
         credentials: any CredentialStoring = KeychainTokenStore(),
         defaults: UserDefaults = .standard,
-        snapshots: SharedSnapshotStore = .shared
+        snapshots: SharedSnapshotStore = .shared,
+        mutationCoordinator: WatchCredentialMutationCoordinator = .shared
     ) -> WatchHandoff {
-        var credential = try? credentials.load()
-        #if DEBUG
-        if credential == nil,
-           let key = ProcessInfo.processInfo.environment["GETHOG_API_KEY"],
-           !key.isEmpty {
-            // No projectID: `refresh` resolves it through `/users/@me/` once.
-            credential = StoredCredential(key: key, region: .usCloud)
+        mutationCoordinator.withSerializationLock {
+            var credential = try? credentials.load()
+            var credentialSource = WatchCredentialSource.stored
+            #if DEBUG
+            if credential == nil,
+               let key = ProcessInfo.processInfo.environment["GETHOG_API_KEY"],
+               !key.isEmpty {
+                // No projectID: `refresh` resolves it through `/users/@me/` once.
+                credential = StoredCredential(key: key, region: .usCloud)
+                credentialSource = .processOnly
+            }
+            #endif
+            return WatchHandoff(
+                credential: credential,
+                credentialSource: credentialSource,
+                credentialRevision: mutationCoordinator.currentRevision,
+                organizationID: defaults.string(forKey: WatchSettings.organizationIDKey),
+                organizationName: defaults.string(forKey: WatchSettings.organizationNameKey),
+                projectName: defaults.string(forKey: WatchSettings.projectNameKey),
+                headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey),
+                watches: snapshots.metricWatches(),
+                watchesDegraded: defaults.bool(forKey: WatchSettings.watchesDegradedKey)
+            )
         }
-        #endif
-        return WatchHandoff(
-            credential: credential,
-            organizationID: defaults.string(forKey: WatchSettings.organizationIDKey),
-            organizationName: defaults.string(forKey: WatchSettings.organizationNameKey),
-            projectName: defaults.string(forKey: WatchSettings.projectNameKey),
-            headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey),
-            watches: snapshots.metricWatches(),
-            watchesDegraded: defaults.bool(forKey: WatchSettings.watchesDegradedKey)
-        )
+    }
+}
+
+// MARK: - Refresh failures
+
+/// Device-specific recovery for any refresh section that could not reach
+/// PostHog.
+///
+/// The Watch can issue requests through its paired iPhone. In that path
+/// Foundation reports `NSURLErrorNotConnectedToInternet` on the Watch when the
+/// phone is connected over Bluetooth but the phone itself has no internet.
+/// Naming the phone is therefore useful for exactly that code and misleading
+/// for every other transport failure.
+enum WatchRefreshGuidance: Equatable, Sendable {
+    case iPhoneOffline
+
+    var message: String {
+        switch self {
+        case .iPhoneOffline:
+            "Your iPhone may be offline. Connect it to the internet, then try again."
+        }
+    }
+}
+
+/// Why the last attempted refresh did not complete.
+///
+/// This is deliberately separate from the user-facing sentence. A failed
+/// phase used to make every error look like a rejected key, which offered a
+/// destructive replacement form for an outage, a 429, a 5xx, or malformed
+/// JSON. Only a real 401 is authentication failure; everything else keeps the
+/// credential and offers retry or a non-destructive explanation.
+enum WatchRefreshFailure: Equatable, Sendable {
+    case authentication
+    case retryable
+    case invalidResponse
+    case other
+
+    fileprivate var priority: Int {
+        switch self {
+        case .authentication: 4
+        case .invalidResponse: 3
+        case .retryable: 2
+        case .other: 1
+        }
+    }
+
+    var permitsCredentialReplacement: Bool { self == .authentication }
+    var permitsRetry: Bool {
+        switch self {
+        case .retryable, .invalidResponse: true
+        case .authentication, .other: false
+        }
+    }
+}
+
+/// Collects failures from one sequential wrist refresh without turning the
+/// five independent best-effort sections into one all-or-nothing request.
+@MainActor
+private final class WatchRequestFailures {
+    private var sawNotConnectedToInternet = false
+    private(set) var failure: WatchRefreshFailure?
+    private(set) var userMessage: String?
+
+    func capture<Value>(_ operation: () async throws -> Value) async -> Value? {
+        do {
+            return try await operation()
+        } catch {
+            if Self.isNotConnectedToInternet(error) {
+                sawNotConnectedToInternet = true
+            }
+            let classification = Self.classification(of: error)
+            if failure == nil || classification.priority > (failure?.priority ?? 0) {
+                failure = classification
+                userMessage = Self.userMessage(for: error)
+            }
+            return nil
+        }
+    }
+
+    var guidance: WatchRefreshGuidance? {
+        sawNotConnectedToInternet ? .iPhoneOffline : nil
+    }
+
+    private static func isNotConnectedToInternet(_ error: any Error) -> Bool {
+        let code = URLError.Code.notConnectedToInternet.rawValue
+        if let error = error as? PostHogError, error.networkErrorCode == code {
+            return true
+        }
+        let foundation = error as NSError
+        return foundation.domain == NSURLErrorDomain && foundation.code == code
+    }
+
+    private static func classification(of error: any Error) -> WatchRefreshFailure {
+        if error is DecodingError {
+            return .invalidResponse
+        }
+        if let postHog = error as? PostHogError {
+            switch postHog {
+            case .unauthorized:
+                return .authentication
+            case .decoding:
+                return .invalidResponse
+            default:
+                return postHog.isRetryable ? .retryable : .other
+            }
+        }
+        let foundation = error as NSError
+        return foundation.domain == NSURLErrorDomain ? .retryable : .other
+    }
+
+    private static func userMessage(for error: any Error) -> String {
+        if error is DecodingError {
+            return "PostHog's response wasn't in a shape this app could read."
+        }
+        guard let postHog = error as? PostHogError else {
+            return "PostHog couldn't be reached."
+        }
+        switch postHog {
+        case .network, .transport:
+            return "PostHog couldn't be reached."
+        case .http(let status, _) where status >= 500:
+            return "PostHog couldn't be reached."
+        default:
+            return postHog.errorDescription ?? "PostHog couldn't be reached."
+        }
     }
 }
 
@@ -219,6 +368,15 @@ final class WatchModel {
     static let refreshTolerance: TimeInterval = 15 * 60
 
     private(set) var phase: Phase
+    /// Actionable only for the one Foundation code whose Watch meaning is
+    /// specific. It can coexist with `.ready` when an older snapshot remains
+    /// on screen or when another section produced a partial fresh snapshot.
+    private(set) var refreshGuidance: WatchRefreshGuidance?
+    /// Machine-readable recovery for every other failure. UI must consult this
+    /// before offering credential replacement; `.failed` alone is only a
+    /// presentation phase and says nothing about whether the key was rejected.
+    private(set) var refreshFailure: WatchRefreshFailure?
+    private(set) var refreshFailureMessage: String?
     private(set) var snapshot: SharedSnapshot?
     private(set) var health: WatchHealth = .empty
     private(set) var activity: [ActivityLine] = []
@@ -252,12 +410,41 @@ final class WatchModel {
     var hasCredential: Bool { client != nil }
 
     private var client: PostHogClient?
+    /// The credential used to build `client`, retained only so a successful
+    /// identity bootstrap can prove it is still the credential in the
+    /// keychain before adding the resolved project id. A DEBUG environment key
+    /// has no matching store item and therefore remains process-only.
+    private var credential: StoredCredential?
+    private var credentialSource: WatchCredentialSource
+    private var adoptedCredentialRevision: UInt64
     private var projectID: Int?
+    private var projectRegion: PostHogRegion?
     private var projectName: String
     private var watches: [MetricWatch]
     private let transport: any HTTPTransport
     private let store: SharedSnapshotStore
+    private let credentialStore: (any CredentialStoring)?
+    private let mutationCoordinator: WatchCredentialMutationCoordinator
+    private let snapshotDidChange: () -> Void
     private let now: @Sendable () -> Date
+    /// Invalidates every suspended request from the previous hand-off. Main
+    /// actor isolation makes the comparison atomic across each `await`.
+    private var configurationGeneration = 0
+    /// Project-scoped files captured from their active App Group URLs while a
+    /// nil-id credential waits for `/me` to prove which project it belongs to.
+    /// Widgets cannot see this memory, which is the defining property of the
+    /// quarantine: the active files are deleted before init returns.
+    private var quarantinedProjectData: QuarantinedProjectData?
+
+    private struct QuarantinedProjectData {
+        let snapshot: SharedSnapshot?
+        let activity: ActivityFeed?
+        let breachingWatchIDs: Set<String>
+    }
+
+    var canRetryRefresh: Bool {
+        refreshGuidance != nil || refreshFailure?.permitsRetry == true
+    }
 
     init(
         credential: StoredCredential?,
@@ -266,23 +453,79 @@ final class WatchModel {
         watches: [MetricWatch],
         transport: any HTTPTransport,
         store: SharedSnapshotStore,
+        credentialStore: (any CredentialStoring)? = nil,
+        credentialSource: WatchCredentialSource = .stored,
+        credentialRevision: UInt64? = nil,
+        mutationCoordinator: WatchCredentialMutationCoordinator = .init(),
         authenticate: @escaping @Sendable (String) async -> Bool,
         watchesDegraded: Bool = false,
+        snapshotDidChange: @escaping () -> Void = { WatchRefresh.snapshotDidPublish() },
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.client = Self.client(for: credential, transport: transport)
+        self.credential = credential
         self.projectID = credential?.projectID
+        self.projectRegion = credential?.region
         self.projectName = projectName ?? "PostHog"
         self.headlineMetricID = headlineMetricID
         self.watches = watches
         self.transport = transport
         self.store = store
+        self.credentialStore = credentialStore
+        self.credentialSource = credentialSource
+        self.mutationCoordinator = mutationCoordinator
+        self.adoptedCredentialRevision = credentialRevision
+            ?? mutationCoordinator.currentRevision
+        self.snapshotDidChange = snapshotDidChange
         self.authenticate = authenticate
         self.watchesDegraded = watchesDegraded
         self.now = now
-        let carried = store.loadOrNil()
+        self.refreshGuidance = nil
+        self.refreshFailure = nil
+        self.refreshFailureMessage = nil
+        self.quarantinedProjectData = nil
+        let stored = store.loadOrNil()
+        let storedActivity = WatchActivity.read(from: store)
+        let storedBreaches = store.breachingWatchIDs()
+        let isAwaitingProjectVerification = credential != nil && credential?.projectID == nil
+        let carried: SharedSnapshot?
+        if let stored,
+           let credentialProjectID = credential?.projectID,
+           stored.projectID == credentialProjectID,
+           stored.projectRegion == credential?.region {
+            carried = stored
+        } else {
+            carried = nil
+        }
+        let hasStoredProjectData = stored != nil
+            || storedActivity != nil
+            || !storedBreaches.isEmpty
+        // A manually entered or DEBUG-only key has no project id until `/me`
+        // answers. Capture prior files privately, then remove the active copies
+        // before any widget or complication can render them under an unverified
+        // credential. A matching `/me` may restore them later in this process.
+        if isAwaitingProjectVerification, hasStoredProjectData {
+            quarantinedProjectData = QuarantinedProjectData(
+                snapshot: stored,
+                activity: storedActivity,
+                breachingWatchIDs: storedBreaches
+            )
+        }
+        let clearedActiveProjectData = carried == nil && hasStoredProjectData
+        if clearedActiveProjectData {
+            store.clearSnapshot()
+            WatchActivity.clear(from: store)
+            store.clearBreachingWatchIDs()
+        }
         self.snapshot = carried
-        if let feed = WatchActivity.read(from: store) {
+        // A manual credential has no selection payload to persist a project
+        // name. Once its id is verified on a previous launch, the matching
+        // snapshot is the authoritative local spelling and avoids replacing
+        // it with the generic "PostHog" on the next successful refresh.
+        if projectName == nil, let carried {
+            self.projectName = carried.projectName
+        }
+        if carried != nil, let feed = storedActivity {
             self.activity = feed.lines
             self.activityCapturedAt = feed.capturedAt
         }
@@ -291,9 +534,12 @@ final class WatchModel {
             health = WatchHealth.derive(
                 snapshot: carried,
                 watches: watches,
-                previouslyBreaching: store.breachingWatchIDs(),
+                previouslyBreaching: storedBreaches,
                 issues: nil
             ).health
+        }
+        if clearedActiveProjectData {
+            snapshotDidChange()
         }
     }
 
@@ -329,10 +575,16 @@ final class WatchModel {
                 // demo of half the product, and the fixtures are labelled
                 // synthetic wherever they surface.
                 store: .shared,
+                mutationCoordinator: .shared,
                 authenticate: { _ in true }
             )
         }
-        let handoff = WatchHandoff.current()
+        let credentials = KeychainTokenStore()
+        let mutationCoordinator = WatchCredentialMutationCoordinator.shared
+        let handoff = WatchHandoff.current(
+            credentials: credentials,
+            mutationCoordinator: mutationCoordinator
+        )
         return WatchModel(
             credential: handoff.credential,
             projectName: handoff.projectName,
@@ -340,6 +592,10 @@ final class WatchModel {
             watches: handoff.watches,
             transport: URLSessionTransport(),
             store: .shared,
+            credentialStore: credentials,
+            credentialSource: handoff.credentialSource,
+            credentialRevision: handoff.credentialRevision,
+            mutationCoordinator: mutationCoordinator,
             authenticate: WatchModel.deviceOwnerGate,
             watchesDegraded: handoff.watchesDegraded
         )
@@ -372,12 +628,25 @@ final class WatchModel {
     /// hand-off that changed nothing still costs five requests, which is the
     /// right trade for the one that changed everything.
     func adopt(_ handoff: WatchHandoff) async {
+        configurationGeneration &+= 1
+        let incomingProjectID = handoff.credential?.projectID
+        let incomingProjectRegion = handoff.credential?.region
+        if projectID != incomingProjectID || projectRegion != incomingProjectRegion {
+            clearProjectScopedState()
+        }
         client = Self.client(for: handoff.credential, transport: transport)
-        projectID = handoff.credential?.projectID
+        credential = handoff.credential
+        credentialSource = handoff.credentialSource
+        adoptedCredentialRevision = handoff.credentialRevision
+        projectID = incomingProjectID
+        projectRegion = incomingProjectRegion
         projectName = handoff.projectName ?? "PostHog"
         headlineMetricID = handoff.headlineMetricID
         watches = handoff.watches
         watchesDegraded = handoff.watchesDegraded
+        refreshGuidance = nil
+        refreshFailure = nil
+        refreshFailureMessage = nil
         // The rows in hand were evaluated against the *previous* thresholds,
         // so they are not merely stale, they are answers to a question nobody
         // is asking any more.
@@ -385,6 +654,190 @@ final class WatchModel {
         phase = handoff.credential == nil ? .needsKey : Self.idlePhase(for: snapshot)
         guard handoff.credential != nil else { return }
         await refresh(force: true)
+    }
+
+    /// Re-reads a committed hand-off that may have landed before the view's
+    /// notification subscription existed, or while the scene was suspended.
+    /// Same-revision, same-credential reconciliation is a no-op so every
+    /// foreground transition does not force a five-request adoption refresh.
+    /// A failed apply deliberately leaves the committed revision unchanged,
+    /// but its best-effort keychain rollback can fail after writing the incoming
+    /// credential. Comparing identity as well as revision makes that partial
+    /// failure adopt the fail-closed hand-off instead of continuing to use the
+    /// old in-memory client and scope.
+    func reconcile(_ handoff: WatchHandoff) async {
+        guard handoff.credentialRevision != adoptedCredentialRevision
+                || handoff.credential != credential
+                || handoff.credentialSource != credentialSource else { return }
+        await adopt(handoff)
+    }
+
+    /// A stale snapshot is useful only inside one project. When identity
+    /// changes, metrics, flags, events, and breach latches all belong to the
+    /// previous scope and must leave both the running UI and widget container
+    /// before the new network request begins.
+    private func clearProjectScopedState() {
+        quarantinedProjectData = nil
+        snapshot = nil
+        renders.removeAll()
+        activity = []
+        activityCapturedAt = nil
+        health = .empty
+        store.clearSnapshot()
+        WatchActivity.clear(from: store)
+        store.clearBreachingWatchIDs()
+        snapshotDidChange()
+    }
+
+    /// Restores privately quarantined files only after `/me` proves their full
+    /// region-and-project identity. The caller holds both credential mutation
+    /// gates, so a newer hand-off cannot announce itself between the identity
+    /// check and these writes. Returns whether the caller must reload widgets;
+    /// that callback deliberately runs only after both locks are released.
+    private func restoreQuarantinedProjectDataIfMatching() -> Bool {
+        guard let quarantinedProjectData else { return false }
+        self.quarantinedProjectData = nil
+        guard let projectID,
+              let projectRegion,
+              let stored = quarantinedProjectData.snapshot,
+              stored.projectID == projectID,
+              stored.projectRegion == projectRegion else {
+            return false
+        }
+
+        do {
+            try store.write(stored)
+            if let storedActivity = quarantinedProjectData.activity {
+                try WatchActivity.write(storedActivity, to: store)
+            }
+            try store.writeBreachingWatchIDs(
+                quarantinedProjectData.breachingWatchIDs
+            )
+        } catch {
+            // Restoration is all-or-nothing from the extension's point of
+            // view. Remove any prefix that landed before the failed write.
+            store.clearSnapshot()
+            WatchActivity.clear(from: store)
+            store.clearBreachingWatchIDs()
+            return true
+        }
+
+        snapshot = stored
+        if let storedActivity = quarantinedProjectData.activity {
+            activity = storedActivity.lines
+            activityCapturedAt = storedActivity.capturedAt
+        }
+        health = WatchHealth.derive(
+            snapshot: stored,
+            watches: watches,
+            previouslyBreaching: quarantinedProjectData.breachingWatchIDs,
+            issues: nil
+        ).health
+        return true
+    }
+
+    /// Accepts `/me` only if no credential replacement has even been announced
+    /// since this refresh began. The potentially blocking store load happens
+    /// under the serialization lock; revision compare, credential save, and
+    /// quarantine publication then happen together under the intention gate.
+    /// This ordering lets a hand-off announce itself while the old load is
+    /// suspended and guarantees the old response notices before publishing.
+    private func acceptResolvedProject(
+        id resolvedProjectID: Int,
+        name resolvedProjectName: String,
+        adoptedRevision: UInt64
+    ) -> Bool {
+        guard let credential, credential.projectID == nil else { return false }
+
+        enum StoredState {
+            case loaded(StoredCredential)
+            case processOnly
+            case missing
+            case readFailure
+        }
+
+        var accepted = false
+        var shouldReload = false
+        mutationCoordinator.withSerializationLock {
+            let storedState: StoredState
+            if credentialSource == .processOnly {
+                storedState = .processOnly
+            } else if let credentialStore {
+                do {
+                    if let stored = try credentialStore.load() {
+                        storedState = .loaded(stored)
+                    } else {
+                        storedState = .missing
+                    }
+                } catch {
+                    storedState = .readFailure
+                }
+            } else {
+                storedState = .missing
+            }
+
+            _ = mutationCoordinator.performIfSettled(at: adoptedRevision) {
+                switch storedState {
+                case .loaded(let stored):
+                    guard stored.key == credential.key,
+                          stored.region == credential.region,
+                          stored.projectID == nil,
+                          let credentialStore else {
+                        self.quarantinedProjectData = nil
+                        rejectResolvedProject(
+                            "The saved API key changed before project verification finished."
+                        )
+                        return
+                    }
+                    var resolved = stored
+                    resolved.projectID = resolvedProjectID
+                    do {
+                        try credentialStore.save(resolved)
+                        self.credential = resolved
+                    } catch {
+                        // The current process can still use the verified
+                        // identity. The next launch will verify it again.
+                    }
+                case .processOnly:
+                    // The DEBUG environment credential deliberately has no
+                    // keychain record and must remain process-only.
+                    break
+                case .missing:
+                    // The stored credential disappeared. Stop using the
+                    // in-memory client and return to the key-entry state.
+                    self.quarantinedProjectData = nil
+                    client = nil
+                    self.credential = nil
+                    projectID = nil
+                    projectRegion = nil
+                    refreshGuidance = nil
+                    refreshFailure = nil
+                    refreshFailureMessage = nil
+                    phase = .needsKey
+                    return
+                case .readFailure:
+                    self.quarantinedProjectData = nil
+                    rejectResolvedProject("The Watch couldn't read its saved API key.")
+                    return
+                }
+
+                projectID = resolvedProjectID
+                projectName = resolvedProjectName
+                shouldReload = restoreQuarantinedProjectDataIfMatching()
+                accepted = true
+            }
+        }
+        if shouldReload {
+            snapshotDidChange()
+        }
+        return accepted
+    }
+
+    private func rejectResolvedProject(_ reason: String) {
+        refreshGuidance = nil
+        refreshFailure = .retryable
+        refreshFailureMessage = reason + " Try again."
+        phase = .failed(refreshFailureMessage!)
     }
 
     // MARK: - Derived for the pages
@@ -406,68 +859,134 @@ final class WatchModel {
 
     // MARK: - Refresh
 
+    private func refreshContextIsCurrent(
+        generation: Int,
+        adoptedRevision: UInt64
+    ) -> Bool {
+        generation == configurationGeneration
+            && mutationCoordinator.isSettled(at: adoptedRevision)
+    }
+
     func refresh(force: Bool = false) async {
+        let generation = configurationGeneration
+        let adoptedRevision = adoptedCredentialRevision
+        guard await mutationCoordinator.waitUntilSettled(
+            at: adoptedRevision
+        ) else { return }
         guard let client else {
+            refreshGuidance = nil
+            refreshFailure = nil
+            refreshFailureMessage = nil
             phase = .needsKey
             return
         }
-        if !force, let snapshot,
+        if !force, !canRetryRefresh, let snapshot,
            snapshot.staleness(now: now()) < Self.refreshTolerance {
             phase = .ready
             return
         }
         if snapshot == nil { phase = .loading }
+        refreshGuidance = nil
+        refreshFailure = nil
+        refreshFailureMessage = nil
+
+        let failures = WatchRequestFailures()
 
         if projectID == nil {
             // DEBUG env-key bootstrap: one identity request names the project.
             // Never reached on a hand-off credential, which carries the id.
-            if let me: MeResponse = try? await client.send(PostHogAPI.me()),
-               let project = me.currentProject {
-                projectID = project.id
-                projectName = project.name
+            let me: MeResponse? = await failures.capture({
+                try await client.send(PostHogAPI.me())
+            })
+            guard refreshContextIsCurrent(
+                generation: generation, adoptedRevision: adoptedRevision
+            ) else { return }
+            if let project = me?.currentProject {
+                guard acceptResolvedProject(
+                    id: project.id,
+                    name: project.name,
+                    adoptedRevision: adoptedRevision
+                ) else { return }
             }
         }
         guard let projectID else {
-            phase = .failed("Couldn't resolve a project for this key.")
+            refreshGuidance = failures.guidance
+            refreshFailure = failures.failure ?? .other
+            refreshFailureMessage = refreshGuidance?.message
+                ?? failures.userMessage
+                ?? "Couldn't resolve a project for this key."
+            phase = .failed(
+                refreshFailureMessage ?? "Couldn't resolve a project for this key."
+            )
+            return
+        }
+        guard let projectRegion else {
+            refreshFailure = .other
+            refreshFailureMessage = "Couldn't resolve the PostHog endpoint for this key."
+            phase = .failed(refreshFailureMessage!)
             return
         }
 
         var reachedTheAPI = false
-        var metrics: [SharedSnapshot.Metric] = []
+        var fetchedMetrics: [SharedSnapshot.Metric]?
         var freshRenders: [String: InsightRenderModel] = [:]
-        var flags: [SharedSnapshot.Flag] = []
+        var fetchedFlags: [SharedSnapshot.Flag]?
         var issues: [ErrorIssue]?
         var fetchedActivity: ActivityFeed?
 
         // 1 + 2. The pinned (or first) dashboard, cached tile results only —
         // the watch never asks PostHog to recompute anything.
-        if let page: Page<DashboardSummary> = try? await client.send(
-            PostHogAPI.dashboards(projectID: projectID, budget: Self.budget)
-        ) {
+        let dashboardPage: Page<DashboardSummary>? = await failures.capture({
+            try await client.send(
+                PostHogAPI.dashboards(projectID: projectID, budget: Self.budget)
+            )
+        })
+        guard refreshContextIsCurrent(
+            generation: generation, adoptedRevision: adoptedRevision
+        ) else { return }
+        if let page = dashboardPage {
             reachedTheAPI = true
-            if let chosen = page.results.first(where: \.pinned) ?? page.results.first,
-               let dashboard: Dashboard = try? await client.send(
-                   PostHogAPI.dashboard(projectID: projectID, dashboardID: chosen.id)
-               ) {
-                for tile in dashboard.tiles {
-                    guard let metric = SharedSnapshot.Metric(tile: tile, dashboardID: chosen.id)
-                    else { continue }
-                    metrics.append(metric)
-                    if case .timeSeries = tile.renderModel {
-                        freshRenders[metric.id] = tile.renderModel
+            if let chosen = page.results.first(where: \.pinned) ?? page.results.first {
+                let dashboard: Dashboard? = await failures.capture({
+                    try await client.send(
+                        PostHogAPI.dashboard(projectID: projectID, dashboardID: chosen.id)
+                    )
+                })
+                guard refreshContextIsCurrent(
+                    generation: generation, adoptedRevision: adoptedRevision
+                ) else { return }
+                if let dashboard {
+                    var metrics: [SharedSnapshot.Metric] = []
+                    for tile in dashboard.tiles {
+                        guard let metric = SharedSnapshot.Metric(
+                            tile: tile, dashboardID: chosen.id
+                        ) else { continue }
+                        metrics.append(metric)
+                        if case .timeSeries = tile.renderModel {
+                            freshRenders[metric.id] = tile.renderModel
+                        }
                     }
+                    fetchedMetrics = metrics
                 }
+            } else {
+                fetchedMetrics = []
             }
         }
 
         // 3. Flags. `quickToggleAllowed` is the *iOS* per-flag opt-in, which
         // the watch has no UI to grant — written false so a watch-local widget
         // can never offer a toggle the user did not opt into.
-        if let page: Page<FeatureFlag> = try? await client.send(
-            PostHogAPI.featureFlags(projectID: projectID, budget: Self.budget)
-        ) {
+        let flagPage: Page<FeatureFlag>? = await failures.capture({
+            try await client.send(
+                PostHogAPI.featureFlags(projectID: projectID, budget: Self.budget)
+            )
+        })
+        guard refreshContextIsCurrent(
+            generation: generation, adoptedRevision: adoptedRevision
+        ) else { return }
+        if let page = flagPage {
             reachedTheAPI = true
-            flags = page.results
+            fetchedFlags = page.results
                 .filter { !$0.deleted && !$0.archived }
                 .map {
                     SharedSnapshot.Flag(
@@ -484,25 +1003,38 @@ final class WatchModel {
         // `errorTrackingIssues` takes the range as a string, so the budget's
         // own `dateFrom` is passed rather than a literal that could disagree
         // with the events feed's floor one block below.
-        if let data = try? await client.data(for: PostHogAPI.errorTrackingIssues(
-            projectID: projectID,
-            dateFrom: Self.budget.dateFrom,
-            orderBy: "occurrences",
-            limit: Self.errorPulseLimit
-        )), let response = try? ErrorTrackingResponse.decode(from: data) {
+        let errorResponse: ErrorTrackingResponse? = await failures.capture({
+            let data = try await client.data(for: PostHogAPI.errorTrackingIssues(
+                    projectID: projectID,
+                    dateFrom: Self.budget.dateFrom,
+                    orderBy: "occurrences",
+                    limit: Self.errorPulseLimit
+                ))
+            return try ErrorTrackingResponse.decode(from: data)
+        })
+        guard refreshContextIsCurrent(
+            generation: generation, adoptedRevision: adoptedRevision
+        ) else { return }
+        if let response = errorResponse {
             reachedTheAPI = true
             issues = response.issues
         }
 
         // 5. Activity: the kit's trimmed, budgeted feed — four columns, no
         // `properties`, the budget's window and page size. No paging.
-        if let response: QueryResponse = try? await client.send(
-            PostHogAPI.recentEventLines(
-                projectID: projectID,
-                budget: Self.budget,
-                now: now()
+        let activityResponse: QueryResponse? = await failures.capture({
+            try await client.send(
+                PostHogAPI.recentEventLines(
+                    projectID: projectID,
+                    budget: Self.budget,
+                    now: now()
+                )
             )
-        ) {
+        })
+        guard refreshContextIsCurrent(
+            generation: generation, adoptedRevision: adoptedRevision
+        ) else { return }
+        if let response = activityResponse {
             reachedTheAPI = true
             // Only a query that answered replaces the carried feed. One that
             // failed leaves the previous rows and their own age in place,
@@ -515,42 +1047,85 @@ final class WatchModel {
         // A wake that found no network must not overwrite a good snapshot with
         // an empty one — the same rule the phone's publisher follows.
         guard reachedTheAPI else {
-            phase = snapshot == nil
-                ? .failed("PostHog couldn't be reached.")
-                : .ready
+            _ = mutationCoordinator.performIfSettled(at: adoptedRevision) {
+                refreshGuidance = failures.guidance
+                refreshFailure = failures.failure ?? .other
+                refreshFailureMessage = refreshGuidance?.message
+                    ?? failures.userMessage
+                    ?? "PostHog couldn't be reached."
+                if refreshFailure == .authentication {
+                    // A stale metric remains useful context, but a real 401
+                    // still exposes the only action that can recover.
+                    phase = .failed(refreshFailureMessage ?? "Your API key was rejected.")
+                } else {
+                    phase = snapshot == nil
+                        ? .failed(refreshFailureMessage ?? "PostHog couldn't be reached.")
+                        : .ready
+                }
+            }
             return
         }
 
-        let fresh = SharedSnapshot(
-            projectID: projectID,
-            projectName: projectName,
-            metrics: metrics,
-            flags: flags,
-            capturedAt: now()
-        )
-        snapshot = fresh
-        renders = freshRenders
-        try? store.write(fresh)
-        if let fetchedActivity {
-            activity = fetchedActivity.lines
-            activityCapturedAt = fetchedActivity.capturedAt
-            try? WatchActivity.write(fetchedActivity, to: store)
-        }
+        let didPublish = mutationCoordinator.performIfSettled(at: adoptedRevision) {
+            // A best-effort refresh may be partial: one endpoint answered while
+            // another failed. Keep its recovery alongside answered sections.
+            refreshGuidance = failures.guidance
+            refreshFailure = failures.failure
+            refreshFailureMessage = refreshGuidance?.message ?? failures.userMessage
 
-        let derived = WatchHealth.derive(
-            snapshot: fresh,
-            watches: watches,
-            previouslyBreaching: store.breachingWatchIDs(),
-            issues: issues
-        )
-        health = derived.health
-        try? store.writeBreachingWatchIDs(derived.breaching)
-        // The files the complications read have just changed, and a reload is
-        // what actually makes one current. Deliberately not in `setFlag`: no
-        // watch complication draws a flag — every flag written here carries
-        // `quickToggleAllowed: false` — so that write moves nothing on a face.
-        WatchRefresh.snapshotDidPublish()
-        phase = .ready
+            // Metrics and flags merge independently with same-project carry.
+            let carried = snapshot?.projectID == projectID
+                && snapshot?.projectRegion == projectRegion ? snapshot : nil
+            var publishedSnapshot = carried
+            if fetchedMetrics != nil || fetchedFlags != nil {
+                let complete = fetchedMetrics != nil && fetchedFlags != nil
+                let merged = SharedSnapshot(
+                    projectID: projectID,
+                    projectName: projectName,
+                    metrics: fetchedMetrics ?? carried?.metrics ?? [],
+                    flags: fetchedFlags ?? carried?.flags ?? [],
+                    ingestion: carried?.ingestion,
+                    quota: carried?.quota,
+                    projectRegion: projectRegion,
+                    capturedAt: complete ? now() : carried?.capturedAt ?? now()
+                )
+                snapshot = merged
+                publishedSnapshot = merged
+                if fetchedMetrics != nil {
+                    renders = freshRenders
+                }
+                try? store.write(merged)
+            }
+            if let fetchedActivity {
+                activity = fetchedActivity.lines
+                activityCapturedAt = fetchedActivity.capturedAt
+                try? WatchActivity.write(fetchedActivity, to: store)
+            }
+
+            let derived = WatchHealth.derive(
+                snapshot: publishedSnapshot,
+                watches: watches,
+                previouslyBreaching: store.breachingWatchIDs(),
+                issues: issues
+            )
+            health = derived.health
+            try? store.writeBreachingWatchIDs(derived.breaching)
+            phase = refreshFailure == .authentication
+                ? .failed(refreshFailureMessage ?? "Your API key was rejected.")
+                : .ready
+        }
+        guard didPublish else { return }
+        // Snapshot, activity, and breach state are three files read together by
+        // complications. Reload only after every answered section has landed,
+        // so the extension cannot observe a half-published refresh.
+        snapshotDidChange()
+    }
+
+    /// The explicit recovery action shown with a transient refresh failure.
+    /// Forced so a cached snapshot inside the ordinary 15-minute tolerance can
+    /// never swallow the user's retry tap.
+    func retry() async {
+        await refresh(force: true)
     }
 
     // MARK: - Flag writes
@@ -561,7 +1136,17 @@ final class WatchModel {
     /// the time this is called — see `FlagToggleFlow`, which is the only thing
     /// that may reach it.
     func setFlag(id: Int, active: Bool) async -> String? {
+        let adoptedRevision = adoptedCredentialRevision
+        guard mutationCoordinator.isSettled(at: adoptedRevision) else {
+            return "The project changed before PostHog answered. Refresh and try again."
+        }
         guard let client, let projectID else { return "Not signed in." }
+        guard snapshot?.projectID == projectID,
+              snapshot?.projectRegion == projectRegion,
+              snapshot?.flag(id: id) != nil else {
+            return "Refresh this project before changing a flag."
+        }
+        let generation = configurationGeneration
         do {
             _ = try await client.data(
                 for: PostHogAPI.setFlagActive(projectID: projectID, flagID: id, active: active)
@@ -570,7 +1155,17 @@ final class WatchModel {
             return (error as? PostHogError)?.errorDescription
                 ?? "PostHog refused the change."
         }
-        if let current = snapshot {
+        guard refreshContextIsCurrent(
+                generation: generation, adoptedRevision: adoptedRevision
+              ),
+              self.projectID == projectID,
+              self.projectRegion == projectRegion,
+              let current = snapshot,
+              current.projectID == projectID,
+              current.projectRegion == projectRegion else {
+            return "The project changed before PostHog answered. Refresh and try again."
+        }
+        if current.flag(id: id) != nil {
             let flipped = current.flags.map { flag in
                 flag.id == id
                     ? SharedSnapshot.Flag(
@@ -588,10 +1183,16 @@ final class WatchModel {
                 flags: flipped,
                 ingestion: current.ingestion,
                 quota: current.quota,
+                projectRegion: current.projectRegion,
                 capturedAt: current.capturedAt
             )
-            snapshot = updated
-            try? store.write(updated)
+            let published = mutationCoordinator.performIfSettled(at: adoptedRevision) {
+                snapshot = updated
+                try? store.write(updated)
+            }
+            guard published else {
+                return "The project changed before PostHog answered. Refresh and try again."
+            }
         }
         return nil
     }

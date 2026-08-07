@@ -92,6 +92,10 @@ enum WatchActivity {
         guard feed.lines.count > maxLines else { return feed }
         return ActivityFeed(lines: Array(feed.lines.prefix(maxLines)), capturedAt: feed.capturedAt)
     }
+
+    static func clear(from store: SharedSnapshotStore) {
+        try? FileManager.default.removeItem(at: fileURL(in: store))
+    }
 }
 
 /// The feed with the moment it was read, so the page can age it honestly.

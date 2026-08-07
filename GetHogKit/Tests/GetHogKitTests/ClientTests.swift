@@ -176,4 +176,24 @@ struct ClientTests {
         )
         #expect(page.results.first?.key == "example-navigation")
     }
+
+    @Test("URL loading errors retain the Foundation error code")
+    func urlLoadingErrorsRetainTheirCode() {
+        let mapped = URLSessionTransport.postHogError(
+            from: NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorNotConnectedToInternet,
+                userInfo: [NSLocalizedDescriptionKey: "Synthetic offline failure"]
+            )
+        )
+
+        guard case .network(let code, let description) = mapped else {
+            Issue.record("Expected a URL loading error, got \(mapped)")
+            return
+        }
+        #expect(code == NSURLErrorNotConnectedToInternet)
+        #expect(description == "Synthetic offline failure")
+        #expect(mapped.networkErrorCode == NSURLErrorNotConnectedToInternet)
+        #expect(mapped.isRetryable)
+    }
 }

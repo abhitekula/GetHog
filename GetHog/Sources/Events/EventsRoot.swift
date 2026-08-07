@@ -354,9 +354,15 @@ struct EventsRoot: View {
                 .navigationTitle("Events")
                 .toolbar {
                     ProjectSwitcher()
+                    #if !os(tvOS)
+                    // tvOS guarantees persistence only for a small preferences
+                    // domain; its other local storage is purgeable. Saved
+                    // filters are user-authored and have no server source, so
+                    // the TV cannot honestly offer this authoring surface.
                     ToolbarItem(placement: .topBarTrailing) {
                         SavedFiltersMenu(projectID: model.projectID, tokens: $tokens)
                     }
+                    #endif
                     if let export = store.export {
                         ToolbarItem(placement: .topBarTrailing) {
                             CSVShareMenu(export: export)

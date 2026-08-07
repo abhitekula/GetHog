@@ -314,6 +314,8 @@ targets:
       # real replay here.
       - path: GetHog/Resources
         buildPhase: resources
+      - path: GetHogVision/Resources
+        buildPhase: resources
     dependencies:
       - package: GetHogKit
       - package: GetHogUI
@@ -333,6 +335,7 @@ targets:
         # both with Optic ID, which is why the string says so. `NSFaceID…` is
         # still the key's name on every platform.
         INFOPLIST_KEY_NSFaceIDUsageDescription: "GetHog asks for Optic ID before revealing your PostHog API key or changing a live feature flag."
+        ASSETCATALOG_COMPILER_APPICON_NAME: VisionAppIcon
         TARGETED_DEVICE_FAMILY: "7"
         ENABLE_PREVIEWS: YES
 
@@ -374,6 +377,13 @@ targets:
       - path: GetHogWatch/Sources
       - path: GetHog/Resources/DemoData
         buildPhase: resources
+      # The Watch app reads standard defaults for hand-off metadata and wake
+      # scheduling, so its own bundle must carry the required-reason manifest;
+      # the copy embedded in the containing iOS app is a different bundle.
+      - path: GetHog/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: GetHogWatch/Resources
+        buildPhase: resources
     dependencies:
       - package: GetHogKit
       - package: GetHogUI
@@ -387,6 +397,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: GetHogWatch/Support/GetHogWatch.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "4"
         ENABLE_PREVIEWS: YES
 
@@ -471,6 +482,12 @@ targets:
       - GetHog/Sources/App/ProjectSwitcher.swift
       - path: GetHog/Resources/DemoData
         buildPhase: resources
+      # Shared screens use app-private defaults on TV too. App Store validation
+      # inspects this platform bundle, not the iOS app with the same identity.
+      - path: GetHog/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: GetHogTV/Resources
+        buildPhase: resources
     dependencies:
       - package: GetHogKit
       - package: GetHogUI
@@ -486,6 +503,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
         TARGETED_DEVICE_FAMILY: "3"
         ENABLE_PREVIEWS: YES
 
@@ -674,6 +692,10 @@ targets:
     platform: visionOS
     sources:
       - path: GetHogVision/UITests
+      # Shared with the iOS and Mac UI targets rather than copied, for the
+      # reason GetHogMacUITests records: its wait/settle/pause helpers encode
+      # measured facts about this app, and two copies would drift.
+      - path: GetHogUITests/DemoLaunch.swift
     dependencies:
       - target: GetHogVision
     settings:
@@ -705,6 +727,10 @@ targets:
     platform: watchOS
     sources:
       - path: GetHogWatch/UITests
+      # Shared, not copied — see GetHogMacUITests. The polling waits matter
+      # most here: referencing a failing XCTest wait long enough has already
+      # taken this platform's test host down once (task-4 report §9.3).
+      - path: GetHogUITests/DemoLaunch.swift
     dependencies:
       - target: GetHogWatch
     settings:
@@ -736,6 +762,10 @@ targets:
     platform: tvOS
     sources:
       - path: GetHogTV/UITests
+      # Shared, not copied — see GetHogMacUITests. The launch gate inside it
+      # takes a tvOS arm of its own, because a tvOS shell draws no navigation
+      # bar for the iOS arm to wait on.
+      - path: GetHogUITests/DemoLaunch.swift
     dependencies:
       - target: GetHogTV
     settings:

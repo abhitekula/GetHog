@@ -108,6 +108,14 @@ enum DemoLaunch {
             .firstMatch,
             timeout: timeout
         )
+        #elseif os(tvOS)
+        // A tvOS shell draws no navigation bar at all — `TVRootView` is a
+        // `.sidebarAdaptable` sidebar over `TVDestination`, and the roots below it
+        // build their compact, one-column shape. The gate is therefore the first
+        // sidebar destination, which is also the default selection and which nothing
+        // before the shell draws: `TVKeyEntryView` says "Connect this Apple TV to
+        // PostHog" and the loading phase draws a bare `ProgressView`.
+        wait(for: app.staticTexts["Dashboards"].firstMatch, timeout: timeout)
         #else
         wait(for: app.navigationBars.firstMatch, timeout: timeout)
         #endif

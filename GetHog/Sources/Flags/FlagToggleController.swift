@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
 import Observation
 import GetHogKit
 
