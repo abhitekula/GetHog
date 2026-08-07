@@ -425,9 +425,24 @@ public struct SharedSnapshotStore: Sendable {
     /// The `#else` is the answer for four platforms, not one, and that is
     /// deliberate: only the Mac sandbox demands the prefix, so every other
     /// shell resolves the same `group.app.gethog` the phone writes and reads
-    /// the phone's snapshot without a line of platform code. `SharedSnapshotTests`
-    /// pins each of those four separately, so an `#elseif` added here for one
-    /// platform cannot quietly rename another's container.
+    /// the phone's snapshot without a line of platform code.
+    ///
+    /// **What the tests actually establish, which is less than one branch per
+    /// platform.** `SharedSnapshotTests.platformAwareAppGroupIdentifier` pins
+    /// `resolvedAppGroupIdentifier(teamIDPrefix:requiresTeamIDPrefix:)` — the
+    /// platform-*independent* rule below — for both values of the flag, from
+    /// whichever platform runs the suite, and then pins this property inside
+    /// `#if os(macOS)` / `#else`. The kit's tests run on macOS only, via
+    /// `swift test`; the other four platforms are compiled and never executed.
+    /// So the executed assertion is the macOS-true one, and "false everywhere
+    /// else" is pinned as a *rule* rather than observed on any of the four.
+    /// A per-platform test would need a per-platform test host, which this
+    /// package does not have.
+    ///
+    /// The practical consequence: an `#elseif os(watchOS)` added here would
+    /// compile, would rename the wrist's container, and **no test would fail**.
+    /// Read the four-platform claim above as the contract this file is
+    /// promising, not as something the suite is checking.
     static var platformRequiresTeamIDPrefix: Bool {
         #if os(macOS)
         true
