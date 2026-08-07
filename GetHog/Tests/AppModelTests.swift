@@ -210,10 +210,18 @@ struct AppModelTests {
 
 // MARK: - Reducing a tile to a widget metric
 
-/// Pins `AppModel.metric(from:on:)`, which reduces one dashboard tile to the
-/// value the widgets, Smart Stack and metric alerts all read.
+/// Pins `SharedSnapshot.Metric.init?(tile:dashboardID:)` — the kit's reduction
+/// of one dashboard tile to the value the widgets, Smart Stack and metric
+/// alerts all read — from the app's side.
 ///
-/// This function was `private static` and had no test at all, and that is
+/// The app carried its own copy of this rule until it was retired in favour of
+/// the kit's. This suite was written against that copy and is kept, re-pointed,
+/// rather than deleted: the kit's own "Dashboard tile reduced to a snapshot
+/// metric" suite pins the same initialiser from inside the package, and these
+/// pin that the *app* is calling it and getting these answers. A reduction with
+/// one implementation and two callers is worth checking at both.
+///
+/// The reduction was `private static` and had no test at all, and that is
 /// exactly how a permanent false decline reached the Lock Screen: the funnel
 /// branch filled `SharedSnapshot.Metric.previous` — documented as "the
 /// comparison-period value, nil means not known" — with the funnel's *step-1
@@ -249,7 +257,7 @@ struct TileMetricTests {
     @Test("a funnel headline carries no comparison, because a funnel has none")
     func funnelHasNoBaseline() throws {
         let metric = try #require(
-            AppModel.metric(from: Self.tile(Self.funnelJSON), on: 9)
+            SharedSnapshot.Metric(tile: Self.tile(Self.funnelJSON), dashboardID: 9)
         )
 
         // The last step is the headline, and that part was always right.
@@ -282,7 +290,7 @@ struct TileMetricTests {
     @Test("a funnel cannot fire a percentage-change notification")
     func funnelNeverFiresAChangeAlert() throws {
         let metric = try #require(
-            AppModel.metric(from: Self.tile(Self.funnelJSON), on: 9)
+            SharedSnapshot.Metric(tile: Self.tile(Self.funnelJSON), dashboardID: 9)
         )
         let snapshot = SharedSnapshot(
             projectID: 42, projectName: "Prod",
@@ -309,7 +317,7 @@ struct TileMetricTests {
     @Test("a funnel still fires an absolute threshold notification")
     func funnelStillFiresThresholdAlerts() throws {
         let metric = try #require(
-            AppModel.metric(from: Self.tile(Self.funnelJSON), on: 9)
+            SharedSnapshot.Metric(tile: Self.tile(Self.funnelJSON), dashboardID: 9)
         )
         let snapshot = SharedSnapshot(
             projectID: 42, projectName: "Prod",
@@ -338,7 +346,7 @@ struct TileMetricTests {
               "result": [{"label": "signups", "aggregated_value": 1234}]}}
             """)
 
-        let metric = try #require(AppModel.metric(from: tile, on: 9))
+        let metric = try #require(SharedSnapshot.Metric(tile: tile, dashboardID: 9))
         #expect(metric.value == 1234)
         #expect(metric.previous == nil)
         #expect(metric.direction == .unknown)
@@ -356,7 +364,7 @@ struct TileMetricTests {
                           "days": ["2026-01-01", "2026-01-02", "2026-01-03"]}]}}
             """)
 
-        let metric = try #require(AppModel.metric(from: tile, on: 9))
+        let metric = try #require(SharedSnapshot.Metric(tile: tile, dashboardID: 9))
         #expect(metric.value == 15)
         #expect(metric.previous == 20)
         #expect(metric.direction == .down)
@@ -375,6 +383,6 @@ struct TileMetricTests {
                           "values": [{"count": 10}, {"count": 4}]}]}}
             """)
 
-        #expect(AppModel.metric(from: tile, on: 9) == nil)
+        #expect(SharedSnapshot.Metric(tile: tile, dashboardID: 9) == nil)
     }
 }
