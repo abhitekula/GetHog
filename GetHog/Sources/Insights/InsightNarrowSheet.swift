@@ -419,7 +419,12 @@ private struct InsightFilterPicker: View {
                     valueSection
                 }
             }
+            // Absent on tvOS for the reason `DashboardsRoot` records in
+            // full: the field takes initial focus there and raises the
+            // full-screen grid keyboard over the list it filters.
+            #if !os(tvOS)
             .searchable(text: $search, prompt: "Search properties")
+            #endif
             .pageSurface()
             .navigationTitle("Add a filter")
             .navigationBarTitleDisplayMode(.inline)

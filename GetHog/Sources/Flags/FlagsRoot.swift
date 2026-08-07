@@ -151,7 +151,12 @@ struct FlagsRoot: View {
                 .navigationTitle("Flags")
                 .toolbar { ProjectSwitcher() }
                 .projectSubtitle()
+                // Absent on tvOS for the reason `DashboardsRoot` records in
+                // full: the field takes initial focus there and raises the
+                // full-screen grid keyboard over the list it filters.
+                #if !os(tvOS)
                 .searchable(text: $search, prompt: "Search flag key or name")
+                #endif
                 .screenRefreshable { await load() }
                 .task(id: model.projectID) {
                     AppTips.refresh(from: model)

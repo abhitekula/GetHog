@@ -378,13 +378,14 @@ struct EventsRoot: View {
                 // while the iPhone drew it normally. The drawer is where the
                 // field belongs at both widths, and `.always` keeps a *filter*
                 // visible, which is the point of one.
-                #if os(tvOS)
-                // The token overload of `searchable` does not exist on tvOS —
-                // not the placement, the whole initializer. Text search still
-                // narrows the feed, which is the affordance a remote can drive;
-                // saved-filter tokens stay a pointer-platform shape.
-                .searchable(text: $search, prompt: "Filter events")
-                #else
+                // Two separate reasons this is absent on tvOS, and the second
+                // is the decisive one. The token overload does not exist
+                // there — not the placement, the whole initializer. And the
+                // plain overload that does exist is the wrong shape anyway,
+                // for the reason `DashboardsRoot` records in full: the field
+                // takes initial focus and raises the full-screen grid keyboard
+                // over the feed it filters.
+                #if !os(tvOS)
                 .searchable(
                     text: $search,
                     tokens: $tokens,

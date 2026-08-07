@@ -187,6 +187,10 @@ struct SessionsRoot: View {
                 // beside it, which also filtered locally. Both are server-side
                 // now, and the URL half moved to its own field on the filter
                 // sheet — one text box cannot drive two AND'd clauses.
+                // Absent on tvOS for the reason `DashboardsRoot` records in
+                // full: the field takes initial focus there and raises the
+                // full-screen grid keyboard over the list it filters.
+                #if !os(tvOS)
                 .searchable(
                     text: Binding(
                         get: { store.filter.personSearch ?? "" },
@@ -195,6 +199,7 @@ struct SessionsRoot: View {
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Search person email"
                 )
+                #endif
                 .screenRefreshable { await load() }
                 // One task covers project switches, typing and every control on
                 // the filter sheet. `.task(id:)` cancels the previous one, so a

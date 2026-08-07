@@ -176,7 +176,25 @@ struct DashboardsRoot: View {
             .toolbar { ProjectSwitcher() }
 #endif
             .projectSubtitle()
+            // **Measured, not reasoned.** `.searchable` compiles on tvOS and
+            // is the wrong shape there, and the screenshot of the first build
+            // says so plainly: the field is the topmost focusable thing on the
+            // screen, so it takes initial focus, and a focused search field on
+            // tvOS raises the full-screen grid keyboard. The app opened onto a
+            // keyboard covering its own dashboards, before anybody had asked
+            // to search anything.
+            //
+            // Search on tvOS is a destination, not a field above a list — the
+            // platform's own shape for it is `Tab(role: .search)`. This target
+            // does not compile `Search/`, so there is no destination to point
+            // at in v1 and the honest answer is absence: the lists are short,
+            // sorted and focus-navigable, and filtering them by picking
+            // letters off a grid with a remote was never the affordance that
+            // justified covering the screen. The same seam is on every ridden
+            // root, each pointing here.
+            #if !os(tvOS)
             .searchable(text: $search, prompt: "Search dashboards")
+            #endif
             .screenRefreshable { await load() }
             .task(id: model.projectID) {
                 await load()

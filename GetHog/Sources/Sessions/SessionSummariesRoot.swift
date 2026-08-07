@@ -44,7 +44,12 @@ struct SessionSummariesRoot: View {
                 ToolbarItem(placement: .topBarTrailing) { filterMenu }
             }
             .projectSubtitle()
+            // Absent on tvOS for the reason `DashboardsRoot` records in
+            // full: the field takes initial focus there and raises the
+            // full-screen grid keyboard over the list it filters.
+            #if !os(tvOS)
             .searchable(text: $search, prompt: "Search the narrative or person")
+            #endif
             .screenRefreshable { await load() }
             // Keyed on the filters too, so changing one issues the new request
             // rather than re-filtering the page already in hand — the counts

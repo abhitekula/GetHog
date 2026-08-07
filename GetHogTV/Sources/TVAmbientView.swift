@@ -85,37 +85,45 @@ struct TVAmbientView: View {
     @State private var clock = 0
 
     var body: some View {
-        Button(action: exit) {
-            content
-        }
-        .buttonStyle(.plain)
-        .background(Theme.pageBackground)
-        .onExitCommand(perform: exit)
-        .onMoveCommand { direction in
-            cycler.skip(direction)
-            clock += 1
-        }
-        .onAppear {
-            cycler.replace(metrics: Self.pinnedMetrics())
-            UIApplication.shared.isIdleTimerDisabled = true
-        }
-        .onDisappear {
-            // Leaving the wallboard gives the idle timer back. A flag left set
-            // by a screen nobody is looking at is how an Apple TV ends up never
-            // sleeping.
-            UIApplication.shared.isIdleTimerDisabled = false
-        }
-        .task(id: clock) {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: TVAmbientCycler.interval)
-                guard !Task.isCancelled else { return }
-                cycler.advance()
-                // The periodic re-assert. See the type's doc comment: one write
-                // at `onAppear` claims the flag for a moment, and this claims it
-                // for as long as the screen is up.
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.pageBackground)
+            // `.focusable()` and a tap, rather than wrapping the screen in a
+            // `Button`. Focusable it must be — `onMoveCommand` only reaches a
+            // focused view — but every tvOS button style paints focus, and a
+            // `Button` the size of the screen therefore lifted the entire
+            // wallboard onto a light card the moment it took focus. Measured,
+            // not predicted: the first ambient screenshot came out white.
+            // SwiftUI routes a select press to `onTapGesture` on a focusable
+            // view, which is the same action with none of the chrome.
+            .focusable()
+            .onTapGesture(perform: exit)
+            .onExitCommand(perform: exit)
+            .onMoveCommand { direction in
+                cycler.skip(direction)
+                clock += 1
+            }
+            .onAppear {
+                cycler.replace(metrics: Self.pinnedMetrics())
                 UIApplication.shared.isIdleTimerDisabled = true
             }
-        }
+            .onDisappear {
+                // Leaving the wallboard gives the idle timer back. A flag left set
+                // by a screen nobody is looking at is how an Apple TV ends up never
+                // sleeping.
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+            .task(id: clock) {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: TVAmbientCycler.interval)
+                    guard !Task.isCancelled else { return }
+                    cycler.advance()
+                    // The periodic re-assert. See the type's doc comment: one write
+                    // at `onAppear` claims the flag for a moment, and this claims it
+                    // for as long as the screen is up.
+                    UIApplication.shared.isIdleTimerDisabled = true
+                }
+            }
     }
 
     /// The pinned dashboard's tiles, as the phone and the watch already reduce
@@ -133,11 +141,25 @@ struct TVAmbientView: View {
                     .font(Theme.Typography.title)
                     .foregroundStyle(Theme.Ink.secondary)
 
-                Text(Self.headline(metric))
+                Text(metric.value.compactFormatted)
                     .font(.system(size: 160, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .minimumScaleFactor(0.4)
                     .lineLimit(1)
+
+                // The unit gets its own line rather than riding on the
+                // headline. Measured: a bar-value tile's unit is the *label of
+                // the bar it came from*, which on the demo data is a URL —
+                // "393 example.com synthetic fixture 6" on one line shrank the
+                // number to a fraction of its size to fit a string nobody
+                // reads from the sofa. The figure is what a wallboard is for;
+                // the label says what it counts.
+                if let unit = metric.unit, !unit.isEmpty {
+                    Text(unit)
+                        .font(Theme.Typography.title)
+                        .foregroundStyle(Theme.Ink.secondary)
+                        .lineLimit(2)
+                }
 
                 if let delta = Self.deltaPhrase(metric) {
                     Text(delta)

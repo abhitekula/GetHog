@@ -132,11 +132,21 @@ struct TVKeyEntryView: View {
                                     .accessibilityLabel("Connecting")
                             }
                         }
+                        // **Measured.** The app applies `.tint(Theme.accent)`
+                        // at the scene, and a tvOS button fills itself with the
+                        // tint *and* draws its label in it — so both of these
+                        // rendered as solid teal pills with no readable text at
+                        // all. The ink that belongs on the accent is named, the
+                        // same pairing `EmptyStateView` uses for its action.
+                        .foregroundStyle(Theme.inkOnAccent)
                     }
                     .disabled(!entry.canConnect || isConnecting)
 
-                    Button("Browse the demo") {
+                    Button {
                         Task { await model.enterDemo() }
+                    } label: {
+                        Text("Browse the demo")
+                            .foregroundStyle(Theme.inkOnAccent)
                     }
                     .disabled(isConnecting)
                 }
@@ -146,8 +156,15 @@ struct TVKeyEntryView: View {
                     .foregroundStyle(Theme.Ink.secondary)
             }
             .padding(Theme.Space.xl)
+            // Capped so the explanatory prose keeps a readable measure on a
+            // 1,920pt screen, then centred in the full width — the ground has
+            // to be claimed *outside* this cap, or the scroll view sizes to its
+            // content and leaves the system's own backdrop showing down both
+            // sides. Measured: the first key-entry screenshot did exactly that.
             .frame(maxWidth: 1_100, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.pageBackground)
     }
 
