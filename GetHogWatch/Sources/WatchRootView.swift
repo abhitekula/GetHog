@@ -35,8 +35,19 @@ struct WatchRootView: View {
         // makes this safe to attach: a resume asks the store how old the
         // snapshot is before it asks PostHog anything.
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await model.refresh() }
+            if phase == .active {
+                Task { await model.refresh() }
+                return
+            }
+            // Leaving the wrist is the moment to ask for the next unattended
+            // wake: the app is about to stop being able to refresh itself, and
+            // `WatchRefresh` will decline if there is no credential or a
+            // request is already outstanding.
+            guard phase == .background else { return }
+            WatchRefresh.scheduleNextWake(
+                hasCredential: model.hasCredential,
+                lastRefreshedAt: model.snapshot?.capturedAt
+            )
         }
     }
 

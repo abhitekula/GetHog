@@ -220,6 +220,13 @@ final class WatchModel {
     /// no test has to satisfy a passcode prompt.
     let authenticate: @Sendable (String) async -> Bool
 
+    /// Whether an unattended wake would have anything to fetch with.
+    ///
+    /// `WatchRefresh` asks before it schedules: a wake with no credential can
+    /// only fail, and failures teach watchOS that this app's background
+    /// requests are not worth granting.
+    var hasCredential: Bool { client != nil }
+
     private var client: PostHogClient?
     private var projectID: Int?
     private var projectName: String
@@ -508,6 +515,11 @@ final class WatchModel {
         )
         health = derived.health
         try? store.writeBreachingWatchIDs(derived.breaching)
+        // The files the complications read have just changed, and a reload is
+        // what actually makes one current. Deliberately not in `setFlag`: no
+        // watch complication draws a flag — every flag written here carries
+        // `quickToggleAllowed: false` — so that write moves nothing on a face.
+        WatchRefresh.snapshotDidPublish()
         phase = .ready
     }
 
