@@ -16,7 +16,14 @@ final class ContentProvider: TVTopShelfContentProvider {
         // handler "as soon as possible", and everything this process knows is
         // one JSON read away. No fetch, no queue hop, no isolation boundary
         // for the compiler to prove safe across a non-Sendable ObjC protocol.
-        let snapshot = SharedSnapshotStore.shared.loadOrNil()
-        completionHandler(TopShelfContent.make(snapshot: snapshot, now: Date()).sectioned())
+        let store = SharedSnapshotStore.shared
+        let content = TopShelfContent.make(snapshot: store.loadOrNil(), now: Date())
+        guard !content.sections.isEmpty,
+              let artwork = TopShelfArtworkStore.ensureArtwork(in: store.directory)
+        else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(content.sectioned(artwork: artwork))
     }
 }

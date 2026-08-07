@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Nothing tvOS-specific yet: the generated Info.plist covers a stub. The
-     file exists as the deterministic home for the keys later waves add; an
-     empty dict merges nothing, by design. -->
+<!-- The TV shell registers only the route its Top Shelf items promise. -->
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>app.gethog.GetHog.tv</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gethog</string>
+			</array>
+		</dict>
+	</array>
+</dict>
 </plist>

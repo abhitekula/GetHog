@@ -8,10 +8,11 @@ import SwiftUI
 /// One `WindowGroup`, because `openWindow` is unavailable on tvOS and there is
 /// one screen to put a window on. No `insightCSVExporter()` — the exporter it
 /// hosts is compiled to the identity here, since `.fileExporter` does not exist
-/// on the platform. No `onOpenURL`, no Handoff continuation and no intent
-/// plumbing: nothing on tvOS delivers any of the three. No refresh scheduler:
-/// this shell schedules no background wake, which is why `BackgroundRefresh`'s
-/// twin in `TVAdaptations` is a true no-op rather than a stub.
+/// on the platform. The one `onOpenURL` route belongs to Top Shelf and lands on
+/// Dashboards; there is no Handoff continuation or intent plumbing because
+/// tvOS delivers neither. No refresh scheduler: this shell schedules no
+/// background wake, which is why `BackgroundRefresh`'s twin in `TVAdaptations`
+/// is a true no-op rather than a stub.
 @main
 struct GetHogTVApp: App {
     @Environment(\.scenePhase) private var scenePhase

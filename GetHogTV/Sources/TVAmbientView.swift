@@ -96,7 +96,7 @@ struct TVScreenAwake: Equatable {
     private(set) var isPresented = false
     private(set) var isSceneActive = true
 
-    /// What the view writes to `UIApplication.shared.isIdleTimerDisabled`.
+    /// What the shell writes to `UIApplication.shared.isIdleTimerDisabled`.
     var isHeld: Bool { isPresented && isSceneActive }
 
     mutating func present() { isPresented = true }
@@ -107,6 +107,16 @@ struct TVScreenAwake: Equatable {
     mutating func leave() { isPresented = false }
 
     mutating func sceneBecame(active: Bool) { isSceneActive = active }
+
+    /// Applies the current lifecycle entitlement to the app-wide idle timer.
+    ///
+    /// The shell owns this state so it can release the hold *before* it changes
+    /// a sidebar selection. Ambient also uses this during its own lifecycle,
+    /// which keeps Select and Menu exits unchanged.
+    @MainActor
+    func applyIdleTimerHold() {
+        UIApplication.shared.isIdleTimerDisabled = isHeld
+    }
 }
 
 /// The wallboard.
@@ -126,10 +136,19 @@ struct TVAmbientView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var cycler = TVAmbientCycler()
-    @State private var awake = TVScreenAwake()
+    /// Owned by the shell, which has the only synchronous hook for a direct
+    /// sidebar selection away from this retained tab.
+    @Binding private var awake: TVScreenAwake
     /// Bumped to restart the tick clock, so a manual skip gets a full interval
     /// rather than whatever was left of the last one.
     @State private var clock = 0
+
+    /// Keeps the injected wake lifecycle internal to the TV shell while
+    /// allowing that shell to construct the retained Ambient tab.
+    init(exit: @escaping () -> Void, awake: Binding<TVScreenAwake>) {
+        self.exit = exit
+        _awake = awake
+    }
 
     var body: some View {
         content
@@ -203,9 +222,9 @@ struct TVAmbientView: View {
         exit()
     }
 
-    /// The one place this app writes the idle timer.
+    /// Routes Ambient lifecycle updates through the one idle-timer write.
     private func applyHold() {
-        UIApplication.shared.isIdleTimerDisabled = awake.isHeld
+        awake.applyIdleTimerHold()
     }
 
     /// The pinned dashboard's tiles, as the phone and the watch already reduce
@@ -259,12 +278,14 @@ struct TVAmbientView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Self.spoken(metric))
+            .accessibilityIdentifier("tv-ambient-wallboard")
         } else {
             ContentUnavailableView(
                 "Nothing pinned yet",
                 systemImage: "pin.slash",
                 description: Text("Pinned insights appear here once a dashboard has loaded.")
             )
+            .accessibilityIdentifier("tv-ambient-empty")
         }
     }
 

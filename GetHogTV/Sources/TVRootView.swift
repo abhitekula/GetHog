@@ -52,6 +52,12 @@ enum TVDestination: String, CaseIterable, Hashable {
         default: tab?.systemImage ?? "square"
         }
     }
+
+    init(topShelfDestination: TopShelfRoute.Destination) {
+        switch topShelfDestination {
+        case .dashboards: self = .dashboards
+        }
+    }
 }
 
 /// The tvOS shell.
@@ -68,6 +74,11 @@ struct TVRootView: View {
     /// round-trip is what `TVDestinationTests` pins.
     @SceneStorage("selectedTab") private var selectedRaw: String = TVDestination.dashboards.rawValue
 
+    /// Ambient is one TabView child among many, and TabView may retain it after
+    /// a sidebar change. The shell therefore owns the wake entitlement: it is
+    /// the only layer that can release it before any selection changes.
+    @State private var ambientAwake = TVScreenAwake()
+
     /// Read by several of the ridden roots through
     /// `@Environment(OpenDetails.self)`. None of the six screens here is a
     /// `presentsDetailAsSheet` screen, so nothing hoists a detail into it — but
@@ -82,24 +93,43 @@ struct TVRootView: View {
     private var selected: Binding<TVDestination> {
         Binding(
             get: { TVDestination(rawValue: selectedRaw) ?? .dashboards },
-            set: { selectedRaw = $0.rawValue }
+            set: { select($0) }
         )
     }
 
+    /// Changes the selected destination, synchronously releasing a retained
+    /// Ambient tab before the sidebar moves away from it. All selection paths
+    /// — the TabView binding, DebugLaunch, and Ambient's Select/Menu exit —
+    /// use this one transition.
+    private func select(_ destination: TVDestination) {
+        guard selectedRaw != destination.rawValue else { return }
+        if selectedRaw == TVDestination.ambient.rawValue {
+            ambientAwake.leave()
+            ambientAwake.applyIdleTimerHold()
+        }
+        selectedRaw = destination.rawValue
+    }
+
     var body: some View {
-        switch model.phase {
-        case .loading:
-            VStack(spacing: Theme.Space.m) {
-                BrandConnectingAccent()
-                ProgressView("Connecting…")
-                    .controlSize(.large)
+        Group {
+            switch model.phase {
+            case .loading:
+                VStack(spacing: Theme.Space.m) {
+                    BrandConnectingAccent()
+                    ProgressView("Connecting…")
+                        .controlSize(.large)
+                }
+
+            case .onboarding:
+                TVKeyEntryView()
+
+            case .ready:
+                tabs
             }
-
-        case .onboarding:
-            TVKeyEntryView()
-
-        case .ready:
-            tabs
+        }
+        .onOpenURL { url in
+            guard let destination = TopShelfRoute.destination(for: url) else { return }
+            select(TVDestination(topShelfDestination: destination))
         }
     }
 
@@ -133,10 +163,10 @@ struct TVRootView: View {
             hasAppliedDebugTab = true
             guard let raw = DebugLaunch.initialTab else { return }
             if let destination = TVDestination(rawValue: raw) {
-                selectedRaw = destination.rawValue
+                select(destination)
             } else if let tab = AppTab(rawValue: raw),
                       let destination = TVDestination.allCases.first(where: { $0.tab == tab }) {
-                selectedRaw = destination.rawValue
+                select(destination)
             }
         }
         #endif
@@ -146,7 +176,7 @@ struct TVRootView: View {
     private func content(for destination: TVDestination) -> some View {
         switch destination {
         case .ambient:
-            TVAmbientView(exit: { selectedRaw = TVDestination.dashboards.rawValue })
+            TVAmbientView(exit: { select(.dashboards) }, awake: $ambientAwake)
         default:
             NavigationStack {
                 root(for: destination)
