@@ -1,20 +1,24 @@
-import GetHogUI
 import SwiftUI
 
-/// The watchOS entry point — a placeholder scene only. The real shell
-/// arrives in a later task; this file exists so the target builds and the
-/// project's plumbing (packages, entitlements, demo data, the widget embed)
-/// can be verified end to end before any feature lands on it.
+/// The watchOS entry point.
 ///
-/// `Theme` is used deliberately: it proves GetHogUI links for this platform,
-/// not merely that it compiled.
+/// The model is built here rather than in a `@State` initialiser on the root
+/// view because `App.init()` is the one main-actor place that runs before any
+/// scene exists — and because the `WCSession` delegate has to be installed
+/// before the system can deliver a hand-off the phone queued while the watch
+/// app was not running.
 @main
 struct GetHogWatchApp: App {
+    @State private var model: WatchModel
+
+    init() {
+        _model = State(initialValue: WatchModel.live())
+        WatchSessionListener.shared.activate()
+    }
+
     var body: some Scene {
         WindowGroup {
-            Text("GetHog")
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.accent)
+            WatchRootView(model: model)
         }
     }
 }

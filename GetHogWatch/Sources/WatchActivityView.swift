@@ -1,0 +1,72 @@
+import GetHogKit
+import GetHogUI
+import SwiftUI
+
+/// Page 4: one trimmed line per event.
+///
+/// The caps live in `WatchActivity`, not here, so the view can only draw what
+/// the reducer let through. There is no detail screen behind a row on purpose:
+/// the rows carry four columns and none of them is `properties`, so a tap
+/// would open a screen with nothing on it that the row does not already say.
+struct WatchActivityView: View {
+    let model: WatchModel
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(model.activity) { line in
+                    VStack(alignment: .leading) {
+                        Text(line.event)
+                            .font(Theme.Typography.body)
+                            .lineLimit(1)
+                        if let timestamp = line.timestamp {
+                            Text(timestamp, format: .relative(presentation: .named))
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.Ink.tertiary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                footer
+            }
+            .navigationTitle("Activity")
+        }
+    }
+
+    /// Three states, not two.
+    ///
+    /// The window and the cap are stated rather than implied — a feed that
+    /// stops after 25 rows without saying so reads as "that is all that
+    /// happened" — and an empty list is only reported as *no events* when the
+    /// query actually ran. Before it has, the honest answer is that nothing
+    /// has been asked yet.
+    @ViewBuilder private var footer: some View {
+        Text(WatchActivityFooter.text(
+            lineCount: model.activity.count,
+            capturedAt: model.activityCapturedAt,
+            now: Date()
+        ))
+        .font(Theme.Typography.caption)
+        .foregroundStyle(Theme.Ink.tertiary)
+    }
+}
+
+/// Pure, so the three sentences are pinned by tests rather than by a
+/// screenshot.
+enum WatchActivityFooter {
+    static func text(lineCount: Int, capturedAt: Date?, now: Date) -> String {
+        guard let capturedAt else { return "Not checked yet" }
+        let age = WatchAge.stamp(capturedAt: capturedAt, now: now)
+        if lineCount == 0 { return "No events in the last 24 hours · \(age.lowercasedStamp)" }
+        return "Last 24 h · newest \(WatchActivity.maxLines) · \(age.lowercasedStamp)"
+    }
+}
+
+private extension String {
+    /// "Updated 2 h ago" reads as a heading; mid-sentence it wants a lower
+    /// case first letter and nothing else changed.
+    var lowercasedStamp: String {
+        guard let first else { return self }
+        return first.lowercased() + dropFirst()
+    }
+}

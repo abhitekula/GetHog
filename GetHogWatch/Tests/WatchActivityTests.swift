@@ -55,6 +55,39 @@ struct WatchActivityTests {
         #expect(lines.isEmpty)
     }
 
+    @Test("a feed that was never fetched is not reported as an empty one")
+    func footerSeparatesUncheckedFromEmpty() {
+        let now = WatchFixtures.now
+        #expect(
+            WatchActivityFooter.text(lineCount: 0, capturedAt: nil, now: now)
+                == "Not checked yet"
+        )
+        #expect(
+            WatchActivityFooter.text(
+                lineCount: 0, capturedAt: now.addingTimeInterval(-600), now: now
+            ) == "No events in the last 24 hours · updated 10 min ago"
+        )
+        #expect(
+            WatchActivityFooter.text(
+                lineCount: 4, capturedAt: now.addingTimeInterval(-600), now: now
+            ) == "Last 24 h · newest 25 · updated 10 min ago"
+        )
+    }
+
+    @Test("the feed round-trips through the watch-local file it is carried in")
+    func feedRoundTripsThroughTheStore() throws {
+        let store = WatchFixtures.tempStore()
+        #expect(WatchActivity.read(from: store) == nil)
+
+        let feed = ActivityFeed(
+            lines: [ActivityLine(id: "example-row-0001", event: "example_event_0", timestamp: nil)],
+            capturedAt: WatchFixtures.now
+        )
+        try WatchActivity.write(feed, to: store)
+
+        #expect(WatchActivity.read(from: store) == feed)
+    }
+
     @Test("a row with no event name says so rather than rendering blank")
     func missingEventNameIsNamed() throws {
         let lines = WatchActivity.lines(from: try response("""

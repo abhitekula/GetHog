@@ -177,6 +177,48 @@ struct WatchModelTests {
         #expect(model.phase == .ready)
     }
 
+    @Test("a throttled relaunch carries the feed forward instead of claiming no events")
+    func throttledRelaunchCarriesTheFeed() async {
+        let store = WatchFixtures.tempStore()
+        let first = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes()),
+            store: store
+        )
+        await first.refresh()
+        #expect(first.activity.count == 3)
+        #expect(first.activityCapturedAt == WatchFixtures.now)
+
+        // A second launch inside the throttle window spends no requests. The
+        // Activity page must still show what the first launch read.
+        let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+        let second = WatchFixtures.model(transport: transport, store: store)
+        await second.refresh()
+
+        #expect(await transport.requests.isEmpty)
+        #expect(second.activity.count == 3)
+        #expect(second.activityCapturedAt == WatchFixtures.now)
+    }
+
+    @Test("an events query that failed leaves the feed and its age alone")
+    func failedEventsQueryKeepsTheCarriedFeed() async throws {
+        let store = WatchFixtures.tempStore()
+        let seeded = ActivityFeed(
+            lines: [ActivityLine(id: "example-row-0001", event: "carried_event", timestamp: nil)],
+            capturedAt: WatchFixtures.now.addingTimeInterval(-3600)
+        )
+        try WatchActivity.write(seeded, to: store)
+        // Every route but the events query answers.
+        let routes = WatchFixtures.fullRefreshRoutes().filter { $0.bodyContains != "HogQLQuery" }
+        let model = WatchFixtures.model(transport: RouteTransport(routes: routes), store: store)
+
+        await model.refresh(force: true)
+
+        #expect(model.snapshot?.capturedAt == WatchFixtures.now)
+        #expect(model.activity == seeded.lines)
+        #expect(model.activityCapturedAt == seeded.capturedAt)
+        #expect(WatchActivity.read(from: store) == seeded)
+    }
+
     @Test("no credential means no requests and a phase that says why")
     func noCredentialNeedsKey() async {
         let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())

@@ -23,7 +23,11 @@ enum WatchSettings {
 // MARK: - Activity
 
 /// One activity row, already trimmed to what the watch will draw.
-struct ActivityLine: Equatable, Identifiable, Sendable {
+///
+/// `Codable` so the feed survives a launch. Nothing in `SharedSnapshot`
+/// carries events — it is the widgets' contract and widening it is not this
+/// task's to do — so the wrist keeps its own small file beside it.
+struct ActivityLine: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let event: String
     let timestamp: Date?
@@ -57,6 +61,68 @@ enum WatchActivity {
             )
         }
     }
+
+    // MARK: - Persistence
+
+    /// Written and read beside the snapshot, and for the same reason the
+    /// snapshot is written at all.
+    ///
+    /// A refresh is throttled to one every quarter of an hour, so a relaunch
+    /// inside that window spends no requests — and without this the Activity
+    /// page rendered "No events in the last 24 hours" over a feed it had
+    /// simply not asked for. That sentence is a claim about the project; the
+    /// empty in-memory array was a fact about this process. They are not the
+    /// same thing, and only one of them was true. Measured on the demo: the
+    /// first launch drew four rows and every relaunch inside the window drew
+    /// the empty state.
+    ///
+    /// Its own capture time rather than the snapshot's, because the two can
+    /// come from different wakes: a refresh whose events query alone failed
+    /// keeps the feed it had, and stamping that with the fresh snapshot's time
+    /// would age it backwards.
+    static func fileURL(in store: SharedSnapshotStore) -> URL {
+        store.directory.appendingPathComponent("watch-activity.json")
+    }
+
+    static func write(_ feed: ActivityFeed, to store: SharedSnapshotStore) throws {
+        try FileManager.default.createDirectory(
+            at: store.directory, withIntermediateDirectories: true
+        )
+        let data = try JSONEncoder.watchActivity.encode(feed)
+        try data.write(to: fileURL(in: store), options: [.atomic])
+    }
+
+    /// Non-throwing: a corrupt feed must degrade to "nothing carried over"
+    /// rather than stop the app from launching.
+    static func read(from store: SharedSnapshotStore) -> ActivityFeed? {
+        guard let data = try? Data(contentsOf: fileURL(in: store)) else { return nil }
+        return try? JSONDecoder.watchActivity.decode(ActivityFeed.self, from: data)
+    }
+}
+
+/// The feed with the moment it was read, so the page can age it honestly.
+struct ActivityFeed: Codable, Equatable, Sendable {
+    let lines: [ActivityLine]
+    let capturedAt: Date
+}
+
+private extension JSONEncoder {
+    /// ISO-8601 explicitly, for the reason `SharedSnapshotStore` spells it out:
+    /// this file outlives the build that wrote it, and `.deferredToDate`'s
+    /// reference-date doubles would drift silently if the default ever changed.
+    static let watchActivity: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+}
+
+private extension JSONDecoder {
+    static let watchActivity: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
 }
 
 // MARK: - Health
@@ -179,6 +245,9 @@ final class WatchModel {
     private(set) var snapshot: SharedSnapshot?
     private(set) var health: WatchHealth = .empty
     private(set) var activity: [ActivityLine] = []
+    /// When `activity` was read from PostHog, which is not always when the
+    /// snapshot was written. `nil` means the feed has never been fetched.
+    private(set) var activityCapturedAt: Date?
     /// Full render models for time-series tiles, keyed by metric id, so the
     /// Metrics page draws the *real* dated chart the phone draws — no invented
     /// dates and no shape-only sparkline. Not persisted: the snapshot's
@@ -230,6 +299,10 @@ final class WatchModel {
         self.now = now
         let carried = store.loadOrNil()
         self.snapshot = carried
+        if let feed = WatchActivity.read(from: store) {
+            self.activity = feed.lines
+            self.activityCapturedAt = feed.capturedAt
+        }
         self.phase = credential == nil ? .needsKey : Self.idlePhase(for: carried)
         if carried != nil {
             health = WatchHealth.derive(
@@ -342,6 +415,7 @@ final class WatchModel {
         var freshRenders: [String: InsightRenderModel] = [:]
         var flags: [SharedSnapshot.Flag] = []
         var issues: [ErrorIssue]?
+        var fetchedActivity: ActivityFeed?
 
         // 1 + 2. The pinned (or first) dashboard, cached tile results only —
         // the watch never asks PostHog to recompute anything.
@@ -405,7 +479,12 @@ final class WatchModel {
             )
         ) {
             reachedTheAPI = true
-            activity = WatchActivity.lines(from: response)
+            // Only a query that answered replaces the carried feed. One that
+            // failed leaves the previous rows and their own age in place,
+            // which is the rule the snapshot follows one block below.
+            fetchedActivity = ActivityFeed(
+                lines: WatchActivity.lines(from: response), capturedAt: now()
+            )
         }
 
         // A wake that found no network must not overwrite a good snapshot with
@@ -427,6 +506,11 @@ final class WatchModel {
         snapshot = fresh
         renders = freshRenders
         try? store.write(fresh)
+        if let fetchedActivity {
+            activity = fetchedActivity.lines
+            activityCapturedAt = fetchedActivity.capturedAt
+            try? WatchActivity.write(fetchedActivity, to: store)
+        }
 
         let derived = WatchHealth.derive(
             snapshot: fresh,
