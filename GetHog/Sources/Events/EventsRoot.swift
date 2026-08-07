@@ -378,6 +378,13 @@ struct EventsRoot: View {
                 // while the iPhone drew it normally. The drawer is where the
                 // field belongs at both widths, and `.always` keeps a *filter*
                 // visible, which is the point of one.
+                #if os(tvOS)
+                // The token overload of `searchable` does not exist on tvOS —
+                // not the placement, the whole initializer. Text search still
+                // narrows the feed, which is the affordance a remote can drive;
+                // saved-filter tokens stay a pointer-platform shape.
+                .searchable(text: $search, prompt: "Filter events")
+                #else
                 .searchable(
                     text: $search,
                     tokens: $tokens,
@@ -387,6 +394,7 @@ struct EventsRoot: View {
                 ) { token in
                     Label(token.displayText, systemImage: token.systemImage)
                 }
+                #endif
                 .onChange(of: search) { _, text in
                     suggestedTokens = EventFilterToken.suggestions(for: text)
                     // Clearing the field un-narrows immediately; if a server

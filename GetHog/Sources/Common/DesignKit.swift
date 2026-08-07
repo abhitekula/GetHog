@@ -29,6 +29,14 @@ extension View {
     /// sliced by it, which matters more here than usual because the glass bars
     /// are translucent and a hard cut shows through them.
     func pageSurface() -> some View {
+        #if os(tvOS)
+        // `scrollContentBackground` is unavailable on tvOS, so the ground has to
+        // be laid without first asking the list to stop painting its own. The
+        // soft edge *is* available here (unlike visionOS) and is worth having:
+        // a TV list scrolls under a translucent bar exactly as an iOS one does.
+        return background(Theme.pageBackground)
+            .scrollEdgeEffectStyle(.soft, for: .all)
+        #else
         let ground = scrollContentBackground(.hidden)
             .background(Theme.pageBackground)
         #if os(visionOS)
@@ -39,6 +47,7 @@ extension View {
         return ground
         #else
         return ground.scrollEdgeEffectStyle(.soft, for: .all)
+        #endif
         #endif
     }
 
@@ -139,14 +148,15 @@ private struct ScreenChrome: ViewModifier {
     @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
-        #if os(visionOS)
-        // `navigationSubtitle` is unavailable on visionOS, and simply dropping
-        // it would delete the only permanently visible statement of *whose
-        // numbers these are* — the switcher beside it is a glyph on purpose.
-        // This app treats showing the wrong project's numbers as a correctness
-        // bug, so the name moves into the toolbar next to that glyph, where the
-        // two read as one address. The width objection that kept it out of the
-        // toolbar on iPhone does not apply to a 1,280pt window.
+        #if os(visionOS) || os(tvOS)
+        // `navigationSubtitle` is unavailable on visionOS and on tvOS, and
+        // simply dropping it would delete the only permanently visible
+        // statement of *whose numbers these are* — the switcher beside it is a
+        // glyph on purpose. This app treats showing the wrong project's numbers
+        // as a correctness bug, so the name moves into the toolbar next to that
+        // glyph, where the two read as one address. The width objection that
+        // kept it out of the toolbar on iPhone does not apply to a 1,280pt
+        // window, and applies even less to a 1,920pt screen.
         content
             .background(Theme.pageBackground)
             .toolbar {

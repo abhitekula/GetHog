@@ -294,8 +294,12 @@ struct InsightsRoot: View {
             Toggle(isOn: $favoritesOnly) {
                 favoritesLabel
             }
+            // `toggleStyle(.button)` is unavailable on tvOS; the platform's own
+            // toggle is already focusable and already states its state.
+            #if !os(tvOS)
             .toggleStyle(.button)
             .buttonStyle(.bordered)
+            #endif
             .tint(favoritesOnly ? Theme.accentWarm : Theme.accent)
             .accessibilityLabel("Show only favorites")
         }
@@ -356,6 +360,10 @@ struct InsightsRoot: View {
             }
         }
         .contextMenu {
+            #if !os(tvOS)
+            // A browser to open into and a pasteboard to copy to: tvOS has
+            // neither, and a focusable row that does nothing is worse than no
+            // row at all.
             if let url = model.webURL(path: "insights/\(insight.linkID)") {
                 Link(destination: url) {
                     Label("Open in PostHog", systemImage: "arrow.up.forward.square")
@@ -366,6 +374,7 @@ struct InsightsRoot: View {
                     Label("Copy link", systemImage: "link")
                 }
             }
+            #endif
         }
     }
 

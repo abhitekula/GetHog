@@ -31,8 +31,19 @@ struct SettingsRoot: View {
         List {
             SettingsAccountSection()
             SettingsProjectSection()
+            #if !os(tvOS)
+            // Alerts/ is not compiled into the tvOS target: the platform cannot
+            // present the notification these settings configure, and this
+            // section's footer promises background delivery it could not make
+            // good on.
             SettingsAlertsSection()
+            // Nothing on tvOS to arrange. There is no tab-slot preference, no
+            // `TabViewCustomization` (unavailable on the platform), and the
+            // sidebar is fixed — so this section would be a preferences row
+            // that controls nothing, which this file's own comments call a bug
+            // report waiting to happen.
             SettingsNavigationSection()
+            #endif
             SettingsPermissionsSection()
             SettingsAPIKeySection()
             SettingsUsageSection(quotaStore: quotaStore)
@@ -138,6 +149,12 @@ struct SettingsProjectSection: View {
 
 // MARK: - Alerts
 
+// The whole section, not just its call site in `SettingsRoot`: the screen it
+// links to lives in `Alerts/`, which the tvOS target does not compile at all
+// because that platform cannot present the notification an alert exists to
+// send. Compiling a section whose only row is a dead link would be a promise
+// this platform cannot keep.
+#if !os(tvOS)
 struct SettingsAlertsSection: View {
     var body: some View {
         Section {
@@ -156,6 +173,7 @@ struct SettingsAlertsSection: View {
         }
     }
 }
+#endif
 
 // MARK: - Navigation
 
@@ -175,6 +193,14 @@ struct SettingsAlertsSection: View {
 /// button above a `.sidebarAdaptable` sidebar on macOS — the arrangement is
 /// changed by dragging rows and hiding them from their context menus — and
 /// the pane this section sits in carries the reset button that undoes it.
+///
+/// visionOS is the iPad's sentence, not the Mac's: the Vision shell renders
+/// the system's Edit button in the sidebar header, which is visible in the
+/// screenshot that pinned that shell's shape. It fell to the Mac's wording
+/// only because the `#else` was written before there was a third platform.
+///
+/// tvOS never mounts this section at all — `SettingsRoot` leaves it out there
+/// — because none of the three arrangements exists on that platform.
 struct SettingsNavigationSection: View {
     @Environment(NavPreferences.self) private var nav
 
@@ -192,7 +218,11 @@ struct SettingsNavigationSection: View {
                     LabeledContent("Tab bar", value: nav.barTabs.map(\.title).joined(separator: ", "))
                 }
             }
-            #else
+            #elseif os(visionOS)
+            Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            #elseif os(macOS)
             Text("Drag sidebar rows to reorder them, and hide a row from its own context menu.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -302,6 +332,13 @@ struct SettingsAPIKeySection: View {
                 Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")
             }
 
+            #if !os(tvOS)
+            // Revealing is gated on device-owner authentication, and tvOS has
+            // none to offer — `LAContext`'s policies are unavailable there. A
+            // Reveal button that skipped the gate would put a live credential
+            // on a screen in a shared room with nothing asked of anybody, so
+            // the affordance is absent rather than unguarded. The footer below
+            // says so in words.
             if revealedKey == nil {
                 Button {
                     Task { await reveal() }
@@ -316,6 +353,7 @@ struct SettingsAPIKeySection: View {
                     Label("Hide key", systemImage: "eye.slash")
                 }
             }
+            #endif
 
             if let revealError {
                 Label(revealError, systemImage: "exclamationmark.triangle.fill")
@@ -341,6 +379,11 @@ struct SettingsAPIKeySection: View {
             // The Mac has no Face ID and calls the fallback a password, not a
             // passcode; naming what this machine cannot offer reads as a bug.
             Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Touch ID or your password, and it re-hides itself after 30 seconds.")
+            #elseif os(tvOS)
+            // No biometry, no passcode, no reveal — and the reveal is the only
+            // clause of the other two sentences that would be false here. What
+            // replaces it is the route that does exist.
+            Text("The key is stored in this device's Keychain and never synced or uploaded. Apple TV can't verify it's you, so the key can't be revealed here — sign out and enter a new one to replace it.")
             #else
             Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Face ID, Touch ID, or your passcode, and it re-hides itself after 30 seconds.")
             #endif
@@ -352,6 +395,7 @@ struct SettingsAPIKeySection: View {
         maskedKey = SettingsRoot.mask(key)
     }
 
+    #if !os(tvOS)
     private func reveal() async {
         revealError = nil
         do {
@@ -374,6 +418,7 @@ struct SettingsAPIKeySection: View {
             revealError = error.localizedDescription
         }
     }
+    #endif
 }
 
 // MARK: - Usage & limits
@@ -546,6 +591,10 @@ private struct PermissionRow: View {
 
 // MARK: - Biometric gate
 
+// The whole gate is absent on tvOS: `LAPolicy`, `canEvaluatePolicy` and
+// `evaluatePolicy` are unavailable there, and the one caller — the Reveal
+// button — is absent for the same reason.
+#if !os(tvOS)
 private enum DeviceOwnerGate {
     struct Unavailable: LocalizedError {
         let reason: String
@@ -573,3 +622,4 @@ private enum DeviceOwnerGate {
         )
     }
 }
+#endif

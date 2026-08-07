@@ -131,6 +131,9 @@ struct PersonDetailView: View {
                         Text(distinctID)
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
+                            #if !os(tvOS)
+                            // The menu's one item is a pasteboard copy, and
+                            // tvOS has no pasteboard to copy to.
                             .contextMenu {
                                 Button {
                                     UIPasteboard.general.string = distinctID
@@ -138,6 +141,7 @@ struct PersonDetailView: View {
                                     Label("Copy distinct ID", systemImage: "doc.on.doc")
                                 }
                             }
+                            #endif
                     }
                 } header: {
                     SectionLabel(

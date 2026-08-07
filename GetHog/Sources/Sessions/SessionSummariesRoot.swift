@@ -336,6 +336,9 @@ struct SessionSummaryDetailView: View {
         .navigationTitle("Session summary")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            #if !os(tvOS)
+            // `ShareLink` is unavailable on tvOS, and there is no destination
+            // on that platform to send a link to.
             if let replayWebURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: replayWebURL) {
@@ -344,6 +347,7 @@ struct SessionSummaryDetailView: View {
                     .accessibilityLabel("Share a link to this session")
                 }
             }
+            #endif
         }
         .task(id: row.id) { await load() }
         .refreshable { await load() }

@@ -47,6 +47,10 @@ struct EventDetailView: View {
         .navigationTitle(event.event)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            #if !os(tvOS)
+            // No `UIPasteboard` on tvOS, and nowhere to paste into if there
+            // were. A focusable toolbar button that copies nothing is worse
+            // than the button's absence.
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     UIPasteboard.general.string = jsonRepresentation
@@ -54,6 +58,7 @@ struct EventDetailView: View {
                     Label("Copy as JSON", systemImage: "doc.on.doc")
                 }
             }
+            #endif
         }
     }
 
@@ -137,6 +142,8 @@ struct PropertyRow: View {
             } label: {
                 Text(key).font(.caption).lineLimit(1)
             }
+            #if !os(tvOS)
+            // The menu's only item is a pasteboard copy, which tvOS cannot do.
             .contextMenu {
                 Button {
                     UIPasteboard.general.string = displayValue
@@ -144,6 +151,7 @@ struct PropertyRow: View {
                     Label("Copy value", systemImage: "doc.on.doc")
                 }
             }
+            #endif
         }
     }
 

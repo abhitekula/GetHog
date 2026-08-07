@@ -10,7 +10,11 @@ enum Platform {
     /// False on iPhone, so tear-off affordances are hidden rather than offered
     /// and then quietly doing nothing.
     static var supportsMultipleWindows: Bool {
-        #if os(iOS)
+        #if os(iOS) || os(tvOS)
+        // `supportsMultipleScenes` is real on tvOS and answers false there, so
+        // asking it turns the `#else`'s flat `true` from a lie into a measured
+        // fact — which is what keeps the dashboard tear-off entry honest on a
+        // platform with exactly one screen.
         UIApplication.shared.supportsMultipleScenes
         #else
         true
@@ -37,7 +41,15 @@ extension View {
     /// dropped from the accessibility tree, because a VoiceOver user swiping
     /// through a screen should not run into invisible controls.
     func keyboardActions(_ actions: [KeyboardAction]) -> some View {
-        background {
+        #if os(tvOS)
+        // `keyboardShortcut` is unavailable on tvOS — the remote is the input
+        // device and there is no modifier to press. The call sites keep their
+        // `KeyboardAction` lists (the type itself compiles fine, and every
+        // action here is also reachable from a visible control), and this
+        // becomes the identity it already effectively is on a touch device.
+        return self
+        #else
+        return background {
             ZStack {
                 ForEach(actions) { shortcut in
                     Button(shortcut.title, action: shortcut.action)
@@ -48,6 +60,7 @@ extension View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
+        #endif
     }
 
     /// Pointer highlight for iPad, Stage Manager, Vision Pro and Mac.

@@ -294,6 +294,12 @@ struct DashboardsRoot: View {
                 Label("Open in new window", systemImage: "macwindow.badge.plus")
             }
             #endif
+            #if !os(tvOS)
+            // Both entries need something tvOS does not have: a browser to open
+            // the link in, and a pasteboard to copy it to. `Link` compiles
+            // there and silently does nothing when pressed, which on a focus
+            // platform is worse than absence — it is a stop on the focus walk
+            // that leads nowhere.
             if let url = model.webURL(path: "dashboard/\(dashboard.id)") {
                 Link(destination: url) {
                     Label("Open in PostHog", systemImage: "arrow.up.forward.square")
@@ -304,6 +310,7 @@ struct DashboardsRoot: View {
                     Label("Copy link", systemImage: "link")
                 }
             }
+            #endif
         }
     }
 

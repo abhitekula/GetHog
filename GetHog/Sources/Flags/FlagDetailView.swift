@@ -78,10 +78,10 @@ struct FlagDetailView: View {
         // screen in the app that writes to production, and the confirmation
         // dialog already names the project for the same reason.
         //
-        // visionOS has no `navigationSubtitle` at all. The dialog is what keeps
-        // the guarantee there: the project is named at the moment of the write,
-        // which is the moment it has to be right.
-        #if !os(visionOS)
+        // visionOS and tvOS have no `navigationSubtitle` at all. The dialog is
+        // what keeps the guarantee there: the project is named at the moment of
+        // the write, which is the moment it has to be right.
+        #if !os(visionOS) && !os(tvOS)
         .navigationSubtitle(sizeClass == .compact ? "" : model.selectedProject?.name ?? "")
         #endif
         // Titled with the key rather than the display name, for the same reason
@@ -305,6 +305,26 @@ struct FlagDetailView: View {
                     .accessibilityHint("Chooses which release condition set the rollout below applies to")
                 }
 
+                #if os(tvOS)
+                // `Slider` and `Stepper` are both unavailable on tvOS, and a
+                // percentage dial is not a remote-first control even where one
+                // exists — a directional pad walking 0…100 in steps of one is a
+                // worse instrument than the phone in the viewer's pocket. The
+                // rollout is therefore *shown* here and edited on the platforms
+                // with a pointer; the on/off toggle, still guarded by its
+                // confirmation dialog, remains the TV's one write surface.
+                //
+                // The `.accessibilityHidden(true)` the other platforms put on
+                // this pair is deliberately absent: it is there because the
+                // slider below speaks the same number. With no slider, this is
+                // the only voice the value has.
+                LabeledContent {
+                    Text(FlagFormat.percent(draftRollout))
+                        .font(.body.monospacedDigit().weight(.semibold))
+                } label: {
+                    Text("Rolled out to")
+                }
+                #else
                 LabeledContent {
                     Text(FlagFormat.percent(draftRollout))
                         .font(.body.monospacedDigit().weight(.semibold))
@@ -342,6 +362,7 @@ struct FlagDetailView: View {
                     }
                 }
                 .disabled(isBusy || draftRollout == (controller.effectiveRollout(flag, group: editedGroup) ?? 100))
+                #endif
             } header: {
                 SectionLabel(text: "Rollout", productMark: .flag)
             } footer: {

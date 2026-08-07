@@ -1,7 +1,9 @@
 import Foundation
 import Observation
 import GetHogKit
+#if canImport(WidgetKit)
 import WidgetKit
+#endif
 
 /// Session-wide state: who we are, which project we're looking at, and what the
 /// current credential is actually allowed to do.
@@ -447,12 +449,25 @@ final class AppModel {
             capturedAt: now
         )
         try? SharedSnapshotStore.shared.write(snapshot)
+        #if !os(tvOS)
         // Every publish evaluates, foreground included. A background wake is the
         // usual trigger, but a user who opens the app and watches a metric
         // recover would otherwise leave its watch latched, and the next real
         // crossing would pass in silence.
+        //
+        // Alerts/ is not compiled into the tvOS target at all: the platform
+        // cannot present the notification an evaluation exists to send
+        // (`UNMutableNotificationContent`'s title, body, sound and thread
+        // fields are all unavailable there), so evaluating would latch state
+        // for a delivery that can never happen.
         await MetricAlertDelivery.evaluate(snapshot: snapshot)
+        #endif
+        #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()
+        #endif
+        // tvOS has no WidgetKit to reload. Its Top Shelf reads the snapshot
+        // file the line above this block just wrote, so the write is the
+        // whole of the hand-off there.
         return reachedTheAPI
     }
 

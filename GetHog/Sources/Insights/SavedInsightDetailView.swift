@@ -91,11 +91,16 @@ struct SavedInsightDetailView: View {
                     }
                 }
             }
+            // Alerts/ is not compiled into the tvOS target — that platform
+            // cannot present the notification an alert exists to send — so
+            // `InsightAlertsView` is not there to sheet.
+            #if !os(tvOS)
             .sheet(isPresented: $isShowingAlerts) {
                 if let insight {
                     InsightAlertsView(insight: insight)
                 }
             }
+            #endif
             .keyboardActions([
                 KeyboardAction(key: "r", title: "Recompute results") { recompute() }
             ])
@@ -526,6 +531,11 @@ struct SavedInsightDetailView: View {
                             )
                         }
                     }
+                    #if !os(tvOS)
+                    // The screen this opens lives in Alerts/, which the tvOS
+                    // target does not compile: the platform cannot deliver the
+                    // notification an alert exists to send, so configuring one
+                    // would be a promise it could not keep.
                     if AlertableInsight.isAlertable(sourceKind: insight.sourceKind) {
                         Button {
                             isShowingAlerts = true
@@ -533,6 +543,7 @@ struct SavedInsightDetailView: View {
                             Label("Alerts", systemImage: "bell")
                         }
                     }
+                    #endif
                     // Hidden rather than disabled when there is nothing to
                     // export: `InsightShareMenuItems` already declines to offer
                     // anything for a model it could not decode, and this keeps
@@ -543,6 +554,9 @@ struct SavedInsightDetailView: View {
                     // would be the same lie the caption exists to prevent — worse,
                     // because it leaves the file system.
                     InsightShareMenuItems(title: insight.title, model: drawnModel(for: insight))
+                    #if !os(tvOS)
+                    // `ShareLink` is unavailable on tvOS and `Link` opens
+                    // nothing there — no browser, no share sheet.
                     if let webURL {
                         Divider()
                         ShareLink(item: webURL) {
@@ -552,6 +566,7 @@ struct SavedInsightDetailView: View {
                             Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                         }
                     }
+                    #endif
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }

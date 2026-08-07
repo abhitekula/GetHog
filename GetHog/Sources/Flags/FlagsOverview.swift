@@ -189,7 +189,14 @@ struct FlagsOverview: View {
                 )
             }
         }
+        // `.card` on tvOS for the reason `SessionsOverview` states in full:
+        // `.plain` draws no focus state, and focus is how a remote says where
+        // it is.
+        #if os(tvOS)
+        .buttonStyle(.card)
+        #else
         .buttonStyle(.plain)
+        #endif
         .pointerHighlight(cornerRadius: Theme.Radius.medium)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(flag.key), \(group.title), \(spokenMetric)")

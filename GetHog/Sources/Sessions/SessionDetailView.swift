@@ -40,8 +40,15 @@ struct SessionDetailView: View {
     /// `nil` when there is no console link to offer, so the replay cards can
     /// simply omit the button rather than showing a dead one.
     private var openInPostHog: (() -> Void)? {
+        #if os(tvOS)
+        // There is no browser on tvOS and no in-app Safari to present, so the
+        // link has nowhere to land. `nil` is what the callers already read as
+        // "omit the button rather than show a dead one".
+        return nil
+        #else
         guard let replayWebURL else { return nil }
         return { webLink = WebLink(url: replayWebURL) }
+        #endif
     }
 
     var body: some View {
@@ -62,6 +69,17 @@ struct SessionDetailView: View {
                 // fragile half: the timeline is unbounded, and burying a video
                 // under several hundred rows makes both it and the
                 // seek-from-timeline gesture unusable.
+                #if os(tvOS)
+                // `ReplayPlayerView` imports WebKit, and WebKit is not in the
+                // tvOS SDK at all — the file is excluded from that target
+                // rather than seamed. What rides in its place is the native
+                // timeline: the same `ReplayLoader` fetch and the same parsed
+                // events, drawn as activity over the recording's duration with
+                // the console and network incidents marked on it. Nothing is
+                // played, so nothing pretends to be.
+                TVReplayTimelineView(recording: recording, loader: loader)
+                    .padding(.horizontal, Theme.Space.l)
+                #else
                 ReplayPlayerView(
                     recording: recording,
                     loader: loader,
@@ -71,6 +89,7 @@ struct SessionDetailView: View {
                     onRetry: { retryReplay() }
                 )
                 .padding(.horizontal, Theme.Space.l)
+                #endif
 
                 // Directly under the player, above the timeline. The chapters
                 // are a table of contents *for the thing above them*, and a
@@ -119,8 +138,14 @@ struct SessionDetailView: View {
                 // Inline on iOS and visionOS. The Mac's trailing pane below is
                 // the same content in a place only a resizable window has, so
                 // it stays macOS-only; Vision would otherwise have no console
-                // or network diagnostics at all, and the loader still fetches
-                // and parses there even while the stage is a placeholder.
+                // or network diagnostics at all beside a stage that now plays
+                // for real.
+                //
+                // tvOS takes neither branch: `ReplayDiagnosticsSection` is
+                // declared in `ReplayPlayerView.swift`, which imports WebKit and
+                // is therefore not compiled into that target at all. The same
+                // console and network counts ride inside `TVReplayTimelineView`
+                // above, off the same loader.
                 #if os(iOS) || os(visionOS)
                 ReplayDiagnosticsSection(
                     loader: loader,
@@ -157,6 +182,9 @@ struct SessionDetailView: View {
                 .accessibilityLabel("Toggle replay diagnostics")
             }
             #endif
+            #if !os(tvOS)
+            // `ShareLink` is unavailable on tvOS and there is nothing to share
+            // to — no Messages, no Mail, no AirDrop out.
             if let replayWebURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: replayWebURL) {
@@ -165,6 +193,7 @@ struct SessionDetailView: View {
                     .accessibilityLabel("Share a link to this session")
                 }
             }
+            #endif
         }
         #if os(macOS)
         .replayDiagnosticsPane(isPresented: $showsDiagnosticsPane) {
@@ -198,13 +227,15 @@ struct SessionDetailView: View {
         .sheet(item: $webLink) { link in
             SessionSafariView(url: link.url).ignoresSafeArea()
         }
-        #else
+        #elseif os(macOS) || os(visionOS)
         .onChange(of: webLink?.id) { _, _ in
             guard let link = webLink else { return }
             openURL(link.url)
             webLink = nil
         }
         #endif
+        // tvOS gets neither arm, and needs neither: `openInPostHog` returns nil
+        // there and the card below is absent, so `webLink` can never be set.
     }
 
     /// What the session amounted to, before the replay is asked to load.
@@ -232,6 +263,14 @@ struct SessionDetailView: View {
     /// mobile ones this app deliberately does not try to render.
     @ViewBuilder
     private var watchInPostHogCard: some View {
+        #if os(tvOS)
+        // The guaranteed fallback for a recording this app cannot render is a
+        // browser, and an Apple TV has none. The fallback is still guaranteed —
+        // it is the phone in the viewer's pocket — but it is not this screen's
+        // to offer, and a focusable row that opens nothing is worse than the
+        // row's absence.
+        EmptyView()
+        #else
         if let replayWebURL {
             Card {
                 Button {
@@ -260,6 +299,7 @@ struct SessionDetailView: View {
             .accessibilityLabel("Watch this session in PostHog")
             .accessibilityAddTraits(.isButton)
         }
+        #endif
     }
 
     private func loadTimeline() async {

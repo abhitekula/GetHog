@@ -206,18 +206,26 @@ struct CSVFile: Transferable {
 /// bytes are `InsightCSV`'s either way — there is exactly one encoder, and an
 /// export that disagreed with what is on screen would be worse than no export at
 /// all.
-struct CSVDocument: FileDocument {
-
-    /// Export-only. GetHog has nothing to do with a CSV somebody hands it,
-    /// and claiming otherwise would put the app in the Files "Open with" list.
-    static let readableContentTypes: [UTType] = []
-    static let writableContentTypes: [UTType] = [.commaSeparatedText]
+struct CSVDocument {
 
     let export: CSVExport
 
     init(export: CSVExport) {
         self.export = export
     }
+}
+
+// `FileDocument` and `.fileExporter` are both unavailable on tvOS: there is no
+// Files app and no document picker to present. The type itself still compiles
+// everywhere so the coordinator below needs no branching — only the
+// conformance, and the sheet that uses it, are absent.
+#if !os(tvOS)
+extension CSVDocument: FileDocument {
+
+    /// Export-only. GetHog has nothing to do with a CSV somebody hands it,
+    /// and claiming otherwise would put the app in the Files "Open with" list.
+    static let readableContentTypes: [UTType] = []
+    static let writableContentTypes: [UTType] = [.commaSeparatedText]
 
     /// Unreachable while `readableContentTypes` is empty, and required by the
     /// protocol regardless. Throwing beats a stub that would silently invent an
@@ -230,6 +238,7 @@ struct CSVDocument: FileDocument {
         FileWrapper(regularFileWithContents: export.data())
     }
 }
+#endif
 
 /// Carries a "save to Files" request from a menu item to the sheet that performs
 /// it.
@@ -276,6 +285,13 @@ final class CSVExportCoordinator {
     /// pasteboard — in which case it says so and copies nothing, rather than
     /// copying something truncated.
     func copy(_ table: CSVExport) {
+        #if os(tvOS)
+        // There is no `UIPasteboard` on tvOS and nowhere to paste into. The
+        // menus that call this render nothing there (see `CSVShareMenuItems`
+        // below), so this is unreachable rather than silently inert — but it
+        // returns early rather than compiling a copy that cannot happen.
+        return
+        #else
         let data = table.data()
         guard data.count <= Self.pasteboardBudget else {
             let megabytes = Double(data.count) / 1_048_576
@@ -287,6 +303,7 @@ final class CSVExportCoordinator {
             return
         }
         UIPasteboard.general.string = String(decoding: data, as: UTF8.self)
+        #endif
     }
 
     fileprivate var defaultFilename: String {
@@ -301,6 +318,11 @@ private struct CSVExportModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(coordinator)
+            // `.fileExporter` is unavailable on tvOS, and nothing there can ask
+            // for it: no menu offers "Save CSV to Files…" on that platform. The
+            // alert stays on every platform — the coordinator is still handed
+            // down, so any future caller that refuses a copy still gets heard.
+            #if !os(tvOS)
             .fileExporter(
                 isPresented: $coordinator.isPresented,
                 document: coordinator.document,
@@ -312,6 +334,7 @@ private struct CSVExportModifier: ViewModifier {
                 // document is dropped so a later export cannot inherit it.
                 coordinator.document = nil
             }
+            #endif
             .alert(
                 "Too large to copy",
                 isPresented: Binding(
@@ -360,6 +383,13 @@ struct CSVShareMenuItems: View {
     @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
 
     var body: some View {
+        #if os(tvOS)
+        // All three destinations are unreachable on tvOS: `ShareLink` is
+        // unavailable, there is no Files app to save into, and there is no
+        // pasteboard to copy to. An empty menu is the honest answer — three
+        // rows that do nothing would be worse than their absence.
+        EmptyView()
+        #else
         ShareLink(
             item: CSVFile(export: export),
             preview: SharePreview(export.title)
@@ -386,6 +416,7 @@ struct CSVShareMenuItems: View {
             }
             .accessibilityLabel("Copy data as CSV")
         }
+        #endif
     }
 }
 
@@ -396,6 +427,11 @@ struct CSVShareMenu: View {
     var systemImage: String = "square.and.arrow.up"
 
     var body: some View {
+        #if os(tvOS)
+        // Nothing to fold in — `CSVShareMenuItems` renders nothing here — so the
+        // toolbar keeps the space instead of a menu that opens on emptiness.
+        EmptyView()
+        #else
         Menu {
             // Naming the size in the menu rather than after the fact: a console
             // result can be anything from three rows to tens of thousands, and
@@ -409,6 +445,7 @@ struct CSVShareMenu: View {
         }
         .accessibilityLabel("Export \(export.title)")
         .disabled(export.isEmpty)
+        #endif
     }
 }
 
@@ -439,6 +476,11 @@ struct InsightShareMenuItems: View {
     }
 
     var body: some View {
+        #if os(tvOS)
+        // The chart image goes the same way its CSV siblings do: `ShareLink` is
+        // unavailable on tvOS and there is no destination to send a PNG to.
+        EmptyView()
+        #else
         // An insight the app never decoded has nothing to export in any form —
         // the PNG would be a photograph of the "not drawn on mobile yet" card.
         // Everything goes rather than offering something useless; those tiles
@@ -457,6 +499,7 @@ struct InsightShareMenuItems: View {
 
             CSVShareMenuItems(export: export)
         }
+        #endif
     }
 }
 
@@ -466,6 +509,10 @@ struct InsightShareMenu: View {
     let model: InsightRenderModel
 
     var body: some View {
+        #if os(tvOS)
+        // As above: the menu's whole contents are unavailable here.
+        EmptyView()
+        #else
         // `rows` rather than `encode`: this decides whether to draw a button, and
         // the two answer the same question — but `encode` answered it by building
         // the entire file, during `body`, on every layout pass.
@@ -485,5 +532,6 @@ struct InsightShareMenu: View {
             }
             .accessibilityLabel("Share \(title)")
         }
+        #endif
     }
 }

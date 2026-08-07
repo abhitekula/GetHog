@@ -179,7 +179,16 @@ struct SessionsOverview: View {
                 )
             }
         }
+        #if os(tvOS)
+        // `.plain` draws no focus state, and on a TV the focused row is the
+        // only thing telling a viewer ten feet away where the remote is. The
+        // platform's own card style supplies the lift, the parallax and the
+        // shadow that say so — the same job `pointerHighlight` does for a
+        // pointer, which is why that modifier falls through to nothing here.
+        .buttonStyle(.card)
+        #else
         .buttonStyle(.plain)
+        #endif
         .pointerHighlight(cornerRadius: Theme.Radius.medium)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenSummary(recording))

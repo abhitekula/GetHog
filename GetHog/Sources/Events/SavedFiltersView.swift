@@ -149,6 +149,11 @@ struct ManageSavedFiltersView: View {
                         .padding(.vertical, 1)
                 )
                 .listRowSeparator(.hidden)
+                #if !os(tvOS)
+                // `swipeActions` is unavailable on tvOS — there is nothing to
+                // swipe. Nothing is lost: the context menu immediately below
+                // carries the same Rename/Delete pair, and a long press on the
+                // remote's select button is how it opens.
                 .swipeActions(edge: .trailing) {
                     Button("Delete", systemImage: "trash", role: .destructive) {
                         pendingDeletion = filter
@@ -156,6 +161,7 @@ struct ManageSavedFiltersView: View {
                     Button("Rename", systemImage: "pencil") { beginRename(filter) }
                         .tint(Theme.accent)
                 }
+                #endif
                 .contextMenu {
                     Button("Rename", systemImage: "pencil") { beginRename(filter) }
                     Button("Delete", systemImage: "trash", role: .destructive) {

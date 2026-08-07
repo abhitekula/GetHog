@@ -59,6 +59,15 @@ enum BiometricGate {
     /// `Sendable`, so it is created, used and discarded inside a single
     /// isolation domain rather than being handed across an actor boundary.
     static func evaluate() async -> Outcome {
+        #if os(tvOS)
+        // `LAPolicy`, `canEvaluatePolicy` and `evaluatePolicy` are all
+        // unavailable on tvOS — an Apple TV has no device owner to
+        // authenticate, no biometry and no passcode to fall back on. This is
+        // the same honest answer the `.unavailable` path already gives a phone
+        // with the gate switched off: the confirmation dialog is the only
+        // guard, and the caller says so rather than pretending the gate ran.
+        return .unavailable("this device has no device-owner authentication")
+        #else
         let context = LAContext()
         var probeError: NSError?
 
@@ -85,6 +94,7 @@ enum BiometricGate {
         } catch {
             return .denied(error.localizedDescription)
         }
+        #endif
     }
 }
 

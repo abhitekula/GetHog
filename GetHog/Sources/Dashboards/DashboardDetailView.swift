@@ -137,7 +137,12 @@ struct DashboardDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if !os(tvOS)
+    // The environment value itself is unavailable on tvOS, not merely useless
+    // there. `Platform.supportsMultipleWindows` answers false on that platform,
+    // so the one site that reads this is already absent.
     @Environment(\.openWindow) private var openWindow
+    #endif
     @State private var store = DashboardDetailStore()
     @State private var selectedTile: Tile?
     @State private var range: DashboardRange = .saved
@@ -249,11 +254,21 @@ struct DashboardDetailView: View {
 
             HStack(spacing: Theme.Space.m) {
                 if range != .saved {
+                    #if os(tvOS)
+                    // `toggleStyle(.button)` is unavailable on tvOS. The
+                    // platform's own toggle is already a focusable control that
+                    // reads its state aloud, which is what the button style was
+                    // buying elsewhere.
+                    Toggle("Compare to previous", isOn: $compare)
+                        .font(.caption)
+                        .accessibilityLabel("Compare to the previous period")
+                    #else
                     Toggle("Compare to previous", isOn: $compare)
                         .toggleStyle(.button)
                         .buttonStyle(.bordered)
                         .font(.caption)
                         .accessibilityLabel("Compare to the previous period")
+                    #endif
                 }
 
                 if let rangeError = store.rangeError {
@@ -341,6 +356,7 @@ struct DashboardDetailView: View {
                 } label: {
                     Label("Recompute results", systemImage: "arrow.clockwise")
                 }
+                #if !os(tvOS)
                 if Platform.supportsMultipleWindows {
                     Button {
                         openWindow(value: WindowTarget.dashboard(id: dashboardID))
@@ -348,11 +364,13 @@ struct DashboardDetailView: View {
                         Label("Open in new window", systemImage: "macwindow.badge.plus")
                     }
                 }
+                // No browser on tvOS: the link would focus and then do nothing.
                 if let webURL {
                     Link(destination: webURL) {
                         Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                     }
                 }
+                #endif
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -431,13 +449,23 @@ struct TileCard: View {
             // Numbers takes the CSV, Mail or Slack the image. It carries what is
             // on screen, so an exported CSV matches the window the user is
             // looking at.
+            //
+            // `draggable` is unavailable on tvOS, which has no drag session and
+            // no second app to drop into.
+            #if !os(tvOS)
             .draggable(ExportableInsight(title: tile.title, model: model))
+            #endif
             .contextMenu {
+                #if !os(tvOS)
+                // No browser to open it in; `InsightShareMenuItems` already
+                // renders nothing on tvOS, so the menu is empty there rather
+                // than a list of things that do not happen.
                 if let webURL {
                     Link(destination: webURL) {
                         Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                     }
                 }
+                #endif
                 InsightShareMenuItems(title: tile.title, model: model)
             }
     }
@@ -463,8 +491,16 @@ struct TileCard: View {
             Button(action: open) {
                 card
             }
+            #if os(tvOS)
+            // `.card` is the platform's own focus treatment — the lift, the
+            // parallax and the shadow a viewer ten feet away needs in order to
+            // see which tile the remote is on. `.plain` on tvOS draws no focus
+            // state at all, which on a grid of cards is unnavigable.
+            .buttonStyle(.card)
+            #else
             // The card is already the design; a button style would repaint it.
             .buttonStyle(.plain)
+            #endif
             .accessibilityLabel(spokenLabel)
             .accessibilityHint("Opens the full insight")
         } else {
@@ -632,6 +668,11 @@ struct InsightDetailView: View {
                     if let onClose { onClose() } else { dismiss() }
                 }
             }
+            #if !os(tvOS)
+            // The whole menu is unavailable on tvOS: `ShareLink` does not
+            // exist there, `Link` opens nothing, and `InsightShareMenuItems`
+            // already renders empty. A share button that opens on nothing is
+            // one more stop on the focus walk for no reward.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     InsightShareMenuItems(title: tile.title, model: tile.renderModel)
@@ -649,6 +690,7 @@ struct InsightDetailView: View {
                 }
                 .accessibilityLabel("Share this insight")
             }
+            #endif
         }
     }
 }
