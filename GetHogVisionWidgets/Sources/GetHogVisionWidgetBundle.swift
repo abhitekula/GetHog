@@ -1,46 +1,34 @@
 import SwiftUI
 import WidgetKit
 
-/// visionOS widgets: a placeholder bundle only — the real widgets arrive
-/// with the platform shell in a later task. The file exists so the appex
-/// plumbing (bundle id, embed, entitlements) can be verified now. The rule
-/// the iOS and Mac bundles document applies here unchanged: widgets render
-/// the App Group snapshot and never call the PostHog API.
+/// Vision widgets: the same three portable widgets iOS and the Mac ship,
+/// rendering the same `SharedSnapshot` files, in their default treatments —
+/// no mounting style, level of detail or spatial texture is adopted, because
+/// nothing here needs one to be honest.
+///
+/// The Control Center controls are absent because the surface is: the SDK
+/// marks `ControlWidget` `@available(visionOS, unavailable)`, so
+/// `ControlCenterWidgets.swift` is excluded from this target outright rather
+/// than seamed — exactly what the Mac target does, for the same annotation on
+/// its own platform. The Lock Screen accessory families go the same way and
+/// need no seam of their own: visionOS `WidgetFamily` declares only the
+/// `system*` cases, so the `#else` arm the shared widgets already take on
+/// macOS is the arm that compiles here too.
+///
+/// Everything renders from the snapshot the app writes to the App Group
+/// container. No surface in this process calls the PostHog API: rate limits
+/// are organisation-wide and shared with the user's own integrations, so N
+/// widgets fetching independently would spend a budget that isn't ours, from a
+/// process the user never launched. The entitlements make that structural
+/// rather than merely intended — this target carries no
+/// `com.apple.security.network.client` at all. See `WidgetCache`: the rule and
+/// its consequences are identical on every platform that grows a widget.
 @main
 struct GetHogVisionWidgetBundle: WidgetBundle {
+
     var body: some Widget {
-        VisionPlaceholderWidget()
-    }
-}
-
-struct VisionPlaceholderWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(
-            kind: "GetHogVisionPlaceholder",
-            provider: PlaceholderProvider()
-        ) { _ in
-            Text("GetHog")
-                .containerBackground(.background, for: .widget)
-        }
-        .configurationDisplayName("GetHog")
-        .description("Placeholder until the visionOS widgets land.")
-    }
-}
-
-struct PlaceholderProvider: TimelineProvider {
-    struct Entry: TimelineEntry {
-        let date: Date
-    }
-
-    func placeholder(in context: Context) -> Entry {
-        Entry(date: .now)
-    }
-
-    func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
-        completion(Entry(date: .now))
-    }
-
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        completion(Timeline(entries: [Entry(date: .now)], policy: .never))
+        MetricWidget()
+        HealthWidget()
+        FlagWidget()
     }
 }
