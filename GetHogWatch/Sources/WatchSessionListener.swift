@@ -89,14 +89,15 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     /// Ingestion failing aborts the whole apply: a receiver that stored a
     /// project name for a key it never saved would show the right heading over
     /// numbers it cannot fetch.
+    @discardableResult
     static func apply(
         _ transfer: WatchKeyTransfer,
         credentials: any CredentialStoring = KeychainTokenStore(),
         snapshots: SharedSnapshotStore = .shared,
         defaults: UserDefaults = .standard,
         notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
-    ) {
-        guard let selection = try? transfer.ingest(into: credentials) else { return }
+    ) -> Bool {
+        guard let selection = try? transfer.ingest(into: credentials) else { return false }
         try? snapshots.writeMetricWatches(selection.watches)
         defaults.set(selection.projectName, forKey: WatchSettings.projectNameKey)
         // Recorded rather than inferred. An empty watch list means "no
@@ -114,6 +115,7 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         // project's numbers. Posted rather than called directly, because this
         // runs on a `WCSession` queue with no reference to what is on screen.
         notify()
+        return true
     }
 
     /// The default announcement, named so a test can pass its own and assert
@@ -122,5 +124,29 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     /// have.
     static let postAppliedNotification: @Sendable () -> Void = {
         NotificationCenter.default.post(name: .gethogWatchKeyTransferApplied, object: nil)
+    }
+}
+
+/// The watch's deliberately small independent-install fallback.
+///
+/// The raw input is passed straight into the same `WatchKeyTransfer` ingestion
+/// path as a phone hand-off. It is never retained here, logged, or reflected;
+/// the helper returns only whether the key reached the watch keychain.
+enum WatchManualKeyEntry {
+    static func save(
+        key: String,
+        region: PostHogRegion,
+        credentials: any CredentialStoring = KeychainTokenStore(),
+        snapshots: SharedSnapshotStore = .shared,
+        defaults: UserDefaults = .standard,
+        notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification
+    ) -> Bool {
+        WatchSessionListener.apply(
+            WatchKeyTransfer(key: key, region: region),
+            credentials: credentials,
+            snapshots: snapshots,
+            defaults: defaults,
+            notify: notify
+        )
     }
 }

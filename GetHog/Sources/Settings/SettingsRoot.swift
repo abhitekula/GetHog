@@ -46,6 +46,11 @@ struct SettingsRoot: View {
             #endif
             SettingsPermissionsSection()
             SettingsAPIKeySection()
+            #if os(iOS)
+            // Sends the key the section above describes. iOS only:
+            // WatchConnectivity exists on iPhone and watchOS, nowhere else this compiles.
+            SettingsWatchSection()
+            #endif
             SettingsUsageSection(quotaStore: quotaStore)
             SettingsSDKHealthSection(store: sdkHealthStore)
             SettingsAboutSection()
@@ -340,7 +345,14 @@ struct SettingsAPIKeySection: View {
                 isPresented: $isConfirmingSignOut,
                 titleVisibility: .visible
             ) {
-                Button("Sign out", role: .destructive) { model.signOut() }
+                Button("Sign out", role: .destructive) {
+                    #if os(iOS)
+                    // A queued transfer outlives the keychain entry sign-out is
+                    // about to delete, so discard its old bearer key first.
+                    WatchHandoffController().cancelQueued()
+                    #endif
+                    model.signOut()
+                }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")

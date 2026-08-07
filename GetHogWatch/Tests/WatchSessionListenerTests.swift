@@ -233,4 +233,66 @@ struct WatchSessionListenerTests {
         #expect(decoded == transfer)
         #expect(WatchKeyTransfer.userInfoKey == "app.gethog.watchKeyTransfer")
     }
+
+    @Test("manual key entry uses the same transfer ingestion as the phone")
+    func manualKeyEntryUsesTransferIngestion() throws {
+        let credentials = InMemoryTokenStore()
+        let notifications = ManualEntryNotifications()
+
+        let saved = WatchManualKeyEntry.save(
+            key: " test-key-0001 ",
+            region: .euCloud,
+            credentials: credentials,
+            snapshots: WatchFixtures.tempStore(),
+            defaults: try defaults(),
+            notify: { notifications.count += 1 }
+        )
+
+        #expect(saved)
+        let credential = try #require(try credentials.load())
+        #expect(credential.key == "test-key-0001")
+        #expect(credential.region == .euCloud)
+        #expect(credential.projectID == nil)
+        #expect(notifications.count == 1)
+    }
+
+    @Test("blank manual key entry leaves the existing credential untouched")
+    func blankManualKeyEntryIsRefused() throws {
+        let credentials = InMemoryTokenStore(
+            credential: StoredCredential(key: "test-key-0001", region: .usCloud, projectID: 1001)
+        )
+        let notifications = ManualEntryNotifications()
+
+        let saved = WatchManualKeyEntry.save(
+            key: "   ",
+            region: .usCloud,
+            credentials: credentials,
+            snapshots: WatchFixtures.tempStore(),
+            defaults: try defaults(),
+            notify: { notifications.count += 1 }
+        )
+
+        #expect(!saved)
+        #expect(try credentials.load()?.key == "test-key-0001")
+        #expect(try credentials.load()?.projectID == 1001)
+        #expect(notifications.count == 0)
+    }
+
+    @Test("manual region selection resolves every supported endpoint")
+    func manualRegionSelectionResolvesEverySupportedEndpoint() throws {
+        #expect(WatchManualRegion.usCloud.resolve(selfHostedURL: "") == PostHogRegion.usCloud)
+        #expect(WatchManualRegion.euCloud.resolve(selfHostedURL: "") == PostHogRegion.euCloud)
+
+        let selfHostedURL = try #require(URL(string: "https://posthog.example.com"))
+        #expect(
+            WatchManualRegion.selfHosted.resolve(
+                selfHostedURL: "https://posthog.example.com"
+            ) == PostHogRegion.selfHosted(selfHostedURL)
+        )
+        #expect(WatchManualRegion.selfHosted.resolve(selfHostedURL: "ftp://posthog.example.com") == nil)
+    }
+}
+
+private final class ManualEntryNotifications: @unchecked Sendable {
+    var count = 0
 }

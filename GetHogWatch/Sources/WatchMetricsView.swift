@@ -19,13 +19,7 @@ struct WatchMetricsView: View {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
                     switch model.phase {
                     case .needsKey:
-                        ContentUnavailableView(
-                            "No key yet",
-                            systemImage: "key.radiowaves.forward",
-                            description: Text(
-                                "Open GetHog on your iPhone to hand this watch its key."
-                            )
-                        )
+                        WatchManualKeyEntryView()
                     case .failed(let message):
                         ContentUnavailableView(
                             "Couldn't refresh",
@@ -109,6 +103,93 @@ struct WatchMetricsView: View {
         return Text(WatchAge.stamp(capturedAt: snapshot.capturedAt, now: Date()))
             .font(Theme.Typography.caption)
             .foregroundStyle(stale ? Theme.accentWarm : Theme.Ink.tertiary)
+    }
+}
+
+/// The independent-install fallback for a watch that cannot receive the
+/// iPhone hand-off yet. The `SecureField` owns the plaintext only while the
+/// user is entering it and clears it before every save attempt.
+private struct WatchManualKeyEntryView: View {
+    @State private var key = ""
+    @State private var region = WatchManualRegion.usCloud
+    @State private var selfHostedURL = ""
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            ContentUnavailableView(
+                "No key yet",
+                systemImage: "key.radiowaves.forward",
+                description: Text("Open GetHog on your iPhone to send its key, or enter one here.")
+            )
+
+            SecureField("API key", text: $key)
+
+            Picker("Region", selection: $region) {
+                ForEach(WatchManualRegion.allCases) { region in
+                    Text(region.title).tag(region)
+                }
+            }
+
+            if region == .selfHosted {
+                TextField("Server URL", text: $selfHostedURL)
+            }
+
+            Button {
+                let enteredKey = key
+                // A failed keychain write must not leave a bearer credential
+                // sitting in view state while the user reads the error.
+                key = ""
+                guard let resolvedRegion = region.resolve(selfHostedURL: selfHostedURL) else {
+                    error = "Enter a valid server URL."
+                    return
+                }
+                guard WatchManualKeyEntry.save(key: enteredKey, region: resolvedRegion) else {
+                    error = "Enter your API key."
+                    return
+                }
+                error = nil
+            } label: {
+                Label("Save API key", systemImage: "key")
+            }
+            .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Status.criticalInk)
+            }
+        }
+    }
+}
+
+enum WatchManualRegion: String, CaseIterable, Identifiable {
+    case usCloud
+    case euCloud
+    case selfHosted
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .usCloud: "US Cloud"
+        case .euCloud: "EU Cloud"
+        case .selfHosted: "Self-hosted"
+        }
+    }
+
+    func resolve(selfHostedURL: String) -> PostHogRegion? {
+        switch self {
+        case .usCloud: return PostHogRegion.usCloud
+        case .euCloud: return PostHogRegion.euCloud
+        case .selfHosted:
+            guard let url = URL(string: selfHostedURL),
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme),
+                  url.host != nil
+            else { return nil }
+            return .selfHosted(url)
+        }
     }
 }
 

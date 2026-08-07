@@ -1,0 +1,295 @@
+#if os(iOS)
+import Foundation
+import GetHogKit
+import GetHogUI
+import Observation
+import SwiftUI
+import WatchConnectivity
+
+/// What the phone can currently say about the watch on the other end.
+struct WatchPairing: Sendable, Equatable {
+    var isSupported = false
+    var isPaired = false
+    var isAppInstalled = false
+
+    /// All three, which is exactly the Settings row's visibility rule.
+    var canReach: Bool { isSupported && isPaired && isAppInstalled }
+}
+
+/// One payload, and the key it must be filed under.
+///
+/// A dictionary is not `Sendable`; carrying its key with the bytes keeps the
+/// phone and watch spelling testable without moving a bearer credential into UI
+/// state.
+struct WatchTransferPayload: Sendable, Equatable {
+    let key: String
+    let data: Data
+
+    var userInfo: [String: Any] { [key: data] }
+}
+
+enum WatchSendEvent: Sendable, Equatable {
+    case pairingChanged(WatchPairing)
+    /// `nil` means the WatchConnectivity daemon reported delivery.
+    case transferFinished(failure: String?)
+}
+
+/// The slice of `WCSession` this feature uses, and nothing else.
+///
+/// The system delegate chooses its callback queue, so isolation belongs to the
+/// controller and events cross to it through `observe` explicitly.
+protocol WatchSending: AnyObject, Sendable {
+    var pairing: WatchPairing { get }
+    /// Idempotent: assigns the delegate and activates on every appearance.
+    func activate()
+    /// Transfers in the daemon's persistent outbox, including a prior launch's.
+    var queuedCount: Int { get }
+    /// Discards every waiting transfer before a replacement or sign-out.
+    func cancelQueued()
+    func queue(_ payload: WatchTransferPayload)
+    /// Replaces the observer; `nil` unsubscribes.
+    func observe(_ sink: (@MainActor @Sendable (WatchSendEvent) -> Void)?)
+}
+
+/// `WCSession` backed sender for the deliberate `transferUserInfo` choice.
+///
+/// `transferUserInfo` queues this dictionary in WatchConnectivity's on-disk
+/// outbox until delivery, including across relaunch and reboot. That makes it
+/// available while a watch is away, at the accepted cost of a raw key outside
+/// the Keychain for a window this app cannot control; `sendMessage` avoids the
+/// outbox but fails whenever the watch is unreachable. `@unchecked Sendable` is
+/// safe here for the same reason as `WatchSessionListener`: callbacks own no
+/// mutable state beyond the observer, which is protected by `NSLock`.
+final class LiveWatchSender: NSObject, WCSessionDelegate, WatchSending, @unchecked Sendable {
+    static let shared = LiveWatchSender()
+
+    private let session = WCSession.default
+    private let observerLock = NSLock()
+    private var sink: (@MainActor @Sendable (WatchSendEvent) -> Void)?
+
+    var pairing: WatchPairing {
+        guard WCSession.isSupported() else { return WatchPairing() }
+        // Pairing facts settle through activation. Advertising them before then
+        // would let the button queue before WatchConnectivity accepts transfers.
+        guard session.activationState == .activated else {
+            return WatchPairing(isSupported: true)
+        }
+        return WatchPairing(
+            isSupported: true,
+            isPaired: session.isPaired,
+            isAppInstalled: session.isWatchAppInstalled
+        )
+    }
+
+    var queuedCount: Int {
+        guard WCSession.isSupported() else { return 0 }
+        return session.outstandingUserInfoTransfers.count
+    }
+
+    func activate() {
+        guard WCSession.isSupported() else {
+            emit(.pairingChanged(WatchPairing()))
+            return
+        }
+        session.delegate = self
+        session.activate()
+    }
+
+    func cancelQueued() {
+        guard WCSession.isSupported() else { return }
+        session.outstandingUserInfoTransfers.forEach { $0.cancel() }
+    }
+
+    func queue(_ payload: WatchTransferPayload) {
+        guard WCSession.isSupported(), session.activationState == .activated else { return }
+        _ = session.transferUserInfo(payload.userInfo)
+    }
+
+    func observe(_ sink: (@MainActor @Sendable (WatchSendEvent) -> Void)?) {
+        observerLock.withLock { self.sink = sink }
+    }
+
+    func session(
+        _ session: WCSession,
+        activationDidCompleteWith activationState: WCSessionActivationState,
+        error: (any Error)?
+    ) {
+        emit(.pairingChanged(pairing))
+    }
+
+    func sessionWatchStateDidChange(_ session: WCSession) {
+        emit(.pairingChanged(pairing))
+    }
+
+    func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
+        // The system's error can include transport details. The status surface
+        // is deliberately a fixed sentence, never an error description.
+        emit(.transferFinished(failure: error == nil ? nil : "The transfer could not be delivered."))
+    }
+
+    func sessionDidBecomeInactive(_ session: WCSession) {}
+
+    func sessionDidDeactivate(_ session: WCSession) {
+        WCSession.default.activate()
+    }
+
+    private func emit(_ event: WatchSendEvent) {
+        let observer = observerLock.withLock { sink }
+        guard let observer else { return }
+        Task { @MainActor in observer(event) }
+    }
+}
+
+/// Keeps the bearer credential confined to this controller's send operation.
+///
+/// The transfer and encoded bytes are locals only: no controller property,
+/// status, or view state can retain or render the key.
+@MainActor
+@Observable
+final class WatchHandoffController {
+    enum Status: Equatable {
+        case idle
+        case queued
+        case delivered(Date)
+        case failed(String)
+    }
+
+    private(set) var pairing = WatchPairing()
+    private(set) var status: Status = .idle
+
+    private let sender: any WatchSending
+    private let credentials: any CredentialStoring
+
+    init(
+        sender: any WatchSending = LiveWatchSender.shared,
+        credentials: any CredentialStoring = KeychainTokenStore()
+    ) {
+        self.sender = sender
+        self.credentials = credentials
+    }
+
+    var canSend: Bool { pairing.canReach && status != .queued }
+
+    func start() {
+        sender.observe { [weak self] event in
+            self?.receive(event)
+        }
+        sender.activate()
+        pairing = sender.pairing
+        status = sender.queuedCount > 0 ? .queued : .idle
+    }
+
+    func send(project: Project?, headlineMetricID: String?, watches: [MetricWatch]) {
+        guard let credential = try? credentials.load() else {
+            status = .failed("There's no API key on this iPhone to send.")
+            return
+        }
+        guard let project else {
+            status = .failed("Choose a project above before sending it to your watch.")
+            return
+        }
+        let transfer = WatchKeyTransfer(
+            key: credential.key,
+            region: credential.region,
+            projectID: project.id,
+            projectName: project.name,
+            headlineMetricID: headlineMetricID,
+            watches: watches
+        )
+        guard let data = try? transfer.encoded() else {
+            status = .failed("Couldn't package the key for transfer.")
+            return
+        }
+        // Rotation: cancelling before queueing leaves no superseded bearer key
+        // at rest in WatchConnectivity's outbox.
+        sender.cancelQueued()
+        sender.queue(WatchTransferPayload(key: WatchKeyTransfer.userInfoKey, data: data))
+        status = .queued
+    }
+
+    func cancelQueued() {
+        sender.cancelQueued()
+        status = .idle
+    }
+
+    private func receive(_ event: WatchSendEvent) {
+        switch event {
+        case .pairingChanged(let pairing):
+            self.pairing = pairing
+        case .transferFinished(let failure):
+            if let failure {
+                status = .failed(failure)
+            } else {
+                status = .delivered(Date())
+            }
+        }
+    }
+}
+
+struct SettingsWatchSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var handoff = WatchHandoffController()
+    @AppStorage("watchHandoffHeadlineMetricID") private var headlineMetricID = ""
+
+    var body: some View {
+        Group {
+            if handoff.pairing.canReach {
+                Section {
+                    Picker("Headline metric", selection: $headlineMetricID) {
+                        Text("First tile on the pinned dashboard").tag("")
+                        ForEach(SharedSnapshotStore.shared.loadOrNil()?.metrics ?? []) { metric in
+                            Text(metric.title).tag(metric.id)
+                        }
+                    }
+
+                    Button {
+                        handoff.send(
+                            project: model.selectedProject,
+                            headlineMetricID: headlineMetricID.isEmpty ? nil : headlineMetricID,
+                            watches: SharedSnapshotStore.shared.metricWatches()
+                        )
+                    } label: {
+                        Label(
+                            "Send API key to Apple Watch",
+                            systemImage: "applewatch.radiowaves.left.and.right"
+                        )
+                    }
+                    .disabled(!handoff.canSend)
+
+                    status
+                } header: {
+                    SectionLabel(text: "Apple Watch", systemImage: "applewatch")
+                } footer: {
+                    Text(
+                        "Sends this iPhone's key, the current project, and your thresholds to GetHog on your Apple Watch, where the key is stored in that watch's Keychain, device-only. Until the watch collects it, iOS holds the queued copy in WatchConnectivity's own on-disk queue — outside the Keychain, for a window this app doesn't control. Sending again cancels the copy that was waiting and replaces it, and so does signing out."
+                    )
+                }
+            }
+        }
+        // Pairing facts settle after activation, so this section may appear just
+        // after Settings rather than claiming a watch exists on its first frame.
+        .task { handoff.start() }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch handoff.status {
+        case .idle:
+            EmptyView()
+        case .queued:
+            Label(
+                "Queued — your watch will pick it up when it's nearby",
+                systemImage: "clock.arrow.circlepath"
+            )
+            .font(.footnote)
+        case .delivered:
+            Label("Delivered to your Apple Watch", systemImage: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(Theme.Status.good)
+        case .failed(let reason):
+            Label(reason, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(Theme.Status.criticalInk)
+        }
+    }
+}
+#endif
