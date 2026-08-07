@@ -52,10 +52,16 @@ struct ProjectSwitcherMenu: View {
             projectList
         } label: {
             // A glyph, not the project name. The name is permanently
-            // visible as the navigation subtitle, and repeating it here
-            // made the item wide enough that it could not share the bar
-            // with a back button — costing a whole row of chrome on every
-            // pushed screen.
+            // visible elsewhere, and repeating it here made the item wide
+            // enough that it could not share the bar with a back button —
+            // costing a whole row of chrome on every pushed screen.
+            //
+            // Where "elsewhere" is depends on the platform. On iOS, iPadOS
+            // and macOS it is the navigation subtitle `ScreenChrome`
+            // applies. visionOS has no `navigationSubtitle` at all, so
+            // `ScreenChrome` puts the name in a toolbar item immediately
+            // beside this glyph instead — which is why the two read as one
+            // address there rather than as a label and a control.
             BrandProductMarkView(mark: .projectStamp, size: 18)
         }
         // The label names the thing; the hint says what happens to it.
