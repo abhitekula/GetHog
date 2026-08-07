@@ -112,6 +112,44 @@ struct TVReplayTimelineModel: Equatable {
             )
         }
     }
+
+    /// Nothing loaded yet — what the screen holds before the first ingest.
+    static let empty = TVReplayTimelineModel(
+        events: [],
+        diagnostics: ReplayDiagnostics(),
+        origin: nil,
+        duration: 0
+    )
+
+    /// Reads the loader the way the screen reads it.
+    ///
+    /// **This composition is the thing that needed testing, and its absence is
+    /// how a doubling bug got past nine passing tests.** Every test in
+    /// `TVReplayTimelineModelTests` hands the initialiser above an explicit
+    /// array, so not one of them could see that the *caller* was assembling
+    /// that array wrongly.
+    ///
+    /// `archivedEvents` alone, never `archivedEvents + pending`. `pending` is
+    /// not the remainder of the archive — it is a second copy of the events
+    /// queued for the web player, which `ingest` fills alongside the archive
+    /// (`ReplayLoader:396` assigns it the whole archive on a restart; `:405`
+    /// appends the same batch just merged at `:389`). Its only drain,
+    /// `drainPendingDelivery()`, is called from `ReplayPlayerView` — a file
+    /// **not compiled into this target** — so on tvOS `pending` is never
+    /// emptied and stays permanently equal to `archivedEvents`. Adding the two
+    /// reported exactly twice the events that existed, and doubled every
+    /// bucket weight against its own documented contract.
+    /// `@MainActor` because `ReplayLoader` is: the reads below cross no
+    /// isolation boundary, they happen where the loader already lives.
+    @MainActor
+    init(loader: ReplayLoader, recording: SessionRecording) {
+        self.init(
+            events: loader.archivedEvents,
+            diagnostics: loader.diagnostics,
+            origin: loader.replayStart ?? recording.startTime,
+            duration: recording.recordingDuration ?? loader.bufferedSeconds
+        )
+    }
 }
 
 /// The session's replay, as much of it as an Apple TV can honestly show.
@@ -129,14 +167,16 @@ struct TVReplayTimelineView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
 
-    private var model: TVReplayTimelineModel {
-        TVReplayTimelineModel(
-            events: loader.archivedEvents + loader.pending,
-            diagnostics: loader.diagnostics,
-            origin: loader.replayStart ?? recording.startTime,
-            duration: recording.recordingDuration ?? loader.bufferedSeconds
-        )
-    }
+    /// Held rather than recomputed in `body`.
+    ///
+    /// This was a computed property, which meant a full copy of the event array
+    /// and three walks of it on **every observation tick** — and `ReplayLoader`
+    /// publishes once per ingested blob range, so a long recording paid that
+    /// O(n) through the whole load. `Export.swift`'s `InsightShareMenu` names
+    /// this exact shape as a defect ("`encode` answered it by building the
+    /// entire file, during `body`, on every layout pass"); this is the same
+    /// mistake with a bigger array.
+    @State private var model = TVReplayTimelineModel.empty
 
     var body: some View {
         Card {
@@ -144,6 +184,15 @@ struct TVReplayTimelineView: View {
                 CardHeader(title: "Replay activity", systemImage: "waveform.path.ecg")
                 availability
             }
+        }
+        // `archiveDeliveryRevision` is the loader's own "the archive changed"
+        // counter: `ingest` bumps it after every merge and `reset()` bumps it
+        // too, so a retry recomputes rather than showing the old shape. Every
+        // other input this model reads — `replayStart`, `bufferedSeconds`,
+        // `diagnostics` — is written by the same two methods, so one key
+        // covers all of them.
+        .task(id: loader.archiveDeliveryRevision) {
+            model = TVReplayTimelineModel(loader: loader, recording: recording)
         }
     }
 

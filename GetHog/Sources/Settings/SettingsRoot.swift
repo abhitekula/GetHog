@@ -361,11 +361,16 @@ struct SettingsAPIKeySection: View {
                     .foregroundStyle(Theme.Status.criticalInk)
             }
 
+            #if !os(tvOS)
+            // Nowhere to open it. The tvOS footer below already names the one
+            // route that exists on this platform — sign out and enter a new
+            // key — rather than offering a row that leads nowhere.
             if let url = model.client?.region.apiKeySettingsURL {
                 Link(destination: url) {
                     Label("Manage keys in PostHog", systemImage: "arrow.up.forward.square")
                 }
             }
+            #endif
 
             Button(role: .destructive) {
                 isConfirmingSignOut = true

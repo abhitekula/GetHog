@@ -54,6 +54,13 @@ struct AboutView: View {
                 SectionLabel(text: "Privacy", systemImage: "hand.raised")
             }
 
+            #if !os(tvOS)
+            // The whole section, not three seamed rows: every entry in it is a
+            // `Link`, and an Apple TV has no browser to open one in. `Link`
+            // compiles there and silently does nothing, which on a focus
+            // platform is three more stops on the walk that lead nowhere. A
+            // section headed "Learn more" with nothing that can be learned
+            // from is worse than its absence.
             Section {
                 Link(destination: Self.docsURL) {
                     Label("PostHog documentation", systemImage: "book")
@@ -67,6 +74,7 @@ struct AboutView: View {
             } header: {
                 SectionLabel(text: "Learn more", systemImage: "book")
             }
+            #endif
         }
         .listStyle(.insetGrouped)
         .pageSurface()

@@ -155,6 +155,51 @@ struct TVReplayTimelineModelTests {
         #expect(!summary.contains("failed requests"))
     }
 
+    // MARK: - Through the composition
+
+    /// **The gap every test above shares.** Each one hands the initialiser an
+    /// explicit array, so none of them can see the screen assembling that array
+    /// wrongly — and it was: `archivedEvents + loader.pending` reported exactly
+    /// twice the events that existed, and doubled every bucket weight with them.
+    ///
+    /// `pending` is not the remainder of the archive. `ingest` merges each
+    /// batch into `archivedEvents` and then puts the same events in `pending`
+    /// for the web player, and the only drain — `drainPendingDelivery()` — is
+    /// called from `ReplayPlayerView`, which is **not compiled into the tvOS
+    /// target**. So on this platform the two are permanently equal, which is
+    /// precisely the state this test leaves the loader in: it never drains.
+    @Test("the screen counts the archive once, not the archive plus its undrained player queue")
+    @MainActor
+    func compositionDoesNotDoubleCountPending() async throws {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
+            transport: DemoTransport()
+        )
+        let recording: SessionRecording = try await client.send(
+            PostHogAPI.sessionRecording(
+                projectID: 1_001,
+                recordingID: "018f1000-0000-7000-8000-000000000001"
+            )
+        )
+        let loader = ReplayLoader()
+        await loader.start(client: client, projectID: 1_001, recording: recording)
+
+        // The precondition that makes the doubling possible. If this ever stops
+        // holding, the bug this test covers has changed shape and the comment
+        // above needs rereading — so it is asserted rather than assumed.
+        #expect(!loader.archivedEvents.isEmpty)
+        #expect(loader.pending.count == loader.archivedEvents.count)
+
+        let model = TVReplayTimelineModel(loader: loader, recording: recording)
+        #expect(model.totalEvents == loader.archivedEvents.count)
+        // Said twice on purpose: the first line pins the identity, this one
+        // rejects the specific wrong answer the defect produced.
+        #expect(model.totalEvents != loader.archivedEvents.count * 2)
+
+        let incremental = loader.archivedEvents.count { $0.type == 3 }
+        #expect(model.buckets.map(\.weight).reduce(0, +) == incremental)
+    }
+
     /// An rrweb plugin event carrying one console line, in the shape
     /// `ReplayDiagnostics.extract` actually reads — `type: 6`, the
     /// `rrweb/console@1` plugin, and a `payload.payload` array of already

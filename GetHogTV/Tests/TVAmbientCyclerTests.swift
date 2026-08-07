@@ -88,8 +88,8 @@ struct TVAmbientCyclerTests {
         #expect(cycler.current == nil)
     }
 
-    @Test("a replaced snapshot starts at its first metric")
-    func replaceResetsTheIndex() {
+    @Test("a snapshot that dropped the metric being shown falls back to the start")
+    func replaceFallsBackWhenTheReadMetricIsGone() {
         let cycler = Self.cycler(count: 5)
         cycler.advance()
         cycler.advance()
@@ -102,6 +102,52 @@ struct TVAmbientCyclerTests {
         #expect(cycler.current?.id == "only")
     }
 
+    @Test("an unchanged snapshot is not adopted, so the cycle keeps its place")
+    func replaceIsANoOpWhenNothingChanged() {
+        // **This is what makes re-reading on every tick safe.** The wallboard
+        // re-reads the snapshot each cycle so it cannot sit on day-old numbers,
+        // and if that read reset the index the screen would show metric one
+        // forever, twelve seconds at a time.
+        let cycler = Self.cycler(count: 4)
+        cycler.advance()
+        cycler.advance()
+        #expect(cycler.index == 2)
+
+        let same = (0..<4).map { Self.metric(String($0)) }
+        #expect(cycler.replace(metrics: same) == false)
+        #expect(cycler.index == 2)
+        #expect(cycler.current?.id == "2")
+    }
+
+    @Test("a metric whose value moved is adopted even though its title did not")
+    func replaceAdoptsChangedValues() {
+        // Equality is the whole list, values included. Comparing ids or titles
+        // alone would make the wallboard blind to the only thing it exists to
+        // show: the number changing.
+        let cycler = TVAmbientCycler(metrics: [Self.metric("a")])
+        let moved = SharedSnapshot.Metric(
+            id: "a", title: "Metric a", value: 99, unit: nil,
+            previous: nil, sparkline: [], dashboardID: 7
+        )
+        #expect(cycler.replace(metrics: [moved]))
+        #expect(cycler.current?.value == 99)
+    }
+
+    @Test("a refreshed snapshot holds the reader on the metric they were reading")
+    func replaceHoldsPositionByIdentity() {
+        // Held by identity, not by index: a snapshot that gained a tile at the
+        // front would otherwise jump the screen to a different metric in the
+        // middle of somebody reading it.
+        let cycler = Self.cycler(count: 3)
+        cycler.advance()
+        #expect(cycler.current?.id == "1")
+
+        let grown = [Self.metric("new")] + (0..<3).map { Self.metric(String($0)) }
+        #expect(cycler.replace(metrics: grown))
+        #expect(cycler.current?.id == "1")
+        #expect(cycler.index == 2)
+    }
+
     @Test("the cycle interval is the documented cadence")
     func intervalIsTwelveSeconds() {
         // Not a restatement of the constant against itself: this asserts the
@@ -109,6 +155,78 @@ struct TVAmbientCyclerTests {
         // and what the ambient screenshot's 15-second wait is sized against.
         #expect(TVAmbientCycler.interval == .seconds(12))
         #expect(TVAmbientCycler.interval < .seconds(30))
+    }
+
+    // MARK: - Keeping the screen awake
+
+    /// The never-sleeping-TV failure mode, as transitions rather than as three
+    /// callbacks nobody can drive.
+    @Suite("TV screen awake hold")
+    struct TVScreenAwakeTests {
+
+        @Test("nothing is held before the wallboard is entered")
+        func startsReleased() {
+            #expect(!TVScreenAwake().isHeld)
+        }
+
+        @Test("entering the wallboard holds the screen")
+        func presentHolds() {
+            var awake = TVScreenAwake()
+            awake.present()
+            #expect(awake.isHeld)
+        }
+
+        @Test("leaving releases, and a tab kept alive behind the sidebar cannot re-take it")
+        func leaveReleases() {
+            // This is the bug. The release used to hang entirely on
+            // `onDisappear`, and a `TabView` may keep a tab's content alive
+            // across a sidebar switch — in which case the tick loop went on
+            // re-asserting from a tab nobody was watching, forever.
+            var awake = TVScreenAwake()
+            awake.present()
+            awake.leave()
+            #expect(!awake.isHeld)
+        }
+
+        @Test("a backgrounded scene releases the hold")
+        func inactiveSceneReleases() {
+            var awake = TVScreenAwake()
+            awake.present()
+            awake.sceneBecame(active: false)
+            #expect(!awake.isHeld)
+        }
+
+        @Test("coming back to an app the viewer never left resumes the hold")
+        func returningResumesWhilePresented() {
+            var awake = TVScreenAwake()
+            awake.present()
+            awake.sceneBecame(active: false)
+            awake.sceneBecame(active: true)
+            #expect(awake.isHeld)
+        }
+
+        @Test("coming back does NOT resume a hold the viewer had already left")
+        func returningDoesNotResurrectALeftScreen() {
+            // Leaving is sticky for exactly this: a wallboard exited to the
+            // sidebar, then the app backgrounded and foregrounded, must not
+            // silently start holding the screen awake again from a tab nobody
+            // is looking at. A single `isSceneActive` boolean would.
+            var awake = TVScreenAwake()
+            awake.present()
+            awake.leave()
+            awake.sceneBecame(active: false)
+            awake.sceneBecame(active: true)
+            #expect(!awake.isHeld)
+        }
+
+        @Test("re-entering after leaving holds again")
+        func reentryHolds() {
+            var awake = TVScreenAwake()
+            awake.present()
+            awake.leave()
+            awake.present()
+            #expect(awake.isHeld)
+        }
     }
 
     // MARK: - Wording

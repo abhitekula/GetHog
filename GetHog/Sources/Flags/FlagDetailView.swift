@@ -89,6 +89,10 @@ struct FlagDetailView: View {
         // confirmation dialog and the console all call this flag.
         .handoff(webURL: webURL, title: flag.key)
         .toolbar {
+            #if !os(tvOS)
+            // No browser on tvOS: `Link` compiles there and does nothing when
+            // pressed, which on a focus platform is worse than absence — a
+            // toolbar stop the remote can reach and nothing happens.
             if let url = webURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     Link(destination: url) {
@@ -97,6 +101,7 @@ struct FlagDetailView: View {
                     .accessibilityLabel("Open this flag in PostHog")
                 }
             }
+            #endif
         }
         .confirmationDialog(
             requestedActivation ? "Enable \(flag.key)?" : "Disable \(flag.key)?",

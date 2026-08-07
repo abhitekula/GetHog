@@ -39,11 +39,27 @@ final class TVAmbientCycler {
         return metrics[index]
     }
 
-    func replace(metrics: [SharedSnapshot.Metric]) {
+    /// Adopts a freshly read snapshot.
+    ///
+    /// **Returns whether anything changed**, and does nothing at all when
+    /// nothing did. The wallboard re-reads the snapshot on every tick — it is
+    /// the screen most likely to be left up for a day, and the one that must
+    /// not sit on yesterday's numbers — but a tick that reset the index every
+    /// twelve seconds would pin the cycle to the first metric forever. Equality
+    /// is the whole list, values included, so a refreshed number is adopted
+    /// even when the titles are identical.
+    @discardableResult
+    func replace(metrics: [SharedSnapshot.Metric]) -> Bool {
+        guard metrics != self.metrics else { return false }
+        let previousID = current?.id
         self.metrics = metrics
-        // Not clamped to the old index: a snapshot that shrank would otherwise
-        // leave the screen pointing past the end until the next tick.
-        index = 0
+        // Held where the reader was, by identity rather than by position: a
+        // snapshot that gained or lost a tile must not jump the screen to a
+        // different metric mid-read. Falls back to the start when the metric
+        // being shown is gone, which also keeps the index in bounds — a
+        // snapshot that shrank would otherwise leave it past the end.
+        index = previousID.flatMap { id in metrics.firstIndex { $0.id == id } } ?? 0
+        return true
     }
 
     /// One step forward, wrapping. What the tick calls.
@@ -65,6 +81,34 @@ final class TVAmbientCycler {
     }
 }
 
+/// Whether the wallboard is currently entitled to keep the screen awake.
+///
+/// A separate type because the failure it prevents is a *lifecycle* bug, and
+/// lifecycle bugs written as three scattered callbacks cannot be tested — which
+/// is how the first version shipped one. There, the release hung entirely on
+/// `onDisappear`, and a `TabView` is free to keep a tab's content alive across
+/// a sidebar switch: if it does, the tick loop goes on re-asserting the flag
+/// from a tab nobody is watching, and the Apple TV never sleeps again.
+///
+/// The rule is one line — held only while the screen is both entered and the
+/// scene is active — and every transition into and out of that is a test below.
+struct TVScreenAwake: Equatable {
+    private(set) var isPresented = false
+    private(set) var isSceneActive = true
+
+    /// What the view writes to `UIApplication.shared.isIdleTimerDisabled`.
+    var isHeld: Bool { isPresented && isSceneActive }
+
+    mutating func present() { isPresented = true }
+
+    /// Leaving is sticky. A scene that goes inactive and comes back must not
+    /// re-hold a screen the viewer already walked away from — this is the
+    /// difference between "not on screen right now" and "dismissed".
+    mutating func leave() { isPresented = false }
+
+    mutating func sceneBecame(active: Bool) { isSceneActive = active }
+}
+
 /// The wallboard.
 ///
 /// A first-class sidebar destination rather than a screensaver: an Apple TV in
@@ -79,7 +123,10 @@ struct TVAmbientView: View {
     /// to Dashboards, so leaving the wallboard is one press either way.
     let exit: () -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var cycler = TVAmbientCycler()
+    @State private var awake = TVScreenAwake()
     /// Bumped to restart the tick clock, so a manual skip gets a full interval
     /// rather than whatever was left of the last one.
     @State private var clock = 0
@@ -97,33 +144,68 @@ struct TVAmbientView: View {
             // SwiftUI routes a select press to `onTapGesture` on a focusable
             // view, which is the same action with none of the chrome.
             .focusable()
-            .onTapGesture(perform: exit)
-            .onExitCommand(perform: exit)
+            .onTapGesture(perform: leave)
+            .onExitCommand(perform: leave)
             .onMoveCommand { direction in
                 cycler.skip(direction)
                 clock += 1
             }
             .onAppear {
                 cycler.replace(metrics: Self.pinnedMetrics())
-                UIApplication.shared.isIdleTimerDisabled = true
+                awake.present()
+                applyHold()
             }
             .onDisappear {
-                // Leaving the wallboard gives the idle timer back. A flag left set
-                // by a screen nobody is looking at is how an Apple TV ends up never
-                // sleeping.
-                UIApplication.shared.isIdleTimerDisabled = false
+                awake.leave()
+                applyHold()
+            }
+            // The scene going inactive releases the hold too — and coming back
+            // does not re-take it if the viewer had already left, which is why
+            // `leave()` is sticky rather than a second boolean.
+            .onChange(of: scenePhase) { _, phase in
+                awake.sceneBecame(active: phase == .active)
+                applyHold()
             }
             .task(id: clock) {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: TVAmbientCycler.interval)
                     guard !Task.isCancelled else { return }
+                    // Re-read before advancing. This is the screen most likely
+                    // to be left up for a day, and reading the snapshot once at
+                    // `onAppear` meant it would cycle day-old numbers forever on
+                    // the one surface whose whole purpose is being left on.
+                    // `replace` is a no-op unless the snapshot actually changed,
+                    // so the cycle index is not reset every twelve seconds.
+                    cycler.replace(metrics: Self.pinnedMetrics())
                     cycler.advance()
-                    // The periodic re-assert. See the type's doc comment: one write
-                    // at `onAppear` claims the flag for a moment, and this claims it
-                    // for as long as the screen is up.
-                    UIApplication.shared.isIdleTimerDisabled = true
+                    // The periodic re-assert, through the same rule as every
+                    // other write. One claim at `onAppear` is a claim about a
+                    // moment; this makes it a claim about the session — but
+                    // only for as long as `awake` says the wallboard is still
+                    // the thing being watched. A loop that outlived its tab
+                    // re-asserts nothing.
+                    applyHold()
                 }
             }
+    }
+
+    /// Leaves the wallboard, releasing the hold on the way out.
+    ///
+    /// The release cannot live in `onDisappear` alone: a `TabView` is free to
+    /// keep a tab's content alive across a sidebar switch, and if it does, the
+    /// tick loop above would go on re-asserting from a tab nobody is looking
+    /// at. Releasing here means the two routes out of this screen — select and
+    /// Menu — both hand the idle timer back explicitly, whatever the `TabView`
+    /// decides to keep alive.
+    private func leave() {
+        awake.leave()
+        applyHold()
+        exit()
+    }
+
+    /// The one place this app writes the idle timer.
+    private func applyHold() {
+        UIApplication.shared.isIdleTimerDisabled = awake.isHeld
     }
 
     /// The pinned dashboard's tiles, as the phone and the watch already reduce
