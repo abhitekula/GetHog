@@ -265,7 +265,14 @@ struct RenderDetailView: View {
                         tint: Theme.Status.critical
                     )
                     Button("Try again") { startPlayback() }
+                        // `.borderedProminent` on visionOS, where
+                        // `.glassProminent` is unavailable — see the same
+                        // substitution in `DesignKit`'s empty state.
+                        #if os(visionOS)
+                        .buttonStyle(.borderedProminent)
+                        #else
                         .buttonStyle(.glassProminent)
+                        #endif
                         // See `Theme.inkOnAccent`. `.glassProminent` fills with
                         // the app tint and labels it white, which is 2.09:1 in
                         // dark — sampled on the "Play" button below, which is
@@ -289,7 +296,11 @@ struct RenderDetailView: View {
                     .padding(.horizontal, Theme.Space.l)
                     .padding(.vertical, Theme.Space.s)
             }
+            #if os(visionOS)
+            .buttonStyle(.borderedProminent)
+            #else
             .buttonStyle(.glassProminent)
+            #endif
             // The button this whole class of defect was measured on: white on
             // `#3CC5CE` for **2.09:1**, sampled off `render-detail.png`. See
             // `Theme.inkOnAccent`.

@@ -29,9 +29,17 @@ extension View {
     /// sliced by it, which matters more here than usual because the glass bars
     /// are translucent and a hard cut shows through them.
     func pageSurface() -> some View {
-        scrollContentBackground(.hidden)
+        let ground = scrollContentBackground(.hidden)
             .background(Theme.pageBackground)
-            .scrollEdgeEffectStyle(.soft, for: .all)
+        #if os(visionOS)
+        // `scrollEdgeEffectStyle` is unavailable on visionOS, and there is
+        // nothing to ask for: the soft edge exists because iOS 26's glass bars
+        // are translucent and a hard cut shows through them. A visionOS window
+        // is its own glass substrate and draws its own edge treatment.
+        return ground
+        #else
+        return ground.scrollEdgeEffectStyle(.soft, for: .all)
+        #endif
     }
 
     /// The app's ground behind something that fills a screen without scrolling.
@@ -63,10 +71,23 @@ extension View {
     /// The name is kept from when this did tint everything, because it is the
     /// call site vocabulary across ~30 screens; what changed is the rule.
     func warmGlass(active: Bool = false, in shape: some Shape = .capsule) -> some View {
+        #if os(visionOS)
+        // `glassEffect` is unavailable on visionOS, where glass is not a
+        // material a view opts into — the window is already one, and the system
+        // draws its own behind controls. What has to survive the substitution is
+        // the *rule* this wrapper exists for: tint means selected and nothing
+        // else is decorated. So an active surface carries the tint and an
+        // inactive one takes the platform's own material.
+        background(
+            active ? AnyShapeStyle(Theme.glassActiveTint) : AnyShapeStyle(.regularMaterial),
+            in: shape
+        )
+        #else
         glassEffect(
             active ? .regular.tint(Theme.glassActiveTint) : .regular,
             in: shape
         )
+        #endif
     }
 }
 
@@ -118,9 +139,32 @@ private struct ScreenChrome: ViewModifier {
     @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
+        #if os(visionOS)
+        // `navigationSubtitle` is unavailable on visionOS, and simply dropping
+        // it would delete the only permanently visible statement of *whose
+        // numbers these are* — the switcher beside it is a glyph on purpose.
+        // This app treats showing the wrong project's numbers as a correctness
+        // bug, so the name moves into the toolbar next to that glyph, where the
+        // two read as one address. The width objection that kept it out of the
+        // toolbar on iPhone does not apply to a 1,280pt window.
+        content
+            .background(Theme.pageBackground)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Text(subtitle)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Ink.secondary)
+                        // Spoken by the switcher's own accessibility label
+                        // already; a second reading of the project name on
+                        // every screen is noise.
+                        .accessibilityHidden(true)
+                }
+            }
+        #else
         content
             .background(Theme.pageBackground)
             .navigationSubtitle(subtitle)
+        #endif
     }
 
     /// The project, and the organization too once there is more than one.
@@ -603,7 +647,16 @@ struct EmptyStateView: View {
         } actions: {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
+                    // `.glassProminent` is unavailable on visionOS;
+                    // `.borderedProminent` is what that platform gives a
+                    // primary action, and it keeps the filled weight this
+                    // button needs. Same substitution `GetHogUI` already makes
+                    // for `.glass`.
+                    #if os(visionOS)
+                    .buttonStyle(.borderedProminent)
+                    #else
                     .buttonStyle(.glassProminent)
+                    #endif
                     // See `Theme.inkOnAccent`. The shared empty state, so this
                     // is the widest single site — and it *is* photographed:
                     // Inbox reaches this branch in demo mode (no `/tasks/`

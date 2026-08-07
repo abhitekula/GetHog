@@ -282,15 +282,37 @@ targets:
           CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements
 
   # visionOS: the same bundle identity as iOS and macOS — one app, every
-  # platform — around a placeholder shell. The real scenes arrive in a later
-  # task; this target exists so the project shape (packages, entitlements,
-  # demo data, the widget embed) is proven before any feature lands on it.
+  # platform — and now the same shared catalog the Mac compiles, around a
+  # Vision-shaped shell in GetHogVision/Sources.
   GetHogVision:
     type: application
     platform: visionOS
     sources:
       - path: GetHogVision/Sources
-      - path: GetHog/Resources/DemoData
+      - path: GetHog/Sources
+        # Exactly GetHogMac's four exclusions, and for the same reasons:
+        # each names an iOS-only scene, delegate or scheduler that this
+        # target replaces with its own. There was nothing AppKit-specific
+        # to subtract, so the two lists are identical rather than merely
+        # similar.
+        #
+        # Two files the brief provisionally listed stay *in*. LinkInbox
+        # keeps its mailbox, LinkNotice and intent routing — consumed by
+        # shared screens — with only its UIKit delegates behind
+        # `#if os(iOS)`, which the Mac target already proves works. And
+        # Player/ReplayPlayerView compiles here behind a visionOS
+        # placeholder stage, so the session screen keeps its diagnostics
+        # and a later task has one file to replace rather than a target
+        # to re-wire.
+        excludes:
+          - App/GetHogApp.swift
+          - App/QuickActions.swift
+          - App/BackgroundRefresh.swift
+          - App/RootView.swift
+      # The whole resource directory, not just DemoData: demo mode needs the
+      # fixtures, and the rrweb player bundle rides along for whoever lands
+      # real replay here.
+      - path: GetHog/Resources
         buildPhase: resources
     dependencies:
       - package: GetHogKit
@@ -306,6 +328,11 @@ targets:
         CODE_SIGN_ENTITLEMENTS: GetHogVision/Support/GetHogVision.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        # The compiled set reaches LAContext twice — revealing the stored key
+        # in Settings, and the feature-flag write gate — and visionOS answers
+        # both with Optic ID, which is why the string says so. `NSFaceID…` is
+        # still the key's name on every platform.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "GetHog asks for Optic ID before revealing your PostHog API key or changing a live feature flag."
         TARGETED_DEVICE_FAMILY: "7"
         ENABLE_PREVIEWS: YES
 

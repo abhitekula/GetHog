@@ -274,10 +274,16 @@ struct SQLConsoleRoot: View {
                     CSVShareMenu(export: export)
                 }
             }
+            // The accessory bar above the software keyboard, so a multi-line
+            // editor has a way to give focus back. `.keyboard` is unavailable
+            // on visionOS — the virtual keyboard there is a window of its own
+            // with its own dismissal, and there is no bar to attach to.
+            #if !os(visionOS)
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { editorFocused = false }
             }
+            #endif
         }
         // The console's result table behind File ▸ Export CSV and Edit ▸ Copy
         // CSV — the most obviously exportable table in the app, and the one a

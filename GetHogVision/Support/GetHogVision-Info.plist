@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Merged into the generated Info.plist, the same arrangement as every
-     other target. The scene manifest is spelled here rather than through
-     INFOPLIST_KEY_UIApplicationSceneManifest_Generation so the visionOS
-     scene keys have one deterministic home when the real scenes land. -->
+<!-- Merged into the generated Info.plist. Only the keys that the
+     INFOPLIST_KEY_* build settings cannot express live here.
+
+     Xcode's INFOPLIST_KEY_* mechanism only understands keys it has a schema
+     for. An unrecognised one is dropped in silence: no warning, no key, and a
+     feature that simply never works — measured on this project, where all of
+     these were written as INFOPLIST_KEY_* settings first and none reached the
+     built plist.
+
+     Deliberately *not* carried over from GetHog-Info.plist:
+     UIApplicationShortcutItems. There is no app-icon shortcut menu on
+     visionOS, and `App/QuickActions.swift` is excluded from this target. -->
 <plist version="1.0">
 <dict>
+	<!-- The scene manifest is spelled here rather than through
+	     INFOPLIST_KEY_UIApplicationSceneManifest_Generation so the visionOS
+	     scene keys have one deterministic home. Multiple scenes because the
+	     shell offers tear-off windows. -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationPreferredDefaultSceneSessionRole</key>
@@ -13,5 +25,49 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 	</dict>
+
+	<!-- BGTaskScheduler refuses to register an identifier that is not declared
+	     here, and it refuses at launch, before any refresh can be attempted.
+	     Same identifier as iOS and the Mac activity, so one feature reads as
+	     one thing in logs. See `VisionRefresh`. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>app.gethog.refresh.snapshot</string>
+	</array>
+
+	<!-- Required for BGAppRefreshTask. Without it the scheduler accepts the
+	     request and the system never runs it. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+
+	<!-- Handoff ignores an activity whose type is not declared, so the
+	     `.handoff` modifier advertises nothing without this. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>app.gethog.browsing</string>
+	</array>
+
+	<!-- The inbound half of `AppModel.webURL(path:)`.
+
+	     A custom scheme rather than a universal link, and not by preference: a
+	     universal link needs an `apple-app-site-association` file at the root of
+	     every host it claims — us.posthog.com, eu.posthog.com, and whatever host
+	     a self-hosted deployment runs on. We control none of them. See
+	     `PostHogLink.swift` and the same comment in GetHog-Info.plist. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>app.gethog.GetHog</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gethog</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

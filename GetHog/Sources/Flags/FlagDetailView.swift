@@ -77,7 +77,13 @@ struct FlagDetailView: View {
         // this flag belongs to is not decoration on this screen — it is the one
         // screen in the app that writes to production, and the confirmation
         // dialog already names the project for the same reason.
+        //
+        // visionOS has no `navigationSubtitle` at all. The dialog is what keeps
+        // the guarantee there: the project is named at the moment of the write,
+        // which is the moment it has to be right.
+        #if !os(visionOS)
         .navigationSubtitle(sizeClass == .compact ? "" : model.selectedProject?.name ?? "")
+        #endif
         // Titled with the key rather than the display name, for the same reason
         // the navigation bar is: the key is what the rollout conditions, the
         // confirmation dialog and the console all call this flag.
