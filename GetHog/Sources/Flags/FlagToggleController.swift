@@ -33,12 +33,13 @@ enum BiometricGate {
     /// Off by default; Settings turns it on.
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
 
-    /// The two platforms frame an `LAContext` reason differently, so the same
-    /// words cannot serve both. macOS drops the reason into a sentence it
+    /// macOS and the iOS-family platforms frame an `LAContext` reason
+    /// differently, so the same words cannot serve both. macOS drops the reason into a sentence it
     /// writes itself — "GetHog is trying to \(reason)." — where an imperative
     /// sentence reads as broken grammar, so the Mac supplies only the clause
-    /// that completes it. iOS shows the reason on its own line beneath the
-    /// prompt, where the full imperative sentence is the right register.
+    /// that completes it. iOS and visionOS show the reason on its own line
+    /// beneath the prompt, where the full imperative sentence is the right
+    /// register.
     #if os(macOS)
     static let reason = "change a live feature flag"
     #else

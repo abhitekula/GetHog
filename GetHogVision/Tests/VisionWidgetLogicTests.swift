@@ -19,4 +19,16 @@ struct VisionWidgetLogicTests {
     func sharedContainerResolves() {
         #expect(SharedSnapshotStore.shared.isSharedContainer)
     }
+
+    /// The Vision app and its widgets share the iOS-style App Group spelling,
+    /// so a missing snapshot should point back to the app. This is deliberately
+    /// the opposite of the Mac fallback, where an unshared container cannot
+    /// honestly promise that opening the app will make the extension see it.
+    @Test("an unshared container still says to open GetHog here")
+    func unsharedContainerUsesTheVisionCopy() {
+        #expect(
+            WidgetCache.noDataMessage(sharedContainer: false)
+                == "Open GetHog to sync"
+        )
+    }
 }

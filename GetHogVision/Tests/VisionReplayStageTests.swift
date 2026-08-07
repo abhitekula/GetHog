@@ -10,7 +10,7 @@ import WebKit
 /// shared builder hands the web view has to keep media inline here — the one
 /// WebKit presentation path visionOS genuinely breaks is the fullscreen one.
 @MainActor
-@Suite("Vision replay stage")
+@Suite("Vision replay stage", .serialized)
 struct VisionReplayStageTests {
 
     /// Playback dies exactly this way: the resource folder rides along through
@@ -27,7 +27,9 @@ struct VisionReplayStageTests {
     /// a player that never starts. Compiling it is the only way to know.
     @Test("the offline resource policy compiles on visionOS")
     func resourcePolicyCompiles() async throws {
-        _ = try await ReplayWebResourcePolicy.compile()
+        let rules = try await ReplayWebResourcePolicy.compile()
+
+        #expect(rules.identifier == ReplayWebResourcePolicy.identifier)
     }
 
     /// Pins the inline-media decision against a future re-narrowing to

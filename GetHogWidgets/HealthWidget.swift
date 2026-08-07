@@ -110,9 +110,9 @@ struct HealthWidget: Widget {
             .accessoryRectangular, .accessoryCircular, .accessoryInline,
         ])
         #else
-        // The same widget minus the Lock Screen. Not a styling choice: every
-        // accessory family is `@available(macOS, unavailable)` in the SDK, so
-        // the cases cannot even be named here.
+        // The same widget minus the Lock Screen. Not a styling choice: macOS
+        // marks every accessory family unavailable, while visionOS does not
+        // declare those cases at all.
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         #endif
     }
@@ -129,6 +129,9 @@ struct HealthWidgetView: View {
         case .systemSmall: small
         case .systemMedium: medium
         case .systemLarge, .systemExtraLarge: large
+        #if os(visionOS)
+        case .systemExtraLargePortrait: large
+        #endif
         #if os(iOS)
         case .accessoryRectangular: rectangular
         case .accessoryCircular: circular

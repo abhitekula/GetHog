@@ -284,6 +284,20 @@ struct SettingsAPIKeySection: View {
     @State private var revealError: String?
     @State private var isConfirmingSignOut = false
 
+    // Sensor names are user-facing hardware claims. Keep each platform's
+    // spelling here, where the Vision suite can pin that a headset never
+    // promises a phone or Mac sensor. tvOS has no device-owner authentication
+    // at all, so its copy names the only replacement route the screen offers.
+    #if os(macOS)
+    static let keyStorageFooter = "The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Touch ID or your password, and it re-hides itself after 30 seconds."
+    #elseif os(visionOS)
+    static let keyStorageFooter = "The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Optic ID or your passcode, and it re-hides itself after 30 seconds."
+    #elseif os(tvOS)
+    static let keyStorageFooter = "The key is stored in this device's Keychain and never synced or uploaded. Apple TV can't verify it's you, so the key can't be revealed here — sign out and enter a new one to replace it."
+    #else
+    static let keyStorageFooter = "The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Face ID, Touch ID, or your passcode, and it re-hides itself after 30 seconds."
+    #endif
+
     /// A revealed key re-masks itself rather than sitting on a screen the user
     /// walked away from.
     private static let revealTimeout: Duration = .seconds(30)
@@ -380,18 +394,7 @@ struct SettingsAPIKeySection: View {
         } header: {
             SectionLabel(text: "API key", systemImage: "lock")
         } footer: {
-            #if os(macOS)
-            // The Mac has no Face ID and calls the fallback a password, not a
-            // passcode; naming what this machine cannot offer reads as a bug.
-            Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Touch ID or your password, and it re-hides itself after 30 seconds.")
-            #elseif os(tvOS)
-            // No biometry, no passcode, no reveal — and the reveal is the only
-            // clause of the other two sentences that would be false here. What
-            // replaces it is the route that does exist.
-            Text("The key is stored in this device's Keychain and never synced or uploaded. Apple TV can't verify it's you, so the key can't be revealed here — sign out and enter a new one to replace it.")
-            #else
-            Text("The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Face ID, Touch ID, or your passcode, and it re-hides itself after 30 seconds.")
-            #endif
+            Text(Self.keyStorageFooter)
         }
     }
 
@@ -405,8 +408,9 @@ struct SettingsAPIKeySection: View {
         revealError = nil
         do {
             // Lower-cased on the Mac for the same reason `BiometricGate.reason`
-            // forks: the system prepends "GetHog is trying to", and the clause
-            // has to read as part of that sentence.
+            // forks: macOS prepends "GetHog is trying to", and the clause has
+            // to read as part of that sentence. iOS and visionOS present the
+            // reason as its own line, so they share the imperative register.
             #if os(macOS)
             let reason = "reveal your PostHog API key"
             #else
