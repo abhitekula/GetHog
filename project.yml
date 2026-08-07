@@ -300,10 +300,10 @@ targets:
         # keeps its mailbox, LinkNotice and intent routing — consumed by
         # shared screens — with only its UIKit delegates behind
         # `#if os(iOS)`, which the Mac target already proves works. And
-        # Player/ReplayPlayerView compiles here behind a visionOS
-        # placeholder stage, so the session screen keeps its diagnostics
-        # and a later task has one file to replace rather than a target
-        # to re-wire.
+        # Player/ReplayPlayerView compiles here for real: the shared iOS
+        # web-view wrapper was widened to visionOS, so this target plays
+        # replays rather than standing a placeholder in front of them, and
+        # the session screen's diagnostics sit beside a working stage.
         excludes:
           - App/GetHogApp.swift
           - App/QuickActions.swift
@@ -336,13 +336,22 @@ targets:
         TARGETED_DEVICE_FAMILY: "7"
         ENABLE_PREVIEWS: YES
 
-  # Placeholder widget bundle — same contract as every other widget target:
-  # reads the App Group snapshot, never calls the API.
+  # Same contract as every other widget target: reads the App Group snapshot,
+  # never calls the API.
   GetHogVisionWidgets:
     type: app-extension
     platform: visionOS
     sources:
       - path: GetHogVisionWidgets/Sources
+      - path: GetHogWidgets
+        excludes:
+          # The iOS bundle file registers the Control Center controls, and
+          # that surface does not exist on visionOS any more than on macOS —
+          # excluded outright rather than seamed, exactly as the Mac target
+          # does. The Vision bundle in GetHogVisionWidgets/Sources registers
+          # the three widgets that do exist.
+          - GetHogWidgetBundle.swift
+          - ControlCenterWidgets.swift
     dependencies:
       - package: GetHogKit
       - package: GetHogUI
@@ -386,6 +395,13 @@ targets:
     platform: watchOS
     sources:
       - path: GetHogWatchWidgets/Sources
+      # The appex needs the two pure files the watch app also compiles.
+      # Compiling a source into both binaries is the standard shared-source
+      # pattern — each carries its own copy — and keeping them app-target
+      # files is what lets GetHogWatchTests reach them: a scoring rule
+      # nobody can run is a rule nobody can check.
+      - path: GetHogWatch/Sources/WatchWidgetCore.swift
+      - path: GetHogWatch/Sources/WatchActivityStore.swift
     dependencies:
       - package: GetHogKit
       - package: GetHogUI
@@ -398,12 +414,61 @@ targets:
         TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: YES
 
-  # tvOS: the same bundle identity again, around a placeholder shell.
+  # tvOS: the same bundle identity again, around the curated read-mostly
+  # subset — the five product surfaces a living room can use, plus Settings,
+  # plus the support they compile against.
+  #
+  # Two directories are absent on purpose. Alerts/ cannot ride: tvOS cannot
+  # present a notification at all (`UNMutableNotificationContent`'s title,
+  # body, sound and thread fields are every one of them unavailable), so a
+  # screen that configured one would be a promise the platform cannot keep.
+  # Intents/ cannot earn its place: tvOS has App Intents, but no Siri surface,
+  # no Spotlight to search and no shortcut menu to suggest into, so donating
+  # would teach the system actions nothing can offer. Both are twinned in
+  # `GetHogTV/Sources/TVAdaptations.swift` so the shared call sites stay
+  # byte-identical.
+  #
+  # Player/ rides minus its two WebKit files — the module is not in the tvOS
+  # SDK — which keeps the whole fetch-and-parse pipeline: `ReplayLoader`,
+  # the diagnostics model and the console and network readers all compile
+  # here. `SessionDetailView` embeds the native `TVReplayTimelineView` where
+  # the other platforms embed the player.
   GetHogTV:
     type: application
     platform: tvOS
     sources:
       - path: GetHogTV/Sources
+      - path: GetHog/Sources/Dashboards
+      - path: GetHog/Sources/Insights
+      - path: GetHog/Sources/Events
+      - path: GetHog/Sources/Sessions
+      - path: GetHog/Sources/Flags
+      - path: GetHog/Sources/Settings
+      - path: GetHog/Sources/Common
+      # Comments/ and People/ are not TV surfaces of their own; they ride
+      # because the ridden screens need them. `DashboardDetailView` and
+      # `SavedInsightDetailView` mount `CommentsSection`, and
+      # `InsightDrillDown` mounts `PersonDetailView` and `PersonAvatar`.
+      - path: GetHog/Sources/Comments
+      - path: GetHog/Sources/People
+      - path: GetHog/Sources/Player
+        excludes:
+          - ReplayPlayerView.swift   # imports WebKit — the module is absent on tvOS
+          - ExpandedReplayView.swift # consumes the WebKit stage
+      # App/ file by file rather than as a directory: most of it is the iOS
+      # shell. `TabRootView` switches over all 35 roots, of which this target
+      # compiles six; `GetHogApp`/`RootView`/`QuickActions`/`BackgroundRefresh`
+      # are per-platform, as they are for the Mac and Vision.
+      - GetHog/Sources/App/AppTab.swift
+      - GetHog/Sources/App/AppModel.swift
+      - GetHog/Sources/App/DemoTransport.swift
+      - GetHog/Sources/App/DebugLaunch.swift
+      - GetHog/Sources/App/OpenDetails.swift
+      - GetHog/Sources/App/WindowTarget.swift
+      - GetHog/Sources/App/NavPreferences.swift
+      - GetHog/Sources/App/LinkInbox.swift
+      - GetHog/Sources/App/PostHogLink.swift
+      - GetHog/Sources/App/ProjectSwitcher.swift
       - path: GetHog/Resources/DemoData
         buildPhase: resources
     dependencies:
@@ -574,6 +639,10 @@ targets:
     platform: visionOS
     sources:
       - GetHogVision/Tests
+      # Compiled in, not imported, for the reason GetHogMacTests documents:
+      # the widget extension is an appex, not a framework. One file on
+      # purpose — WidgetCache.swift references nothing else in GetHogWidgets/.
+      - GetHogWidgets/WidgetCache.swift
     dependencies:
       - target: GetHogVision
       - package: GetHogKit

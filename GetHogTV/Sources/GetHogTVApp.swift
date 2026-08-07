@@ -1,20 +1,74 @@
+import GetHogKit
 import GetHogUI
 import SwiftUI
 
-/// The tvOS entry point — a placeholder scene only. The real shell
-/// arrives in a later task; this file exists so the target builds and the
-/// project's plumbing (packages, entitlements, demo data, the widget embed)
-/// can be verified end to end before any feature lands on it.
+/// The tvOS entry point: `GetHogVisionApp` minus everything that needs a second
+/// window, a browser or a background wake.
 ///
-/// `Theme` is used deliberately: it proves GetHogUI links for this platform,
-/// not merely that it compiled.
+/// One `WindowGroup`, because `openWindow` is unavailable on tvOS and there is
+/// one screen to put a window on. No `insightCSVExporter()` — the exporter it
+/// hosts is compiled to the identity here, since `.fileExporter` does not exist
+/// on the platform. No `onOpenURL`, no Handoff continuation and no intent
+/// plumbing: nothing on tvOS delivers any of the three. No refresh scheduler:
+/// this shell schedules no background wake, which is why `BackgroundRefresh`'s
+/// twin in `TVAdaptations` is a true no-op rather than a stub.
 @main
 struct GetHogTVApp: App {
+    @State private var model: AppModel
+
+    /// Created and handed down even though this shell reads no tab-slot
+    /// preference: several ridden screens take it out of the environment, and a
+    /// missing `@Observable` environment is a crash rather than a nil.
+    @State private var nav = NavPreferences()
+
+    init() {
+        _model = State(initialValue: GetHogTVApp.makeModel())
+    }
+
     var body: some Scene {
         WindowGroup {
-            Text("GetHog")
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.accent)
+            TVRootView()
+                .environment(model)
+                .environment(nav)
+                .tint(Theme.accent)
+                .task {
+                    AppTips.configure()
+                    await model.bootstrap()
+                }
         }
+    }
+
+    private static func makeModel() -> AppModel {
+        #if DEBUG
+        // Demo mode drives the real UI from recorded API responses, so every
+        // screen can be exercised and screenshotted without a live credential.
+        if DemoTransport.isEnabled {
+            return AppModel(
+                store: InMemoryTokenStore(
+                    credential: StoredCredential(key: "demo", region: .usCloud)
+                ),
+                transport: DemoTransport()
+            )
+        }
+
+        // Live end-to-end runs against a real project without going through key
+        // entry each launch; in-memory on purpose so the key dies with the
+        // process. See `GetHogApp.makeModel`.
+        let env = ProcessInfo.processInfo.environment
+        if let key = env["GETHOG_API_KEY"], !key.isEmpty {
+            let region: PostHogRegion = switch env["GETHOG_REGION"]?.lowercased() {
+            case "eu": .euCloud
+            case let host? where host.hasPrefix("http"):
+                URL(string: host).map { PostHogRegion.selfHosted($0) } ?? .usCloud
+            default: .usCloud
+            }
+            return AppModel(
+                store: InMemoryTokenStore(
+                    credential: StoredCredential(key: key, region: region)
+                )
+            )
+        }
+        #endif
+        return AppModel()
     }
 }
