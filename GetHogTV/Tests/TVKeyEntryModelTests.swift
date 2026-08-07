@@ -30,7 +30,7 @@ struct TVKeyEntryModelTests {
     @Test("trimming matches what the auth provider itself does")
     func trimmingMatchesTheAuthProvider() {
         let model = TVKeyEntryModel()
-        model.key = "  phx_synthetic_key  \n"
+        model.key = "  phx_example  \n"
         // `PersonalKeyAuthProvider.init` trims on `.whitespacesAndNewlines`
         // before the key ever reaches an `Authorization` header — and
         // `StoredCredential` deliberately does not, so it keeps what was
@@ -40,7 +40,7 @@ struct TVKeyEntryModelTests {
         // authenticate as the empty string.
         let provider = PersonalKeyAuthProvider(key: model.key, region: .usCloud)
         #expect(model.trimmedKey == provider.key)
-        #expect(model.trimmedKey == "phx_synthetic_key")
+        #expect(model.trimmedKey == "phx_example")
     }
 
     @Test("the EU choice resolves to EU Cloud, not the default")
@@ -58,7 +58,7 @@ struct TVKeyEntryModelTests {
     @Test("a self-hosted address with no host resolves to no region")
     func garbageSelfHostedURLResolvesNothing() {
         let model = TVKeyEntryModel()
-        model.key = "phx_synthetic_key"
+        model.key = "phx_example"
         model.region = .selfHosted
 
         // `URL(string:)` accepts every one of these. A bare word yields a
@@ -74,7 +74,7 @@ struct TVKeyEntryModelTests {
     @Test("a complete self-hosted address resolves and enables Connect")
     func validSelfHostedURLResolves() {
         let model = TVKeyEntryModel()
-        model.key = "phx_synthetic_key"
+        model.key = "phx_example"
         model.region = .selfHosted
         model.selfHostedHost = "  https://posthog.example.com  "
         #expect(model.resolvedRegion() == .selfHosted(URL(string: "https://posthog.example.com")!))

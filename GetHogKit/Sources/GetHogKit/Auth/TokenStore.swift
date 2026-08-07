@@ -77,12 +77,35 @@ public struct KeychainTokenStore: CredentialStoring {
         }
     }
 
+    /// How readable the stored credential is, and when.
+    ///
+    /// `…WhenUnlockedThisDeviceOnly` is the right answer on a device somebody
+    /// unlocks: the key is readable only while the screen is, and it never
+    /// leaves this hardware. An Apple TV has neither half of that premise —
+    /// there is no lock screen to unlock and no device-owner authentication to
+    /// unlock it with — so a credential filed under that class would be
+    /// unreadable to the app that wrote it. `…AfterFirstUnlockThisDeviceOnly`
+    /// is the platform's equivalent: still device-only, still never synced,
+    /// readable once the device has booted.
+    ///
+    /// **The executed test pins the running platform's value only.** The kit
+    /// has no tvOS test host, so the tvOS branch is a compile-time rule and
+    /// nothing here can execute it — a test asserting otherwise would be
+    /// asserting the branch it was itself compiled into.
+    static var accessibility: CFString {
+        #if os(tvOS)
+        kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        #else
+        kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        #endif
+    }
+
     public func save(_ credential: StoredCredential) throws {
         let data = try JSONEncoder().encode(credential)
 
         let update: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: Self.accessibility,
         ]
 
         let status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)

@@ -198,11 +198,12 @@ extension SharedSnapshot.Metric {
     /// empty series reduced to zero: zero is a measurement and "nothing came
     /// back" is not.
     ///
-    /// - Note: `AppModel.metric(from:on:)` in the iOS app still carries its own
-    ///   copy of this rule, pinned by `TileMetricTests`. Retiring that copy in
-    ///   favour of this initialiser is an app-side change and belongs with
-    ///   whoever owns that file; until then the two are pinned separately and
-    ///   must be changed together.
+    /// - Note: this is now the only copy of the rule. The app carried a second
+    ///   one — `AppModel.metric(from:on:)` — until it was retired in favour of
+    ///   this initialiser, which is what the funnel defect above argues for:
+    ///   two copies is two places for the same category error to be fixed one
+    ///   at a time. `TileMetricTests` in the app pins this from the caller's
+    ///   side, beside the suite below.
     public init?(tile: Tile, dashboardID: Int?) {
         guard let insight = tile.insight else { return nil }
         let id = String(insight.id)

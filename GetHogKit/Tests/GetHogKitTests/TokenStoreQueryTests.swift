@@ -36,4 +36,38 @@ struct TokenStoreQueryTests {
         let query = KeychainTokenStore(accessGroup: "app.gethog.tests.shared").baseQuery
         #expect(query[kSecAttrAccessGroup as String] as? String == "app.gethog.tests.shared")
     }
+
+    @Test("the stored credential never leaves the device it was entered on")
+    func accessibilityIsDeviceOnly() {
+        // **This executes the running platform's branch and no other.** The
+        // package's test hosts are macOS and iOS; there is none for tvOS, so
+        // that branch is a compile-time rule and an assertion naming its value
+        // here would be asserting the branch it was itself compiled into.
+        //
+        // What every branch has to agree on is the `ThisDeviceOnly` half: a
+        // personal API key is not a thing to hand another device through an
+        // iCloud Keychain restore, and `SettingsRoot`'s footer promises on
+        // every platform that the key is "never synced or uploaded".
+        //
+        // Asserted against the constants rather than against the string: these
+        // are opaque short codes ("aku", "cku"), so no spelling of them reads
+        // as its own meaning and a suffix check would be checking nothing.
+        let accessible = KeychainTokenStore.accessibility as String
+        let deviceOnly = [
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
+        ]
+        let syncable = [
+            kSecAttrAccessibleWhenUnlocked as String,
+            kSecAttrAccessibleAfterFirstUnlock as String,
+        ]
+        #expect(deviceOnly.contains(accessible))
+        #expect(!syncable.contains(accessible))
+
+        #if os(tvOS)
+        #expect(accessible == kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String)
+        #else
+        #expect(accessible == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
+        #endif
+    }
 }
