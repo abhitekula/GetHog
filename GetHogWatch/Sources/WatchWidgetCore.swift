@@ -1,5 +1,6 @@
 import Foundation
 import GetHogKit
+import GetHogUI
 import WidgetKit
 
 // The complications' whole brain, with no SwiftUI in it.
@@ -55,56 +56,6 @@ struct WatchWidgetCache {
     /// phone hand-off. Read for firing state and for ranking only — this
     /// process posts no notification and writes no latch.
     func watches() -> [MetricWatch] { store.metricWatches() }
-}
-
-// MARK: - Freshness
-
-/// How old the rendered numbers are, in a form the views can state plainly.
-///
-/// A twin of the iOS `WidgetFreshness`, which lives in `GetHogWidgets/` — an
-/// iOS extension target this one cannot import, and which cannot import this.
-/// Unifying the two into the kit is the right eventual home and is outside this
-/// task's fence; until then the numbers below are pinned to the same kit
-/// constant on both sides, which is the part that must not drift.
-struct WatchFreshness: Equatable {
-
-    /// `nil` before the watch has ever synced.
-    let capturedAt: Date?
-    let now: Date
-
-    var age: TimeInterval? {
-        guard let capturedAt else { return nil }
-        return max(0, now.timeIntervalSince(capturedAt))
-    }
-
-    var isStale: Bool {
-        guard let age else { return true }
-        return age > SharedSnapshot.defaultStaleTolerance
-    }
-
-    /// Compact enough for a complication: "now", "20m", "3h", "2d".
-    var shortLabel: String {
-        guard let age else { return "never" }
-        switch age {
-        case ..<60: return "now"
-        case ..<3_600: return "\(Int(age / 60))m"
-        case ..<86_400: return "\(Int(age / 3_600))h"
-        default: return "\(Int(age / 86_400))d"
-        }
-    }
-
-    /// Spelled out for VoiceOver, which should not have to read "3h" aloud —
-    /// and which is the *only* place the age appears on the circular and corner
-    /// faces, where there is no room to draw it.
-    var spokenLabel: String {
-        guard let age else { return "not synced yet" }
-        switch age {
-        case ..<60: return "updated just now"
-        case ..<3_600: return "updated \(Int(age / 60)) minutes ago"
-        case ..<86_400: return "updated \(Int(age / 3_600)) hours ago"
-        default: return "updated \(Int(age / 86_400)) days ago"
-        }
-    }
 }
 
 // MARK: - Refresh policy
@@ -174,7 +125,7 @@ struct WatchMetricEntry: TimelineEntry, Equatable {
     /// A synced project with nothing to show is a different problem from a
     /// project that has never synced, and it needs different words.
     var isEmptyProject: Bool { capturedAt != nil && metrics.isEmpty }
-    var freshness: WatchFreshness { WatchFreshness(capturedAt: capturedAt, now: date) }
+    var freshness: WidgetFreshness { WidgetFreshness(capturedAt: capturedAt, now: date) }
 
     var relevance: TimelineEntryRelevance? {
         TimelineEntryRelevance(score: relevanceScore, duration: WatchWidgetRefresh.step)
@@ -208,7 +159,7 @@ struct WatchHealthEntry: TimelineEntry, Equatable {
 
     var hasSynced: Bool { capturedAt != nil }
     var firingCount: Int { firingRows.count }
-    var freshness: WatchFreshness { WatchFreshness(capturedAt: capturedAt, now: date) }
+    var freshness: WidgetFreshness { WidgetFreshness(capturedAt: capturedAt, now: date) }
 
     var relevance: TimelineEntryRelevance? {
         TimelineEntryRelevance(score: relevanceScore, duration: WatchWidgetRefresh.step)
@@ -246,14 +197,14 @@ struct WatchStackEntry: TimelineEntry, Equatable {
     let mode: Mode
     let relevanceScore: Float
 
-    var freshness: WatchFreshness { WatchFreshness(capturedAt: capturedAt, now: date) }
+    var freshness: WidgetFreshness { WidgetFreshness(capturedAt: capturedAt, now: date) }
 
     /// The event line's age, by the feed's own stamp. `nil` in every mode that
     /// draws no event line.
-    var eventFreshness: WatchFreshness? {
+    var eventFreshness: WidgetFreshness? {
         guard case .quiet(_, _, let event, let eventCapturedAt) = mode, event != nil
         else { return nil }
-        return WatchFreshness(capturedAt: eventCapturedAt, now: date)
+        return WidgetFreshness(capturedAt: eventCapturedAt, now: date)
     }
 
     var relevance: TimelineEntryRelevance? {
@@ -376,7 +327,7 @@ enum WatchComplicationCore {
                 let headline = snapshot.metrics.first
                 mode = .quiet(
                     metricTitle: headline?.title,
-                    valueText: headline.map { WatchWidgetNumber.compact($0.value, unit: $0.unit) },
+                    valueText: headline.map { WidgetNumber.compact($0.value, unit: $0.unit) },
                     latestEvent: activity?.lines.first?.event,
                     // The feed's stamp travels with the line it belongs to.
                     eventCapturedAt: activity?.capturedAt
@@ -434,42 +385,6 @@ enum WatchComplicationCore {
         let end = snapshot.capturedAt.addingTimeInterval(SnapshotRelevance.decayHorizon)
         guard end > now else { return nil }
         return DateInterval(start: now, end: end)
-    }
-}
-
-// MARK: - Numbers
-
-/// A number small enough for a complication.
-///
-/// `Double.compactFormatted` in GetHogUI is the same idea, but it cannot carry
-/// a unit and the wrist's faces have to put "%" and "$" somewhere. The unit
-/// rules are the iOS widgets' `WidgetNumber.decorate`, restated: a symbol hugs
-/// the number, a word gets a space.
-enum WatchWidgetNumber {
-
-    static func compact(_ value: Double, unit: String? = nil) -> String {
-        let number: String
-        if abs(value) >= 1_000 {
-            number = value.formatted(
-                .number.notation(.compactName).precision(.fractionLength(0...1))
-            )
-        } else if value == value.rounded() {
-            number = value.formatted(.number.precision(.fractionLength(0)))
-        } else {
-            number = value.formatted(.number.precision(.fractionLength(0...1)))
-        }
-        return decorate(number, unit: unit)
-    }
-
-    static func full(_ value: Double, unit: String? = nil) -> String {
-        decorate(value.formatted(.number.precision(.fractionLength(0...2))), unit: unit)
-    }
-
-    private static func decorate(_ number: String, unit: String?) -> String {
-        guard let unit, !unit.isEmpty else { return number }
-        if unit == "%" { return number + "%" }
-        if unit.count == 1, unit.rangeOfCharacter(from: .letters) == nil { return unit + number }
-        return "\(number) \(unit)"
     }
 }
 
@@ -568,7 +483,7 @@ enum WatchWidgetSample {
             capturedAt: date,
             mode: .quiet(
                 metricTitle: headline?.title,
-                valueText: headline.map { WatchWidgetNumber.compact($0.value, unit: $0.unit) },
+                valueText: headline.map { WidgetNumber.compact($0.value, unit: $0.unit) },
                 latestEvent: activity.lines.first?.event,
                 eventCapturedAt: date
             ),

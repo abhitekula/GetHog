@@ -14,6 +14,7 @@ import SwiftUI
 /// twin in `TVAdaptations` is a true no-op rather than a stub.
 @main
 struct GetHogTVApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model: AppModel
 
     /// Created and handed down even though this shell reads no tab-slot
@@ -34,6 +35,11 @@ struct GetHogTVApp: App {
                 .task {
                     AppTips.configure()
                     await model.bootstrap()
+                }
+                // The shelf is only visible after the app leaves the screen;
+                // by `.background` the snapshot write has settled.
+                .onChange(of: scenePhase) { _, phase in
+                    TVTopShelfRefresh.notifyIfNeeded(for: phase)
                 }
         }
     }

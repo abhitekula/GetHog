@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import GetHogKit
+import GetHogUI
 import Testing
 
 @testable import GetHog
@@ -191,11 +192,11 @@ struct MenuBarContractTests {
     /// like working software.
     @Test("the freshness caption buckets: now, minutes, hours, days")
     func freshnessBuckets() {
-        #expect(MenuBarFreshness.caption(forAge: 0) == "Updated just now")
-        #expect(MenuBarFreshness.caption(forAge: 59) == "Updated just now")
-        #expect(MenuBarFreshness.caption(forAge: 20 * 60) == "Updated 20m ago")
-        #expect(MenuBarFreshness.caption(forAge: 3 * 3_600) == "Updated 3h ago")
-        #expect(MenuBarFreshness.caption(forAge: 2 * 86_400) == "Updated 2d ago")
+        #expect(WidgetFreshness.caption(forAge: 0) == "Updated just now")
+        #expect(WidgetFreshness.caption(forAge: 59) == "Updated just now")
+        #expect(WidgetFreshness.caption(forAge: 20 * 60) == "Updated 20m ago")
+        #expect(WidgetFreshness.caption(forAge: 3 * 3_600) == "Updated 3h ago")
+        #expect(WidgetFreshness.caption(forAge: 2 * 86_400) == "Updated 2d ago")
     }
 }
 

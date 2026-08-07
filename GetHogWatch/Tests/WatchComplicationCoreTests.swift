@@ -1,5 +1,6 @@
 import Foundation
 import GetHogKit
+import GetHogUI
 @testable import GetHogWatch
 import Testing
 import WidgetKit
@@ -107,15 +108,15 @@ struct WatchComplicationCoreTests {
     func freshnessLabels() {
         let now = WatchFixtures.now
         func label(secondsAgo: TimeInterval) -> String {
-            WatchFreshness(capturedAt: now.addingTimeInterval(-secondsAgo), now: now).shortLabel
+            WidgetFreshness(capturedAt: now.addingTimeInterval(-secondsAgo), now: now).shortLabel
         }
         #expect(label(secondsAgo: 5) == "now")
         #expect(label(secondsAgo: 12 * 60) == "12m")
         #expect(label(secondsAgo: 3 * 3_600) == "3h")
         #expect(label(secondsAgo: 2 * 86_400) == "2d")
-        #expect(WatchFreshness(capturedAt: nil, now: now).shortLabel == "never")
+        #expect(WidgetFreshness(capturedAt: nil, now: now).shortLabel == "never")
         #expect(
-            WatchFreshness(capturedAt: now.addingTimeInterval(-3 * 3_600), now: now).spokenLabel
+            WidgetFreshness(capturedAt: now.addingTimeInterval(-3 * 3_600), now: now).spokenLabel
                 == "updated 3 hours ago"
         )
     }
@@ -125,16 +126,16 @@ struct WatchComplicationCoreTests {
         let now = WatchFixtures.now
         let tolerance = SharedSnapshot.defaultStaleTolerance
         #expect(tolerance == 30 * 60)
-        let justInside = WatchFreshness(capturedAt: now.addingTimeInterval(-tolerance), now: now)
-        let justOutside = WatchFreshness(
+        let justInside = WidgetFreshness(capturedAt: now.addingTimeInterval(-tolerance), now: now)
+        let justOutside = WidgetFreshness(
             capturedAt: now.addingTimeInterval(-tolerance - 1), now: now
         )
         #expect(!justInside.isStale)
         #expect(justOutside.isStale)
         // Never synced is stale, never "fresh by default".
-        #expect(WatchFreshness(capturedAt: nil, now: now).isStale)
+        #expect(WidgetFreshness(capturedAt: nil, now: now).isStale)
         // A snapshot from the future is clock drift, not extra freshness.
-        #expect(WatchFreshness(capturedAt: now.addingTimeInterval(600), now: now).age == 0)
+        #expect(WidgetFreshness(capturedAt: now.addingTimeInterval(600), now: now).age == 0)
     }
 
     // MARK: Firing
@@ -350,11 +351,11 @@ struct WatchComplicationCoreTests {
 
     @Test("a complication-sized number keeps its unit where the unit belongs")
     func numberFormatting() {
-        #expect(WatchWidgetNumber.compact(12_480) == "12.5K")
-        #expect(WatchWidgetNumber.compact(318) == "318")
-        #expect(WatchWidgetNumber.compact(41.2, unit: "%") == "41.2%")
-        #expect(WatchWidgetNumber.compact(8_640, unit: "$") == "$8.6K")
-        #expect(WatchWidgetNumber.compact(27, unit: "errors") == "27 errors")
+        #expect(WidgetNumber.compact(12_480) == "12.5K")
+        #expect(WidgetNumber.compact(318) == "318")
+        #expect(WidgetNumber.compact(41.2, unit: "%") == "41.2%")
+        #expect(WidgetNumber.compact(8_640, unit: "$") == "$8.6K")
+        #expect(WidgetNumber.compact(27, unit: "errors") == "27 errors")
     }
 
     // MARK: Cache

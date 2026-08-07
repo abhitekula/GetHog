@@ -91,53 +91,6 @@ enum WidgetPalette {
     static let critical = Theme.Status.criticalInk
 }
 
-// MARK: - Formatting
-
-enum WidgetNumber {
-
-    /// Widgets have no room for "1,204,533". Compact notation keeps the headline
-    /// legible at every Dynamic Type size; the full number goes to VoiceOver.
-    static func compact(_ value: Double, unit: String? = nil) -> String {
-        let magnitude = abs(value)
-        let number: String
-        if magnitude >= 1_000 {
-            number = value.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
-        } else if value == value.rounded() {
-            number = value.formatted(.number.precision(.fractionLength(0)))
-        } else {
-            number = value.formatted(.number.precision(.fractionLength(0...1)))
-        }
-        return decorate(number, unit: unit)
-    }
-
-    static func full(_ value: Double, unit: String? = nil) -> String {
-        decorate(value.formatted(.number.precision(.fractionLength(0...2))), unit: unit)
-    }
-
-    private static func decorate(_ number: String, unit: String?) -> String {
-        guard let unit, !unit.isEmpty else { return number }
-        // "%" and currency symbols hug the number; word units get a space.
-        if unit == "%" { return number + "%" }
-        if unit.count == 1, unit.rangeOfCharacter(from: .letters) == nil { return unit + number }
-        return "\(number) \(unit)"
-    }
-
-    static func percentChange(_ fraction: Double) -> String {
-        let magnitude = abs(fraction)
-        // Below a tenth of a percent, one decimal reads as "0.0%".
-        let precision: Int = magnitude < 0.1 ? 1 : 0
-        return (magnitude * 100).formatted(.number.precision(.fractionLength(precision))) + "%"
-    }
-
-    /// The change as the widget shows it: percentage when there is a usable
-    /// baseline, otherwise the raw difference, otherwise nothing at all.
-    static func changeLabel(for metric: SharedSnapshot.Metric) -> String? {
-        if let fraction = metric.deltaFraction { return percentChange(fraction) }
-        if let delta = metric.delta { return compact(abs(delta), unit: metric.unit) }
-        return nil
-    }
-}
-
 // MARK: - Accessibility
 
 enum WidgetAccessibility {

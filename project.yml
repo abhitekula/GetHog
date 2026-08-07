@@ -489,15 +489,25 @@ targets:
         TARGETED_DEVICE_FAMILY: "3"
         ENABLE_PREVIEWS: YES
 
-  # Top Shelf stub. GetHogKit only: the shelf will eventually render the App
-  # Group snapshot; there is no GetHogUI surface on it.
+  # The Top Shelf. It renders the App Group snapshot the TV app writes and
+  # calls no API — see `TVTopShelfContent.swift` for the rule and the reason.
+  # GetHogUI is linked for one thing only, `Double.compactFormatted`: the
+  # shelf's captions and the wallboard's headline are the same number in the
+  # same hand, and two spellings of that is one of them going wrong. Nothing
+  # here draws a SwiftUI view.
   GetHogTVTopShelf:
     type: app-extension
     platform: tvOS
     sources:
       - path: GetHogTVTopShelf/Sources
+      # Compiled here a second time, from the app target. `GetHogWatch/Sources/
+      # WatchWidgetCore.swift` does this for the same reason: `GetHogTVTests`
+      # does not compile this appex and an appex has no test host, so a rule
+      # that lived only here is a rule nobody can run.
+      - path: GetHogTV/Sources/TVTopShelfContent.swift
     dependencies:
       - package: GetHogKit
+      - package: GetHogUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog.TopShelf
@@ -600,6 +610,7 @@ targets:
     dependencies:
       - target: GetHogMac
       - package: GetHogKit
+      - package: GetHogUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogMacTests

@@ -40,7 +40,7 @@ enum WatchWidgetDirection {
             return MetricWatch.format(abs(fraction * 100)) + "%"
         }
         if let delta = metric.delta {
-            return WatchWidgetNumber.compact(abs(delta), unit: metric.unit)
+            return WidgetNumber.compact(abs(delta), unit: metric.unit)
         }
         return nil
     }
@@ -48,7 +48,7 @@ enum WatchWidgetDirection {
     /// Value *and* direction in one phrase. A face that reads out only
     /// "12.5 thousand" has hidden the half of the information the arrow carries.
     static func spokenLabel(for metric: SharedSnapshot.Metric) -> String {
-        var parts = [metric.title, WatchWidgetNumber.full(metric.value, unit: metric.unit)]
+        var parts = [metric.title, WidgetNumber.full(metric.value, unit: metric.unit)]
         let change = changeLabel(for: metric)
         switch metric.direction {
         case .up: parts.append("up \(change ?? "")")
@@ -90,7 +90,7 @@ struct WatchDeltaLine: View {
 /// (circular, corner, inline) the age travels in the accessibility label
 /// instead, never nowhere.
 struct WatchAgeFooter: View {
-    let freshness: WatchFreshness
+    let freshness: WidgetFreshness
 
     var body: some View {
         Text(freshness.shortLabel)

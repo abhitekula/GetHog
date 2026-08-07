@@ -1,6 +1,7 @@
 import AppIntents
 import Foundation
 import GetHogKit
+import GetHogUI
 import SwiftUI
 import WidgetKit
 
@@ -181,48 +182,6 @@ enum WidgetRefresh {
 
     static func timeline<E: TimelineEntry>(from start: Date, entry: (Date) -> E) -> Timeline<E> {
         Timeline(entries: entryDates(from: start).map(entry), policy: .after(nextReload(from: start)))
-    }
-}
-
-// MARK: - Freshness
-
-/// How old the rendered numbers are, in a form the views can state plainly.
-struct WidgetFreshness: Equatable {
-
-    /// `nil` before the app has ever synced.
-    let capturedAt: Date?
-    let now: Date
-
-    var age: TimeInterval? {
-        guard let capturedAt else { return nil }
-        return max(0, now.timeIntervalSince(capturedAt))
-    }
-
-    var isStale: Bool {
-        guard let age else { return true }
-        return age > SharedSnapshot.defaultStaleTolerance
-    }
-
-    /// Compact enough for a widget footer: "now", "20m", "3h", "2d".
-    var shortLabel: String {
-        guard let age else { return "never" }
-        switch age {
-        case ..<60: return "now"
-        case ..<3_600: return "\(Int(age / 60))m"
-        case ..<86_400: return "\(Int(age / 3_600))h"
-        default: return "\(Int(age / 86_400))d"
-        }
-    }
-
-    /// Spelled out for VoiceOver, which should not have to read "3h" aloud.
-    var spokenLabel: String {
-        guard let age else { return "not synced yet" }
-        switch age {
-        case ..<60: return "updated just now"
-        case ..<3_600: return "updated \(Int(age / 60)) minutes ago"
-        case ..<86_400: return "updated \(Int(age / 3_600)) hours ago"
-        default: return "updated \(Int(age / 86_400)) days ago"
-        }
     }
 }
 

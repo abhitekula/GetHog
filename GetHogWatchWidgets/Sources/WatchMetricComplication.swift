@@ -39,7 +39,7 @@ struct WatchMetricEntity: AppEntity {
     init(_ metric: SharedSnapshot.Metric) {
         id = metric.id
         title = metric.title
-        subtitle = WatchWidgetNumber.compact(metric.value, unit: metric.unit)
+        subtitle = WidgetNumber.compact(metric.value, unit: metric.unit)
     }
 }
 
@@ -219,7 +219,7 @@ struct WatchMetricComplicationView: View {
                 if let metric = entry.primary {
                     Image(systemName: WatchWidgetDirection.symbol(for: metric.direction))
                         .font(.caption2)
-                    Text(WatchWidgetNumber.compact(metric.value, unit: metric.unit))
+                    Text(WidgetNumber.compact(metric.value, unit: metric.unit))
                         .font(.system(.headline, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
@@ -235,7 +235,7 @@ struct WatchMetricComplicationView: View {
     private var corner: some View {
         Group {
             if let metric = entry.primary {
-                Text(WatchWidgetNumber.compact(metric.value, unit: metric.unit))
+                Text(WidgetNumber.compact(metric.value, unit: metric.unit))
                     .font(.system(.title3, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
@@ -259,7 +259,7 @@ struct WatchMetricComplicationView: View {
                     // title is the part worth tinting.
                     .widgetAccentable()
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(WatchWidgetNumber.compact(metric.value, unit: metric.unit))
+                    Text(WidgetNumber.compact(metric.value, unit: metric.unit))
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
@@ -276,7 +276,7 @@ struct WatchMetricComplicationView: View {
     private var inline: some View {
         Group {
             if let metric = entry.primary {
-                Text("\(metric.title) \(WatchWidgetNumber.compact(metric.value, unit: metric.unit))")
+                Text("\(metric.title) \(WidgetNumber.compact(metric.value, unit: metric.unit))")
             }
         }
         .accessibilityLabel(spokenLabel)

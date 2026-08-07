@@ -571,7 +571,7 @@ struct MacMenuBarPopover: View {
 
     private var freshnessCaption: String {
         guard let snapshot = controller.snapshot else { return "Never synced" }
-        let caption = MenuBarFreshness.caption(forAge: snapshot.staleness())
+        let caption = WidgetFreshness.caption(forAge: snapshot.staleness())
         return snapshot.isStale() ? caption + " — stale" : caption
     }
 
@@ -615,21 +615,6 @@ struct MacMenuBarPopover: View {
         try? controller.store.enqueue(PendingOpen(metricID: metricID))
         NotificationCenter.default.post(name: MacMenuBar.pendingOpenNotification, object: nil)
         MacMenuBar.openMainWindow(using: openWindow)
-    }
-}
-
-/// How old the snapshot reads in a caption one line high. Pure, because the
-/// buckets are the only part of the footer worth pinning and the popover cannot
-/// be mounted in a unit test.
-enum MenuBarFreshness {
-
-    static func caption(forAge age: TimeInterval) -> String {
-        switch age {
-        case ..<60: "Updated just now"
-        case ..<3_600: "Updated \(Int(age / 60))m ago"
-        case ..<86_400: "Updated \(Int(age / 3_600))h ago"
-        default: "Updated \(Int(age / 86_400))d ago"
-        }
     }
 }
 
