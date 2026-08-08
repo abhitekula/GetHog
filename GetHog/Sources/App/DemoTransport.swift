@@ -27,6 +27,7 @@ struct DemoTransport: HTTPTransport {
 
     static let launchArgument = "-GetHogDemo"
     static let dashboardID = 725_101
+    static let hogQLDashboardID = 725_102
     static let emptyCollectionEnvironment = "GETHOG_DEMO_EMPTY_COLLECTION"
     static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
 
@@ -883,6 +884,9 @@ struct DemoTransport: HTTPTransport {
         if path.contains("/dashboards/") {
             if path.hasSuffix("/dashboards/") { return load("dashboards_list") }
             if path.hasSuffix("/dashboards/\(dashboardID)/") { return load("dashboard_detail_raw") }
+            if path.hasSuffix("/dashboards/\(Self.hogQLDashboardID)/") {
+                return load("dashboard_hogql_visualizations")
+            }
             return unrouted(path)
         }
 

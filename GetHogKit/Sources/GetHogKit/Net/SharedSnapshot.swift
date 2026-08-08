@@ -221,6 +221,20 @@ extension SharedSnapshot.Metric {
         let id = String(insight.id)
 
         switch tile.renderModel {
+        case .hogQL(let visualization):
+            guard visualization.resolvedDisplay == .boldNumber,
+                  let value = visualization.boldNumber?.doubleValue
+            else { return nil }
+            self.init(
+                id: id,
+                title: tile.title,
+                value: value,
+                unit: visualization.displayedTable.columns.first?.name,
+                previous: nil,
+                sparkline: [],
+                dashboardID: dashboardID
+            )
+
         case .bigNumber(let number):
             self.init(id: id, title: tile.title, value: number.value,
                       unit: nil, previous: nil, sparkline: [], dashboardID: dashboardID)

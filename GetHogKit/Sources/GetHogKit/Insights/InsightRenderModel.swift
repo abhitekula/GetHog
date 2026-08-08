@@ -6,6 +6,10 @@ import Foundation
 /// render. Anything outside this set decodes to `.unsupported`, which renders as
 /// an honest card linking to the web console rather than a broken chart.
 public enum InsightRenderModel: Sendable, Equatable {
+    /// A positional HogQL result plus the visualization metadata PostHog saved
+    /// beside it. `rows == nil` means the result has not been computed;
+    /// `rows == []` is a computed query with no matching rows.
+    case hogQL(HogQLVisualization)
     /// Trends over time, drawn in the style the insight actually specifies.
     case timeSeries([Series], style: TimeSeriesStyle)
     /// Trends aggregated per breakdown value (`ActionsBarValue`); no time axis.
@@ -22,7 +26,7 @@ public enum InsightRenderModel: Sendable, Equatable {
     case stickiness([StickinessSeries])
     /// User flow between steps, as a ranked edge list.
     case paths(PathsGraph)
-    /// Recognised, but deliberately not drawn on mobile yet.
+    /// A query kind or display the current client does not recognise.
     case unsupported(kind: String)
 }
 

@@ -229,12 +229,10 @@ struct SavedInsightDetailView: View {
 
     /// The chart, or an honest statement of why there isn't one.
     ///
-    /// Three outcomes, and they are deliberately different views. A kind this app
-    /// does not draw gets `UnsupportedInsightCard`, the same deliberate card a
-    /// dashboard tile gets — a mobile app declining to draw a HogQL table is a
-    /// decision, and it should look like one. A drawable kind with no numbers yet
-    /// gets a button, because that is a state the reader can change. Neither is
-    /// ever a blank plot.
+    /// Three outcomes, and they are deliberately different views. An unknown
+    /// kind gets `UnsupportedInsightCard`, the same deliberate card a dashboard
+    /// tile gets. A drawable kind with no numbers yet gets a button, because
+    /// that is a state the reader can change. Neither is ever a blank plot.
     /// What is actually on screen: the narrowed run when there is one, otherwise
     /// the saved result.
     ///

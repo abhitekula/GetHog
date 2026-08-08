@@ -482,7 +482,7 @@ struct InsightShareMenuItems: View {
         EmptyView()
         #else
         // An insight the app never decoded has nothing to export in any form —
-        // the PNG would be a photograph of the "not drawn on mobile yet" card.
+        // the PNG would be a photograph of the unsupported-insight card.
         // Everything goes rather than offering something useless; those tiles
         // already carry their own "Open in PostHog" link.
         if let export = insight.csvExport {

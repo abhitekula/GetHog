@@ -266,8 +266,8 @@ struct InsightCSVModelTests {
     func unsupported() {
         // There is no truthful CSV for a chart the app never decoded; an empty
         // file shared to a colleague is worse than no share button.
-        #expect(InsightCSV.encode(.unsupported(kind: "HogQLQuery")) == nil)
-        #expect(InsightCSV.rows(.unsupported(kind: "HogQLQuery")) == nil)
+        #expect(InsightCSV.encode(.unsupported(kind: "FutureInsightKind")) == nil)
+        #expect(InsightCSV.rows(.unsupported(kind: "FutureInsightKind")) == nil)
     }
 
     @Test("emits a header-only file when the insight has no data")

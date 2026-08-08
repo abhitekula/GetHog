@@ -95,9 +95,13 @@ public struct Tile: Sendable, Decodable, Identifiable {
     public let isCached: Bool
     public let lastRefresh: Date?
     public let insight: Insight?
+    public let text: DashboardTextTile?
+    public let buttonTile: JSONValue?
+    public let widget: JSONValue?
 
     enum CodingKeys: String, CodingKey {
-        case id, order, color, insight
+        case id, order, color, insight, text, widget
+        case buttonTile = "button_tile"
         case isCached = "is_cached"
         case lastRefresh = "last_refresh"
     }
@@ -111,11 +115,60 @@ public struct Tile: Sendable, Decodable, Identifiable {
         lastRefresh = try c.decodeIfPresent(String.self, forKey: .lastRefresh)
             .flatMap(PostHogDate.parse)
         insight = try c.decodeIfPresent(Insight.self, forKey: .insight)
+        text = try? c.decodeIfPresent(DashboardTextTile.self, forKey: .text)
+        buttonTile = try? c.decodeIfPresent(JSONValue.self, forKey: .buttonTile)
+        widget = try? c.decodeIfPresent(JSONValue.self, forKey: .widget)
+    }
+
+    public var content: DashboardTileContent {
+        if let insight { return .insight(insight) }
+        if let text { return .text(text) }
+        if let buttonTile { return .button(buttonTile) }
+        if let widget { return .widget(widget) }
+        return .unknown
     }
 
     public var renderModel: InsightRenderModel {
-        insight?.renderModel ?? .unsupported(kind: "Empty")
+        switch content {
+        case .insight(let insight): insight.renderModel
+        case .text: .unsupported(kind: "Text tile")
+        case .button: .unsupported(kind: "Button tile")
+        case .widget: .unsupported(kind: "Widget tile")
+        case .unknown: .unsupported(kind: "Unknown tile")
+        }
     }
 
-    public var title: String { insight?.title ?? "Untitled" }
+    public var title: String {
+        switch content {
+        case .insight(let insight): insight.title
+        case .text: "Note"
+        case .button: "Button"
+        case .widget: "Widget"
+        case .unknown: "Unknown tile"
+        }
+    }
+}
+
+public enum DashboardTileContent: Sendable {
+    case insight(Insight)
+    case text(DashboardTextTile)
+    case button(JSONValue)
+    case widget(JSONValue)
+    case unknown
+}
+
+public struct DashboardTextTile: Sendable, Equatable, Decodable {
+    public let body: String
+
+    enum CodingKeys: String, CodingKey { case body }
+
+    public init(from decoder: any Decoder) throws {
+        if let value = try? decoder.singleValueContainer().decode(String.self) {
+            body = value
+            return
+        }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let value = try c.decodeIfPresent(JSONValue.self, forKey: .body) ?? .string("")
+        body = value.tabularDescription
+    }
 }

@@ -19,17 +19,22 @@ public enum InsightCSV {
     /// shape, and asserting on it directly beats parsing CSV back apart.
     public static func rows(_ model: InsightRenderModel) -> [[String]]? {
         switch model {
+        case .hogQL(let visualization):
+            guard visualization.isComputed else { return nil }
+            let table = visualization.displayedTable
+            return [table.columns.map(\.name)]
+                + table.rows.map { $0.map(\.tabularDescription) }
         case .timeSeries(let series, _):
-            timeSeriesRows(series)
+            return timeSeriesRows(series)
 
         case .barValue(let bars):
-            [["Label", "Value"]] + bars.map { [$0.label, number($0.value)] }
+            return [["Label", "Value"]] + bars.map { [$0.label, number($0.value)] }
 
         case .bigNumber(let big):
-            [["Label", "Value"], [big.label, number(big.value)]]
+            return [["Label", "Value"], [big.label, number(big.value)]]
 
         case .funnel(let groups):
-            [["Breakdown", "Step", "Order", "Count", "Average conversion time (s)"]]
+            return [["Breakdown", "Step", "Order", "Count", "Average conversion time (s)"]]
                 + groups.flatMap { group in
                     group.steps.map { step in
                         [
@@ -46,13 +51,13 @@ public enum InsightCSV {
             // Dormant counts stay negative: that is what the API returned and
             // what the chart draws below the axis. Taking the absolute value
             // here would turn churn into growth in a spreadsheet.
-            [["Date", "Status", "Count"]]
+            return [["Date", "Status", "Count"]]
                 + series.flatMap { s in
                     s.points.map { [$0.day, s.status.title, number($0.value)] }
                 }
 
         case .retention(let grid):
-            [["Cohort", "Interval", "Count", "Rate"]]
+            return [["Cohort", "Interval", "Count", "Rate"]]
                 + grid.cohorts.flatMap { cohort in
                     cohort.counts.indices.map { index in
                         [
@@ -65,13 +70,13 @@ public enum InsightCSV {
                 }
 
         case .stickiness(let series):
-            [["Series", "Intervals", "Count"]]
+            return [["Series", "Intervals", "Count"]]
                 + series.flatMap { s in
                     s.buckets.map { [s.label, String($0.intervals), number($0.count)] }
                 }
 
         case .paths(let graph):
-            [["Source", "Target", "Value", "Average conversion time (s)"]]
+            return [["Source", "Target", "Value", "Average conversion time (s)"]]
                 + graph.edges.map { edge in
                     [
                         edge.source,
@@ -82,7 +87,7 @@ public enum InsightCSV {
                 }
 
         case .unsupported:
-            nil
+            return nil
         }
     }
 

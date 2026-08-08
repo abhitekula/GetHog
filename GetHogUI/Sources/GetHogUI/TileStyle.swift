@@ -12,6 +12,17 @@ public enum TileStyle {
 
     public static func symbol(for model: InsightRenderModel) -> String {
         switch model {
+        case .hogQL(let visualization):
+            switch visualization.resolvedDisplay {
+            case .line: "chart.xyaxis.line"
+            case .area: "chart.line.uptrend.xyaxis"
+            case .bar, .stackedBar: "chart.bar"
+            case .pie: "chart.pie"
+            case .heatmap: "square.grid.3x3"
+            case .boldNumber: "number"
+            case .table, .auto: "tablecells"
+            case .unsupported: "questionmark.square.dashed"
+            }
         case .timeSeries(_, let style):
             switch style {
             case .line: "chart.xyaxis.line"
@@ -33,6 +44,7 @@ public enum TileStyle {
     /// implies a relationship to the data inside the tile.
     public static func accent(for model: InsightRenderModel) -> Color {
         switch model {
+        case .hogQL: Theme.SignalChrome.teal
         case .timeSeries, .bigNumber: Theme.SignalChrome.teal
         case .barValue, .retention: Theme.SignalChrome.clay
         case .funnel, .paths: Theme.SignalChrome.coral
@@ -59,7 +71,7 @@ public enum TileStyle {
         // flow, and lifecycle stacks four series with a four-item legend —
         // squeezed into one column its category labels collide into mush.
         case .retention, .paths, .lifecycle: 2
-        case .timeSeries, .barValue, .funnel, .stickiness, .bigNumber, .unsupported: 1
+        case .hogQL, .timeSeries, .barValue, .funnel, .stickiness, .bigNumber, .unsupported: 1
         }
     }
 }

@@ -58,6 +58,35 @@ private actor PagingTransport: HTTPTransport {
     }
 }
 
+/// Records the result-read path without retaining anything from a real
+/// project. The two deterministic responses model PostHog's cached-null then
+/// blocking-computed sequence for one fictional HogQL insight.
+private actor HogQLResultTransport: HTTPTransport {
+    private(set) var refreshes: [String] = []
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let url = try #require(request.url)
+        let refresh = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first { $0.name == "refresh" }?
+            .value ?? "absent"
+        refreshes.append(refresh)
+
+        let result = refresh == "blocking" ? "[[17]]" : "null"
+        let body = """
+        {"id": 17, "name": "Synthetic pending result",
+         "query": {"kind": "DataVisualizationNode", "display": "BoldNumber",
+                   "source": {"kind": "HogQLQuery"}},
+         "columns": ["value"], "types": [["value", "UInt64"]],
+         "result": \(result)}
+        """
+        let response = HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
 private func client(_ transport: some HTTPTransport) -> PostHogClient {
     PostHogClient(
         auth: PersonalKeyAuthProvider(key: "phx_test", region: .usCloud),
@@ -239,21 +268,87 @@ struct InsightsLibraryScreenTests {
         #expect(populated.hasDrawableResult)
     }
 
-    /// Five of the project's 140 insights are HogQL, which has no render shape
-    /// here. Escalating one to a blocking query would spend the organisation's
-    /// budget to produce the same "not drawn on mobile yet" card.
-    @Test("a kind with no chart is settled, never recomputed")
-    func unsupportedKindIsNotWorthComputing() throws {
-        let hogQL = try JSONDecoder().decode(
+    /// A computed empty HogQL result is a real answer. A null result is the
+    /// separate state that may justify the detail screen's one computation.
+    @Test("HogQL empty is settled while null is uncomputed")
+    func hogQLEmptyAndNullStayDistinct() throws {
+        let empty = try JSONDecoder().decode(
             Insight.self,
-            from: Data(#"{"id": 3, "query": {"kind": "DataTableNode", "source": {"kind": "HogQLQuery"}}}"#.utf8)
+            from: Data(#"{"id": 3, "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery"}}, "columns": ["value"], "types": [["value", "UInt64"]], "result": []}"#.utf8)
         )
-        #expect(!hogQL.isDrawableKind)
-        // Settled: there is nothing a recomputation could add.
-        #expect(hogQL.hasDrawableResult)
-        if case .unsupported = hogQL.renderModel {} else {
-            Issue.record("expected .unsupported, got \(hogQL.renderModel)")
+        let uncomputed = try JSONDecoder().decode(
+            Insight.self,
+            from: Data(#"{"id": 4, "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery"}}, "columns": ["value"], "types": [["value", "UInt64"]], "result": null}"#.utf8)
+        )
+
+        #expect(empty.isDrawableKind)
+        #expect(empty.hasDrawableResult)
+        #expect(uncomputed.isDrawableKind)
+        #expect(!uncomputed.hasDrawableResult)
+        if case .hogQL(let visualization) = empty.renderModel {
+            #expect(visualization.rows == [])
+        } else {
+            Issue.record("expected .hogQL, got \(empty.renderModel)")
         }
+    }
+
+    /// Proves the distinction at the network boundary, not only in the model:
+    /// `[]` performs no read, while `null` pays for cache lookup and then exactly
+    /// one blocking computation.
+    @Test("only an uncomputed HogQL result reaches the network")
+    func onlyUncomputedHogQLLoadsAndComputes() async throws {
+        func decode(_ result: String) throws -> Insight {
+            try JSONDecoder().decode(
+                Insight.self,
+                from: Data(
+                    """
+                    {"id": 17, "query": {
+                       "kind": "DataVisualizationNode", "display": "BoldNumber",
+                       "source": {"kind": "HogQLQuery"}},
+                     "columns": ["value"], "types": [["value", "UInt64"]],
+                     "result": \(result)}
+                    """.utf8
+                )
+            )
+        }
+
+        let settledTransport = HogQLResultTransport()
+        let settledStore = SavedInsightStore()
+        settledStore.seed(try decode("[]"))
+        await settledStore.loadResults(client: client(settledTransport), projectID: 1)
+        #expect(await settledTransport.refreshes == [])
+
+        let pendingTransport = HogQLResultTransport()
+        let pendingStore = SavedInsightStore()
+        pendingStore.seed(try decode("null"))
+        await pendingStore.loadResults(client: client(pendingTransport), projectID: 1)
+        #expect(await pendingTransport.refreshes == ["force_cache", "blocking"])
+        #expect(pendingStore.didCompute)
+        #expect(pendingStore.insight?.hasDrawableResult == true)
+    }
+
+    @Test("intent reduction uses only a HogQL bold-number display")
+    func hogQLIntentReductionIsUnambiguous() throws {
+        func insight(display: String) throws -> Insight {
+            try JSONDecoder().decode(
+                Insight.self,
+                from: Data(
+                    """
+                    {"id": 5, "name": "Synthetic headline", "query": {
+                      "kind": "DataVisualizationNode", "display": "\(display)",
+                      "source": {"kind": "HogQLQuery"}},
+                     "columns": ["value"], "types": [["value", "UInt64"]],
+                     "result": [[42]]}
+                    """.utf8
+                )
+            )
+        }
+
+        let boldInsight = try insight(display: "BoldNumber")
+        let tableInsight = try insight(display: "ActionsTable")
+        let headline = try #require(IntentMetric(insight: boldInsight, fallbackTitle: "Metric"))
+        #expect(headline.displayValue == "42")
+        #expect(IntentMetric(insight: tableInsight, fallbackTitle: "Metric") == nil)
     }
 
     /// A link carries one string and it may be either spelling. The parser does

@@ -48,6 +48,7 @@ final class DashboardDetailStore {
     private(set) var overrides: [Int: InsightRenderModel] = [:]
     private(set) var isApplyingRange = false
     private(set) var rangeError: String?
+    private(set) var rangeNotice: String?
 
     func load(client: PostHogClient, projectID: Int, dashboardID: Int, refresh: Bool) async {
         isLoading = true
@@ -65,6 +66,7 @@ final class DashboardDetailStore {
     func clearOverrides() {
         overrides = [:]
         rangeError = nil
+        rangeNotice = nil
     }
 
     /// Re-runs every tile over `range`.
@@ -87,10 +89,16 @@ final class DashboardDetailStore {
         isApplyingRange = true
         defer { isApplyingRange = false }
 
+        let eligibleTiles = tiles.filter { tile in
+            guard let insight = tile.insight else { return false }
+            return insight.sourceKind != "HogQLQuery"
+        }
+        let skippedHogQL = tiles.count { $0.insight?.sourceKind == "HogQLQuery" }
+
         var results: [Int: InsightRenderModel] = [:]
         var failures = 0
 
-        for tile in tiles {
+        for tile in eligibleTiles {
             guard let insight = tile.insight, let source = insight.rawSource else { continue }
             let rebuilt = InsightRerun.source(source, dateFrom: dateFrom, compare: compare)
             do {
@@ -115,7 +123,12 @@ final class DashboardDetailStore {
         // to avoid.
         rangeError = failures == 0
             ? nil
-            : "\(failures) of \(tiles.count) tiles kept their saved range."
+            : "\(failures) of \(eligibleTiles.count) eligible insights kept their saved range."
+        if skippedHogQL > 0 {
+            rangeNotice = "\(skippedHogQL) HogQL insight\(skippedHogQL == 1 ? "" : "s") keep\(skippedHogQL == 1 ? "s" : "") \(skippedHogQL == 1 ? "its" : "their") saved result because dashboard ranges do not rewrite SQL."
+        } else {
+            rangeNotice = nil
+        }
     }
 }
 
@@ -275,6 +288,12 @@ struct DashboardDetailView: View {
                     Label(rangeError, systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(Theme.Status.criticalInk)
+                }
+
+                if let rangeNotice = store.rangeNotice {
+                    Label(rangeNotice, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         }
@@ -442,7 +461,19 @@ struct TileCard: View {
     /// shapes, identically. Recorded because the standing note on this defect
     /// named these two as the only things between the tap and the control, which
     /// was true and was not the same as their being responsible.
+    @ViewBuilder
     var body: some View {
+        switch TileCardPresentation(tile: tile).kind {
+        case .insight:
+            insightTile
+        case .note(let body):
+            DashboardNoteTileCard(text: body)
+        case .unsupported(let kind):
+            DashboardNonInsightTileCard(kind: kind)
+        }
+    }
+
+    private var insightTile: some View {
         control
             // Dragging a tile carries the chart as PNG, the series as CSV and
             // the title as text, so the destination decides what it wanted:
@@ -594,6 +625,89 @@ struct TileCard: View {
         tile.lastRefresh
             .map { "Data updated \($0.formatted(.relative(presentation: .named)))" }
             ?? "Data not yet loaded"
+    }
+}
+
+struct TileCardPresentation {
+    enum Kind: Equatable {
+        case insight
+        case note(String)
+        case unsupported(String)
+    }
+
+    let kind: Kind
+    let opensInsight: Bool
+    let showsFreshness: Bool
+    let exportsInsight: Bool
+
+    init(tile: Tile) {
+        switch tile.content {
+        case .insight:
+            kind = .insight
+            opensInsight = true
+            showsFreshness = true
+            exportsInsight = true
+        case .text(let note):
+            kind = .note(note.body)
+            opensInsight = false
+            showsFreshness = false
+            exportsInsight = false
+        case .button:
+            kind = .unsupported("Button tile")
+            opensInsight = false
+            showsFreshness = false
+            exportsInsight = false
+        case .widget:
+            kind = .unsupported("Widget tile")
+            opensInsight = false
+            showsFreshness = false
+            exportsInsight = false
+        case .unknown:
+            kind = .unsupported("Unknown dashboard tile")
+            opensInsight = false
+            showsFreshness = false
+            exportsInsight = false
+        }
+    }
+}
+
+private struct DashboardNoteTileCard: View {
+    let text: String
+
+    var body: some View {
+        Card(accent: Theme.SignalChrome.ink) {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                CardHeader(title: "Note", systemImage: "note.text", showsBrandStitch: true)
+                Text(text.isEmpty ? "This note is empty." : text)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, Theme.Space.s)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Dashboard note. \(text)")
+    }
+}
+
+private struct DashboardNonInsightTileCard: View {
+    let kind: String
+
+    var body: some View {
+        Card(accent: Theme.hairline) {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                CardHeader(
+                    title: kind,
+                    systemImage: "questionmark.square.dashed",
+                    showsBrandStitch: true
+                )
+                Text("This dashboard tile type is not available in GetHog yet.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+            }
+            .padding(.leading, Theme.Space.s)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

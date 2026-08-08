@@ -111,9 +111,8 @@ final class SavedInsightStore {
     /// asked for by name. A saved definition may have no cached result, so the
     /// detail screen performs one explicit computation in that case.
     ///
-    /// Nothing is escalated for a kind this app cannot draw. `HogQLQuery` has no
-    /// render shape here; a
-    /// blocking query would buy a card that already says so.
+    /// A computed empty HogQL table is settled just like a populated one. Only
+    /// a null HogQL result reaches the one blocking computation below.
     func loadResults(client: PostHogClient, projectID: Int) async {
         guard let insight, !insight.hasDrawableResult else { return }
 
@@ -265,6 +264,7 @@ extension Insight {
     /// this app treats as a bug.
     var hasDrawableResult: Bool {
         switch renderModel {
+        case .hogQL(let visualization): visualization.isComputed
         case .timeSeries(let series, _): series.contains { !$0.points.isEmpty }
         case .barValue(let bars): !bars.isEmpty
         case .bigNumber: true
@@ -273,8 +273,8 @@ extension Insight {
         case .retention(let grid): !grid.cohorts.isEmpty
         case .stickiness(let series): !series.isEmpty
         case .paths(let graph): !graph.edges.isEmpty
-        // Not "no data" — a kind with no chart here. Computing it would change
-        // nothing, so it counts as settled.
+        // Not "no data" — an unknown kind with no renderer here. Computing it
+        // would not make it drawable, so it counts as settled.
         case .unsupported: true
         }
     }
@@ -286,7 +286,6 @@ extension Insight {
     /// shapes: an empty funnel and an unsupported kind both decode to
     /// `.unsupported`, and only one of them is worth spending a query on.
     var isDrawableKind: Bool {
-        guard let kind else { return false }
-        return kind != .sql
+        kind != nil
     }
 }

@@ -46,8 +46,8 @@ enum AppTab: String, Hashable, CaseIterable {
         case .sessions: "Sessions"
         case .flags: "Flags"
         // "Insights", the console's own word for the collection. Deliberately
-        // not "Charts": a saved insight is a saved *question*, and five of this
-        // project's are HogQL queries this app draws no chart for at all.
+        // not "Charts": a saved insight is a saved *question*, and it may be a
+        // HogQL result table, a headline value, or another non-chart display.
         case .insights: "Insights"
         case .webAnalytics: "Web"
         // "Clickmap", not "Heatmap" — and the reason has changed, so the old one

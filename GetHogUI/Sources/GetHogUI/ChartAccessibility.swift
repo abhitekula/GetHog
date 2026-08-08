@@ -90,6 +90,7 @@ public enum InsightSummary {
 
     public static func spoken(_ model: InsightRenderModel) -> String {
         switch model {
+        case .hogQL(let visualization): hogQL(visualization)
         case .timeSeries(let series, _): timeSeries(series)
         case .barValue(let bars): barValue(bars)
         case .bigNumber(let number): "\(number.label): \(number.value.formatted())"
@@ -101,6 +102,14 @@ public enum InsightSummary {
         case .unsupported(let kind):
             "\(kind.replacingOccurrences(of: "Query", with: "")) insights aren't drawn on mobile yet"
         }
+    }
+
+    static func hogQL(_ visualization: HogQLVisualization) -> String {
+        guard visualization.isComputed else { return "HogQL result not yet computed" }
+        let rowCount = visualization.rows?.count ?? 0
+        if rowCount == 0 { return "HogQL query completed with no rows" }
+        let suffix = visualization.hasMore ? ", with more rows available" : ""
+        return "\(rowCount) rows and \(visualization.columns.count) columns\(suffix)"
     }
 
     /// Plain `joined`, not `joinedAsSentences()`: every fragment here ends in a

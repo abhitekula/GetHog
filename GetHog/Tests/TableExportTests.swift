@@ -115,7 +115,7 @@ struct TableExportTests {
 
     @Test("an undecodable insight still has nothing to export")
     func unsupportedInsight() {
-        let insight = ExportableInsight(title: "x", model: .unsupported(kind: "HogQLQuery"))
+        let insight = ExportableInsight(title: "x", model: .unsupported(kind: "FutureInsightKind"))
         #expect(insight.csvExport == nil)
     }
 }

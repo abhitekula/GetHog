@@ -61,8 +61,15 @@ public struct Insight: Sendable, Decodable, Identifiable {
     /// rest of the codebase only ever sees `InsightRenderModel`.
     let result: RawResult
 
+    /// Positional HogQL rows. Unlike `RawResult`, this preserves the semantic
+    /// difference between a null (uncomputed) result and a computed empty one.
+    private let hogQLRows: [[JSONValue]]?
+    private let hogQLColumns: [String]
+    private let hogQLTypes: [[String]]?
+    private let hogQLHasMore: Bool
+
     enum CodingKeys: String, CodingKey {
-        case id, name, query, result, description, favorited, tags, dashboards, deleted
+        case id, name, query, result, columns, types, hasMore, description, favorited, tags, dashboards, deleted
         case derivedName = "derived_name"
         case shortID = "short_id"
         case lastModifiedAt = "last_modified_at"
@@ -79,6 +86,10 @@ public struct Insight: Sendable, Decodable, Identifiable {
         query = try? c.decodeIfPresent(InsightQuery.self, forKey: .query)
         rawQuery = try? c.decodeIfPresent(JSONValue.self, forKey: .query)
         result = (try? c.decodeIfPresent(RawResult.self, forKey: .result)) ?? .unknown
+        hogQLRows = try? c.decodeIfPresent([[JSONValue]].self, forKey: .result)
+        hogQLColumns = (try? c.decodeIfPresent([String].self, forKey: .columns)) ?? []
+        hogQLTypes = try? c.decodeIfPresent([[String]].self, forKey: .types)
+        hogQLHasMore = (try? c.decodeIfPresent(Bool.self, forKey: .hasMore)) ?? false
 
         // Every one of these is `try?`-and-default rather than required. A saved
         // insight arrives from three different endpoints in this app — the
@@ -127,7 +138,18 @@ public struct Insight: Sendable, Decodable, Identifiable {
     /// lifecycle results carry `data`/`days` exactly like trends, so shape
     /// sniffing would silently draw a wrong chart.
     public var renderModel: InsightRenderModel {
-        Self.renderModel(result: result, sourceKind: sourceKind, display: displayType)
+        if sourceKind == "HogQLQuery" {
+            return .hogQL(HogQLVisualization(
+                display: query?.display,
+                columnNames: hogQLColumns,
+                types: hogQLTypes,
+                rows: hogQLRows,
+                hasMore: hogQLHasMore,
+                chart: query?.chartSettings,
+                table: query?.tableSettings
+            ))
+        }
+        return Self.renderModel(result: result, sourceKind: sourceKind, display: displayType)
     }
 
     /// The stored display type, e.g. `ActionsBarValue`.
@@ -286,6 +308,9 @@ public enum InsightKind: String, Sendable, CaseIterable, Identifiable, Hashable 
 public struct InsightQuery: Sendable, Decodable {
     public let kind: String?
     public let source: QuerySource?
+    public let display: String?
+    public let chartSettings: HogQLChartSettings?
+    public let tableSettings: HogQLTableSettings?
 }
 
 public struct QuerySource: Sendable, Decodable {

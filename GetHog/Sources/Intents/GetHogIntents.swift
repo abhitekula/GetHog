@@ -304,6 +304,17 @@ struct IntentMetric: Sendable {
         let title = insight.title == "Untitled" ? fallbackTitle : insight.title
 
         switch insight.renderModel {
+        case .hogQL(let visualization):
+            guard visualization.resolvedDisplay == .boldNumber,
+                  let value = visualization.boldNumber?.doubleValue
+            else { return nil }
+            self.init(
+                title: title,
+                value: value,
+                caption: visualization.displayedTable.columns.first?.name,
+                series: []
+            )
+
         case .bigNumber(let number):
             self.init(
                 title: title,

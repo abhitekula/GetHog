@@ -338,7 +338,7 @@ struct AlertComposerView: View {
         // Not composable anyway — `AlertableInsight` refuses these kinds before
         // this form is drawn — but stated rather than defaulted, so a kind added
         // to `composable` later has to answer this question too.
-        case .lifecycle, .retention, .stickiness, .paths, .unsupported:
+        case .hogQL, .lifecycle, .retention, .stickiness, .paths, .unsupported:
             return nil
         }
     }

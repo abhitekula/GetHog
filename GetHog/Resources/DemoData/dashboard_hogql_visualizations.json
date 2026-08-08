@@ -1,0 +1,153 @@
+{
+  "id": 725102,
+  "name": "Synthetic HogQL gallery",
+  "description": "Deterministic fictional coverage for every supported HogQL display.",
+  "pinned": false,
+  "tiles": [
+    {
+      "id": 726001,
+      "order": 0,
+      "text": {"body": "All values on this dashboard are fictional and deterministic."},
+      "insight": null
+    },
+    {
+      "id": 726002,
+      "order": 1,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727002,
+        "name": "Synthetic result table",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery", "query": "SELECT segment, value FROM synthetic_metrics"}},
+        "columns": ["segment", "value"],
+        "types": [["segment", "String"], ["value", "UInt64"]],
+        "result": [["alpha", 12], ["beta", 8]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726003,
+      "order": 2,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727003,
+        "name": "Synthetic values over time",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsLineGraph", "source": {"kind": "HogQLQuery", "query": "SELECT day, value FROM synthetic_daily_metrics"}},
+        "columns": ["day", "value"],
+        "types": [["day", "Date"], ["value", "UInt64"]],
+        "result": [["2026-01-13", 5], ["2026-01-14", 8], ["2026-01-15", 7]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726004,
+      "order": 3,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727004,
+        "name": "Synthetic area trend",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsAreaGraph", "source": {"kind": "HogQLQuery", "query": "SELECT day, value FROM synthetic_area_metrics"}},
+        "columns": ["day", "value"],
+        "types": [["day", "Date"], ["value", "Float64"]],
+        "result": [["2026-01-13", 3.5], ["2026-01-14", 6.25], ["2026-01-15", 9.0]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726005,
+      "order": 4,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727005,
+        "name": "Synthetic grouped bars",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsBar", "source": {"kind": "HogQLQuery", "query": "SELECT segment, opened, clicked FROM synthetic_bar_metrics"}},
+        "columns": ["segment", "opened", "clicked"],
+        "types": [["segment", "String"], ["opened", "UInt64"], ["clicked", "UInt64"]],
+        "result": [["alpha", 15, 6], ["beta", 10, 4]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726006,
+      "order": 5,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727006,
+        "name": "Synthetic stacked bars",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsStackedBar", "source": {"kind": "HogQLQuery", "query": "SELECT segment, opened, clicked FROM synthetic_stack_metrics"}},
+        "columns": ["segment", "opened", "clicked"],
+        "types": [["segment", "String"], ["opened", "UInt64"], ["clicked", "UInt64"]],
+        "result": [["alpha", 9, 3], ["beta", 7, 5]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726007,
+      "order": 6,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727007,
+        "name": "Synthetic share pie",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsPie", "source": {"kind": "HogQLQuery", "query": "SELECT segment, value FROM synthetic_share_metrics"}},
+        "columns": ["segment", "value"],
+        "types": [["segment", "String"], ["value", "UInt64"]],
+        "result": [["alpha", 14], ["beta", 9], ["gamma", 5]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726008,
+      "order": 7,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727008,
+        "name": "Synthetic channel heatmap",
+        "query": {"kind": "DataVisualizationNode", "display": "TwoDimensionalHeatmap", "source": {"kind": "HogQLQuery", "query": "SELECT region, channel, value FROM synthetic_heatmap_metrics"}},
+        "columns": ["region", "channel", "value"],
+        "types": [["region", "String"], ["channel", "String"], ["value", "UInt64"]],
+        "result": [["north", "email", 8], ["north", "chat", 4], ["south", "email", 6], ["south", "chat", 9]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726009,
+      "order": 8,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727009,
+        "name": "Synthetic headline value",
+        "query": {"kind": "DataVisualizationNode", "display": "BoldNumber", "source": {"kind": "HogQLQuery", "query": "SELECT value FROM synthetic_headline_metrics"}},
+        "columns": ["value"],
+        "types": [["value", "UInt64"]],
+        "result": [[42]],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726010,
+      "order": 9,
+      "last_refresh": "2026-01-15T12:00:00.000Z",
+      "insight": {
+        "id": 727010,
+        "name": "Synthetic empty result",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery", "query": "SELECT value FROM synthetic_empty_metrics"}},
+        "columns": ["value"],
+        "types": [["value", "UInt64"]],
+        "result": [],
+        "hasMore": false
+      }
+    },
+    {
+      "id": 726011,
+      "order": 10,
+      "insight": {
+        "id": 727011,
+        "name": "Synthetic pending result",
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery", "query": "SELECT value FROM synthetic_pending_metrics"}},
+        "columns": ["value"],
+        "types": [["value", "UInt64"]],
+        "result": null,
+        "hasMore": false
+      }
+    }
+  ]
+}

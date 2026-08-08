@@ -14,7 +14,7 @@ struct InsightLibraryTests {
     ///
     /// Row one is the common case: a trends line graph on a dashboard, with a
     /// null `result`. Row two is the one that has to be handled differently: a
-    /// `HogQLQuery`, which this app draws no chart for.
+    /// `HogQLQuery` whose result carries its own display metadata.
     private static let listJSON = """
     {
       "count": 2,

@@ -55,6 +55,8 @@ public struct InsightChartView: View {
 
     public var body: some View {
         switch model {
+        case .hogQL(let visualization):
+            HogQLVisualizationView(visualization: visualization, compact: compact, title: title)
         case .timeSeries(let series, let style):
             TimeSeriesChart(
                 series: series,

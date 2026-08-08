@@ -90,6 +90,11 @@ enum SyntheticFixtureCatalog {
         values.formUnion(741_01...741_04)
         values.formUnion(771_00...771_06)
         values.formUnion(725_101...725_111)
+        // Dashboard 725_102's committed HogQL gallery. Tile and insight IDs
+        // have their own catalog ranges so none can be mistaken for captured
+        // tenant identifiers merely because the values look well structured.
+        values.formUnion(726_001...726_011)
+        values.formUnion(727_002...727_011)
         values.formUnion(401...402)
         values.formUnion(stride(from: 405, through: 450, by: 4))
         values.formUnion(stride(from: 406, through: 450, by: 4))
@@ -251,6 +256,7 @@ enum SyntheticFixtureCatalog {
         "experiment_result_shipped.json", "group_event_breakdown.json",
         "file_system.json", "group_people.json", "group_session_recordings.json", "groups.json",
         "heatmap_screenshots_saved.json", "marketing_analytics.json",
+        "dashboard_hogql_visualizations.json",
         "insights_list.json", "llm_traces.json", "notebook_detail.json",
         "notebook_detail_plain.json", "notebooks_list.json", "organization_projects.json",
         "organization_projects_second.json", "property_carrier_events.json",
