@@ -37,7 +37,7 @@ struct WatchRootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
-                    await model.reconcile(WatchHandoff.current())
+                    await reconcileCurrentHandoff()
                     await model.refresh()
                 }
                 return
@@ -61,6 +61,10 @@ struct WatchRootView: View {
     /// listening, and it re-reads all three rather than trusting a payload —
     /// so a running app and a fresh launch resolve their state identically.
     private func adoptHandoffs() async {
+        // Demo owns a complete synthetic credential and project. Reading the
+        // live stores here would immediately replace that state with whatever
+        // the simulator or paired phone happened to retain.
+        guard WatchDemoMode.allowsLiveHandoffs else { return }
         let applied = NotificationCenter.default.notifications(
             named: .gethogWatchKeyTransferApplied
         )
@@ -68,10 +72,19 @@ struct WatchRootView: View {
         // committed a transfer before the view was built, its notification is
         // gone but its higher committed revision and stores remain; reconcile
         // adopts them before waiting for the next notification.
-        await model.reconcile(WatchHandoff.current())
+        await reconcileCurrentHandoff()
         for await _ in applied {
-            await model.reconcile(WatchHandoff.current())
+            await reconcileCurrentHandoff()
         }
+    }
+
+    /// The single gate for every live-store read. Keeping foreground resumes,
+    /// initial adoption and transfer notifications on one path prevents a demo
+    /// session from being correct at launch and then losing its synthetic state
+    /// the first time the wrist drops and rises again.
+    private func reconcileCurrentHandoff() async {
+        guard WatchDemoMode.allowsLiveHandoffs else { return }
+        await model.reconcile(WatchHandoff.current())
     }
 
     /// Always `.metrics` in a shipped build. The DEBUG branch isolates each

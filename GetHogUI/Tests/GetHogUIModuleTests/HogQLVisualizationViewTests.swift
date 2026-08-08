@@ -37,6 +37,181 @@ struct HogQLVisualizationViewTests {
         #expect(TileStyle.preferredColumns(for: model) == 1)
     }
 
+    @Test("compact date-axis labels stay short and distinguish sub-day points")
+    func compactDateAxisLabelsStayDistinct() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let locale = Locale(identifier: "en_US_POSIX")
+        let dates = try [
+            DateComponents(year: 2026, month: 1, day: 13, hour: 0),
+            DateComponents(year: 2026, month: 1, day: 13, hour: 12),
+            DateComponents(year: 2026, month: 1, day: 14, hour: 0),
+            DateComponents(year: 2026, month: 1, day: 14, hour: 12),
+        ].map { try #require(calendar.date(from: $0)) }
+
+        let labels = dates.map {
+            HogQLDateAxisLabel(
+                date: $0,
+                locale: locale,
+                calendar: calendar,
+                timeZone: calendar.timeZone
+            )
+        }
+
+        #expect(labels.allSatisfy { !$0.day.isEmpty && !$0.time.isEmpty })
+        #expect(labels.allSatisfy { $0.day.count <= 6 })
+        #expect(labels.allSatisfy { $0.time.count <= 8 })
+        #expect(Set(labels.map { "\($0.day)|\($0.time)" }).count == dates.count)
+        #expect(labels[0].month == "Jan")
+        #expect(labels[0].dayOfMonth == "13")
+    }
+
+    @Test("only date axes pad their scale to contain endpoint labels")
+    func onlyDateAxesPadEndpointLabels() {
+        #expect(HogQLCartesianLayout.xAxisPlacement(for: .date, hasParsedDates: true) == .paddedDate)
+        #expect(HogQLCartesianLayout.xAxisPlacement(for: .dateTime, hasParsedDates: true) == .paddedDate)
+        #expect(HogQLCartesianLayout.xAxisPlacement(for: .date, hasParsedDates: false) == .standard)
+        #expect(HogQLCartesianLayout.xAxisPlacement(for: .string, hasParsedDates: false) == .standard)
+        #expect(HogQLCartesianLayout.xAxisPlacement(for: .integer, hasParsedDates: false) == .standard)
+    }
+
+    @Test("date-axis gutters grow for accessibility text without consuming the plot")
+    func dateAxisGutterAdaptsToTextScale() {
+        let standard = HogQLCartesianLayout.dateScalePadding(textScale: 1)
+        let accessibility = HogQLCartesianLayout.dateScalePadding(textScale: 4.3)
+        let extreme = HogQLCartesianLayout.dateScalePadding(textScale: 20)
+
+        #expect(standard == 34)
+        #expect(accessibility > standard)
+        #expect(accessibility == extreme)
+        #expect(extreme <= 96)
+    }
+
+    @Test("daily axes omit redundant midnight while sub-day axes retain time")
+    func dateAxisTimeReflectsGranularity() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let midnight = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 1, day: 13, hour: 0)
+        ))
+        let nextMidnight = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 1, day: 14, hour: 0)
+        ))
+        let noon = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 1, day: 13, hour: 12)
+        ))
+
+        #expect(!HogQLCartesianLayout.dateAxisIncludesTime(
+            dates: [midnight, nextMidnight],
+            calendar: calendar
+        ))
+        #expect(HogQLCartesianLayout.dateAxisIncludesTime(
+            dates: [midnight, noon],
+            calendar: calendar
+        ))
+    }
+
+    @Test("accessibility date labels stack narrow month and day components")
+    func accessibilityDateLabelsStack() {
+        #expect(HogQLCartesianLayout.dateAxisLabelStyle(isAccessibilitySize: false) == .inline)
+        #expect(HogQLCartesianLayout.dateAxisLabelStyle(isAccessibilitySize: true) == .stacked)
+    }
+
+    @Test("the totals legend replaces Swift Charts' duplicate multi-series legend")
+    func multiSeriesUsesOneLegend() {
+        #expect(HogQLCartesianLayout.hidesBuiltInLegend(seriesCount: 0) == false)
+        #expect(HogQLCartesianLayout.hidesBuiltInLegend(seriesCount: 1) == false)
+        #expect(HogQLCartesianLayout.hidesBuiltInLegend(seriesCount: 2))
+    }
+
+    @Test("multi-series style domains retain configured slots when labels repeat or a series is empty")
+    func seriesStyleDomainsStayAlignedWithTheLegend() throws {
+        let visualization = try Self.visualization(
+            display: "ActionsLineGraph",
+            chartSettings: """
+            "chartSettings": {
+              "xAxis": {"column": "day"},
+              "yAxis": [
+                {"column": "opened", "settings": {"display": {"label": "Same label"}}},
+                {"column": "clicked", "settings": {"display": {"label": "Same label"}}}
+              ]
+            },
+            """,
+            columns: #"["day", "opened", "clicked"]"#,
+            types: #"[["day", "Date"], ["opened", "UInt64"], ["clicked", "UInt64"]]"#,
+            rows: #"[["2026-02-01", "not numeric", 4]]"#
+        )
+        let data = try #require(visualization.chartData)
+        let styles = HogQLCartesianLayout.seriesStyles(for: data.series)
+
+        #expect(data.series[0].points.isEmpty)
+        #expect(styles.map(\.key) == ["opened", "clicked"])
+        #expect(styles.map(\.label) == ["Same label", "Same label"])
+        #expect(styles.map(\.slot) == [0, 1])
+    }
+
+    @Test("sub-minute and multi-year axes retain the precision needed to distinguish labels")
+    func dateAxisPrecisionMatchesTheDomain() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let locale = Locale(identifier: "en_US_POSIX")
+        let dates = try [
+            DateComponents(year: 2025, month: 12, day: 31, hour: 23, minute: 59, second: 1),
+            DateComponents(year: 2026, month: 12, day: 31, hour: 23, minute: 59, second: 2),
+        ].map { try #require(calendar.date(from: $0)) }
+        let configuration = HogQLCartesianLayout.dateAxisConfiguration(
+            dates: dates,
+            calendar: calendar
+        )
+        let labels = dates.map {
+            HogQLDateAxisLabel(
+                date: $0,
+                configuration: configuration,
+                locale: locale,
+                calendar: calendar,
+                timeZone: calendar.timeZone
+            )
+        }
+
+        #expect(configuration.includesSeconds)
+        #expect(configuration.includesYear)
+        #expect(labels.map(\.time) == ["11:59:01\u{202f}PM", "11:59:02\u{202f}PM"])
+        #expect(labels.map(\.year) == ["2025", "2026"])
+        #expect(Set(labels.map(\.day)).count == dates.count)
+    }
+
+    @Test("project chart time zones resolve explicitly and fall back to UTC")
+    func projectTimeZoneResolutionIsDeterministic() {
+        let newYork = ProjectChartTimeZone.resolve("America/New_York")
+        let utc = ProjectChartTimeZone.resolve(nil)
+        let invalid = ProjectChartTimeZone.resolve("Not/A_Time_Zone")
+
+        #expect(newYork.identifier == "America/New_York")
+        #expect(utc.secondsFromGMT(for: Date(timeIntervalSince1970: 0)) == 0)
+        #expect(invalid == utc)
+    }
+
+    @Test("compact result tables leave vertical scrolling to their dashboard")
+    func compactTablesOnlyOwnTheHorizontalAxis() {
+        #expect(!HogQLTableLayout.allowsVerticalScrolling(compact: true))
+        #expect(HogQLTableLayout.allowsVerticalScrolling(compact: false))
+    }
+
+    @Test("only compact HogQL tables require direct touch inside a dashboard tile")
+    func compactTableInteractionIsScopedToTables() throws {
+        let table = try Self.visualization(display: "ActionsTable")
+        let line = try Self.visualization(display: "ActionsLineGraph")
+        let fallback = try Self.visualization(
+            display: "ActionsLineGraph",
+            chartSettings: #""chartSettings": {"xAxis": {"column": "missing"}},"#
+        )
+
+        #expect(InsightChartInteraction.requiresDirectTouch(for: .hogQL(table), compact: true))
+        #expect(!InsightChartInteraction.requiresDirectTouch(for: .hogQL(table), compact: false))
+        #expect(!InsightChartInteraction.requiresDirectTouch(for: .hogQL(line), compact: true))
+        #expect(InsightChartInteraction.requiresDirectTouch(for: .hogQL(fallback), compact: true))
+    }
+
     @MainActor
     @Test("every supported display produces a nonempty render", arguments: [
         "ActionsTable", "ActionsLineGraph", "ActionsAreaGraph", "ActionsBar",

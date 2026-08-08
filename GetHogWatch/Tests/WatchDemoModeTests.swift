@@ -30,6 +30,27 @@ struct WatchDemoModeTests {
         )
     }
 
+    @Test("a demo session rejects live hand-off reconciliation")
+    func demoOwnsItsSyntheticSession() {
+        #expect(
+            WatchDemoMode.allowsLiveHandoffs(
+                arguments: ["GetHogWatch", WatchDemoMode.launchArgument],
+                environment: [:]
+            ) == false
+        )
+        #expect(
+            WatchDemoMode.allowsLiveHandoffs(
+                arguments: ["GetHogWatch"],
+                environment: [WatchDemoMode.environmentFlag: "1"]
+            ) == false
+        )
+        #expect(
+            WatchDemoMode.allowsLiveHandoffs(
+                arguments: ["GetHogWatch"], environment: [:]
+            )
+        )
+    }
+
     @Test("the dashboards route answers with a page the kit can decode")
     func dashboardsRouteDecodes() throws {
         let reply = WatchDemoTransport.route(

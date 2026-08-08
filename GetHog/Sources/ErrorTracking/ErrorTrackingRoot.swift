@@ -79,12 +79,12 @@ extension ErrorIssue {
         return Theme.Status.critical
     }
 
-    /// What a rotor speaks for this issue.
+    /// The short label SwiftUI uses to identify this rotor entry.
     ///
-    /// Shorter than `ErrorIssueRow`'s own label, which reads the full impact
-    /// line: a rotor entry is heard while scanning, and the decision being made
-    /// is "is this the one". Messages distinguish issues with generic names;
-    /// the user count comes last because it reflects the list ordering.
+    /// Once the rotor moves VoiceOver focus to the row, the row's own
+    /// `spokenSummary` is announced. Keeping this label short still matters for
+    /// the rotor's entry metadata and matching, but it is not a replacement for
+    /// the focused row's full accessibility label.
     var rotorLabel: String {
         var parts = [name]
         if let issueDescription, !issueDescription.isEmpty {
@@ -164,6 +164,7 @@ struct ErrorTrackingRoot: View {
     @State private var order: ErrorIssueOrder = .users
     @State private var filter: ErrorIssueFilter = .all
     @State private var window: AnalyticsWindow = .week
+    @Namespace private var issueRotor
 
     /// The open issue, and deliberately **not** `@State`.
     ///
@@ -339,76 +340,80 @@ struct ErrorTrackingRoot: View {
     /// `navigationDestination(item:)` in `body`. Tapping an issue pushes its
     /// titled detail over a back button and clears selection on return.
     private var list: some View {
-        List(selection: selection) {
-            if visibleIssues.isEmpty {
-                EmptyStateView(
-                    title: "No \(filter.title.lowercased()) issues",
-                    systemImage: "line.3.horizontal.decrease.circle",
-                    message: "\(store.issues.count) issue\(store.issues.count == 1 ? "" : "s") are hidden by this filter.",
-                    actionTitle: "Show all",
-                    action: { filter = .all }
-                )
-                .listRowBackground(Color.clear)
-            } else {
-                Section {
-                    ForEach(visibleIssues, id: \.self) { issue in
-                        NavigationLink(value: issue) {
-                            // The row is drawn from the issue *plus* anything we
-                            // have written since, so resolving something on the
-                            // detail screen is visible on the way back rather
-                            // than at the next refresh. Deliberately no swipe
-                            // action: suppression is the one triage action that
-                            // changes what PostHog stores, and a data-loss
-                            // gesture two pixels from a scroll is not a
-                            // shortcut worth having.
-                            ErrorIssueRow(issue: triage.effective(issue))
-                        }
-                        .listRowBackground(
-                            Theme.cardBackground
-                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                .padding(.vertical, 1)
-                        )
-                        .listRowSeparator(.hidden)
-                    }
-                } header: {
-                    SectionLabel(
-                        text: "\(visibleIssues.count) issue\(visibleIssues.count == 1 ? "" : "s")",
-                        systemImage: "ladybug.fill"
+        ScrollViewReader { scroller in
+            List(selection: selection) {
+                if visibleIssues.isEmpty {
+                    EmptyStateView(
+                        title: "No \(filter.title.lowercased()) issues",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        message: "\(store.issues.count) issue\(store.issues.count == 1 ? "" : "s") are hidden by this filter.",
+                        actionTitle: "Show all",
+                        action: { filter = .all }
                     )
+                    .listRowBackground(Color.clear)
+                } else {
+                    Section {
+                        ForEach(visibleIssues, id: \.self) { issue in
+                            NavigationLink(value: issue) {
+                                // The row is drawn from the issue *plus* anything we
+                                // have written since, so resolving something on the
+                                // detail screen is visible on the way back rather
+                                // than at the next refresh. Deliberately no swipe
+                                // action: suppression is the one triage action that
+                                // changes what PostHog stores, and a data-loss
+                                // gesture two pixels from a scroll is not a
+                                // shortcut worth having.
+                                ErrorIssueRow(issue: triage.effective(issue))
+                            }
+                            .accessibilityRotorEntry(id: issue.id, in: issueRotor)
+                            .id(issue.id)
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, 1)
+                            )
+                            .listRowSeparator(.hidden)
+                        }
+                    } header: {
+                        SectionLabel(
+                            text: "\(visibleIssues.count) issue\(visibleIssues.count == 1 ? "" : "s")",
+                            systemImage: "ladybug.fill"
+                        )
+                    }
                 }
-            }
 
-            FreshnessLabel(date: store.loadedAt)
-                .listRowBackground(Color.clear)
+                FreshnessLabel(date: store.loadedAt)
+                    .listRowBackground(Color.clear)
+            }
+            .listRowSpacing(Theme.Space.xs)
+            .pageSurface()
+            .skeleton(store.isLoading && store.issues.isEmpty)
+            // Pinned rather than scrolled away: the filter explains what the list is
+            // showing, so it has to stay visible while reading it.
+            .safeAreaInset(edge: .top) {
+                GlassFilterBar { statusFilter }
+                    .padding(.bottom, Theme.Space.s)
+            }
+            // A rotor rather than a second filter, and the difference is the whole
+            // reason it is here. The status picker above *removes* rows; this moves
+            // between them. With the picker on "All" — its default, and the state a
+            // triage pass starts in — the unresolved issues are interleaved with
+            // everything already dealt with, and finding them again is a scroll.
+            //
+            // Rotor and scroll identity use the API's stable issue id rather
+            // than the whole value. Triage can replace status/assignment fields
+            // while this view is alive; those changes must not invalidate the
+            // namespace target VoiceOver is moving toward.
+            //
+            // Filtered from `visibleIssues` and read through `triage.effective`, so
+            // an issue resolved a moment ago on the detail screen leaves this rotor
+            // at the same instant it leaves the "Active" filter.
+            .unresolvedIssuesRotor(
+                unresolvedIssues,
+                namespace: issueRotor,
+                scroller: scroller
+            )
         }
-        .listRowSpacing(Theme.Space.xs)
-        .pageSurface()
-        .skeleton(store.isLoading && store.issues.isEmpty)
-        // Pinned rather than scrolled away: the filter explains what the list is
-        // showing, so it has to stay visible while reading it.
-        .safeAreaInset(edge: .top) {
-            GlassFilterBar { statusFilter }
-                .padding(.bottom, Theme.Space.s)
-        }
-        // A rotor rather than a second filter, and the difference is the whole
-        // reason it is here. The status picker above *removes* rows; this moves
-        // between them. With the picker on "All" — its default, and the state a
-        // triage pass starts in — the unresolved issues are interleaved with
-        // everything already dealt with, and finding them again is a scroll.
-        //
-        // The entries are `ErrorIssue` values keyed by `\.self`, because that is
-        // the identity `ForEach(visibleIssues, id: \.self)` uses; keying by
-        // `\.id` here would produce entries that match no row.
-        //
-        // Filtered from `visibleIssues` and read through `triage.effective`, so
-        // an issue resolved a moment ago on the detail screen leaves this rotor
-        // at the same instant it leaves the "Active" filter.
-        .accessibilityRotor(
-            Text("Unresolved issues"),
-            entries: unresolvedIssues,
-            entryID: \.self,
-            entryLabel: \.rotorLabel
-        )
     }
 
     /// The rows in the list that are still asking for attention.
@@ -461,6 +466,33 @@ struct ErrorTrackingRoot: View {
         // The fresh page is the server's word. Whoever changed an issue in the
         // web console wins over a local override that has already been written.
         triage.reconcile(with: store.issues)
+    }
+}
+
+extension View {
+    /// Adds the issue rotor only when it has somewhere to go. An empty custom
+    /// rotor remains selectable in VoiceOver but cannot move focus, which is
+    /// worse than omitting it until an unresolved issue exists.
+    @ViewBuilder
+    func unresolvedIssuesRotor(
+        _ issues: [ErrorIssue],
+        namespace: Namespace.ID,
+        scroller: ScrollViewProxy
+    ) -> some View {
+        if issues.isEmpty {
+            self
+        } else {
+            accessibilityRotor(Text("Unresolved issues")) {
+                ForEach(issues, id: \.id) { issue in
+                    AccessibilityRotorEntry(
+                        Text(issue.rotorLabel),
+                        id: issue.id,
+                        in: namespace,
+                        prepare: { scroller.scrollTo(issue.id) }
+                    )
+                }
+            }
+        }
     }
 }
 

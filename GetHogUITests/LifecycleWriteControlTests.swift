@@ -20,6 +20,38 @@ import XCTest
 /// XCTest wait captures a full element dump on every retry.
 final class LifecycleWriteControlTests: XCTestCase {
 
+    /// The popover branch cannot use an element-relative offset greater than one:
+    /// on a short window that point leaves the app, and on a moving presentation
+    /// it can land back on an action. The chosen point must be a real point in the
+    /// window and clear the destructive confirmation row on either side of it.
+    func testPopoverDismissPointStaysInsideTheWindowAndAwayFromConfirmation() {
+        let window = CGRect(x: 100, y: 50, width: 800, height: 600)
+
+        for confirmation in [
+            CGRect(x: 650, y: 500, width: 200, height: 44),
+            CGRect(x: 150, y: 100, width: 200, height: 44),
+        ] {
+            guard let offset = Self.boundedPopoverDismissOffset(
+                windowFrame: window,
+                avoiding: confirmation
+            ) else {
+                return XCTFail("A normal popover had no safe bounded dismissal point.")
+            }
+            let point = CGPoint(
+                x: window.minX + offset.dx * window.width,
+                y: window.minY + offset.dy * window.height
+            )
+
+            XCTAssertTrue(window.contains(point), "The dismissal point left the app window.")
+            XCTAssertFalse(
+                confirmation.insetBy(dx: -12, dy: -12).contains(point),
+                "The dismissal point touched the confirmation action or its safety margin."
+            )
+            XCTAssertTrue((0...1).contains(offset.dx))
+            XCTAssertTrue((0...1).contains(offset.dy))
+        }
+    }
+
     /// A survey's stop control, and the dialog that has to promise the responses
     /// survive.
     ///
@@ -61,7 +93,11 @@ final class LifecycleWriteControlTests: XCTestCase {
             existsContaining("already collected is kept", in: app),
             "The stop dialog did not say the responses survive."
         )
-        dismissDialog(app)
+        let stopConfirmation = app.buttons["Stop collecting responses"]
+        guard DemoLaunch.wait(for: stopConfirmation, timeout: 10) else {
+            return XCTFail("The stop dialog exposed no confirmation action.")
+        }
+        dismissDialog(app, anchoredTo: stopConfirmation)
     }
 
     /// The experiment controls, where the wording is load-bearing rather than
@@ -92,7 +128,8 @@ final class LifecycleWriteControlTests: XCTestCase {
         }
 
         pause.tap()
-        guard DemoLaunch.wait(for: app.buttons["Pause and turn the flag off"], timeout: 10) else {
+        let pauseConfirmation = app.buttons["Pause and turn the flag off"]
+        guard DemoLaunch.wait(for: pauseConfirmation, timeout: 10) else {
             return XCTFail("The pause dialog never appeared.")
         }
         // Pausing calls `set_flag_active` on the linked flag. If this sentence
@@ -102,7 +139,7 @@ final class LifecycleWriteControlTests: XCTestCase {
             existsContaining("feature flag", in: app),
             "The pause dialog did not say a feature flag changes."
         )
-        dismissDialog(app)
+        dismissDialog(app, anchoredTo: pauseConfirmation)
 
         let end = app.buttons["End experiment"]
         scrollIntoView(end, in: app)
@@ -121,7 +158,8 @@ final class LifecycleWriteControlTests: XCTestCase {
             return XCTFail("Ending did not ask for a conclusion first.")
         }
         endAsWon.tap()
-        guard DemoLaunch.wait(for: app.buttons["End the experiment"], timeout: 10) else {
+        let endConfirmation = app.buttons["End the experiment"]
+        guard DemoLaunch.wait(for: endConfirmation, timeout: 10) else {
             return XCTFail("The end dialog never appeared.")
         }
         // The opposite claim to the pause dialog's, in the same words, so the two
@@ -130,7 +168,7 @@ final class LifecycleWriteControlTests: XCTestCase {
             existsContaining("is not changed", in: app),
             "The end dialog did not say the feature flag is left alone."
         )
-        dismissDialog(app)
+        dismissDialog(app, anchoredTo: endConfirmation)
     }
 
     /// The rollout editor, which cannot be a single number and has to say which
@@ -185,7 +223,13 @@ final class LifecycleWriteControlTests: XCTestCase {
             existsContaining("affects live users", in: app),
             "The rollout dialog did not say it affects production."
         )
-        dismissDialog(app)
+        let rolloutConfirmation = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Set to ")
+        ).firstMatch
+        guard DemoLaunch.wait(for: rolloutConfirmation, timeout: 10) else {
+            return XCTFail("The rollout dialog exposed no confirmation action.")
+        }
+        dismissDialog(app, anchoredTo: rolloutConfirmation)
     }
 
     // MARK: - Harness
@@ -200,7 +244,10 @@ final class LifecycleWriteControlTests: XCTestCase {
     /// known screen — and so **no write is ever committed**. Every one of these
     /// would be a real request in a non-demo build, and leaving a dialog confirmed
     /// is the difference between a test and an edit.
-    private func dismissDialog(_ app: XCUIApplication) {
+    private func dismissDialog(
+        _ app: XCUIApplication,
+        anchoredTo confirmationAction: XCUIElement
+    ) {
         let cancel = app.buttons["Cancel"]
         let dismissRegion = app.descendants(matching: .any)
             .matching(identifier: "PopoverDismissRegion")
@@ -211,15 +258,30 @@ final class LifecycleWriteControlTests: XCTestCase {
         // the dialog covering the sheet and lets the test interact with controls
         // behind it.
         if dismissRegion.exists {
-            // The element spans the screen, including the popover. Tap at its
-            // leading edge, outside the centered dialog and therefore away from
-            // every destructive action.
-            dismissRegion.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
-            for _ in 0..<10 where dismissRegion.exists {
+            // A detail sheet and its confirmation can each publish a dismiss
+            // region on iPad. `firstMatch` is therefore only a presentation
+            // signal, never a safe coordinate or a reliable disappearance
+            // witness. Wait until the inner popover's final action is actually
+            // tappable and no longer moving, then tap the farthest inset corner
+            // of the app window. That point is bounded by construction and is
+            // separated from the confirmation row by a safety margin.
+            guard let confirmationFrame = stableHittableFrame(of: confirmationAction) else {
+                return XCTFail("The confirmation dialog never reached a stable presentation.")
+            }
+            let window = app.windows.firstMatch
+            guard window.exists,
+                  let offset = Self.boundedPopoverDismissOffset(
+                    windowFrame: window.frame,
+                    avoiding: confirmationFrame
+                  ) else {
+                return XCTFail("The confirmation dialog exposed no safe bounded dismissal point.")
+            }
+            window.coordinate(withNormalizedOffset: offset).tap()
+            for _ in 0..<10 where confirmationAction.exists {
                 DemoLaunch.pause(0.4)
             }
             return XCTAssertFalse(
-                dismissRegion.exists,
+                confirmationAction.exists,
                 "The confirmation dialog did not dismiss."
             )
         }
@@ -242,6 +304,64 @@ final class LifecycleWriteControlTests: XCTestCase {
             DemoLaunch.pause(0.4)
         }
         XCTAssertFalse(cancel.exists, "The confirmation dialog did not dismiss.")
+    }
+
+    private static func boundedPopoverDismissOffset(
+        windowFrame: CGRect,
+        avoiding confirmationFrame: CGRect
+    ) -> CGVector? {
+        guard windowFrame.width > 0, windowFrame.height > 0 else { return nil }
+
+        // Stay clear of the status/home-indicator edges as well as the popover.
+        // The quarter-window cap keeps the candidates meaningfully corner-shaped
+        // in a very small Stage Manager window.
+        let horizontalInset = min(max(24, windowFrame.width * 0.08), windowFrame.width / 4)
+        let verticalInset = min(max(24, windowFrame.height * 0.08), windowFrame.height / 4)
+        let candidates = [
+            CGPoint(x: windowFrame.minX + horizontalInset, y: windowFrame.minY + verticalInset),
+            CGPoint(x: windowFrame.maxX - horizontalInset, y: windowFrame.minY + verticalInset),
+            CGPoint(x: windowFrame.minX + horizontalInset, y: windowFrame.maxY - verticalInset),
+            CGPoint(x: windowFrame.maxX - horizontalInset, y: windowFrame.maxY - verticalInset),
+        ]
+        let protectedConfirmation = confirmationFrame.insetBy(dx: -12, dy: -12)
+        guard let point = candidates
+            .filter({ windowFrame.contains($0) && !protectedConfirmation.contains($0) })
+            .max(by: {
+                $0.squaredDistance(to: confirmationFrame.center)
+                    < $1.squaredDistance(to: confirmationFrame.center)
+            }) else { return nil }
+
+        return CGVector(
+            dx: (point.x - windowFrame.minX) / windowFrame.width,
+            dy: (point.y - windowFrame.minY) / windowFrame.height
+        )
+    }
+
+    private func stableHittableFrame(
+        of element: XCUIElement,
+        timeout: TimeInterval = 5
+    ) -> CGRect? {
+        let deadline = Date().addingTimeInterval(timeout)
+        var previous: CGRect?
+        var stableSamples = 0
+
+        while Date() < deadline {
+            if element.exists, element.isHittable, !element.frame.isEmpty {
+                let current = element.frame
+                if current == previous {
+                    stableSamples += 1
+                } else {
+                    previous = current
+                    stableSamples = 1
+                }
+                if stableSamples >= 2 { return current }
+            } else {
+                previous = nil
+                stableSamples = 0
+            }
+            DemoLaunch.pause(0.2)
+        }
+        return nil
     }
 
     private func tapFirst(startingWith prefix: String, in app: XCUIApplication) -> Bool {
@@ -277,4 +397,16 @@ final class LifecycleWriteControlTests: XCTestCase {
             DemoLaunch.pause(0.3)
         }
     }
+}
+
+private extension CGPoint {
+    func squaredDistance(to other: CGPoint) -> CGFloat {
+        let dx = x - other.x
+        let dy = y - other.y
+        return dx * dx + dy * dy
+    }
+}
+
+private extension CGRect {
+    var center: CGPoint { CGPoint(x: midX, y: midY) }
 }

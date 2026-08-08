@@ -50,11 +50,17 @@ enum DemoLaunch {
 
         let app = XCUIApplication()
         app.launchArguments = ["-GetHogDemo"] + extraArguments
+        // watchOS 26.5 can launch the requested page from launchEnvironment
+        // while dropping the sibling process argument before the watch app
+        // starts. Send both public demo signals: every platform accepts the
+        // argument, and WatchDemoMode deliberately accepts this environment
+        // spelling for XCUITest and simctl launches.
         if let tab { app.launchEnvironment["GETHOG_TAB"] = tab }
         if let openURL { app.launchEnvironment["GETHOG_OPEN_URL"] = openURL }
         for (key, value) in environment {
             app.launchEnvironment[key] = value
         }
+        app.launchEnvironment["GETHOG_DEMO"] = "1"
         app.launch()
 
         if !waitForScreen(app) {

@@ -27,11 +27,18 @@ public struct HogQLVisualizationView: View {
     public let visualization: HogQLVisualization
     public var compact: Bool
     public var title: String
+    public var timeZone: TimeZone
 
-    public init(visualization: HogQLVisualization, compact: Bool = true, title: String = "") {
+    public init(
+        visualization: HogQLVisualization,
+        compact: Bool = true,
+        title: String = "",
+        timeZone: TimeZone = ProjectChartTimeZone.fallback
+    ) {
         self.visualization = visualization
         self.compact = compact
         self.title = title
+        self.timeZone = timeZone
     }
 
     public var body: some View {
@@ -76,7 +83,12 @@ public struct HogQLVisualizationView: View {
             HogQLResultTable(table: visualization.displayedTable, compact: compact)
         case .line, .area, .bar, .stackedBar:
             if let data = visualization.chartData {
-                HogQLCartesianChart(data: data, display: display, compact: compact)
+                HogQLCartesianChart(
+                    data: data,
+                    display: display,
+                    compact: compact,
+                    timeZone: timeZone
+                )
             } else {
                 HogQLResultTable(table: visualization.displayedTable, compact: compact)
             }
@@ -130,15 +142,20 @@ private struct HogQLResultTable: View {
     }
 
     var body: some View {
-        ScrollView([.horizontal, .vertical]) {
+        ScrollView(scrollAxes) {
             LazyVStack(alignment: .leading, spacing: 0) {
-                tableRow(table.columns.map(\.name), header: true)
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    tableRow(row.map(\.tabularDescription), header: false)
+                tableRow(table.columns.map(\.name), header: true, rowIndex: nil)
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
+                    tableRow(
+                        row.map(\.tabularDescription),
+                        header: false,
+                        rowIndex: rowIndex
+                    )
                 }
             }
         }
-        .frame(maxHeight: compact ? 210 : 420)
+        .accessibilityIdentifier("gethog.hogql-result-table")
+        .frame(maxHeight: compact ? nil : 420)
         .overlay(alignment: .bottomTrailing) {
             if compact, table.rows.count > rows.count {
                 Text("+\(table.rows.count - rows.count) rows")
@@ -149,9 +166,15 @@ private struct HogQLResultTable: View {
         }
     }
 
-    private func tableRow(_ cells: [String], header: Bool) -> some View {
+    private var scrollAxes: Axis.Set {
+        HogQLTableLayout.allowsVerticalScrolling(compact: compact)
+            ? [.horizontal, .vertical]
+            : .horizontal
+    }
+
+    private func tableRow(_ cells: [String], header: Bool, rowIndex: Int?) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+            ForEach(Array(cells.enumerated()), id: \.offset) { columnIndex, cell in
                 Text(cell.isEmpty ? "—" : cell)
                     .font(header ? Theme.Typography.caption.weight(.semibold) : Theme.Typography.caption)
                     .foregroundStyle(header ? Theme.Ink.secondary : Color.primary)
@@ -163,9 +186,113 @@ private struct HogQLResultTable: View {
                     .overlay(alignment: .trailing) {
                         Rectangle().fill(Theme.hairline).frame(width: 1)
                     }
+                    .accessibilityIdentifier(
+                        header
+                            ? "gethog.hogql-table.column.\(columnIndex)"
+                            : "gethog.hogql-table.row.\(rowIndex ?? 0).cell.\(columnIndex)"
+                    )
             }
         }
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
+    }
+}
+
+enum HogQLTableLayout {
+    static func allowsVerticalScrolling(compact: Bool) -> Bool {
+        !compact
+    }
+}
+
+struct HogQLSeriesStyle: Equatable {
+    let key: String
+    let label: String
+    let slot: Int
+}
+
+struct HogQLDateAxisConfiguration: Equatable {
+    let includesTime: Bool
+    let includesSeconds: Bool
+    let includesYear: Bool
+
+    init(includesTime: Bool = false, includesSeconds: Bool = false, includesYear: Bool = false) {
+        self.includesTime = includesTime
+        self.includesSeconds = includesSeconds
+        self.includesYear = includesYear
+    }
+}
+
+enum HogQLCartesianLayout {
+    enum XAxisPlacement: Equatable {
+        case paddedDate
+        case standard
+    }
+
+    enum DateAxisLabelStyle: Equatable {
+        case inline
+        case stacked
+    }
+
+    static func xAxisPlacement(
+        for scalar: HogQLColumnScalar,
+        hasParsedDates: Bool
+    ) -> XAxisPlacement {
+        scalar.isDate && hasParsedDates ? .paddedDate : .standard
+    }
+
+    static func hidesBuiltInLegend(seriesCount: Int) -> Bool {
+        seriesCount > 1
+    }
+
+    static func seriesStyles(for series: [HogQLChartSeries]) -> [HogQLSeriesStyle] {
+        let needsStableKeys = series.count > 1
+        return series.enumerated().map { index, series in
+            HogQLSeriesStyle(
+                key: needsStableKeys ? series.id : series.label,
+                label: series.label,
+                slot: index
+            )
+        }
+    }
+
+    static func dateScalePadding(textScale: CGFloat) -> CGFloat {
+        min(34 * max(textScale, 1), 96)
+    }
+
+    static func dateAxisIncludesTime(
+        dates: [Date],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        dates.contains { date in
+            let components = calendar.dateComponents(
+                [.hour, .minute, .second, .nanosecond],
+                from: date
+            )
+            return components.hour != 0
+                || components.minute != 0
+                || components.second != 0
+                || components.nanosecond != 0
+        }
+    }
+
+    static func dateAxisConfiguration(
+        dates: [Date],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> HogQLDateAxisConfiguration {
+        let includesTime = dateAxisIncludesTime(dates: dates, calendar: calendar)
+        let includesSeconds = dates.contains { date in
+            let components = calendar.dateComponents([.second, .nanosecond], from: date)
+            return components.second != 0 || components.nanosecond != 0
+        }
+        let years = Set(dates.compactMap { calendar.dateComponents([.year], from: $0).year })
+        return HogQLDateAxisConfiguration(
+            includesTime: includesTime,
+            includesSeconds: includesSeconds,
+            includesYear: years.count > 1
+        )
+    }
+
+    static func dateAxisLabelStyle(isAccessibilitySize: Bool) -> DateAxisLabelStyle {
+        isAccessibilitySize ? .stacked : .inline
     }
 }
 
@@ -173,50 +300,148 @@ private struct HogQLCartesianChart: View {
     let data: HogQLChartData
     let display: HogQLDisplay
     let compact: Bool
+    let timeZone: TimeZone
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .caption2) private var textScale: CGFloat = 1
 
     private struct DatedPoint: Identifiable {
         let id: String
-        let series: String
+        let seriesKey: String
+        let seriesLabel: String
         let index: Int
         let date: Date
         let value: Double
     }
 
     var body: some View {
+        let seriesStyles = HogQLCartesianLayout.seriesStyles(for: data.series)
+        let datedPoints = parsedDatedPoints(seriesStyles: seriesStyles)
+        let dateAxisConfiguration = HogQLCartesianLayout.dateAxisConfiguration(
+            dates: datedPoints?.map(\.date) ?? [],
+            calendar: projectCalendar
+        )
+
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Group {
                 if data.xColumn.scalar.isDate, let dated = datedPoints {
                     Chart(dated) { point in
-                        marks(x: point.date, value: point.value, series: point.series)
+                        marks(
+                            x: point.date,
+                            value: point.value,
+                            seriesKey: point.seriesKey,
+                            seriesLabel: point.seriesLabel
+                        )
                     }
+                    .chartXScale(
+                        range: .plotDimension(
+                            padding: HogQLCartesianLayout.dateScalePadding(textScale: textScale)
+                        )
+                    )
                 } else if data.xColumn.scalar.isNumeric {
                     Chart {
-                        ForEach(Array(data.series.enumerated()), id: \.offset) { _, series in
+                        ForEach(Array(data.series.enumerated()), id: \.offset) { index, series in
                             ForEach(series.points) { point in
                                 if case .number(let x) = point.x {
-                                    marks(x: x, value: point.value, series: series.label)
+                                    marks(
+                                        x: x,
+                                        value: point.value,
+                                        seriesKey: seriesStyles[index].key,
+                                        seriesLabel: series.label
+                                    )
                                 }
                             }
                         }
                     }
                 } else {
                     Chart {
-                        ForEach(Array(data.series.enumerated()), id: \.offset) { _, series in
+                        ForEach(Array(data.series.enumerated()), id: \.offset) { index, series in
                             ForEach(series.points) { point in
-                                marks(x: point.x.label, value: point.value, series: series.label)
+                                marks(
+                                    x: point.x.label,
+                                    value: point.value,
+                                    seriesKey: seriesStyles[index].key,
+                                    seriesLabel: series.label
+                                )
                             }
                         }
                     }
                 }
             }
-            .frame(height: compact ? 180 : 300)
-            .chartForegroundStyleScale(range: data.series.indices.map { SeriesPalette.color(at: $0) })
+            .chartXAxis {
+                switch HogQLCartesianLayout.xAxisPlacement(
+                    for: data.xColumn.scalar,
+                    hasParsedDates: datedPoints != nil
+                ) {
+                case .paddedDate:
+                    AxisMarks(
+                        preset: .aligned,
+                        values: .automatic(desiredCount: xAxisTickCount)
+                    ) { value in
+                        AxisGridLine()
+                        if let date = value.as(Date.self) {
+                            let label = HogQLDateAxisLabel(
+                                date: date,
+                                configuration: dateAxisConfiguration,
+                                calendar: projectCalendar,
+                                timeZone: timeZone
+                            )
+                            AxisValueLabel {
+                                VStack(spacing: 0) {
+                                    switch HogQLCartesianLayout.dateAxisLabelStyle(
+                                        isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+                                    ) {
+                                    case .inline:
+                                        Text(label.day)
+                                    case .stacked:
+                                        Text(label.month)
+                                        Text(label.dayOfMonth)
+                                        if dateAxisConfiguration.includesYear {
+                                            Text(label.year)
+                                        }
+                                    }
+                                    if dateAxisConfiguration.includesTime {
+                                        Text(label.time)
+                                            .foregroundStyle(Theme.Ink.tertiary)
+                                    }
+                                }
+                                .multilineTextAlignment(.center)
+                            }
+                            .font(.caption2)
+                        }
+                    }
+                case .standard:
+                    AxisMarks(values: .automatic(desiredCount: xAxisTickCount)) { _ in
+                        AxisGridLine()
+                        AxisValueLabel().font(.caption2)
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(
+                    position: .leading,
+                    values: .automatic(desiredCount: yAxisTickCount)
+                ) {
+                    AxisGridLine()
+                    AxisValueLabel().font(.caption2)
+                }
+            }
+            .frame(height: (compact ? 180 : 300) * min(textScale, 1.5))
+            .chartForegroundStyleScale(
+                domain: seriesStyles.map(\.key),
+                range: seriesStyles.map { SeriesPalette.color(at: $0.slot) }
+            )
+            .chartLegend(
+                HogQLCartesianLayout.hidesBuiltInLegend(seriesCount: data.series.count)
+                    ? .hidden
+                    : .visible
+            )
 
-            if data.series.count > 1 {
-                InsightLegend(entries: data.series.enumerated().map { index, series in
+            if seriesStyles.count > 1 {
+                InsightLegend(entries: zip(seriesStyles, data.series).map { style, series in
                     InsightLegend.Entry(
-                        label: series.label,
-                        slot: index,
+                        label: style.label,
+                        slot: style.slot,
                         total: series.points.reduce(0) { $0 + $1.value }
                     )
                 })
@@ -226,44 +451,66 @@ private struct HogQLCartesianChart: View {
         .accessibilityLabel(summary)
     }
 
+    private var xAxisTickCount: Int {
+        dynamicTypeSize.thinnedAxisCount(compact ? 3 : 5)
+    }
+
+    private var yAxisTickCount: Int {
+        dynamicTypeSize.thinnedAxisCount(compact ? 4 : 5)
+    }
+
     @ChartContentBuilder
-    private func marks<X: Plottable>(x: X, value: Double, series: String) -> some ChartContent {
+    private func marks<X: Plottable>(
+        x: X,
+        value: Double,
+        seriesKey: String,
+        seriesLabel: String
+    ) -> some ChartContent {
         switch display {
         case .area:
-            AreaMark(x: .value(data.xColumn.name, x), y: .value(series, value))
-                .foregroundStyle(by: .value("Series", series))
+            AreaMark(x: .value(data.xColumn.name, x), y: .value(seriesLabel, value))
+                .foregroundStyle(by: .value("Series", seriesKey))
                 .opacity(0.28)
-            LineMark(x: .value(data.xColumn.name, x), y: .value(series, value))
-                .foregroundStyle(by: .value("Series", series))
-                .symbol(by: .value("Series", series))
+            LineMark(x: .value(data.xColumn.name, x), y: .value(seriesLabel, value))
+                .foregroundStyle(by: .value("Series", seriesKey))
+                .symbol(by: .value("Series", seriesKey))
         case .bar:
-            BarMark(x: .value(data.xColumn.name, x), y: .value(series, value))
-                .foregroundStyle(by: .value("Series", series))
-                .position(by: .value("Series", series))
+            BarMark(x: .value(data.xColumn.name, x), y: .value(seriesLabel, value))
+                .foregroundStyle(by: .value("Series", seriesKey))
+                .position(by: .value("Series", seriesKey))
         case .stackedBar:
-            BarMark(x: .value(data.xColumn.name, x), y: .value(series, value))
-                .foregroundStyle(by: .value("Series", series))
+            BarMark(x: .value(data.xColumn.name, x), y: .value(seriesLabel, value))
+                .foregroundStyle(by: .value("Series", seriesKey))
         default:
-            LineMark(x: .value(data.xColumn.name, x), y: .value(series, value))
-                .foregroundStyle(by: .value("Series", series))
-                .symbol(by: .value("Series", series))
+            LineMark(x: .value(data.xColumn.name, x), y: .value(seriesLabel, value))
+                .foregroundStyle(by: .value("Series", seriesKey))
+                .symbol(by: .value("Series", seriesKey))
         }
     }
 
-    private var datedPoints: [DatedPoint]? {
+    private var projectCalendar: Calendar {
+        var calendar = Calendar.autoupdatingCurrent
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    private func parsedDatedPoints(seriesStyles: [HogQLSeriesStyle]) -> [DatedPoint]? {
         let parser = ISO8601DateFormatter()
         let fallback = DateFormatter()
         fallback.locale = Locale(identifier: "en_US_POSIX")
+        fallback.calendar = projectCalendar
+        fallback.timeZone = timeZone
         fallback.dateFormat = "yyyy-MM-dd"
         var values: [DatedPoint] = []
-        for series in data.series {
+        for (index, series) in data.series.enumerated() {
             for point in series.points {
                 guard case .date(let raw) = point.x,
                       let date = parser.date(from: raw) ?? fallback.date(from: raw)
                 else { return nil }
                 values.append(DatedPoint(
                     id: "\(series.id)-\(point.row)",
-                    series: series.label,
+                    seriesKey: seriesStyles[index].key,
+                    seriesLabel: series.label,
                     index: point.row,
                     date: date,
                     value: point.value
@@ -276,6 +523,43 @@ private struct HogQLCartesianChart: View {
     private var summary: String {
         let points = data.series.reduce(0) { $0 + $1.points.count }
         return "\(data.series.count) series with \(points) values by \(data.xColumn.name)"
+    }
+}
+
+struct HogQLDateAxisLabel: Equatable, Sendable {
+    let day: String
+    let month: String
+    let dayOfMonth: String
+    let year: String
+    let time: String
+
+    init(
+        date: Date,
+        configuration: HogQLDateAxisConfiguration = HogQLDateAxisConfiguration(),
+        locale: Locale = .autoupdatingCurrent,
+        calendar: Calendar = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) {
+        let base = Date.FormatStyle(
+            date: .omitted,
+            time: .omitted,
+            locale: locale,
+            calendar: calendar,
+            timeZone: timeZone
+        )
+        var dayStyle = base.month(.abbreviated).day()
+        if configuration.includesYear {
+            dayStyle = dayStyle.year()
+        }
+        day = date.formatted(dayStyle)
+        month = date.formatted(base.month(.abbreviated))
+        dayOfMonth = date.formatted(base.day())
+        year = date.formatted(base.year())
+        var timeStyle = base.hour().minute()
+        if configuration.includesSeconds {
+            timeStyle = timeStyle.second()
+        }
+        time = date.formatted(timeStyle)
     }
 }
 

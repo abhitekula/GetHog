@@ -32,6 +32,22 @@ enum WatchDemoMode {
         arguments.contains(launchArgument) || environment[environmentFlag] == "1"
     }
 
+    /// Demo state is a complete, synthetic session. A queued phone hand-off
+    /// must not replace it with the live keychain/defaults state while App
+    /// Review, a screenshot sweep, or an XCUITest is using it.
+    static var allowsLiveHandoffs: Bool {
+        allowsLiveHandoffs(
+            arguments: ProcessInfo.processInfo.arguments,
+            environment: ProcessInfo.processInfo.environment
+        )
+    }
+
+    static func allowsLiveHandoffs(
+        arguments: [String], environment: [String: String]
+    ) -> Bool {
+        !isEnabled(arguments: arguments, environment: environment)
+    }
+
     /// The synthetic identity `users_me.json` describes. The key is a marker,
     /// never sent anywhere real — `WatchDemoTransport` answers every request
     /// before a socket is opened.

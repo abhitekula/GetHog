@@ -39,6 +39,7 @@ struct ScreenIndexSections: View {
     /// stays a pure function of what it is told and can be tested against an
     /// arrangement nobody has stored.
     let loose: [AppTab]
+    let rotorNamespace: Namespace.ID
 
     var body: some View {
         ForEach(visibleSections) { section in
@@ -71,6 +72,8 @@ struct ScreenIndexSections: View {
             // disclosure indicator, and `DataRow`'s would sit beside it.
             DataRow(glyph: tab.systemImage, title: tab.title, accessory: .none)
         }
+        .accessibilityRotorEntry(id: tab, in: rotorNamespace)
+        .id(tab)
         .listRowBackground(
             Theme.cardBackground
                 .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))

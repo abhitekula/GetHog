@@ -47,6 +47,10 @@ struct GetHogMacApp: App {
                 #endif
             }
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 .environment(nav)
                 .insightCSVExporter()
                 .tint(Theme.accent)
@@ -109,6 +113,10 @@ struct GetHogMacApp: App {
         WindowGroup(for: WindowTarget.self) { $target in
             DetachedWindowView(target: target)
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 .environment(nav)
                 .insightCSVExporter()
                 .tint(Theme.accent)

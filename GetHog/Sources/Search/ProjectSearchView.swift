@@ -33,6 +33,7 @@ struct ProjectSearchView: View {
     @State private var store = ProjectSearchStore()
     @State private var recents = RecentSearchStore()
     @State private var query = ""
+    @Namespace private var screenRotor
     /// A survey opens as a sheet, because that is how `SurveyDetailSheet` is
     /// presented from the Surveys screen and it carries its own navigation stack.
     @State private var surveyRequest: SurveySearchRequest?
@@ -43,9 +44,19 @@ struct ProjectSearchView: View {
     private var showsScreens: Bool { sizeClass == .compact }
 
     var body: some View {
+        ScrollViewReader { scroller in
+            content(scroller: scroller)
+        }
+    }
+
+    private func content(scroller: ScrollViewProxy) -> some View {
         List {
             if showsScreens {
-                ScreenIndexSections(query: query, loose: nav.barTabs)
+                ScreenIndexSections(
+                    query: query,
+                    loose: nav.barTabs,
+                    rotorNamespace: screenRotor
+                )
             }
             objects
             if !store.entries.isEmpty {
@@ -105,12 +116,7 @@ struct ProjectSearchView: View {
         // rotor list and empty when turned to is worse for the user than one
         // that was never offered, and it is exactly the shape of claim this
         // project has been burned by before.
-        .accessibilityRotor(
-            Text("Screens"),
-            entries: rotorScreens,
-            entryID: \.self,
-            entryLabel: \.title
-        )
+        .screenIndexRotor(rotorScreens, namespace: screenRotor, scroller: scroller)
         // A term Siri was given, typed in for the user. `ShowGetHogSearchResultsIntent`
         // can only ask the app to search; this is where the asking lands.
         .onAppear {
@@ -500,6 +506,33 @@ struct ProjectSearchView: View {
     private func load(force: Bool) async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID, force: force)
+    }
+}
+
+extension View {
+    /// Keeps the phone's screen rotor off regular-width surfaces, where the
+    /// sidebar owns screen navigation and this list contains no screen rows.
+    /// VoiceOver must not offer a named rotor with nowhere to move focus.
+    @ViewBuilder
+    func screenIndexRotor(
+        _ screens: [AppTab],
+        namespace: Namespace.ID,
+        scroller: ScrollViewProxy
+    ) -> some View {
+        if screens.isEmpty {
+            self
+        } else {
+            accessibilityRotor(Text("Screens")) {
+                ForEach(screens, id: \.self) { tab in
+                    AccessibilityRotorEntry(
+                        Text(tab.title),
+                        id: tab,
+                        in: namespace,
+                        prepare: { scroller.scrollTo(tab) }
+                    )
+                }
+            }
+        }
     }
 }
 

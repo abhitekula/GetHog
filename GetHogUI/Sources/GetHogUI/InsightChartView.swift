@@ -24,6 +24,31 @@ import SwiftUI
 /// Multi-series charts always carry a legend plus symbol marks so identity never
 /// rests on colour alone — which is also the relief the light-mode palette's
 /// contrast warning requires.
+public enum InsightChartInteraction {
+    /// Compact tables are the one dashboard rendering whose content remains a
+    /// real touch surface: horizontal scrolling is how later columns are read.
+    /// Full-size insight content is already outside the tile's open control.
+    public static func requiresDirectTouch(
+        for model: InsightRenderModel,
+        compact: Bool
+    ) -> Bool {
+        guard compact, case .hogQL(let visualization) = model else { return false }
+        switch HogQLPresentation.state(for: visualization) {
+        case .tableFallback:
+            return true
+        case .visualization(let display):
+            switch display {
+            case .table, .unsupported:
+                return true
+            default:
+                return false
+            }
+        case .uncomputed, .empty:
+            return false
+        }
+    }
+}
+
 public struct InsightChartView: View {
     let model: InsightRenderModel
     var compact: Bool = true
@@ -38,6 +63,8 @@ public struct InsightChartView: View {
     /// Passed through to `TimeSeriesChart`, which is the only form that has a
     /// scrub gesture to teach. Off by default — see `TimeSeriesChart.body`.
     var showsScrubTip: Bool = false
+
+    @Environment(\.projectChartTimeZone) private var projectChartTimeZone
 
     public init(
         model: InsightRenderModel,
@@ -56,7 +83,12 @@ public struct InsightChartView: View {
     public var body: some View {
         switch model {
         case .hogQL(let visualization):
-            HogQLVisualizationView(visualization: visualization, compact: compact, title: title)
+            HogQLVisualizationView(
+                visualization: visualization,
+                compact: compact,
+                title: title,
+                timeZone: projectChartTimeZone
+            )
         case .timeSeries(let series, let style):
             TimeSeriesChart(
                 series: series,

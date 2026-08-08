@@ -78,6 +78,10 @@ struct GetHogTVApp: App {
         WindowGroup {
             TVRootView()
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 .environment(nav)
                 .environment(snapshotRefresh)
                 .tint(Theme.accent)

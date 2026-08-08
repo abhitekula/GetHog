@@ -13,7 +13,9 @@ struct GetHogWatchApp: App {
 
     init() {
         _model = State(initialValue: WatchModel.live())
-        WatchSessionListener.shared.activate()
+        if WatchDemoMode.allowsLiveHandoffs {
+            WatchSessionListener.shared.activate()
+        }
     }
 
     var body: some Scene {

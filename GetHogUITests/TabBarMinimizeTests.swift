@@ -32,12 +32,12 @@ import XCTest
 /// and the fix belongs on the `TabView`, once, not on each screen.
 final class TabBarMinimizeTests: XCTestCase {
 
-    func testErrorsClearsTheMinimisedTabBar() {
-        assertContentClearsMinimisedTabBar(onTab: "errorTracking", titled: "Errors")
+    func testErrorsClearsTheMinimisedTabBar() throws {
+        try assertContentClearsMinimisedTabBar(onTab: "errorTracking", titled: "Errors")
     }
 
-    func testPeopleClearsTheMinimisedTabBar() {
-        assertContentClearsMinimisedTabBar(onTab: "people", titled: "People")
+    func testPeopleClearsTheMinimisedTabBar() throws {
+        try assertContentClearsMinimisedTabBar(onTab: "people", titled: "People")
     }
 
     // MARK: -
@@ -47,7 +47,14 @@ final class TabBarMinimizeTests: XCTestCase {
         titled title: String,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) {
+    ) throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        if deviceName.localizedCaseInsensitiveContains("iPad") {
+            throw XCTSkip(
+                "Tab-bar minimisation is an iPhone behavior; iPad uses the system sidebar."
+            )
+        }
+
         let app = DemoLaunch.launch(tab: tab)
         XCTAssertTrue(
             DemoLaunch.wait(for: app.navigationBars[title]),
@@ -58,18 +65,19 @@ final class TabBarMinimizeTests: XCTestCase {
         DemoLaunch.settle(app)
 
         let bar = app.tabBars.firstMatch
-        XCTAssertTrue(bar.exists, "There is no tab bar on \(title).", file: file, line: line)
+        XCTAssertTrue(bar.exists, "There is no compact tab bar on \(title).", file: file, line: line)
         guard bar.exists else { return }
 
-        // Regular width has nothing to measure: `.sidebarAdaptable` puts the bar
-        // across the *top* of an iPad, where it is above the content rather than
-        // over it, and `.tabBarMinimizeBehavior` is a compact-width behaviour that
-        // never fires there. Detected by where the bar is rather than by an idiom
-        // for the size class, because where it is *is* the thing that matters.
+        // Regular width has nothing to measure: `.sidebarAdaptable` can put the
+        // bar across the top of a landscape Max-size iPhone, where it is above
+        // the content rather than over it, and `.tabBarMinimizeBehavior` never
+        // fires. Detected by where the bar is because its position is the thing
+        // that determines whether content clearance is relevant.
         let window = app.windows.firstMatch.frame
         guard bar.frame.midY > window.midY else {
-            print("TAB-BAR-CLEARANCE \(title) skipped: bar is at \(bar.frame) in a \(window) window.")
-            return
+            throw XCTSkip(
+                "Tab-bar minimisation is not available with the bar at \(bar.frame) in \(window)."
+            )
         }
 
         let expanded = bar.frame

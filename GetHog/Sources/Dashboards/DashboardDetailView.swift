@@ -501,7 +501,7 @@ struct TileCard: View {
             }
     }
 
-    /// One button per tile, not a card with a tap gesture bolted on.
+    /// One accessible control per tile.
     ///
     /// `.onTapGesture` moves pixels and tells the accessibility tree nothing.
     /// Measured on the demo dashboard before this: six tiles, no tile buttons in
@@ -513,27 +513,47 @@ struct TileCard: View {
     /// every `List` row elsewhere in this app already has, and the audit's four
     /// hits go with it.
     ///
-    /// The button can now be activated from anywhere inside the card, which is
-    /// also the only way a VoiceOver or Full Keyboard Access user ever reaches
-    /// it. That was **not** true when this was written — see `card`.
+    /// Most tiles are a `Button`. A compact HogQL table is the deliberate
+    /// exception: its horizontal `ScrollView` must remain a real touch surface,
+    /// so the card uses a cancelling tap recognizer plus an explicit button
+    /// trait/default accessibility action. It remains one accessible control and
+    /// can still be activated from anywhere outside a drag. That was **not** true
+    /// when this was written — see `card`.
     @ViewBuilder
     private var control: some View {
         if let open {
-            Button(action: open) {
+            if requiresDirectChartTouch {
                 card
+                    // A compact table is a real horizontal scroll surface. A
+                    // `Button` around it cannot distinguish that drag from its
+                    // own activation once the table is allowed to hit-test, while
+                    // disabling hit testing sends every swipe to the button. A
+                    // tap recognizer cancels as soon as the scroll view wins the
+                    // drag, and the explicit button trait/default action preserves
+                    // VoiceOver, Switch Control and Full Keyboard Access.
+                    .onTapGesture(perform: open)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel(spokenLabel)
+                    .accessibilityHint("Opens the full insight")
+                    .accessibilityAction(.default, open)
+            } else {
+                Button(action: open) {
+                    card
+                }
+                #if os(tvOS)
+                // `.card` is the platform's own focus treatment — the lift, the
+                // parallax and the shadow a viewer ten feet away needs in order to
+                // see which tile the remote is on. `.plain` on tvOS draws no focus
+                // state at all, which on a grid of cards is unnavigable.
+                .buttonStyle(.card)
+                #else
+                // The card is already the design; a button style would repaint it.
+                .buttonStyle(.plain)
+                #endif
+                .accessibilityLabel(spokenLabel)
+                .accessibilityHint("Opens the full insight")
             }
-            #if os(tvOS)
-            // `.card` is the platform's own focus treatment — the lift, the
-            // parallax and the shadow a viewer ten feet away needs in order to
-            // see which tile the remote is on. `.plain` on tvOS draws no focus
-            // state at all, which on a grid of cards is unnavigable.
-            .buttonStyle(.card)
-            #else
-            // The card is already the design; a button style would repaint it.
-            .buttonStyle(.plain)
-            #endif
-            .accessibilityLabel(spokenLabel)
-            .accessibilityHint("Opens the full insight")
         } else {
             card
         }
@@ -582,18 +602,18 @@ struct TileCard: View {
                 // readout, no rule mark, no pressed appearance; screenshots
                 // before and after the poisoning tap are identical.
                 //
-                // The tile is one control by design, so its content is a picture:
-                // hit testing off here is the invariant rather than a patch for
-                // one chart, and it covers every form `InsightChartView` can draw
-                // — including `.unsupported`, whose "Open in PostHog" `Link` is
-                // the same trap in a different shape. Accessibility is untouched:
-                // this suppresses touches, not the tree, so the chart's
-                // `AXChartDescriptor` and the rotor still work.
+                // A non-table tile is one control by design, so its content is a
+                // picture: hit testing off here is the invariant rather than a
+                // patch for one chart. Compact HogQL tables are the sole exception
+                // because later columns are reachable only by horizontal scroll;
+                // `control` gives those tiles a scroll-aware tap boundary instead.
+                // Accessibility is untouched by this modifier: it suppresses
+                // touches, not the tree, so chart descriptors and rotors still work.
                 //
                 // `ProjectOverview` switches hit testing off at its own call site
                 // too. That is not this — its tiles are not buttons at all, and
                 // the two are unrelated guards that happen to spell the same.
-                .allowsHitTesting(false)
+                .allowsHitTesting(requiresDirectChartTouch)
 
                 FreshnessLabel(date: tile.lastRefresh, isCached: tile.isCached)
             }
@@ -625,6 +645,14 @@ struct TileCard: View {
         tile.lastRefresh
             .map { "Data updated \($0.formatted(.relative(presentation: .named)))" }
             ?? "Data not yet loaded"
+    }
+
+    private var requiresDirectChartTouch: Bool {
+        #if os(tvOS)
+        false
+        #else
+        InsightChartInteraction.requiresDirectTouch(for: model, compact: true)
+        #endif
     }
 }
 

@@ -85,6 +85,10 @@ struct GetHogVisionApp: App {
                 #endif
             }
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 .environment(nav)
                 // "Save to Files" is triggered from menu content, which is torn
                 // down the instant the menu closes — the sheet has to be owned
@@ -154,6 +158,10 @@ struct GetHogVisionApp: App {
         WindowGroup(for: WindowTarget.self) { $target in
             DetachedWindowView(target: target)
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 // The same instance as the main window's, not a second one.
                 .environment(nav)
                 .insightCSVExporter()

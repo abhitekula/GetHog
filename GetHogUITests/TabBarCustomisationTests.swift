@@ -16,6 +16,17 @@ final class TabBarCustomisationTests: XCTestCase {
     /// no default produces — so nothing here can pass by accident.
     private static let customBar = ["logs", "errorTracking", "inbox", "health"]
 
+    private var isIPadDestination: Bool {
+        let name = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        return name.localizedCaseInsensitiveContains("iPad")
+    }
+
+    private func requirePhoneDestination(_ reason: String) throws {
+        if isIPadDestination {
+            throw XCTSkip(reason)
+        }
+    }
+
     /// The default four, so a customised run has something to be different from.
     ///
     /// Pinned rather than inherited: the editor writes to
@@ -25,7 +36,9 @@ final class TabBarCustomisationTests: XCTestCase {
     /// property of `NavPreferences` and is asserted where it belongs, in
     /// `NavPreferencesTests.defaultsToPrimary`; what this measures is that a bar
     /// of four screens plus Search is what actually gets drawn.
-    func testDefaultBarIsTheFourItAlwaysWas() {
+    func testDefaultBarIsTheFourItAlwaysWas() throws {
+        try requirePhoneDestination("iPad uses the independent system sidebar store.")
+
         let app = DemoLaunch.launch(tab: "dashboards", environment: ["GETHOG_TAB_BAR": "dashboards,events,sessions,flags"])
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Dashboards"]))
         DemoLaunch.settle(app)
@@ -38,7 +51,9 @@ final class TabBarCustomisationTests: XCTestCase {
         XCTAssertEqual(labels, ["Dashboards", "Events", "Sessions", "Flags", "Search"])
     }
 
-    func testCustomisedBarDrawsTheChosenFourInOrder() {
+    func testCustomisedBarDrawsTheChosenFourInOrder() throws {
+        try requirePhoneDestination("iPad uses the independent system sidebar store.")
+
         let app = DemoLaunch.launch(tab: "logs", environment: ["GETHOG_TAB_BAR": Self.customBar.joined(separator: ",")])
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Logs"]))
         DemoLaunch.settle(app)
@@ -57,7 +72,9 @@ final class TabBarCustomisationTests: XCTestCase {
     /// The exactly-once rule, on a device: a screen promoted into the bar leaves
     /// the index, and a demoted one arrives there. Getting either half wrong
     /// makes a screen either unreachable or reachable twice.
-    func testTheIndexHoldsExactlyWhatTheBarDoesNot() {
+    func testTheIndexHoldsExactlyWhatTheBarDoesNot() throws {
+        try requirePhoneDestination("The compact index is an iPhone-only surface.")
+
         let app = DemoLaunch.launch(tab: "search", environment: ["GETHOG_TAB_BAR": Self.customBar.joined(separator: ",")])
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Search"]))
         DemoLaunch.settle(app)
@@ -114,7 +131,9 @@ final class TabBarCustomisationTests: XCTestCase {
     /// The two customisation stores must never both describe one device. On a
     /// phone there is no sidebar and no system editor, and the Settings screen is
     /// the only way to change the bar.
-    func testThePhoneHasNoSystemEditor() {
+    func testThePhoneHasNoSystemEditor() throws {
+        try requirePhoneDestination("iPad intentionally uses the system sidebar editor.")
+
         let app = DemoLaunch.launch(tab: "dashboards")
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Dashboards"]))
         DemoLaunch.settle(app)
@@ -135,15 +154,12 @@ final class TabBarCustomisationTests: XCTestCase {
     /// simulator, so without this the arrangement left behind by whatever ran
     /// before decides what is in slot 1 — measured, from `testTabBarEditor`
     /// failing on exactly that after this test had put Logs there.
-    func testTheEditorChangesTheBar() {
+    func testTheEditorChangesTheBar() throws {
+        try requirePhoneDestination("The app-owned tab-bar editor is absent on iPad by design.")
+
         let app = DemoLaunch.launch(tab: "settings", environment: ["GETHOG_TAB_BAR": "dashboards,events,sessions,flags"])
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Settings"]))
         DemoLaunch.settle(app)
-
-        guard !app.buttons["ToggleSideBar"].exists else {
-            print("EDITOR skipped: the row is absent on iPad by design.")
-            return
-        }
 
         let row = app.cells.containing(.staticText, identifier: "Tab bar").firstMatch
         XCTAssertTrue(DemoLaunch.wait(for: row, timeout: 10), "Settings has no Tab bar row.")
@@ -187,15 +203,12 @@ final class TabBarCustomisationTests: XCTestCase {
     /// is a tab, the demoted one is in the index, and neither is stranded. Two
     /// things already do that — `restorePushedTab()` on the next appear, and
     /// `open(_:)` clearing a stale push when its destination has a bar row.
-    func testTheBarIsCoherentAfterLeavingTheEditor() {
+    func testTheBarIsCoherentAfterLeavingTheEditor() throws {
+        try requirePhoneDestination("The app-owned tab-bar editor is absent on iPad by design.")
+
         let app = DemoLaunch.launch(tab: "settings", environment: ["GETHOG_TAB_BAR": "dashboards,events,sessions,flags"])
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Settings"]))
         DemoLaunch.settle(app)
-
-        guard !app.buttons["ToggleSideBar"].exists else {
-            print("COHERENT-AFTER-EDIT skipped: no editor on iPad by design.")
-            return
-        }
 
         app.cells.containing(.staticText, identifier: "Tab bar").firstMatch.tap()
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Tab bar"]))

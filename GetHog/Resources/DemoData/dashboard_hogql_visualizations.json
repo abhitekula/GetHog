@@ -17,10 +17,19 @@
       "insight": {
         "id": 727002,
         "name": "Synthetic result table",
-        "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery", "query": "SELECT segment, value FROM synthetic_metrics"}},
-        "columns": ["segment", "value"],
-        "types": [["segment", "String"], ["value", "UInt64"]],
-        "result": [["alpha", 12], ["beta", 8]],
+        "query": {"kind": "DataVisualizationNode", "display": "ActionsTable", "source": {"kind": "HogQLQuery", "query": "SELECT segment, owner, channel, region, status, value FROM synthetic_metrics"}},
+        "columns": ["segment", "owner", "channel", "region", "status", "value"],
+        "types": [["segment", "String"], ["owner", "String"], ["channel", "String"], ["region", "String"], ["status", "String"], ["value", "UInt64"]],
+        "result": [
+          ["alpha cohort with a deliberately long label", "analyst-a", "email", "north", "healthy", 12],
+          ["beta cohort with a deliberately long label", "analyst-b", "chat", "south", "healthy", 8],
+          ["gamma cohort with a deliberately long label", "analyst-c", "mobile", "east", "watch", 15],
+          ["delta cohort with a deliberately long label", "analyst-d", "web", "west", "healthy", 9],
+          ["epsilon cohort with a deliberately long label", "analyst-e", "email", "north", "watch", 11],
+          ["zeta cohort with a deliberately long label", "analyst-f", "chat", "south", "healthy", 7],
+          ["eta cohort with a deliberately long label", "analyst-g", "mobile", "east", "watch", 6],
+          ["theta cohort with a deliberately long label", "analyst-h", "web", "west", "healthy", 5]
+        ],
         "hasMore": false
       }
     },

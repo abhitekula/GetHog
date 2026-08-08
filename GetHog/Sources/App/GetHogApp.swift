@@ -47,6 +47,10 @@ struct GetHogApp: App {
                 #endif
             }
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 // Injected here, above `RootView` entirely, for the reason
                 // `AppModel` is: `RootView` presents sheets, and a `.sheet`
                 // attached *outside* an `.environment` is not in that subtree -
@@ -131,6 +135,10 @@ struct GetHogApp: App {
         WindowGroup(for: WindowTarget.self) { $target in
             DetachedWindowView(target: target)
                 .environment(model)
+                .environment(
+                    \.projectChartTimeZone,
+                    ProjectChartTimeZone.resolve(model.selectedProject?.timezone)
+                )
                 // The same instance as the main window's, not a second one.
                 .environment(nav)
                 .insightCSVExporter()

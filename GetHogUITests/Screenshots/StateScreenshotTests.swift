@@ -209,6 +209,61 @@ final class StateScreenshotTests: ScreenshotCase {
         )
     }
 
+    /// The complete DataVisualizationNode gallery rather than one representative
+    /// dashboard tile. The first frame covers every chart family on iPad and the
+    /// compact table/date-axis composition on iPhone; the second reaches the
+    /// independent headline, empty-result, and not-yet-computed states at the
+    /// tail of the lazy grid.
+    func testHogQLDashboardGallery() {
+        capture(
+            launching: {
+                Screenshot.launch($0, openURL: "gethog://dashboard/725102")
+            },
+            steps: [
+                ScreenshotStep("dashboard-hogql-gallery") { app in
+                    guard DemoLaunch.wait(for: app.navigationBars["Synthetic HogQL gallery"])
+                    else { return false }
+                    return DemoLaunch.wait(
+                        for: self.elements(startingWith: "Synthetic result table", in: app)
+                        .firstMatch
+                    )
+                },
+                ScreenshotStep("dashboard-hogql-gallery-charts") { app in
+                    for _ in 0..<12 {
+                        let chart = self.elements(
+                            startingWith: "Synthetic values over time",
+                            in: app
+                        ).firstMatch
+                        if chart.exists, chart.isHittable {
+                            app.swipeUp(velocity: .slow)
+                            DemoLaunch.pause(0.5)
+                            return chart.exists
+                        }
+                        app.swipeUp(velocity: .slow)
+                        DemoLaunch.pause(0.35)
+                    }
+                    return false
+                },
+                ScreenshotStep("dashboard-hogql-gallery-states") { app in
+                    for _ in 0..<20 {
+                        let pending = self.elements(
+                            startingWith: "Synthetic pending result",
+                            in: app
+                        ).firstMatch
+                        if pending.exists, pending.isHittable {
+                            app.swipeUp(velocity: .slow)
+                            DemoLaunch.pause(0.5)
+                            return pending.exists
+                        }
+                        app.swipeUp(velocity: .slow)
+                        DemoLaunch.pause(0.35)
+                    }
+                    return false
+                },
+            ]
+        )
+    }
+
     /// A tile opened into its full insight.
     ///
     /// **Opened by `GETHOG_OPEN_TILE` rather than by tapping, which keeps this

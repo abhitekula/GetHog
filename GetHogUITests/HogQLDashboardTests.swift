@@ -51,4 +51,68 @@ final class HogQLDashboardTests: XCTestCase {
         XCTAssertTrue(pending.label.contains("not yet computed"), pending.label)
         XCTAssertTrue(pending.label.contains("Data not yet loaded"), pending.label)
     }
+
+    func testCompactResultTableDoesNotTrapDashboardScrolling() {
+        let app = DemoLaunch.launch(openURL: "gethog://dashboard/\(Self.dashboardID)")
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["Synthetic HogQL gallery"]),
+            "The synthetic HogQL dashboard never loaded."
+        )
+
+        let table = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Synthetic result table")
+        ).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: table), "The compact result table never rendered.")
+        let initialY = table.frame.minY
+
+        table.swipeUp(velocity: .slow)
+
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5) { table.exists && table.frame.minY < initialY - 40 },
+            "A vertical swipe beginning on the compact table did not move the dashboard."
+        )
+    }
+
+    func testCompactResultTableScrollsHorizontallyWithoutOpeningInsight() {
+        let app = DemoLaunch.launch(openURL: "gethog://dashboard/\(Self.dashboardID)")
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["Synthetic HogQL gallery"]),
+            "The synthetic HogQL dashboard never loaded."
+        )
+
+        let table = app.scrollViews["gethog.hogql-result-table"].firstMatch
+        let tile = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Synthetic result table")
+        ).firstMatch
+        let trailingColumn = app.staticTexts["gethog.hogql-table.column.5"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: table), "The compact table scroll view never rendered.")
+        XCTAssertTrue(tile.exists, "The scroll-aware table tile was no longer an accessible button.")
+        XCTAssertTrue(trailingColumn.exists, "The trailing synthetic column was not in the table.")
+        XCTAssertFalse(trailingColumn.isHittable, "The trailing column unexpectedly began on screen.")
+
+        table.swipeLeft(velocity: .slow)
+        table.swipeLeft(velocity: .slow)
+
+        XCTAssertFalse(
+            DemoLaunch.wait(timeout: 2) {
+                app.buttons["Done"].exists || app.buttons["Close insight"].exists
+            },
+            "A horizontal table swipe opened the insight instead of scrolling the table."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5) { trailingColumn.exists && trailingColumn.isHittable },
+            "Two horizontal swipes did not reveal the trailing table column."
+        )
+
+        // The table owns horizontal drags, but the rest of the card still owns
+        // taps. Aim above the table rather than relying on XCUIElement's centre,
+        // which lands inside the scroll surface on this tile.
+        tile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5) {
+                app.buttons["Done"].exists || app.buttons["Close insight"].exists
+            },
+            "Making the table scrollable removed tap-to-open from the rest of its tile."
+        )
+    }
 }

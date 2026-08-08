@@ -14,6 +14,15 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         }
     }
 
+    private func requireRegularWidth(_ app: XCUIApplication) throws {
+        let window = app.windows.firstMatch.frame
+        guard window.width > 700 else {
+            throw XCTSkip(
+                "The \(window.width)-point app window is compact; this assertion measures the regular-width detail pane."
+            )
+        }
+    }
+
     private func renderedFrame(
         _ element: XCUIElement,
         named name: String,
@@ -47,36 +56,49 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         )
     }
 
-    func testCoreFourOverviewScenesAreSingularOnIPad() throws {
-        let device = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
-        try XCTSkipUnless(device.lowercased().contains("ipad"))
+    func testDashboardOverviewSceneIsSingularOnIPad() throws {
+        try assertOverviewSceneIsSingular(tab: "dashboards", heading: "Project signal")
+    }
 
-        let cases = [
-            (tab: "dashboards", heading: "Project signal"),
-            (tab: "events", heading: "Event signal"),
-            (tab: "sessions", heading: "Replay signal"),
-            (tab: "flags", heading: "Rollout signal"),
-        ]
+    func testEventsOverviewSceneIsSingularOnIPad() throws {
+        try assertOverviewSceneIsSingular(tab: "events", heading: "Event signal")
+    }
 
-        for item in cases {
-            let app = DemoLaunch.launch(tab: item.tab)
-            DemoLaunch.settle(app)
-            // The initial identifier contract reported 19/4/4/6 matches because
-            // SwiftUI inherited each outer identifier onto scene descendants.
-            // Those descendants expose sibling frames rather than one stable
-            // container frame, so frame grouping was no more truthful. The
-            // user-facing heading is the stable singular landmark: a second
-            // rendered summary necessarily renders a second heading.
-            let headings = app.staticTexts.matching(
-                NSPredicate(format: "label == %@", item.heading)
-            )
-            XCTAssertEqual(
-                headings.count,
-                1,
-                "\(item.tab) must expose one \(item.heading) heading"
-            )
-            app.terminate()
-        }
+    func testSessionsOverviewSceneIsSingularOnIPad() throws {
+        try assertOverviewSceneIsSingular(tab: "sessions", heading: "Replay signal")
+    }
+
+    func testFlagsOverviewSceneIsSingularOnIPad() throws {
+        try assertOverviewSceneIsSingular(tab: "flags", heading: "Rollout signal")
+    }
+
+    private func assertOverviewSceneIsSingular(tab: String, heading: String) throws {
+        try requireIPad()
+
+        let app = DemoLaunch.launch(tab: tab)
+        defer { app.terminate() }
+        DemoLaunch.settle(app)
+
+        try requireRegularWidth(app)
+
+        // The initial identifier contract reported 19/4/4/6 matches because
+        // SwiftUI inherited each outer identifier onto scene descendants.
+        // Those descendants expose sibling frames rather than one stable
+        // container frame, so frame grouping was no more truthful. The
+        // user-facing heading is the stable singular landmark: a second
+        // rendered summary necessarily renders a second heading.
+        let headings = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", heading)
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: headings.firstMatch),
+            "\(tab) never exposed its \(heading) heading"
+        )
+        XCTAssertEqual(
+            headings.count,
+            1,
+            "\(tab) must expose one \(heading) heading"
+        )
     }
 
     func testSessionsSummaryUsesLinearAccessibilityLayoutOnIPad() throws {
@@ -93,6 +115,7 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
             ]
         )
         DemoLaunch.settle(app)
+        try requireRegularWidth(app)
 
         let summary = app.descendants(matching: .any).matching(
             NSPredicate(
@@ -128,7 +151,7 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         defer { app.terminate() }
         DemoLaunch.settle(app)
 
-        XCTAssertGreaterThan(app.frame.width, 700, "The test did not get a regular-width window.")
+        try requireRegularWidth(app)
 
         let projectSignal = renderedFrame(
             DemoLaunch.elements(labelled: "Project signal", in: app).firstMatch,
@@ -177,7 +200,7 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         defer { app.terminate() }
         DemoLaunch.settle(app)
 
-        XCTAssertGreaterThan(app.frame.width, 700, "The test did not get a regular-width window.")
+        try requireRegularWidth(app)
 
         let eventSignal = renderedFrame(
             DemoLaunch.elements(labelled: "Event signal", in: app).firstMatch,
@@ -225,7 +248,7 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         defer { app.terminate() }
         DemoLaunch.settle(app)
 
-        XCTAssertGreaterThan(app.frame.width, 700, "The test did not get a regular-width window.")
+        try requireRegularWidth(app)
 
         let rolloutSignal = renderedFrame(
             DemoLaunch.elements(labelled: "Rollout signal", in: app).firstMatch,
