@@ -22,6 +22,9 @@ struct SessionDetailView: View {
     @Environment(\.openURL) private var openURL
     #endif
     @State private var summaryGenerationTask: Task<Void, Never>?
+    #if os(tvOS)
+    @State private var isConfirmingSummaryGeneration = false
+    #endif
     #if os(macOS)
     /// The diagnostics column starts **closed**, and the toolbar's
     /// `sidebar.trailing` button opens it.
@@ -112,13 +115,7 @@ struct SessionDetailView: View {
                     origin: loader.replayStart ?? recording.startTime,
                     canSeek: player.isReady,
                     onSeek: { offset in player.seek(to: offset, resume: true) },
-                    onGenerate: {
-                        guard summaryGenerationTask == nil else { return }
-                        summaryGenerationTask = Task { @MainActor in
-                            await generateSummary()
-                            summaryGenerationTask = nil
-                        }
-                    },
+                    onGenerate: { requestSummaryGeneration() },
                     onRetry: { Task { await loadSummary() } }
                 )
                 #if os(tvOS)
@@ -214,6 +211,23 @@ struct SessionDetailView: View {
         // summary and answer 404, which the store reads as absence rather than
         // as failure — so this costs the screen nothing when there is nothing.
         .task(id: recording.id) { await loadSummary() }
+        #if os(tvOS)
+        .confirmationDialog(
+            "Generate and save an AI summary for \(recording.personDisplayName)?",
+            isPresented: $isConfirmingSummaryGeneration,
+            titleVisibility: .visible
+        ) {
+            Button("Generate and save summary", role: .destructive) {
+                startSummaryGeneration()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "PostHog will save the generated summary with this session. "
+                    + "Generation uses the organization's shared query and AI budget."
+            )
+        }
+        #endif
         .onDisappear {
             summaryGenerationTask?.cancel()
             summaryGenerationTask = nil
@@ -337,6 +351,22 @@ struct SessionDetailView: View {
             projectID: projectID,
             sessionID: recording.id
         )
+    }
+
+    private func requestSummaryGeneration() {
+        #if os(tvOS)
+        isConfirmingSummaryGeneration = true
+        #else
+        startSummaryGeneration()
+        #endif
+    }
+
+    private func startSummaryGeneration() {
+        guard summaryGenerationTask == nil else { return }
+        summaryGenerationTask = Task { @MainActor in
+            await generateSummary()
+            summaryGenerationTask = nil
+        }
     }
 
     private func startReplay() async {
