@@ -68,6 +68,57 @@ struct VisionShellStructureTests {
         )
     }
 
+    @Test("losing the authenticated scope invalidates open details")
+    func scopeLossInvalidatesOpenDetails() throws {
+        let epoch = try #require(
+            UUID(uuidString: "018f9000-0000-7000-8000-000000000001")
+        )
+        let scope = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .usCloud,
+            authSessionID: epoch
+        )
+
+        #expect(VisionRootView.shouldResetOpenDetails(from: scope, to: nil))
+    }
+
+    @Test("the full authority namespace invalidates open details")
+    func fullAuthorityReplacementInvalidatesOpenDetails() throws {
+        let firstEpoch = try #require(
+            UUID(uuidString: "018f9000-0000-7000-8000-000000000001")
+        )
+        let replacementEpoch = try #require(
+            UUID(uuidString: "018f9000-0000-7000-8000-000000000002")
+        )
+        let original = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .usCloud,
+            authSessionID: firstEpoch
+        )
+
+        #expect(
+            VisionRootView.shouldResetOpenDetails(
+                from: original,
+                to: FlagWriteScope(
+                    projectID: 1_001,
+                    projectRegion: .usCloud,
+                    authSessionID: replacementEpoch
+                )
+            )
+        )
+        #expect(
+            VisionRootView.shouldResetOpenDetails(
+                from: original,
+                to: FlagWriteScope(
+                    projectID: 1_001,
+                    projectRegion: .euCloud,
+                    authSessionID: firstEpoch
+                )
+            )
+        )
+        #expect(!VisionRootView.shouldResetOpenDetails(from: original, to: original))
+    }
+
     @Test("each product screen selects the section that contains it")
     func productScreensSelectTheirSection() {
         for section in VisionRootView.sections {

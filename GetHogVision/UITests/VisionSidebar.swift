@@ -17,18 +17,19 @@ enum VisionSidebar {
                 format: "identifier == %@ AND label == %@", "gearshape", "Settings"
             )).firstMatch
         }
-        // The native List exposes an unlabeled Cell whose full-width
-        // StaticText is the selectable element. Scope to the left-most
-        // collection: split-view screens legitimately carry their own lists
-        // and may repeat a destination title in content.
-        if let sectionList = app.collectionViews.allElementsBoundByIndex.min(by: {
-            $0.frame.minX < $1.frame.minX
-        }) {
-            return sectionList.staticTexts.matching(
-                NSPredicate(format: "label == %@", title)
-            ).firstMatch
-        }
-        return app.staticTexts.matching(NSPredicate(format: "label == %@", title)).firstMatch
+        // Split-view product screens legitimately carry their own collections
+        // and may repeat a destination title. The section list has a stable
+        // identifier; a left-most-collection heuristic can otherwise return a
+        // logically mounted but collapsed list and synthesize a tap behind the
+        // foreground screen.
+        let sectionList = app.collectionViews["gethog.vision.section-sidebar"].firstMatch
+        return sectionList.buttons.matching(
+            NSPredicate(format: "label == %@", title)
+        ).firstMatch
+    }
+
+    static func destinationControl(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons["gethog.vision.section-destination.\(title)"].firstMatch
     }
 
     static func section(_ title: String, in app: XCUIApplication) -> XCUIElement {
@@ -58,10 +59,27 @@ enum VisionSidebar {
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> Bool {
-        guard let sidebarItem = reveal(title, in: app, file: file, line: line) else {
+        if title == "Settings" {
+            guard let sidebarItem = reveal(title, in: app, file: file, line: line) else {
+                return false
+            }
+            sidebarItem.tap()
+            return true
+        }
+
+        // visionOS may retain the native split roster in the accessibility
+        // hierarchy after collapsing it behind the product pane. Its child
+        // buttons can still report `isHittable`, even though synthesized taps
+        // land on the foreground screen. Drive the persistent, user-visible
+        // toolbar control for the requested destination instead.
+        let destinationControl = destinationControl(title, in: app)
+        guard DemoLaunch.wait(until: {
+            destinationControl.exists && destinationControl.isHittable
+        }) else {
+            XCTFail("The Vision destination controls did not offer \(title).", file: file, line: line)
             return false
         }
-        sidebarItem.tap()
+        destinationControl.tap()
         return true
     }
 }

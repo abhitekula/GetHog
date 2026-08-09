@@ -2,11 +2,95 @@ import XCTest
 
 @MainActor
 final class VisionWindowTests: XCTestCase {
+    func testDashboardDetailNeverClaimsEmptyAcrossDelayedListFailure() {
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: [
+                "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS": "2500",
+                "GETHOG_DEMO_DASHBOARD_LIST_FAILURE": "1",
+                "GETHOG_VISION_CONTENT_WIDTH": "1280",
+            ]
+        )
+
+        let emptyTitles = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "No dashboards")
+        )
+        let loading = app.staticTexts["Loading dashboards…"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 3, until: {
+                loading.exists || emptyTitles.count > 0
+            }),
+            "The regular dashboard detail exposed neither loading nor its former false-empty state."
+        )
+        XCTAssertTrue(
+            loading.exists,
+            "The regular dashboard detail showed No dashboards while its list was still loading."
+        )
+        guard loading.exists else { return }
+        XCTAssertEqual(
+            emptyTitles.count,
+            0,
+            "The regular dashboard detail claimed the still-loading collection was empty."
+        )
+        XCTAssertGreaterThan(
+            loading.frame.midX,
+            app.windows.firstMatch.frame.midX,
+            "The loading treatment rendered in the list rather than the detail pane."
+        )
+
+        let failures = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "Couldn't load dashboards")
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10, until: {
+                failures.count == 1 && !loading.exists
+            }),
+            "The delayed list failure did not replace loading with one authoritative error."
+        )
+        XCTAssertEqual(
+            emptyTitles.count,
+            0,
+            "The regular dashboard detail relabelled a failed collection as empty."
+        )
+        XCTAssertGreaterThan(
+            failures.firstMatch.frame.midX,
+            app.windows.firstMatch.frame.midX,
+            "The failure treatment rendered in the list rather than the detail pane."
+        )
+    }
+
+    func testEmptyDashboardCollectionShowsOneBrandedStateAtRegularWidth() {
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: [
+                "GETHOG_DEMO_EMPTY_COLLECTION": "dashboards",
+                "GETHOG_VISION_CONTENT_WIDTH": "1280",
+            ]
+        )
+
+        let emptyTitles = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "No dashboards")
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { emptyTitles.count > 0 }),
+            "The regular-width dashboard did not render its branded empty state."
+        )
+        DemoLaunch.settle(app)
+        XCTAssertEqual(
+            emptyTitles.count,
+            1,
+            "The regular split rendered the full dashboard empty state in more than one column."
+        )
+    }
+
     func testSectionSidebarAdaptsToANarrowWindow() {
         let contentWidth: CGFloat = 640
-        let app = DemoLaunch.launch(environment: [
-            "GETHOG_VISION_CONTENT_WIDTH": String(Int(contentWidth)),
-        ])
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: [
+                "GETHOG_VISION_CONTENT_WIDTH": String(Int(contentWidth)),
+            ]
+        )
 
         let dashboard = app.staticTexts[DemoLaunch.firstTileTitle].firstMatch
         XCTAssertTrue(
@@ -18,11 +102,42 @@ final class VisionWindowTests: XCTestCase {
         // keeps both columns visible, the sidebar must negotiate below the old
         // fixed 280pt width rather than consuming almost half of the window.
         let sidebar = app.collectionViews["gethog.vision.section-sidebar"].firstMatch
-        guard sidebar.exists && sidebar.isHittable else { return }
-        XCTAssertLessThan(
-            sidebar.frame.width,
-            contentWidth * 0.4,
-            "The section sidebar retained its fixed width in a narrow Vision window."
+        if sidebar.exists && sidebar.isHittable {
+            XCTAssertLessThan(
+                sidebar.frame.width,
+                contentWidth * 0.4,
+                "The section sidebar retained its fixed width in a narrow Vision window."
+            )
+        }
+
+        // Never trust the roster's `isHittable` result as proof that it is on
+        // top: visionOS retains covered split columns in the hierarchy. The
+        // route bar must remain genuinely interactive at the narrow proposal.
+        let events = VisionSidebar.destinationControl("Events", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                events.exists && events.isHittable
+            }),
+            "The narrow section did not leave a visible Events route control."
+        )
+        guard events.exists else { return }
+        events.tap()
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                (events.value as? String) == "Selected"
+            }),
+            "The narrow route bar did not retain Events as its selection."
+        )
+        let eventFixture = app.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@",
+                "meteor_report_opened",
+                "meteor_report_opened"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: eventFixture),
+            "The narrow route bar did not render the Events fixture."
         )
     }
 

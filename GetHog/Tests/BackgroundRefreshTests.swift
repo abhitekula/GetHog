@@ -23,6 +23,32 @@ private struct OfflineTransport: HTTPTransport {
 @MainActor
 struct BackgroundRefreshTests {
 
+    private func withStoredProjectID(
+        _ projectID: Int,
+        operation: () async throws -> Void
+    ) async rethrows {
+        let key = IntentDependencies.selectedProjectKey
+        let shared = IntentDependencies.sharedDefaults
+        let priorShared = shared?.object(forKey: key)
+        let standard = UserDefaults.standard
+        let priorStandard = standard.object(forKey: key)
+        defer {
+            if let priorShared {
+                shared?.set(priorShared, forKey: key)
+            } else {
+                shared?.removeObject(forKey: key)
+            }
+            if let priorStandard {
+                standard.set(priorStandard, forKey: key)
+            } else {
+                standard.removeObject(forKey: key)
+            }
+        }
+
+        IntentDependencies.persistSelectedProject(projectID)
+        try await operation()
+    }
+
     @Test("the scheduler uses the GetHog task identifier")
     func taskIdentifier() {
         #expect(BackgroundRefresh.taskIdentifier == "app.gethog.refresh.snapshot")
@@ -49,6 +75,7 @@ struct BackgroundRefreshTests {
 
     private func snapshot(
         region: PostHogRegion?,
+        authSessionID: UUID? = nil,
         capturedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)
     ) -> SharedSnapshot {
         SharedSnapshot(
@@ -57,6 +84,7 @@ struct BackgroundRefreshTests {
             metrics: [],
             flags: [],
             projectRegion: region,
+            authSessionID: authSessionID,
             capturedAt: capturedAt
         )
     }
@@ -81,6 +109,99 @@ struct BackgroundRefreshTests {
         // Reduced from tiles, so every metric has to carry something drawable.
         #expect(snapshot.metrics.allSatisfy { !$0.title.isEmpty })
         #expect(snapshot.projectRegion == .usCloud)
+    }
+
+    @Test("a cold background launch publishes the credential's durable epoch")
+    func coldBackgroundLaunchPreservesAuthenticationEpoch() async throws {
+        let (snapshots, directory) = try makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let epoch = UUID(uuidString: "018f9000-0000-7000-8000-000000000506")!
+        try snapshots.write(snapshot(
+            region: .usCloud,
+            authSessionID: epoch,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        ))
+        let credential = StoredCredential(
+            key: "synthetic-background-key",
+            region: .usCloud,
+            projectID: 1001,
+            authSessionID: epoch
+        )
+        let model = AppModel(
+            store: InMemoryTokenStore(credential: credential),
+            transport: DemoTransport(),
+            snapshotStore: snapshots
+        )
+
+        try await withStoredProjectID(1001) {
+            #expect(await model.performBackgroundRefresh(now: due))
+
+            let published = try #require(snapshots.loadOrNil())
+            #expect(published.projectID == 1001)
+            #expect(published.projectRegion == .usCloud)
+            #expect(published.authSessionID == epoch)
+        }
+    }
+
+    @Test("a recent cold snapshot is cleared when shared selection names another project")
+    func recentColdSnapshotRejectsPriorSelectedProject() async throws {
+        let (snapshots, directory) = try makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let epoch = UUID(uuidString: "018f9000-0000-7000-8000-000000000507")!
+        try snapshots.write(snapshot(
+            region: .usCloud,
+            authSessionID: epoch,
+            capturedAt: now.addingTimeInterval(-60)
+        ))
+        let model = AppModel(
+            store: InMemoryTokenStore(credential: StoredCredential(
+                key: "synthetic-recent-project-switch-key",
+                region: .usCloud,
+                authSessionID: epoch
+            )),
+            transport: OfflineTransport(),
+            snapshotStore: snapshots
+        )
+
+        try await withStoredProjectID(1002) {
+            #expect(await model.performBackgroundRefresh(now: now) == false)
+            #expect(snapshots.loadOrNil() == nil)
+        }
+    }
+
+    @Test("a due cold snapshot refreshes the shared selection instead of its prior project")
+    func dueColdSnapshotRefreshesCurrentSelectedProject() async throws {
+        let (snapshots, directory) = try makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let epoch = UUID(uuidString: "018f9000-0000-7000-8000-000000000508")!
+        try snapshots.write(snapshot(
+            region: .usCloud,
+            authSessionID: epoch,
+            capturedAt: now.addingTimeInterval(
+                -BackgroundRefreshPolicy.minimumInterval - 60
+            )
+        ))
+        let model = AppModel(
+            store: InMemoryTokenStore(credential: StoredCredential(
+                key: "synthetic-due-project-switch-key",
+                region: .usCloud,
+                authSessionID: epoch
+            )),
+            transport: DemoTransport(),
+            snapshotStore: snapshots
+        )
+
+        try await withStoredProjectID(1002) {
+            #expect(await model.performBackgroundRefresh(now: now))
+            let published = try #require(snapshots.loadOrNil())
+            #expect(published.projectID == 1002)
+            #expect(published.projectName == "Project 1002")
+            #expect(published.projectRegion == .usCloud)
+            #expect(published.authSessionID == epoch)
+            #expect(!published.metrics.isEmpty)
+        }
     }
 
     @Test("a same-id snapshot from another region is cleared before an offline wake")
@@ -133,7 +254,11 @@ struct BackgroundRefreshTests {
 
     @Test("a wake with no network leaves the widgets' data alone")
     func failedWakeDoesNotClobberTheSnapshot() async throws {
-        let seeded = demoModel()
+        let credentials = InMemoryTokenStore()
+        let seeded = AppModel(
+            store: credentials,
+            transport: DemoTransport()
+        )
         try await seeded.connect(key: "demo", region: .usCloud)
         let good = try #require(SharedSnapshotStore.shared.loadOrNil())
         #expect(!good.metrics.isEmpty)
@@ -141,7 +266,7 @@ struct BackgroundRefreshTests {
         // A fresh process, as a background launch really is: a credential, a
         // snapshot on disk, and no session yet.
         let woken = AppModel(
-            store: InMemoryTokenStore(credential: StoredCredential(key: "demo", region: .usCloud)),
+            store: credentials,
             transport: OfflineTransport()
         )
 

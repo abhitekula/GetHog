@@ -337,12 +337,30 @@ public struct PendingFlagWrite: Codable, Sendable, Equatable {
     public let flagID: Int
     public let key: String
     public let desiredActive: Bool
+    /// The exact authenticated snapshot that authorized this out-of-process
+    /// request. All three are optional only so a record written by an older
+    /// extension remains decodable; the app must treat any missing value as no
+    /// write authority and discard that legacy request.
+    public let projectID: Int?
+    public let projectRegion: PostHogRegion?
+    public let authSessionID: UUID?
     public let requestedAt: Date
 
-    public init(flagID: Int, key: String, desiredActive: Bool, requestedAt: Date = Date()) {
+    public init(
+        flagID: Int,
+        key: String,
+        desiredActive: Bool,
+        projectID: Int? = nil,
+        projectRegion: PostHogRegion? = nil,
+        authSessionID: UUID? = nil,
+        requestedAt: Date = Date()
+    ) {
         self.flagID = flagID
         self.key = key
         self.desiredActive = desiredActive
+        self.projectID = projectID
+        self.projectRegion = projectRegion
+        self.authSessionID = authSessionID
         self.requestedAt = requestedAt
     }
 }

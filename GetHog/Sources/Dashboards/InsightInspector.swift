@@ -207,6 +207,9 @@ private struct InsightDetailPresentation: ViewModifier {
             // cannot both be afforded, and the dashboard list is the one you do
             // not need while reading a single chart.
             .preference(key: InsightPanelOpenKey.self, value: presentation != nil)
+            .dismissInspectorOnExit(isPresented: presentation != nil) {
+                presentation = nil
+            }
             // No zoom on this branch, and no attempt to build one. A zoom
             // transition is a property of a *presentation* — a push, a sheet, a
             // full-screen cover — and this branch presents nothing: the panel is
@@ -258,6 +261,28 @@ private struct InsightDetailPresentation: ViewModifier {
         } else {
             content().navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         }
+    }
+}
+
+private extension View {
+    /// On TV, Menu dismisses the transient inspector before it navigates away
+    /// from the dashboard beneath it. The handler exists only while the panel
+    /// exists, so Menu keeps its ordinary NavigationStack back behavior once
+    /// there is nothing local left to close.
+    @ViewBuilder
+    func dismissInspectorOnExit(
+        isPresented: Bool,
+        dismiss: @escaping () -> Void
+    ) -> some View {
+        #if os(tvOS)
+        if isPresented {
+            onExitCommand(perform: dismiss)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }
 

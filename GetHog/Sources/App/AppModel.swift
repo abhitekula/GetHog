@@ -43,9 +43,10 @@ final class AppModel {
     }
 
     private(set) var phase: Phase = .loading
-    /// Changes after every successful authentication, including reconnecting
-    /// to the same host and numeric project. It is intentionally non-secret;
-    /// its only purpose is to make old snapshot write authority expire.
+    /// Stable across relaunches and retries of one saved credential, and
+    /// replaced whenever a different key is connected. It is intentionally
+    /// non-secret; its only purpose is to make old snapshot write authority
+    /// expire without persisting or comparing the bearer key itself.
     private(set) var authSessionID: UUID?
     private(set) var client: PostHogClient?
     private(set) var me: MeResponse?
@@ -57,6 +58,7 @@ final class AppModel {
     var selectedProject: Project? {
         didSet {
             guard let selectedProject, selectedProject.id != oldValue?.id else { return }
+            snapshotPublicationGeneration &+= 1
             if !isRuntimeDemo,
                let published = snapshotStore.loadOrNil(),
                published.projectID != selectedProject.id
@@ -124,6 +126,31 @@ final class AppModel {
     private let governor = RateLimitGovernor()
     private let snapshotStore: SharedSnapshotStore
     private var activeRegion: PostHogRegion?
+    /// Changes whenever session state that authorizes snapshot side effects
+    /// changes. A publication retains this alongside its full scope and must
+    /// still match both after every suspension.
+    private var snapshotPublicationGeneration: UInt64 = 0
+
+    private enum SnapshotPublicationAuthority {
+        case live(FlagWriteScope)
+        case storedCredential(
+            projectID: Int,
+            projectRegion: PostHogRegion,
+            authSessionID: UUID
+        )
+
+        var authSessionID: UUID {
+            switch self {
+            case .live(let scope): scope.authSessionID
+            case .storedCredential(_, _, let authSessionID): authSessionID
+            }
+        }
+    }
+
+    private struct SnapshotPublicationContext {
+        let generation: UInt64
+        let authority: SnapshotPublicationAuthority
+    }
 
     /// The live session scope a snapshot-backed write must still match. A nil
     /// region cannot authorize a write; legacy snapshots deliberately carry
@@ -171,13 +198,17 @@ final class AppModel {
         phase = .loading
         connectionError = nil
         storedCredentialRecovery = nil
-        guard let credential = try? store.load() else {
+        guard let storedCredential = try? store.load() else {
             clearPublishedProjectData()
             phase = .onboarding
             return
         }
+        let credential = credentialWithAuthenticationEpoch(storedCredential)
         do {
-            try await activate(credential: credential)
+            try await activate(
+                credential: credential,
+                persistAfterAuthentication: storedCredential.authSessionID == nil
+            )
         } catch {
             let postHogError = error as? PostHogError
             connectionError = postHogError?.localizedDescription ?? error.localizedDescription
@@ -207,9 +238,12 @@ final class AppModel {
 
     /// Validates a credential and, on success, becomes the active session.
     func connect(key: String, region: PostHogRegion) async throws {
-        let credential = StoredCredential(key: key, region: region)
-        try await activate(credential: credential)
-        try store.save(credential)
+        let credential = StoredCredential(
+            key: key,
+            region: region,
+            authSessionID: UUID()
+        )
+        try await activate(credential: credential, persistAfterAuthentication: true)
     }
 
     /// Becomes a demo session: the bundled fixtures for a transport, the
@@ -220,7 +254,11 @@ final class AppModel {
         transport = DemoTransport()
         isRuntimeDemo = true
         do {
-            try await activate(credential: StoredCredential(key: "demo", region: .usCloud))
+            try await activate(credential: StoredCredential(
+                key: "demo",
+                region: .usCloud,
+                authSessionID: UUID()
+            ))
         } catch {
             // Unreachable in practice — the fixtures ship in the bundle — but a
             // demo that failed to start must not leave the session wedged
@@ -231,7 +269,22 @@ final class AppModel {
         }
     }
 
-    private func activate(credential: StoredCredential) async throws {
+    private func credentialWithAuthenticationEpoch(
+        _ credential: StoredCredential
+    ) -> StoredCredential {
+        guard credential.authSessionID == nil else { return credential }
+        return StoredCredential(
+            key: credential.key,
+            region: credential.region,
+            projectID: credential.projectID,
+            authSessionID: UUID()
+        )
+    }
+
+    private func activate(
+        credential: StoredCredential,
+        persistAfterAuthentication: Bool = false
+    ) async throws {
         let client = PostHogClient(
             auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region),
             transport: transport,
@@ -240,7 +293,20 @@ final class AppModel {
 
         let me: MeResponse = try await client.send(PostHogAPI.me())
 
-        self.authSessionID = UUID()
+        // Authentication succeeded, so a legacy payload may now be migrated;
+        // a brand-new replacement is saved at the same boundary. Persist before
+        // any selected-project task can publish the epoch to widgets.
+        if persistAfterAuthentication {
+            try store.save(credential)
+        }
+
+        snapshotPublicationGeneration &+= 1
+        self.authSessionID = credential.authSessionID
+        if !isRuntimeDemo,
+           let published = snapshotStore.loadOrNil(),
+           published.authSessionID != credential.authSessionID {
+            clearPublishedProjectData()
+        }
         self.client = client
         self.activeRegion = credential.region
         self.me = me
@@ -406,13 +472,45 @@ final class AppModel {
         // fiction that would outlive the visit; the launch-argument demo keeps
         // publishing, because tests and screenshots own their whole simulator.
         guard !isRuntimeDemo else { return false }
-        guard let client, let project = selectedProject, let activeRegion else { return false }
+        guard let client,
+              let project = selectedProject,
+              let activeRegion,
+              let scope = flagWriteScope else { return false }
+        let context = SnapshotPublicationContext(
+            generation: snapshotPublicationGeneration,
+            authority: .live(scope)
+        )
         return await publish(
             using: client,
             projectID: project.id,
             projectName: project.name,
-            projectRegion: activeRegion
+            projectRegion: activeRegion,
+            context: context
         )
+    }
+
+    /// Revalidates the authority that began a publication. Foreground work must
+    /// still belong to the exact session project, host, and credential epoch;
+    /// a fresh background process must still have no adopted session and the
+    /// same durable credential must remain in the store.
+    private func snapshotPublicationIsCurrent(
+        _ context: SnapshotPublicationContext
+    ) -> Bool {
+        guard context.generation == snapshotPublicationGeneration else { return false }
+        switch context.authority {
+        case .live(let scope):
+            guard flagWriteScope == scope,
+                  let credential = try? store.load() else { return false }
+            return credential.region == scope.projectRegion
+                && credential.authSessionID == scope.authSessionID
+        case .storedCredential(let projectID, let projectRegion, let authSessionID):
+            guard client == nil, self.authSessionID == nil, selectedProject == nil,
+                  let credential = try? store.load() else { return false }
+            let storedProjectID = IntentDependencies.storedProjectID() ?? credential.projectID
+            return credential.region == projectRegion
+                && credential.authSessionID == authSessionID
+                && (storedProjectID == nil || storedProjectID == projectID)
+        }
     }
 
     /// The fetch itself, decoupled from the session so a background wake can run
@@ -422,8 +520,10 @@ final class AppModel {
         using client: PostHogClient,
         projectID: Int,
         projectName: String,
-        projectRegion: PostHogRegion
+        projectRegion: PostHogRegion,
+        context: SnapshotPublicationContext
     ) async -> Bool {
+        guard snapshotPublicationIsCurrent(context) else { return false }
         var metrics: [SharedSnapshot.Metric] = []
         var flags: [SharedSnapshot.Flag] = []
         var reachedTheAPI = false
@@ -442,9 +542,11 @@ final class AppModel {
 
         // Reuse the dashboard the user pinned; its tiles already carry results,
         // so this costs one request rather than one per metric.
-        if let summaries: Page<DashboardSummary> = try? await client.send(
+        let dashboardSummaries: Page<DashboardSummary>? = try? await client.send(
             PostHogAPI.dashboards(projectID: projectID, limit: 50)
-        ) {
+        )
+        guard snapshotPublicationIsCurrent(context) else { return false }
+        if let summaries = dashboardSummaries {
             reachedTheAPI = true
             // The pinned dashboard is already being resolved for the widgets, so
             // handing it to the home screen menu as well costs no request. Only
@@ -461,20 +563,29 @@ final class AppModel {
                 // for a nil project would empty the home screen instead.
                 QuickActions.refresh(projectID: projectID)
             }
-            if let pinned = summaries.results.first(where: \.pinned) ?? summaries.results.first,
-               let dashboard: Dashboard = try? await client.send(
-                   PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id)
-               ) {
-                metrics = dashboard.tiles.compactMap {
-                    SharedSnapshot.Metric(tile: $0, dashboardID: pinned.id)
+            if let pinned = summaries.results.first(where: \.pinned) ?? summaries.results.first {
+                let dashboard: Dashboard? = try? await client.send(
+                    PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id)
+                )
+                guard snapshotPublicationIsCurrent(context) else { return false }
+                if let dashboard {
+                    metrics = dashboard.tiles.compactMap {
+                        SharedSnapshot.Metric(tile: $0, dashboardID: pinned.id)
+                    }
                 }
             }
         }
 
-        if let page: Page<FeatureFlag> = try? await client.send(
+        let flagPage: Page<FeatureFlag>? = try? await client.send(
             PostHogAPI.featureFlags(projectID: projectID, limit: 100)
-        ) {
+        )
+        guard snapshotPublicationIsCurrent(context) else { return false }
+        if let page = flagPage {
             reachedTheAPI = true
+            let quickToggleScope = FlagQuickToggle.Scope(
+                projectID: projectID,
+                region: projectRegion
+            )
             flags = page.results
                 .filter { !$0.deleted && !$0.archived }
                 .map {
@@ -484,7 +595,10 @@ final class AppModel {
                         active: $0.active,
                         // Only an explicit in-app opt-in exposes a flag to
                         // Control Center or an interactive widget.
-                        quickToggleAllowed: FlagQuickToggle.isAllowed(flagID: $0.id)
+                        quickToggleAllowed: FlagQuickToggle.isAllowed(
+                            flagID: $0.id,
+                            scope: quickToggleScope
+                        )
                     )
                 }
         }
@@ -499,9 +613,12 @@ final class AppModel {
         // that disagreed with the screen it sends you to would be worse than no
         // widget. The response is a bare JSON array, not a `Page`.
         var ingestion = carried?.ingestion
-        if let data = try? await client.data(
+        let ingestionData = try? await client.data(
             for: PostHogAPI.ingestionWarnings(projectID: projectID, window: Self.snapshotIngestionWindow)
-        ), let warnings = try? IngestionWarning.decodeList(from: data) {
+        )
+        guard snapshotPublicationIsCurrent(context) else { return false }
+        if let ingestionData,
+           let warnings = try? IngestionWarning.decodeList(from: ingestionData) {
             reachedTheAPI = true
             ingestion = SharedSnapshot.IngestionDigest(
                 warnings: warnings, window: Self.snapshotIngestionWindow, capturedAt: now
@@ -516,18 +633,22 @@ final class AppModel {
         // between two-hourly wakes, and this is a request against somebody's
         // production budget, so it is carried forward until it is genuinely due.
         var quota = carried?.quota
-        if SharedSnapshot.QuotaDigest.isDue(previous: quota, now: now),
-           let limits: QuotaLimits = try? await client.send(
-               PostHogAPI.quotaLimits(projectID: projectID)
-           ) {
-            reachedTheAPI = true
-            quota = SharedSnapshot.QuotaDigest(limits, capturedAt: now)
+        if SharedSnapshot.QuotaDigest.isDue(previous: quota, now: now) {
+            let limits: QuotaLimits? = try? await client.send(
+                PostHogAPI.quotaLimits(projectID: projectID)
+            )
+            guard snapshotPublicationIsCurrent(context) else { return false }
+            if let limits {
+                reachedTheAPI = true
+                quota = SharedSnapshot.QuotaDigest(limits, capturedAt: now)
+            }
         }
 
         // A wake that found no network must not overwrite a good snapshot with
         // an empty one: the widget would go blank and claim to be current,
         // which is worse than showing older numbers with an honest age on them.
         guard reachedTheAPI || previous == nil else { return false }
+        guard snapshotPublicationIsCurrent(context) else { return false }
 
         let snapshot = SharedSnapshot(
             projectID: projectID,
@@ -537,7 +658,7 @@ final class AppModel {
             ingestion: ingestion,
             quota: quota,
             projectRegion: projectRegion,
-            authSessionID: authSessionID,
+            authSessionID: context.authority.authSessionID,
             capturedAt: now
         )
         try? snapshotStore.write(snapshot)
@@ -552,8 +673,10 @@ final class AppModel {
         // (`UNMutableNotificationContent`'s title, body, sound and thread
         // fields are all unavailable there), so evaluating would latch state
         // for a delivery that can never happen.
+        guard snapshotPublicationIsCurrent(context) else { return false }
         await MetricAlertDelivery.evaluate(snapshot: snapshot)
         #endif
+        guard snapshotPublicationIsCurrent(context) else { return false }
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()
         #endif
@@ -587,18 +710,33 @@ final class AppModel {
     /// rebuilt from the stored credential alone and the wake costs exactly the
     /// three requests the refresh needs.
     func performBackgroundRefresh(now: Date = Date()) async -> Bool {
+        guard !isRuntimeDemo else { return false }
         let previous = snapshotStore.loadOrNil()
         let storedCredential = try? store.load()
         let currentRegion = activeRegion ?? storedCredential?.region
+        let currentAuthSessionID = authSessionID ?? storedCredential?.authSessionID
+        let storedProjectID = IntentDependencies.storedProjectID()
 
         // Validate scope before the cadence shortcut. Otherwise a recent US
         // snapshot can survive an EU credential rotation merely because it is
         // not due yet, and every extension keeps rendering the old account.
         if let previous,
            previous.projectRegion != currentRegion
-            || selectedProject.map({ $0.id != previous.projectID }) == true {
+            || previous.authSessionID != currentAuthSessionID {
             clearPublishedProjectData()
             return false
+        }
+
+        let selectedProjectID = selectedProject?.id ?? storedProjectID
+        let projectChanged = previous.map { previous in
+            selectedProjectID.map { $0 != previous.projectID } == true
+        } ?? false
+        if projectChanged {
+            // A Focus filter or intent can change the selection without ever
+            // constructing this AppModel. The prior snapshot's timestamp still
+            // decides whether this wake may spend requests, but none of its
+            // project data may remain visible or be carried into the new scope.
+            clearPublishedProjectData()
         }
 
         let lastRefreshedAt = previous?.capturedAt
@@ -607,23 +745,23 @@ final class AppModel {
         // snapshot itself. Then this wake has nothing to add, and the cheapest
         // correct thing it can do is nothing.
         guard BackgroundRefreshPolicy.isDue(lastRefreshedAt: lastRefreshedAt, now: now) else {
-            return true
+            return !projectChanged
         }
 
-        if let client, let project = selectedProject, let activeRegion {
-            return await publish(
-                using: client,
-                projectID: project.id,
-                projectName: project.name,
-                projectRegion: activeRegion
-            )
+        if client != nil, selectedProject != nil, activeRegion != nil {
+            return await publishWidgetSnapshot()
         }
 
-        guard let credential = storedCredential else { return false }
+        guard let credential = storedCredential,
+              let credentialAuthSessionID = credential.authSessionID else { return false }
         // Without a previous snapshot there is no project to refresh and no
         // widget showing anything to correct. Discovering one would cost six
         // requests to learn what the next foreground launch learns for free.
         guard let previous else { return false }
+        let projectID = storedProjectID ?? previous.projectID
+        let projectName = projectID == previous.projectID
+            ? previous.projectName
+            : "Project \(projectID)"
 
         // Built here rather than stored: the wake must not leave a half-started
         // session behind for the next foreground launch to inherit. It shares
@@ -634,11 +772,20 @@ final class AppModel {
             transport: transport,
             governor: governor
         )
+        let context = SnapshotPublicationContext(
+            generation: snapshotPublicationGeneration,
+            authority: .storedCredential(
+                projectID: projectID,
+                projectRegion: credential.region,
+                authSessionID: credentialAuthSessionID
+            )
+        )
         return await publish(
             using: client,
-            projectID: previous.projectID,
-            projectName: previous.projectName,
-            projectRegion: credential.region
+            projectID: projectID,
+            projectName: projectName,
+            projectRegion: credential.region,
+            context: context
         )
     }
 
@@ -673,8 +820,32 @@ final class AppModel {
         guard !isRuntimeDemo else { return }
         if let pending = snapshotStore.pendingFlagWrite() {
             snapshotStore.clearPendingFlagWrite()
-            guard FlagQuickToggle.isAllowed(flagID: pending.flagID) else { return }
-            _ = await setFlag(id: pending.flagID, active: pending.desiredActive)
+            guard let projectID = pending.projectID,
+                  let projectRegion = pending.projectRegion,
+                  let authSessionID = pending.authSessionID else {
+                // Records written by an older extension have no authenticated
+                // provenance. They remain decodable so an upgrade cannot wedge
+                // the hand-off file, but they are deliberately not writeable.
+                return
+            }
+            let quickToggleScope = FlagQuickToggle.Scope(
+                projectID: projectID,
+                region: projectRegion
+            )
+            guard FlagQuickToggle.isAllowed(
+                flagID: pending.flagID,
+                scope: quickToggleScope
+            ) else { return }
+            let expectedScope = FlagWriteScope(
+                projectID: projectID,
+                projectRegion: projectRegion,
+                authSessionID: authSessionID
+            )
+            _ = await setFlag(
+                id: pending.flagID,
+                active: pending.desiredActive,
+                expectedScope: expectedScope
+            )
         }
     }
 
@@ -714,6 +885,7 @@ final class AppModel {
     }
 
     func signOut() {
+        snapshotPublicationGeneration &+= 1
         let preserveSharedProjectData = isRuntimeDemo
         // Also the exit from a runtime demo: the fixtures must not answer the
         // next connection's requests.

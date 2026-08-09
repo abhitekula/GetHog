@@ -6,6 +6,7 @@ import Testing
 /// Pro can actually offer. The authentication reason itself stays neutral: the
 /// system supplies the Optic ID or passcode framing around it.
 @Suite("Vision authentication copy")
+@MainActor
 struct VisionGateCopyTests {
 
     @Test("the key footer names Optic ID, never phone or Mac sensors")

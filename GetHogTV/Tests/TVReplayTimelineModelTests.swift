@@ -144,6 +144,7 @@ struct TVReplayTimelineModelTests {
     }
 
     @Test("the incident caption counts segments, and says nothing when there are none")
+    @MainActor
     func incidentSummaryReadsTheMarks() {
         let diagnostics = ReplayDiagnostics.extract(from: [
             Self.consoleEvent(at: 10, level: "error"),

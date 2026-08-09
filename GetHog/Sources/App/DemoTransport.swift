@@ -33,6 +33,10 @@ struct DemoTransport: HTTPTransport {
     static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
     static let dashboardDetailDelayEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_DELAY_MS"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
+    #if DEBUG
+    static let dashboardListDelayEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS"
+    static let dashboardListFailureEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_FAILURE"
+    #endif
 
     enum EmptyCollection: String, CaseIterable {
         case dashboards
@@ -57,6 +61,8 @@ struct DemoTransport: HTTPTransport {
     private let summaryGeneration: DemoSummaryGenerationState
     private let dashboardDetailDelayMilliseconds: Int
     private let dashboardRecomputeFailure: Bool
+    private let dashboardListDelayMilliseconds: Int
+    private let dashboardListFailure: Bool
 
     init(
         emptyCollection: EmptyCollection? = nil,
@@ -81,6 +87,19 @@ struct DemoTransport: HTTPTransport {
             ?? (ProcessInfo.processInfo.environment[
                 Self.dashboardRecomputeFailureEnvironment
             ] == "1")
+        #if DEBUG
+        dashboardListDelayMilliseconds = max(
+            0,
+            ProcessInfo.processInfo.environment[Self.dashboardListDelayEnvironment]
+                .flatMap(Int.init) ?? 0
+        )
+        dashboardListFailure = ProcessInfo.processInfo.environment[
+            Self.dashboardListFailureEnvironment
+        ] == "1"
+        #else
+        dashboardListDelayMilliseconds = 0
+        dashboardListFailure = false
+        #endif
     }
 
     static var isEnabled: Bool {
@@ -102,9 +121,21 @@ struct DemoTransport: HTTPTransport {
         let path = request.url?.path(percentEncoded: false) ?? ""
         let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
         let query = request.url?.query ?? ""
+        let isDashboardList = (request.httpMethod ?? "GET") == "GET"
+            && path.hasSuffix("/dashboards/")
         let isDashboardDetail = path.contains("/dashboards/")
             && !path.hasSuffix("/dashboards/")
 
+        if isDashboardList, dashboardListDelayMilliseconds > 0 {
+            try? await Task.sleep(for: .milliseconds(dashboardListDelayMilliseconds))
+        }
+        if isDashboardList, dashboardListFailure {
+            return Self.jsonReply(
+                url: request.url!,
+                data: Data(#"{"detail":"Synthetic dashboard list failed"}"#.utf8),
+                status: 503
+            )
+        }
         if isDashboardDetail, dashboardDetailDelayMilliseconds > 0 {
             try? await Task.sleep(for: .milliseconds(dashboardDetailDelayMilliseconds))
         }

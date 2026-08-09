@@ -19,12 +19,22 @@ final class VisionNavigationTests: XCTestCase {
         let analyzeSection = VisionSidebar.section("Analyze", in: app)
         analyzeSection.tap()
 
-        for title in ["Dashboards", "Events", "Sessions", "Settings"] {
-            XCTAssertNotNil(
-                VisionSidebar.reveal(title, in: app),
-                "The Vision sidebar did not offer \(title)."
+        // The native split can keep a collapsed roster in the accessibility
+        // hierarchy and incorrectly report its descendants as hittable. The
+        // persistent route bar is the truthful user-visible contract at every
+        // width, so prove each destination there.
+        for title in ["Dashboards", "Events", "Sessions"] {
+            let option = VisionSidebar.destinationControl(title, in: app)
+            XCTAssertTrue(
+                DemoLaunch.wait(until: { option.exists && option.isHittable }),
+                "The Analyze section did not offer its \(title) route control."
             )
         }
+
+        XCTAssertNotNil(
+            VisionSidebar.reveal("Settings", in: app),
+            "The Vision ornament did not offer Settings."
+        )
     }
 
     func testSidebarRowsReachPrimaryScreens() {
@@ -46,6 +56,10 @@ final class VisionNavigationTests: XCTestCase {
         for (destination, anchor) in visibleAnalyzeDestinations {
             guard VisionSidebar.tap(destination, in: app) else { return }
             XCTAssertTrue(
+                DemoLaunch.wait(for: app.navigationBars[destination]),
+                "\(destination) did not become the mounted section destination."
+            )
+            XCTAssertTrue(
                 DemoLaunch.wait(for: app.staticTexts.matching(
                     NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", anchor, anchor)
                 ).firstMatch),
@@ -60,16 +74,22 @@ final class VisionNavigationTests: XCTestCase {
         )
         experimentSection.tap()
 
-        guard VisionSidebar.tap("Flags", in: app) else { return }
+        // Flags is the section default, so it cannot prove the inner row
+        // accepted a tap. Exercise a non-first destination instead.
+        guard VisionSidebar.tap("Experiments", in: app) else { return }
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["Experiments"]),
+            "Selecting Experiments did not change the mounted section destination."
+        )
         XCTAssertTrue(
             DemoLaunch.wait(for: app.staticTexts.matching(
                 NSPredicate(
                     format: "label CONTAINS %@ OR value CONTAINS %@",
-                    "example-navigation",
-                    "example-navigation"
+                    "Example cache strategy trial",
+                    "Example cache strategy trial"
                 )
             ).firstMatch),
-            "Selecting Flags from the Experiment section did not render its fixture."
+            "Selecting Experiments from the Experiment section did not render its fixture."
         )
     }
 
@@ -85,17 +105,17 @@ final class VisionNavigationTests: XCTestCase {
         }
         experimentSection.tap()
 
-        guard VisionSidebar.tap("Flags", in: app) else { return }
-        let flagFixture = app.staticTexts.matching(
+        guard VisionSidebar.tap("Experiments", in: app) else { return }
+        let experimentFixture = app.staticTexts.matching(
             NSPredicate(
                 format: "label CONTAINS %@ OR value CONTAINS %@",
-                "example-navigation",
-                "example-navigation"
+                "Example cache strategy trial",
+                "Example cache strategy trial"
             )
         ).firstMatch
-        guard DemoLaunch.wait(for: flagFixture) else {
+        guard DemoLaunch.wait(for: experimentFixture) else {
             return XCTFail(
-                "Selecting Flags before relaunch did not render its deterministic fixture."
+                "Selecting Experiments before relaunch did not render its deterministic fixture."
             )
         }
         // `exists` becomes true on the first rendered frame. Give the screen
@@ -113,16 +133,24 @@ final class VisionNavigationTests: XCTestCase {
             DemoLaunch.wait(for: restored.navigationBars["Experiment"]),
             "Relaunch did not restore the Experiment section; mounted \(restoredNavigationBars)."
         )
-        guard VisionSidebar.reveal("Flags", in: restored) != nil else { return }
+        let restoredControl = VisionSidebar.destinationControl("Experiments", in: restored)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                restoredControl.exists
+                    && restoredControl.isHittable
+                    && (restoredControl.value as? String) == "Selected"
+            }),
+            "Relaunch restored the section but not its selected Experiments destination."
+        )
         XCTAssertTrue(
             DemoLaunch.wait(for: restored.staticTexts.matching(
                 NSPredicate(
                     format: "label CONTAINS %@ OR value CONTAINS %@",
-                    "example-navigation",
-                    "example-navigation"
+                    "Example cache strategy trial",
+                    "Example cache strategy trial"
                 )
             ).firstMatch),
-            "Relaunch restored the section but not the selected Flags screen."
+            "Relaunch restored the section but not the selected Experiments screen."
         )
     }
 

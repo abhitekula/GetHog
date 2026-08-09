@@ -24,7 +24,7 @@ import os
 /// declared by the app target and only the app target — `project.yml` used to
 /// compile the whole directory into `GetHogWidgets` as well, which put a
 /// second, identical copy of `GetMetricValueIntent`, `SearchEventsIntent`,
-/// `SetFeatureFlagIntent`, `OpenDashboardIntent`, `ProjectFocusFilter` and
+/// `SetScopedFeatureFlagIntent`, `OpenDashboardIntent`, `ProjectFocusFilter` and
 /// `ShowGetHogSearchResultsIntent` in the widget extension's
 /// `Metadata.appintents`, alongside a second `AppShortcutsProvider` whose Siri
 /// phrases were trained against `app.gethog.GetHog.Widgets`. Read out of
@@ -99,6 +99,15 @@ struct IntentDependencies: Sendable {
 
     let client: PostHogClient
     let projectID: Int
+    let projectRegion: PostHogRegion
+    /// Durable, non-secret identity of the credential that authorized this
+    /// client. A project id and host can both repeat after reconnect, so write
+    /// intents must carry this value across every suspension as well.
+    let authSessionID: UUID
+
+    var flagQuickToggleScope: FlagQuickToggle.Scope {
+        FlagQuickToggle.Scope(projectID: projectID, region: projectRegion)
+    }
 
     /// Shared defaults, or `nil` when the App Group isn't provisioned (a plain
     /// `xcodebuild` run without the entitlement, for instance).
@@ -113,13 +122,23 @@ struct IntentDependencies: Sendable {
     /// - Parameter projectID: skips resolution when the caller already knows the
     ///   project (Spotlight reindexing after a switch, for example).
     static func resolve(projectID: Int? = nil) async throws -> IntentDependencies {
-        let client = try makeClient()
+        let (client, region, authSessionID) = try makeClientAndAuthority()
 
         if let projectID {
-            return IntentDependencies(client: client, projectID: projectID)
+            return IntentDependencies(
+                client: client,
+                projectID: projectID,
+                projectRegion: region,
+                authSessionID: authSessionID
+            )
         }
         if let stored = storedProjectID() {
-            return IntentDependencies(client: client, projectID: stored)
+            return IntentDependencies(
+                client: client,
+                projectID: stored,
+                projectRegion: region,
+                authSessionID: authSessionID
+            )
         }
 
         // Nothing persisted yet — a fresh install, or an intent invoked before
@@ -129,19 +148,42 @@ struct IntentDependencies: Sendable {
         guard let id = me.currentProject?.id ?? me.projects.first?.id else {
             throw IntentError.noProject
         }
-        return IntentDependencies(client: client, projectID: id)
+        return IntentDependencies(
+            client: client,
+            projectID: id,
+            projectRegion: region,
+            authSessionID: authSessionID
+        )
     }
 
     static func makeClient() throws -> PostHogClient {
+        try makeClientAndAuthority().0
+    }
+
+    /// Rejects credentials written before durable authentication epochs were
+    /// introduced. The app migrates those only after authenticating them; an
+    /// out-of-process intent cannot prove continuity and therefore cannot act.
+    static func requiredAuthSessionID(from credential: StoredCredential) throws -> UUID {
+        guard let authSessionID = credential.authSessionID else {
+            throw IntentError.notConnected
+        }
+        return authSessionID
+    }
+
+    private static func makeClientAndAuthority()
+        throws -> (PostHogClient, PostHogRegion, UUID)
+    {
         guard let credential = try? credentialStore().load() else {
             throw IntentError.notConnected
         }
+        let authSessionID = try requiredAuthSessionID(from: credential)
         // A fresh governor per invocation: the app's rate-limit budget lives in
         // its own process and can't be consulted from here. Intents are
         // single-request-shaped, so the practical exposure is one call.
-        return PostHogClient(
+        let client = PostHogClient(
             auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region)
         )
+        return (client, credential.region, authSessionID)
     }
 
     /// Prefers the App Group value, because that is the one a Focus filter or an

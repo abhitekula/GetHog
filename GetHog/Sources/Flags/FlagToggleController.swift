@@ -8,22 +8,34 @@ import GetHogKit
 /// Per-flag opt-in that decides whether a flag may be flipped from *outside*
 /// the app — Control Center, an interactive widget, a Shortcuts action.
 ///
-/// Deliberately plain statics over `UserDefaults.standard`: a widget extension
-/// and an App Intent need the same answer without importing the app's view
-/// layer, and the key format is the contract between them.
+/// Deliberately plain statics over `UserDefaults.standard`: the app's snapshot
+/// publisher and its App Intent need the same answer without importing a view.
+/// Widgets consume that already-scoped answer from `SharedSnapshot`.
 enum FlagQuickToggle {
 
-    static func defaultsKey(for flagID: Int) -> String { "quickToggle.\(flagID)" }
+    /// The namespace in which a numeric flag id is meaningful. Project ids can
+    /// repeat between US Cloud, EU Cloud and self-hosted installations, so an
+    /// opt-in that omits either half can silently authorize an unrelated flag.
+    struct Scope: Equatable, Hashable, Sendable {
+        let projectID: Int
+        let region: PostHogRegion
+    }
+
+    static func defaultsKey(for flagID: Int, scope: Scope) -> String {
+        let host = scope.region.host.absoluteString
+            .addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "invalid-host"
+        return "quickToggle.v2.\(host).\(scope.projectID).\(flagID)"
+    }
 
     /// Off unless the user has said otherwise. `bool(forKey:)` returning false
     /// for an unset key is the whole default — nothing is opted in implicitly,
     /// because outside the app there is no confirmation dialog to answer.
-    static func isAllowed(flagID: Int) -> Bool {
-        UserDefaults.standard.bool(forKey: defaultsKey(for: flagID))
+    static func isAllowed(flagID: Int, scope: Scope) -> Bool {
+        UserDefaults.standard.bool(forKey: defaultsKey(for: flagID, scope: scope))
     }
 
-    static func setAllowed(_ allowed: Bool, flagID: Int) {
-        UserDefaults.standard.set(allowed, forKey: defaultsKey(for: flagID))
+    static func setAllowed(_ allowed: Bool, flagID: Int, scope: Scope) {
+        UserDefaults.standard.set(allowed, forKey: defaultsKey(for: flagID, scope: scope))
     }
 }
 
@@ -223,6 +235,8 @@ final class FlagToggleController {
             client: client,
             projectID: projectID,
             authorizationIsCurrent: { currentProjectID() == projectID },
+            quickToggleScope: nil,
+            quickToggleAuthSessionID: nil,
             isGateEnabled: isGateEnabled,
             gate: gate
         )
@@ -248,6 +262,10 @@ final class FlagToggleController {
             client: client,
             projectID: projectID,
             authorizationIsCurrent: { currentScope() == expectedScope },
+            quickToggleScope: expectedScope.projectRegion.map {
+                FlagQuickToggle.Scope(projectID: projectID, region: $0)
+            },
+            quickToggleAuthSessionID: expectedScope.authSessionID,
             isGateEnabled: isGateEnabled,
             gate: gate
         )
@@ -259,6 +277,8 @@ final class FlagToggleController {
         client: PostHogClient,
         projectID: Int,
         authorizationIsCurrent: @MainActor () -> Bool,
+        quickToggleScope: FlagQuickToggle.Scope?,
+        quickToggleAuthSessionID: UUID?,
         isGateEnabled: Bool,
         gate: @MainActor () async -> BiometricGate.Outcome
     ) async {
@@ -319,8 +339,15 @@ final class FlagToggleController {
             // also gated on the flag's own quick-toggle opt-in — see
             // `IntentDonations.mayDonateToggle` — so a flag the user has chosen
             // to keep in-app only cannot become a Siri suggestion that would
-            // then be refused by `SetFeatureFlagIntent` anyway.
-            IntentDonations.flagSet(flag, enabled: desired)
+            // then be refused by `SetScopedFeatureFlagIntent` anyway.
+            if let quickToggleScope, let quickToggleAuthSessionID {
+                IntentDonations.flagSet(
+                    flag,
+                    enabled: desired,
+                    scope: quickToggleScope,
+                    expectedAuthSessionID: quickToggleAuthSessionID
+                )
+            }
         } catch {
             guard generation == projectGeneration else { return }
             guard authorizationIsCurrent() else { return }

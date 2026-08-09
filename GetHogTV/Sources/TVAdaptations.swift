@@ -189,7 +189,12 @@ enum BackgroundRefresh {
 enum IntentDonations {
     static func dashboardOpened(_ dashboard: DashboardSummary) {}
     static func metricRead(_ insight: Insight) {}
-    static func flagSet(_ flag: FeatureFlag, enabled: Bool) {}
+    static func flagSet(
+        _ flag: FeatureFlag,
+        enabled: Bool,
+        scope: FlagQuickToggle.Scope,
+        expectedAuthSessionID: UUID
+    ) {}
 }
 
 /// Twin of the out-of-process project handshake. Nothing runs out of process

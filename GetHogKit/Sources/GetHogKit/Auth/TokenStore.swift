@@ -5,11 +5,21 @@ public struct StoredCredential: Sendable, Codable, Equatable {
     public let key: String
     public let region: PostHogRegion
     public var projectID: Int?
+    /// A non-secret epoch binding snapshot-backed actions to this exact saved
+    /// credential. Optional for payloads written by older app versions; the app
+    /// migrates those only after the key has authenticated successfully.
+    public let authSessionID: UUID?
 
-    public init(key: String, region: PostHogRegion, projectID: Int? = nil) {
+    public init(
+        key: String,
+        region: PostHogRegion,
+        projectID: Int? = nil,
+        authSessionID: UUID? = nil
+    ) {
         self.key = key
         self.region = region
         self.projectID = projectID
+        self.authSessionID = authSessionID
     }
 }
 

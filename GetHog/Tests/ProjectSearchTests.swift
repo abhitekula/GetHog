@@ -442,6 +442,157 @@ private actor OutOfOrderProjectIndexTransport: HTTPTransport {
     }
 }
 
+private actor CancellableProjectIndexTransport: HTTPTransport {
+    private var started = false
+    private var requestCount = 0
+    private var shouldCancelInitialRequest = false
+    private let initialRequestGate: AsyncStream<Void>.Continuation
+    private let initialRequestGateStream: AsyncStream<Void>
+
+    init() {
+        var continuation: AsyncStream<Void>.Continuation?
+        initialRequestGateStream = AsyncStream<Void> { continuation = $0 }
+        initialRequestGate = continuation!
+    }
+
+    func waitUntilStarted() async {
+        while !started { await Task.yield() }
+    }
+
+    func requests() -> Int {
+        requestCount
+    }
+
+    func cancelInitialRequest() {
+        shouldCancelInitialRequest = true
+        initialRequestGate.finish()
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount > 1 {
+            let body = """
+            {"count":1,"next":null,"previous":null,"results":[
+              {"id":"synthetic-index-recovered",
+               "path":"Synthetic/Dashboards/Recovered dashboard",
+               "depth":3,"type":"dashboard","ref":"1",
+               "href":"/dashboard/1","shortcut":false,
+               "last_viewed_at":null,"user_access_level":"viewer"}
+            ]}
+            """
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (Data(body.utf8), response)
+        }
+
+        started = true
+        for await _ in initialRequestGateStream {}
+        if shouldCancelInitialRequest { throw CancellationError() }
+        Issue.record("The initial project-index request was released without cancellation.")
+        throw CancellationError()
+    }
+}
+
+private actor HeldInitialProjectIndexTransport: HTTPTransport {
+    private var started = false
+    private var requestCount = 0
+    private let initialRequestGate: AsyncStream<Void>.Continuation
+    private let initialRequestGateStream: AsyncStream<Void>
+
+    init() {
+        var continuation: AsyncStream<Void>.Continuation?
+        initialRequestGateStream = AsyncStream<Void> { continuation = $0 }
+        initialRequestGate = continuation!
+    }
+
+    func waitUntilStarted() async {
+        while !started { await Task.yield() }
+    }
+
+    func requests() -> Int {
+        requestCount
+    }
+
+    func releaseInitialRequest() {
+        initialRequestGate.finish()
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        started = true
+        for await _ in initialRequestGateStream {}
+        try Task.checkCancellation()
+
+        let body = """
+        {"count":1,"next":null,"previous":null,"results":[
+          {"id":"synthetic-index-shared",
+           "path":"Synthetic/Dashboards/Shared dashboard",
+           "depth":3,"type":"dashboard","ref":"1",
+           "href":"/dashboard/1","shortcut":false,
+           "last_viewed_at":null,"user_access_level":"viewer"}
+        ]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+private actor FailedThenHeldProjectIndexTransport: HTTPTransport {
+    private var requestCount = 0
+    private let retryGate: AsyncStream<Void>.Continuation
+    private let retryGateStream: AsyncStream<Void>
+
+    init() {
+        var continuation: AsyncStream<Void>.Continuation?
+        retryGateStream = AsyncStream<Void> { continuation = $0 }
+        retryGate = continuation!
+    }
+
+    func waitUntilRetryStarted() async {
+        while requestCount < 2 { await Task.yield() }
+    }
+
+    func requests() -> Int {
+        requestCount
+    }
+
+    func releaseRetry() {
+        retryGate.finish()
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 1 {
+            throw PostHogError.transport("Synthetic initial project-index failure")
+        }
+        if requestCount == 2 {
+            for await _ in retryGateStream {}
+        }
+
+        let body = """
+        {"count":1,"next":null,"previous":null,"results":[
+          {"id":"synthetic-index-retried",
+           "path":"Synthetic/Dashboards/Retried dashboard",
+           "depth":3,"type":"dashboard","ref":"1",
+           "href":"/dashboard/1","shortcut":false,
+           "last_viewed_at":null,"user_access_level":"viewer"}
+        ]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+@MainActor
+private final class ProjectSearchLoadCallProbe {
+    var entered = false
+}
+
 @Suite("Project-search project recovery")
 @MainActor
 struct ProjectSearchStoreRecoveryTests {
@@ -465,6 +616,113 @@ struct ProjectSearchStoreRecoveryTests {
 
         #expect(store.entries.map(\.name) == ["Project 2 dashboard"])
         #expect(store.total == 1)
+    }
+
+    @Test("returning to Search retries a cancelled project-index request")
+    func cancelledRequestRetries() async {
+        let transport = CancellableProjectIndexTransport()
+        let store = ProjectSearchStore()
+        let load = Task { await store.load(client: client(transport), projectID: 1) }
+        await transport.waitUntilStarted()
+
+        await transport.cancelInitialRequest()
+        await load.value
+
+        #expect(store.error == nil)
+        #expect(store.entries.isEmpty)
+        #expect(!store.isLoading)
+
+        await store.load(client: client(transport), projectID: 1)
+
+        #expect(await transport.requests() == 2)
+        #expect(store.entries.map(\.name) == ["Recovered dashboard"])
+        #expect(store.total == 1)
+        #expect(store.loadedAt != nil)
+    }
+
+    @Test("an identical follower survives cancellation of the project-index leader")
+    func identicalFollowerSurvivesLeaderCancellation() async {
+        let transport = HeldInitialProjectIndexTransport()
+        let store = ProjectSearchStore()
+        let client = client(transport)
+        let leader = Task {
+            await store.load(client: client, projectID: 1)
+        }
+        await transport.waitUntilStarted()
+
+        let followerCall = ProjectSearchLoadCallProbe()
+        let follower = Task {
+            followerCall.entered = true
+            await store.load(client: client, projectID: 1)
+        }
+        while !followerCall.entered { await Task.yield() }
+
+        leader.cancel()
+        await transport.releaseInitialRequest()
+        await leader.value
+        await follower.value
+
+        #expect(await transport.requests() == 1)
+        #expect(store.entries.map(\.name) == ["Shared dashboard"])
+        #expect(store.total == 1)
+        #expect(store.loadedAt != nil)
+        #expect(!store.isLoading)
+        #expect(store.error == nil)
+    }
+
+    @Test("a failed initial load stops offering retry while retrying")
+    func failedInitialLoadClearsFailureDuringRetry() async {
+        let transport = FailedThenHeldProjectIndexTransport()
+        let store = ProjectSearchStore()
+        let client = client(transport)
+
+        await store.load(client: client, projectID: 1)
+        #expect(store.error != nil)
+
+        let retry = Task {
+            await store.load(client: client, projectID: 1, force: true)
+        }
+        await transport.waitUntilRetryStarted()
+
+        #expect(store.isLoading)
+        #expect(store.error == nil)
+
+        await transport.releaseRetry()
+        await retry.value
+        #expect(store.entries.map(\.name) == ["Retried dashboard"])
+    }
+
+    @Test("reentrant forced retries share one project-index request")
+    func reentrantForcedRetriesCoalesce() async {
+        let transport = FailedThenHeldProjectIndexTransport()
+        let store = ProjectSearchStore()
+        let client = client(transport)
+
+        await store.load(client: client, projectID: 1)
+        #expect(store.error != nil)
+
+        let retry = Task {
+            await store.load(client: client, projectID: 1, force: true)
+        }
+        await transport.waitUntilRetryStarted()
+
+        let duplicateCall = ProjectSearchLoadCallProbe()
+        let duplicate = Task {
+            duplicateCall.entered = true
+            await store.load(client: client, projectID: 1, force: true)
+        }
+        while !duplicateCall.entered { await Task.yield() }
+
+        #expect(await transport.requests() == 2)
+        #expect(store.isLoading)
+
+        await transport.releaseRetry()
+        await retry.value
+        await duplicate.value
+
+        #expect(store.entries.map(\.name) == ["Retried dashboard"])
+        #expect(store.total == 1)
+        #expect(store.loadedAt != nil)
     }
 }
 

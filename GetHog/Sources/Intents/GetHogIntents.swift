@@ -116,7 +116,45 @@ struct GetMetricValueIntent: AppIntent {
 
 // MARK: - Flip a feature flag
 
+/// Kept for saved shortcuts created before flag identifiers became
+/// project/host scoped. It never writes: an old numeric entity cannot prove
+/// which PostHog installation authorized it, but keeping the type lets the
+/// shortcut explain how to recover instead of failing to decode.
 struct SetFeatureFlagIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Feature Flag (Update Required)"
+    static let description = IntentDescription(
+        "Explains how to replace an older unscoped feature-flag shortcut.",
+        categoryName: "Feature Flags"
+    )
+
+    @Parameter(title: "Feature Flag") var flag: FeatureFlagEntity
+    @Parameter(title: "Enabled") var enabled: Bool
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Update the saved action for \(\.$flag)")
+    }
+
+    init() {}
+
+    init(flag: FeatureFlagEntity, enabled: Bool) {
+        self.flag = flag
+        self.enabled = enabled
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        .result(dialog: IntentDialog(
+            "For security, this saved action needs its feature flag chosen again. Replace it with GetHog’s current Set Feature Flag action."
+        ))
+    }
+}
+
+enum ScopedFeatureFlagIntentExecution: Equatable {
+    case unauthorized(initial: Bool)
+    case staleFlag
+    case changed(authenticationNotice: String?)
+}
+
+struct SetScopedFeatureFlagIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Feature Flag"
     static let description = IntentDescription(
         "Enables or disables a PostHog feature flag you have opted in to quick toggling.",
@@ -131,7 +169,7 @@ struct SetFeatureFlagIntent: AppIntent {
     static var openAppWhenRun: Bool { BiometricGate.isEnabled }
 
     @Parameter(title: "Feature Flag")
-    var flag: FeatureFlagEntity
+    var flag: ScopedFeatureFlagEntity
 
     @Parameter(title: "Enabled")
     var enabled: Bool
@@ -142,47 +180,103 @@ struct SetFeatureFlagIntent: AppIntent {
 
     init() {}
 
-    init(flag: FeatureFlagEntity, enabled: Bool) {
+    init(flag: ScopedFeatureFlagEntity, enabled: Bool) {
         self.flag = flag
         self.enabled = enabled
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let verb = enabled ? "enable" : "disable"
+        let execution = try await execute(
+            resolve: { try await IntentDependencies.resolve() },
+            isAuthenticationEnabled: BiometricGate.isEnabled,
+            authenticate: { await BiometricGate.evaluate() }
+        )
 
-        // The quick-toggle gate. Opting a flag in is a decision that can only be
-        // made in the app, where its rollout conditions are visible; out here
-        // there is nothing to read and no dialog to confirm against. So a flag
-        // that hasn't been opted in is refused, not flipped.
-        guard FlagQuickToggle.isAllowed(flagID: flag.id) else {
+        switch execution {
+        case .unauthorized(let initial) where initial:
             return .result(dialog: IntentDialog(
                 "\(flag.key) isn't set up for quick toggling. Open GetHog, find the flag, and turn on “Allow quick toggle” to change it from here."
             ))
+        case .unauthorized:
+            return .result(dialog: IntentDialog(
+                "\(flag.key) isn't set up for quick toggling in the current project. Open GetHog and choose the flag again."
+            ))
+        case .staleFlag:
+            return .result(dialog: IntentDialog(
+                "\(flag.key) no longer matches a live flag in the current project. Open GetHog and choose it again."
+            ))
+        case .changed(let notice):
+            return .result(dialog: IntentDialog(
+                "\(flag.key) is now \(enabled ? "enabled" : "disabled").\(notice ?? "")"
+            ))
+        }
+    }
+
+    /// Executes the security-sensitive part separately from App Intents' result
+    /// wrapper so suspension boundaries can be exercised deterministically.
+    /// One credential epoch must authorize the saved entity before device
+    /// authentication, after it, and after the validation GET.
+    @MainActor
+    func execute(
+        resolve: @MainActor () async throws -> IntentDependencies,
+        isAuthenticationEnabled: Bool,
+        authenticate: @MainActor () async -> BiometricGate.Outcome
+    ) async throws -> ScopedFeatureFlagIntentExecution {
+        let verb = enabled ? "enable" : "disable"
+
+        func isAuthorized(_ dependencies: IntentDependencies) -> Bool {
+            flag.isAuthorized(by: dependencies)
+                && FlagQuickToggle.isAllowed(
+                    flagID: flag.flagID,
+                    scope: dependencies.flagQuickToggleScope
+                )
         }
 
-        var notice = ""
-        if BiometricGate.isEnabled {
-            // `openAppWhenRun` is true in this configuration, so this runs
-            // foregrounded. The context is created, used and discarded inside
-            // `BiometricGate` and never crosses an isolation boundary.
-            switch await BiometricGate.evaluate() {
+        let initialDependencies = try await resolve()
+        guard isAuthorized(initialDependencies) else {
+            return .unauthorized(initial: true)
+        }
+
+        var authenticationNotice: String?
+        if isAuthenticationEnabled {
+            switch await authenticate() {
             case .passed:
                 break
             case .unavailable(let detail):
-                // Mirrors the in-app behaviour: proceed, but say the gate
-                // didn't actually run rather than implying it passed.
-                notice = " Device authentication wasn't available (\(detail))."
+                authenticationNotice = " Device authentication wasn't available (\(detail))."
             case .denied(let detail):
                 throw IntentError.authenticationDenied(flagKey: flag.key, detail: detail)
             }
         }
 
-        let deps = try await IntentDependencies.resolve()
+        // Device authentication can suspend across sign-out, project change,
+        // or a same-project credential replacement. Re-resolve every component
+        // of the authority before doing any network validation.
+        let dependencies = try await resolve()
+        guard isAuthorized(dependencies) else {
+            return .unauthorized(initial: false)
+        }
+
         do {
-            _ = try await deps.client.data(
+            let page: Page<FeatureFlag> = try await dependencies.client.send(
+                PostHogAPI.featureFlags(projectID: dependencies.projectID, limit: 100)
+            )
+            guard page.results.contains(where: {
+                $0.id == flag.flagID && $0.key == flag.key && !$0.deleted && !$0.archived
+            }) else {
+                return .staleFlag
+            }
+
+            // Validation also suspends. The client used for the PATCH comes
+            // only from a fresh resolution that still owns the saved epoch.
+            let writeDependencies = try await resolve()
+            guard isAuthorized(writeDependencies) else {
+                return .unauthorized(initial: false)
+            }
+            _ = try await writeDependencies.client.data(
                 for: PostHogAPI.setFlagActive(
-                    projectID: deps.projectID,
-                    flagID: flag.id,
+                    projectID: writeDependencies.projectID,
+                    flagID: flag.flagID,
                     active: enabled
                 )
             )
@@ -194,9 +288,7 @@ struct SetFeatureFlagIntent: AppIntent {
             )
         }
 
-        return .result(dialog: IntentDialog(
-            "\(flag.key) is now \(enabled ? "enabled" : "disabled").\(notice)"
-        ))
+        return .changed(authenticationNotice: authenticationNotice)
     }
 }
 

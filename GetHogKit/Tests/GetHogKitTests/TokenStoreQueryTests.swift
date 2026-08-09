@@ -71,3 +71,51 @@ struct TokenStoreQueryTests {
         #endif
     }
 }
+
+/// The keychain payload predates the non-secret authentication epoch. Keep the
+/// wire compatibility here rather than relying on synthesized-Codable lore:
+/// an app upgrade must still be able to authenticate the saved key before it
+/// migrates that payload.
+@Suite("Stored credential compatibility")
+struct StoredCredentialCompatibilityTests {
+
+    private struct LegacyStoredCredential: Encodable {
+        let key: String
+        let region: PostHogRegion
+        let projectID: Int?
+    }
+
+    @Test("the authentication epoch survives a keychain payload round trip")
+    func authenticationEpochRoundTrips() throws {
+        let epoch = UUID(uuidString: "018f9000-0000-7000-8000-000000000505")!
+        let credential = StoredCredential(
+            key: "synthetic-personal-key",
+            region: .euCloud,
+            projectID: 42,
+            authSessionID: epoch
+        )
+
+        let encoded = try JSONEncoder().encode(credential)
+        let decoded = try JSONDecoder().decode(StoredCredential.self, from: encoded)
+
+        #expect(decoded == credential)
+        #expect(decoded.authSessionID == epoch)
+    }
+
+    @Test("a credential saved before authentication epochs remains decodable")
+    func legacyPayloadDecodesWithoutEpoch() throws {
+        let legacy = LegacyStoredCredential(
+            key: "synthetic-legacy-key",
+            region: .selfHosted(URL(string: "https://synthetic.example")!),
+            projectID: 77
+        )
+
+        let encoded = try JSONEncoder().encode(legacy)
+        let decoded = try JSONDecoder().decode(StoredCredential.self, from: encoded)
+
+        #expect(decoded.key == legacy.key)
+        #expect(decoded.region == legacy.region)
+        #expect(decoded.projectID == legacy.projectID)
+        #expect(decoded.authSessionID == nil)
+    }
+}

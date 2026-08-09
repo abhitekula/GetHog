@@ -40,6 +40,29 @@ final class EventsStore {
     /// an old project's response after cancellation.
     private var generation = 0
     private var loadedProjectID: Int?
+    /// The search that authored the current pager and its cursor. Text still in
+    /// the field is only a local draft until the user submits it, so a later page
+    /// must continue this search even if a caller momentarily supplies the draft.
+    private var pagingSearch: String?
+    /// Both the feed host and a restored compact destination can appear in the
+    /// same layout turn. They ask for the same initial page from independent
+    /// `.task`s, so identity belongs at the store boundary: equal in-flight
+    /// reloads share the first request, while a new client, project, filter, or
+    /// submitted search still supersedes it immediately.
+    private var inFlightReload: ReloadFlight?
+
+    private struct ReloadSignature: Equatable {
+        let client: ObjectIdentifier
+        let projectID: Int
+        let tokens: [EventFilterToken]
+        let search: String?
+    }
+
+    private struct ReloadFlight {
+        let signature: ReloadSignature
+        let generation: Int
+        let task: Task<Void, Never>
+    }
 
     /// The loaded page of the feed as CSV.
     ///
@@ -69,9 +92,21 @@ final class EventsStore {
     func reload(
         client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
     ) async {
+        let signature = ReloadSignature(
+            client: ObjectIdentifier(client),
+            projectID: projectID,
+            tokens: tokens,
+            search: search
+        )
+        if let inFlightReload, inFlightReload.signature == signature {
+            await inFlightReload.task.value
+            return
+        }
+        inFlightReload?.task.cancel()
         generation += 1
         let token = generation
         loadedProjectID = projectID
+        pagingSearch = search
         liveTailFailure = nil
         pager.restart()
         events = []
@@ -82,9 +117,34 @@ final class EventsStore {
         isPaging = false
         failure = nil
         loadedAt = nil
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performReload(
+                client: client,
+                projectID: projectID,
+                tokens: tokens,
+                search: search,
+                generation: token
+            )
+        }
+        inFlightReload = ReloadFlight(signature: signature, generation: token, task: task)
+        await task.value
+    }
+
+    private func performReload(
+        client: PostHogClient,
+        projectID: Int,
+        tokens: [EventFilterToken],
+        search: String?,
+        generation token: Int
+    ) async {
         defer {
             if token == generation, loadedProjectID == projectID {
                 isLoading = false
+                if inFlightReload?.generation == token {
+                    inFlightReload = nil
+                }
             }
         }
 
@@ -118,6 +178,7 @@ final class EventsStore {
     ) async {
         guard loadedProjectID == projectID, !isPaging, !isLoading, !reachedEnd else { return }
         let token = generation
+        let pageSearch = search == pagingSearch ? search : pagingSearch
         isPaging = true
         defer {
             if token == generation, loadedProjectID == projectID {
@@ -142,7 +203,7 @@ final class EventsStore {
                 client: client,
                 projectID: projectID,
                 tokens: tokens,
-                search: search,
+                search: pageSearch,
                 generation: token
             ) else { return }
             if events.count > before { return }
@@ -438,9 +499,11 @@ struct EventsRoot: View {
         if sizeClass == .compact {
             listChrome
                 .navigationDestination(item: selectedID) { id in
-                    if let event = store.events.first(where: { $0.id == id }) {
-                        EventDetailView(event: event).id(id)
-                    }
+                    EventDetailDestination(
+                        eventID: id,
+                        store: store,
+                        load: { await reload() }
+                    )
                 }
         } else {
             NavigationSplitView {
@@ -758,7 +821,7 @@ struct EventsRoot: View {
             client: client,
             projectID: projectID,
             tokens: tokens,
-            search: search.isEmpty ? nil : search
+            search: submittedSearch.isEmpty ? nil : submittedSearch
         )
     }
 
@@ -770,6 +833,60 @@ struct EventsRoot: View {
             tokens: tokens,
             search: submittedSearch.isEmpty ? nil : submittedSearch
         )
+    }
+}
+
+/// Resolves a pushed event from the store that belongs to the current width.
+///
+/// `RootView` must exchange the compact `NavigationStack` host for the regular
+/// split-view host when a window crosses size classes. `OpenDetails` preserves
+/// the selected id across that exchange, but the newly mounted `EventsRoot`
+/// starts with a fresh store. Resolving the row directly inside
+/// `navigationDestination` produced an `EmptyView` on that first render, and
+/// the destination never rebuilt when the replacement store finished loading.
+/// Keeping the observable store read inside a real view makes restoration a
+/// state transition instead: loading, restored detail, load failure, or an
+/// honest indication that the event is no longer in the bounded feed.
+private struct EventDetailDestination: View {
+    let eventID: String
+    let store: EventsStore
+    let load: () async -> Void
+
+    var body: some View {
+        Group {
+            if let event = store.events.first(where: { $0.id == eventID }) {
+                EventDetailView(event: event)
+                    .id(eventID)
+            } else if store.isLoading || (store.loadedAt == nil && store.failure == nil) {
+                ProgressView("Restoring event…")
+                    .controlSize(.large)
+                    .navigationTitle("Event")
+                    .navigationBarTitleDisplayMode(.inline)
+            } else if let failure = store.failure {
+                LoadFailureState(
+                    title: "Couldn't restore event",
+                    failure: failure,
+                    retry: { Task { await load() } }
+                )
+                .navigationTitle("Event")
+                .navigationBarTitleDisplayMode(.inline)
+            } else {
+                EmptyStateView(
+                    title: "Event no longer loaded",
+                    systemImage: "bolt.slash",
+                    message: "Go back to Events and choose it again."
+                )
+                .navigationTitle("Event")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+        .task(id: eventID) {
+            guard store.events.allSatisfy({ $0.id != eventID }),
+                  store.loadedAt == nil,
+                  store.failure == nil
+            else { return }
+            await load()
+        }
     }
 }
 

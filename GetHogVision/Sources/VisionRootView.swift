@@ -61,6 +61,13 @@ struct VisionRootView: View {
     static let sections: [AppTabSection] = AppTab.sections
     static let utilityTabs: [AppTab] = AppTab.utility
 
+    static func shouldResetOpenDetails(
+        from previousScope: FlagWriteScope?,
+        to currentScope: FlagWriteScope?
+    ) -> Bool {
+        previousScope != currentScope
+    }
+
     private var selectedTab: AppTab {
         get { sceneSelectedTab }
         nonmutating set {
@@ -96,19 +103,31 @@ struct VisionRootView: View {
     }
 
     var body: some View {
-        switch model.phase {
-        case .loading:
-            VStack(spacing: Theme.Space.m) {
-                BrandConnectingAccent()
-                ProgressView("Connecting…")
-                    .controlSize(.large)
+        Group {
+            switch model.phase {
+            case .loading:
+                VStack(spacing: Theme.Space.m) {
+                    BrandConnectingAccent()
+                    ProgressView("Connecting…")
+                        .controlSize(.large)
+                }
+
+            case .onboarding:
+                OnboardingView()
+
+            case .ready:
+                tabs
             }
-
-        case .onboarding:
-            OnboardingView()
-
-        case .ready:
-            tabs
+        }
+        .onChange(of: model.flagWriteScope) { previousScope, currentScope in
+            guard Self.shouldResetOpenDetails(
+                from: previousScope,
+                to: currentScope
+            ) else { return }
+            // Details belong to the complete authenticated authority, not only
+            // a numeric project id. This observer must outlive the ready tree so
+            // sign-out clears the old selections before onboarding replaces it.
+            openDetails.reset()
         }
     }
 
@@ -296,28 +315,84 @@ struct VisionRootView: View {
 
     private func sectionContainer(for section: AppTabSection) -> some View {
         NavigationSplitView {
-            NavigationStack {
-                List(selection: tabSelection(in: section)) {
-                    ForEach(section.tabs, id: \.self) { tab in
-                        Label(tab.title, systemImage: tab.systemImage)
-                            .tag(tab)
-                    }
-                }
-                .accessibilityIdentifier("gethog.vision.section-sidebar")
-                .navigationTitle(section.title)
-            }
-            // A fixed 280pt column consumed almost half of a narrow spatial
-            // window and left the product screen squeezed beside it. Let the
-            // native split negotiate, resize, or collapse this column instead.
-            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 280)
+            sectionList(for: section)
+                // A fixed 280pt column consumed almost half of a narrow spatial
+                // window and left the product screen squeezed beside it. Let
+                // the native split negotiate, resize, or collapse this column.
+                .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 280)
         } detail: {
-            container(
-                for: Self.resolvedTab(
-                    forDestinationID: "section.\(section.title)",
-                    current: selectedTab
-                )
-            )
+            // Exactly one product subtree. The system can collapse the roster
+            // as the window narrows without recreating screen-owned stores,
+            // filters, typed input, or request flights.
+            VStack(spacing: 0) {
+                sectionDestinationControls(for: section)
+                Divider()
+                sectionDetail(for: section)
+            }
         }
+    }
+
+    private func sectionList(for section: AppTabSection) -> some View {
+        NavigationStack {
+            List(selection: tabSelection(in: section)) {
+                ForEach(section.tabs, id: \.self) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        Label(tab.title, systemImage: tab.systemImage)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("gethog.vision.destination.\(tab.rawValue)")
+                    .tag(tab)
+                }
+            }
+            .accessibilityIdentifier("gethog.vision.section-sidebar")
+            .navigationTitle(section.title)
+        }
+    }
+
+    private func sectionDestinationControls(for section: AppTabSection) -> some View {
+        let current = Self.resolvedTab(
+            forDestinationID: "section.\(section.title)",
+            current: selectedTab
+        )
+
+        return ScrollView(.horizontal) {
+            HStack(spacing: Theme.Space.s) {
+                ForEach(section.tabs, id: \.self) { tab in
+                    Button {
+                        open(tab)
+                    } label: {
+                        Label {
+                            Text(tab.title)
+                        } icon: {
+                            Image(
+                                systemName: tab == current
+                                    ? "checkmark.circle.fill"
+                                    : tab.systemImage
+                            )
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityValue(tab == current ? "Selected" : "")
+                    .accessibilityIdentifier("gethog.vision.section-destination.\(tab.title)")
+                    .help(tab.title)
+                }
+            }
+            .padding(.horizontal, Theme.Space.s)
+            .padding(.vertical, Theme.Space.xs)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func sectionDetail(for section: AppTabSection) -> some View {
+        container(
+            for: Self.resolvedTab(
+                forDestinationID: "section.\(section.title)",
+                current: selectedTab
+            )
+        )
     }
 
     private func tabSelection(in section: AppTabSection) -> Binding<AppTab?> {

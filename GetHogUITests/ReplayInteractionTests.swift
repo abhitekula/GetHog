@@ -1,6 +1,55 @@
 import XCTest
 
 final class ReplayInteractionTests: XCTestCase {
+    private enum ScrollDirection {
+        case up
+        case down
+    }
+
+    /// Scrolls using geometry before asking XCTest for `isHittable`.
+    ///
+    /// On iOS 26.5 an offscreen SwiftUI button can remain in the accessibility
+    /// hierarchy with a valid frame below the window, while reading
+    /// `isHittable` records an activation-point failure instead of returning
+    /// `false`. Keep the discovery loop independent of that property, then let
+    /// each test assert hittability once the control is fully unobscured.
+    private func bringOnscreen(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        direction: ScrollDirection,
+        attempts: Int = 12
+    ) {
+        let window = app.windows.firstMatch
+        for _ in 0..<attempts {
+            if element.exists {
+                let frame = element.frame
+                let windowFrame = window.frame
+                let navigationBar = app.navigationBars.firstMatch
+                let tabBar = app.tabBars.firstMatch
+                let visibleTop = navigationBar.exists
+                    ? max(windowFrame.minY, navigationBar.frame.maxY)
+                    : windowFrame.minY
+                let visibleBottom = tabBar.exists
+                    ? min(windowFrame.maxY, tabBar.frame.minY)
+                    : windowFrame.maxY
+                if frame.width > 0,
+                   frame.height > 0,
+                   frame.minY >= visibleTop,
+                   frame.maxY <= visibleBottom {
+                    return
+                }
+            }
+
+            switch direction {
+            case .up:
+                app.swipeUp(velocity: .slow)
+            case .down:
+                app.swipeDown(velocity: .slow)
+            }
+            DemoLaunch.pause(0.3)
+        }
+    }
+
     private func launchReadyReplay() -> XCUIApplication {
         let app = DemoLaunch.launch(
             openURL: "gethog://replay/\(DemoLaunch.replaySessionID)"
@@ -95,11 +144,18 @@ final class ReplayInteractionTests: XCTestCase {
             environment: ["GETHOG_DEMO_SUMMARY_GENERATION": "1"]
         )
 
+        // Stabilise the replay's final height before locating content below it.
+        // The preparing stage is shorter, so the summary action can briefly be
+        // onscreen and then move below the tab bar when playback becomes ready.
+        let compact = app.sliders["Playback position"]
+        let playbackReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"),
+            object: compact
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [playbackReady], timeout: 120), .completed)
+
         let generate = app.buttons["Generate AI summary"]
-        for _ in 0..<12 where !generate.isHittable {
-            app.swipeUp(velocity: .slow)
-            DemoLaunch.pause(0.3)
-        }
+        bringOnscreen(generate, in: app, direction: .up)
         XCTAssertTrue(generate.exists && generate.isHittable)
         generate.tap()
 
@@ -108,18 +164,11 @@ final class ReplayInteractionTests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(DemoLaunch.wait(for: chapter, timeout: 120))
 
-        let compact = app.sliders["Playback position"]
-        for _ in 0..<12 where !compact.isHittable {
-            app.swipeDown(velocity: .slow)
-            DemoLaunch.pause(0.3)
-        }
-        XCTAssertTrue(compact.exists && compact.isEnabled)
+        bringOnscreen(compact, in: app, direction: .down)
+        XCTAssertTrue(compact.exists && compact.isEnabled && compact.isHittable)
 
         let expand = app.buttons["Expand replay"]
-        for _ in 0..<12 where !expand.isHittable {
-            app.swipeDown(velocity: .slow)
-            DemoLaunch.pause(0.3)
-        }
+        bringOnscreen(expand, in: app, direction: .down)
         XCTAssertTrue(expand.exists && expand.isHittable)
 
         compact.adjust(toNormalizedSliderPosition: 0.1)

@@ -151,6 +151,74 @@ private actor ProjectEventsTransport: HTTPTransport {
     }
 }
 
+/// Holds the first request so two reload callers overlap deterministically and
+/// the request budget can be checked before either one completes.
+private actor HeldFirstEventsTransport: HTTPTransport {
+    private var requestCount = 0
+    private let gate: AsyncStream<Void>.Continuation
+    private let gateStream: AsyncStream<Void>
+
+    init() {
+        var continuation: AsyncStream<Void>.Continuation?
+        gateStream = AsyncStream<Void> { continuation = $0 }
+        gate = continuation!
+    }
+
+    func requests() -> Int { requestCount }
+    func release() { gate.finish() }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 1 {
+            for await _ in gateStream {}
+        }
+        let body = """
+        {"columns":["uuid","event","distinct_id","timestamp","properties","$current_url"],
+         "results":[["synthetic-coalesced","synthetic_event","person-coalesced",
+         "2026-08-08T12:00:00Z",{},null]]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+/// Captures the actual HogQL bodies while returning one full page and one short
+/// page, so paging remains available long enough to inspect its query scope.
+private actor PagingSearchCaptureTransport: HTTPTransport {
+    private var bodies: [String] = []
+
+    func capturedBodies() -> [String] { bodies }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        bodies.append(String(decoding: request.httpBody ?? Data(), as: UTF8.self))
+        let firstPage = bodies.count == 1
+        let indexes = firstPage ? Array(0..<50) : [50]
+        let rows = indexes.map { index in
+            let suffix = String(format: "%012d", index)
+            let second = 59 - (index % 50)
+            return """
+            ["018f7e00-0000-7000-8000-\(suffix)","synthetic_event",\
+            "synthetic-person-\(index)","2026-08-08T12:00:\(String(format: "%02d", second))Z",{},null]
+            """
+        }
+        let body = """
+        {"columns":["uuid","event","distinct_id","timestamp","properties","$current_url"],
+         "results":[\(rows.joined(separator: ","))]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+@MainActor
+private final class ReloadCallProbe {
+    var entered = false
+}
+
 @Suite("Events live-tail recovery")
 @MainActor
 struct EventsLiveTailRecoveryTests {
@@ -194,6 +262,95 @@ struct EventsLiveTailRecoveryTests {
         #expect(store.searchedDescription == originalWindow)
         #expect(store.liveTailFailure == nil)
         #expect(store.export != nil)
+    }
+
+    @Test("concurrent identical reloads spend one events request")
+    func concurrentIdenticalReloadsCoalesce() async {
+        let transport = HeldFirstEventsTransport()
+        let store = EventsStore()
+        let client = client(transport)
+
+        let first = Task {
+            await store.reload(client: client, projectID: 1, tokens: [], search: nil)
+        }
+        while await transport.requests() == 0 { await Task.yield() }
+
+        let duplicateCall = ReloadCallProbe()
+        let duplicate = Task {
+            duplicateCall.entered = true
+            await store.reload(client: client, projectID: 1, tokens: [], search: nil)
+        }
+        while !duplicateCall.entered { await Task.yield() }
+
+        #expect(
+            await transport.requests() == 1,
+            "one mounted feed and one restoration task must share the same request"
+        )
+
+        await transport.release()
+        await first.value
+        await duplicate.value
+        #expect(store.events.map(\.distinctID) == ["person-coalesced"])
+    }
+
+    @Test("paging retains the submitted search instead of a newer visible draft")
+    func pagingRetainsSubmittedSearch() async throws {
+        let transport = PagingSearchCaptureTransport()
+        let store = EventsStore()
+        let api = client(transport)
+        let submittedSearch = "submitted-meteor"
+        let visibleDraftSearch = "draft-comet"
+
+        await store.reload(
+            client: api, projectID: 1, tokens: [], search: submittedSearch
+        )
+        #expect(!store.reachedEnd)
+
+        // The draft is deliberately not submitted. Page two is a continuation
+        // of the first query and must retain that query's search term.
+        await store.loadMore(
+            client: api, projectID: 1, tokens: [], search: visibleDraftSearch
+        )
+
+        let bodies = await transport.capturedBodies()
+        try #require(bodies.count == 2)
+        #expect(bodies[1].contains(submittedSearch))
+        #expect(!bodies[1].contains(visibleDraftSearch))
+    }
+
+    @Test("an identical follower survives cancellation of the reload leader")
+    func identicalFollowerSurvivesLeaderCancellation() async {
+        let transport = HeldFirstEventsTransport()
+        let store = EventsStore()
+        let client = client(transport)
+
+        let leader = Task {
+            await store.reload(client: client, projectID: 1, tokens: [], search: nil)
+        }
+        while await transport.requests() == 0 { await Task.yield() }
+
+        // Setting this immediately before the async call makes the hand-off
+        // deterministic on MainActor: once this test observes `entered`, the
+        // follower has reached reload's first suspension (or returned).
+        let followerCall = ReloadCallProbe()
+        let follower = Task {
+            followerCall.entered = true
+            await store.reload(client: client, projectID: 1, tokens: [], search: nil)
+        }
+        while !followerCall.entered { await Task.yield() }
+
+        leader.cancel()
+        await transport.release()
+        await leader.value
+        await follower.value
+
+        #expect(
+            await transport.requests() == 1,
+            "a surviving identical caller must share, not duplicate, the held request"
+        )
+        #expect(store.events.map(\.distinctID) == ["person-coalesced"])
+        #expect(store.loadedAt != nil)
+        #expect(store.failure == nil)
     }
 
     @Test("a late reload from the prior project cannot replace the new project feed")

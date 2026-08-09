@@ -211,6 +211,43 @@ struct SessionsFilterScreenTests {
         #expect(!store.isLoading)
     }
 
+    @Test("a replacement releases stale paging state and the new results can page")
+    func replacementClearsHeldPagingState() async {
+        let store = SessionsStore()
+        await store.load(client: client(RecordingsTransport(total: 200)), projectID: 1)
+
+        // Hold page two of the old filter after it has claimed the paging flag.
+        let heldPage = RecordingsTransport(total: 200, gated: true)
+        let stale = Task {
+            await store.loadMore(client: client(heldPage), projectID: 1)
+        }
+        while await heldPage.urls().isEmpty { await Task.yield() }
+        #expect(store.isLoadingMore)
+
+        // A same-project replacement owns paging now. The stale request cannot
+        // append, and must not leave its in-flight bit blocking the new page.
+        store.filter.signal = .rageClick
+        let replacement = RecordingsTransport(total: 120, gated: true)
+        let replacing = Task {
+            await store.load(client: client(replacement), projectID: 1)
+        }
+        while await replacement.urls().isEmpty { await Task.yield() }
+        #expect(!store.isLoadingMore)
+        #expect(store.isLoading)
+
+        await replacement.release()
+        await replacing.value
+
+        await store.loadMore(client: client(replacement), projectID: 1)
+        #expect(store.recordings.count == 100)
+        #expect(await replacement.items(1)["offset"] == "50")
+
+        await heldPage.release()
+        await stale.value
+        #expect(store.recordings.count == 100)
+        #expect(store.recordings.allSatisfy { $0.id.hasPrefix("f-") })
+    }
+
     @Test("switching projects clears old recordings before the replacement arrives")
     func projectSwitchClearsRowsSynchronously() async {
         let store = SessionsStore()

@@ -28,7 +28,7 @@ import GetHogKit
 // toggling is opt-in per flag and off by default; a flag nobody opted in cannot
 // be flipped from outside the app, so donating its toggle would put a tappable
 // suggestion in front of the user whose only possible outcome is
-// `SetFeatureFlagIntent`'s refusal dialog. `shouldDonate` below is where that is
+// `SetScopedFeatureFlagIntent`'s refusal dialog. `shouldDonate` below is where that is
 // decided, separately from the donating, so it can be tested without the system.
 enum IntentDonations {
 
@@ -38,7 +38,7 @@ enum IntentDonations {
 
     /// Whether flipping this flag is something the system may suggest.
     ///
-    /// The same gate `SetFeatureFlagIntent.perform()` applies before writing,
+    /// The same gate `SetScopedFeatureFlagIntent.perform()` applies before writing,
     /// asked one step earlier. Off unless the user has opened the flag in the
     /// app and turned on "Allow quick toggle" — see `FlagQuickToggle`, where
     /// the default is documented as deliberate: outside the app there is no
@@ -48,8 +48,8 @@ enum IntentDonations {
     /// action and is simply not donated. The user said this flag may only be
     /// changed where its rollout conditions are on screen, and a Siri suggestion
     /// is the exact opposite of that.
-    static func mayDonateToggle(flagID: Int) -> Bool {
-        FlagQuickToggle.isAllowed(flagID: flagID)
+    static func mayDonateToggle(flagID: Int, scope: FlagQuickToggle.Scope) -> Bool {
+        FlagQuickToggle.isAllowed(flagID: flagID, scope: scope)
     }
 
     /// Whether Siri could actually answer for this insight.
@@ -102,15 +102,63 @@ enum IntentDonations {
     /// optimistic toggle would teach the system an action the server rejected,
     /// and this app rolls those back on screen — the transcript has to roll back
     /// with them.
-    static func flagSet(_ flag: FeatureFlag, enabled: Bool) {
-        guard mayDonateToggle(flagID: flag.id) else {
+    static func flagSet(
+        _ flag: FeatureFlag,
+        enabled: Bool,
+        scope: FlagQuickToggle.Scope,
+        expectedAuthSessionID: UUID
+    ) {
+        guard mayDonateToggle(flagID: flag.id, scope: scope) else {
             log.debug("Not donating a flag toggle: quick toggle is off for this flag.")
             return
         }
-        donate(
-            SetFeatureFlagIntent(flag: FeatureFlagEntity(flag), enabled: enabled),
-            "\(enabled ? "enable" : "disable") \(flag.key)"
-        )
+        Task.detached(priority: .utility) {
+            _ = await donateFlag(
+                flag,
+                enabled: enabled,
+                scope: scope,
+                expectedAuthSessionID: expectedAuthSessionID,
+                resolve: { try await IntentDependencies.resolve() },
+                donate: { _ = try await $0.donate() }
+            )
+        }
+    }
+
+    /// Resolves the credential asynchronously, but never lets that suspension
+    /// replace the epoch captured synchronously from the successful write.
+    /// Returning whether a donation reached the system keeps the race testable
+    /// without coupling it to `linkd` availability in a simulator.
+    static func donateFlag(
+        _ flag: FeatureFlag,
+        enabled: Bool,
+        scope: FlagQuickToggle.Scope,
+        expectedAuthSessionID: UUID,
+        resolve: @Sendable () async throws -> IntentDependencies,
+        donate: @Sendable (SetScopedFeatureFlagIntent) async throws -> Void
+    ) async -> Bool {
+        do {
+            let dependencies = try await resolve()
+            guard dependencies.flagQuickToggleScope == scope,
+                  dependencies.authSessionID == expectedAuthSessionID,
+                  mayDonateToggle(flagID: flag.id, scope: scope) else {
+                log.debug("Not donating a flag toggle after its authority changed.")
+                return false
+            }
+            let intent = SetScopedFeatureFlagIntent(
+                flag: ScopedFeatureFlagEntity(
+                    flag,
+                    scope: scope,
+                    authSessionID: expectedAuthSessionID
+                ),
+                enabled: enabled
+            )
+            try await donate(intent)
+            log.debug("Donated an app intent.")
+            return true
+        } catch {
+            log.error("Could not donate an app intent.")
+            return false
+        }
     }
 
     /// Hands one intent to the system and forgets about it.

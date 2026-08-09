@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 @MainActor
@@ -142,5 +143,294 @@ final class TVHogQLFocusTests: XCTestCase {
             "GETHOG_OPEN_DASHBOARD": Self.dashboardID,
             "GETHOG_OPEN_TILE": String(index),
         ])
+    }
+}
+
+@MainActor
+final class TVDashboardPresentationTests: XCTestCase {
+    private static let hogQLDashboardID = "725102"
+    private static let emptyDashboardID = "725103"
+
+    func testFocusedDashboardRowKeepsRenderedTitleDistinctFromItsBackground() throws {
+        let app = DemoLaunch.launch()
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Example App metric 33")
+        ).firstMatch
+        let title = app.staticTexts["Example App metric 33"].firstMatch
+
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The first dashboard row never rendered.")
+        XCTAssertTrue(DemoLaunch.wait(for: title), "The first dashboard title never rendered.")
+        // Dashboard rows combine their children and do not report `hasFocus`
+        // on tvOS. The recording proves that Right enters the first row and
+        // that the helper's first Down immediately overshot to the second row.
+        TVRemote.press(.right)
+        DemoLaunch.settle(app)
+
+        let screenshot = XCUIScreen.main.screenshot().image
+        let focusSurfaceFrame = CGRect(
+            x: row.frame.maxX - 96,
+            y: row.frame.midY - 12,
+            width: 32,
+            height: 24
+        )
+        let focusSurfaceLuminance = try XCTUnwrap(
+            TVRenderedPixelOracle.medianLuminance(
+                in: screenshot,
+                frame: focusSurfaceFrame,
+                appFrame: app.frame
+            ),
+            "The first dashboard row's focused surface could not be sampled."
+        )
+        XCTAssertGreaterThan(
+            focusSurfaceLuminance,
+            0.70,
+            "Right did not leave the native bright focus surface on the first dashboard row."
+        )
+
+        let contrastSpan = try XCTUnwrap(
+            TVRenderedPixelOracle.luminanceSpan(
+                in: screenshot,
+                frame: title.frame,
+                appFrame: app.frame
+            ),
+            "The focused dashboard title could not be sampled from the rendered screenshot."
+        )
+        XCTAssertGreaterThan(
+            contrastSpan,
+            0.30,
+            "The focused dashboard title merged into its rendered row background."
+        )
+    }
+
+    func testFocusScrollingKeepsDashboardContentBelowNavigationTitle() {
+        let app = launchHogQLTile(index: 1)
+        let title = app.staticTexts["Synthetic HogQL gallery"].firstMatch
+        let savedRange = app.buttons["Saved"].firstMatch
+        let tableCard = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Synthetic result table")
+        ).firstMatch
+
+        XCTAssertTrue(DemoLaunch.wait(for: title), "The dashboard navigation title never rendered.")
+        XCTAssertTrue(DemoLaunch.wait(for: savedRange), "The dashboard range picker never rendered.")
+        XCTAssertTrue(DemoLaunch.wait(for: tableCard), "The dashboard card never rendered.")
+
+        // This is the shortest reproduced Siri Remote route: focus movement
+        // scrolls the grid, and used to pull both the range row and the first
+        // card underneath the large navigation title.
+        TVRemote.press(.right)
+        TVRemote.press(.down)
+        DemoLaunch.settle(app)
+
+        let chromeBottom = title.frame.maxY
+        XCTAssertGreaterThanOrEqual(
+            savedRange.frame.minY,
+            chromeBottom + 8,
+            "Focus scrolling pulled the range picker underneath the navigation title."
+        )
+        XCTAssertGreaterThanOrEqual(
+            tableCard.frame.minY,
+            chromeBottom + 8,
+            "Focus scrolling pulled dashboard content underneath the navigation title."
+        )
+    }
+
+    func testMenuDismissesInspectorBeforePoppingDashboard() {
+        let app = launchHogQLTile(index: 1)
+        let close = app.buttons["Close insight"].firstMatch
+        let savedRange = app.buttons["Saved"].firstMatch
+        let inspectorCells = app.staticTexts.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "gethog.hogql-table.row.")
+        )
+
+        XCTAssertTrue(DemoLaunch.wait(for: close), "The dashboard inspector never opened.")
+        XCTAssertTrue(DemoLaunch.wait(for: savedRange), "The dashboard detail never rendered.")
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { inspectorCells.count > 0 }),
+            "The inspector's identified HogQL cells never rendered."
+        )
+        XCTAssertTrue(
+            TVRemote.focusAny(in: inspectorCells, by: .right, limit: 12),
+            "The Siri Remote could not move focus from the sidebar into the inspector."
+        )
+        let focusedInspectorCell = TVRemote.focusedElement(in: inspectorCells)
+        XCTAssertTrue(
+            focusedInspectorCell.exists && focusedInspectorCell.hasFocus,
+            "No identified inspector cell held focus before Menu was pressed."
+        )
+        TVRemote.press(.menu)
+
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { !close.exists }),
+            "Menu did not dismiss the dashboard inspector."
+        )
+        XCTAssertTrue(
+            savedRange.exists && savedRange.isHittable,
+            "Menu popped the dashboard detail instead of dismissing its inspector first."
+        )
+    }
+
+    func testNonSavedRangeShowsBoundedLabelledCompareControl() throws {
+        let app = DemoLaunch.launch(environment: [
+            "GETHOG_OPEN_DASHBOARD": Self.emptyDashboardID,
+        ])
+        let savedRange = app.buttons["Saved"].firstMatch
+        let dayRange = app.buttons["24h"].firstMatch
+        let emptyState = app.staticTexts["No tiles on this dashboard"].firstMatch
+
+        XCTAssertTrue(DemoLaunch.wait(for: savedRange), "The dashboard range picker never rendered.")
+        XCTAssertTrue(DemoLaunch.wait(for: dayRange), "The 24h range never rendered.")
+        XCTAssertTrue(
+            DemoLaunch.wait(for: emptyState),
+            "The empty dashboard did not settle before the focus route began."
+        )
+        XCTAssertTrue(savedRange.isSelected, "The dashboard did not start on its Saved range.")
+
+        // Deep launch begins on the Dashboards sidebar item. The first Right
+        // enters the settled empty dashboard's segmented picker; the next
+        // selects 24h. `isSelected` is the reliable state oracle here because
+        // segmented picker buttons, like dashboard rows, omit `hasFocus`.
+        var remainingRightPresses = 2
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 3) {
+                if dayRange.isSelected { return true }
+                guard remainingRightPresses > 0 else { return false }
+                TVRemote.press(.right)
+                remainingRightPresses -= 1
+                return dayRange.isSelected
+            },
+            "The Siri Remote did not select the non-Saved 24h range."
+        )
+
+        let compare = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Compare to the previous period")
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: compare, timeout: 5),
+            "A non-Saved range did not reveal the compare control."
+        )
+        XCTAssertLessThanOrEqual(
+            compare.frame.width,
+            560,
+            "The compare control stretched across the dashboard instead of remaining bounded."
+        )
+
+        let insetCompareFrame = compare.frame.insetBy(dx: 16, dy: 10)
+        let labelFrame = CGRect(
+            x: insetCompareFrame.minX,
+            y: insetCompareFrame.minY,
+            width: insetCompareFrame.width * 0.72,
+            height: insetCompareFrame.height
+        )
+        let labelSpan = try XCTUnwrap(
+            TVRenderedPixelOracle.luminanceSpan(
+                in: XCUIScreen.main.screenshot().image,
+                frame: labelFrame,
+                appFrame: app.frame
+            ),
+            "The compare control's label region could not be sampled from the screenshot."
+        )
+        XCTAssertGreaterThan(
+            labelSpan,
+            0.25,
+            "The compare control had no readable rendered label."
+        )
+    }
+
+    private func launchHogQLTile(index: Int) -> XCUIApplication {
+        DemoLaunch.launch(environment: [
+            "GETHOG_OPEN_DASHBOARD": Self.hogQLDashboardID,
+            "GETHOG_OPEN_TILE": String(index),
+        ])
+    }
+}
+
+@MainActor
+private enum TVRenderedPixelOracle {
+    static func medianLuminance(
+        in image: UIImage,
+        frame: CGRect,
+        appFrame: CGRect
+    ) -> Double? {
+        sampledLuminances(in: image, frame: frame, appFrame: appFrame).map {
+            $0[$0.count / 2]
+        }
+    }
+
+    static func luminanceSpan(
+        in image: UIImage,
+        frame: CGRect,
+        appFrame: CGRect
+    ) -> Double? {
+        sampledLuminances(in: image, frame: frame, appFrame: appFrame).map { luminances in
+            let last = luminances.count - 1
+            let low = luminances[Int(Double(last) * 0.02)]
+            let high = luminances[Int(Double(last) * 0.98)]
+            return high - low
+        }
+    }
+
+    private static func sampledLuminances(
+        in image: UIImage,
+        frame: CGRect,
+        appFrame: CGRect
+    ) -> [Double]? {
+        guard
+            let source = image.cgImage,
+            appFrame.width > 0,
+            appFrame.height > 0,
+            frame.width > 0,
+            frame.height > 0
+        else { return nil }
+
+        let scaleX = CGFloat(source.width) / appFrame.width
+        let scaleY = CGFloat(source.height) / appFrame.height
+        let sampleRect = CGRect(
+            x: (frame.minX - appFrame.minX) * scaleX,
+            y: (frame.minY - appFrame.minY) * scaleY,
+            width: frame.width * scaleX,
+            height: frame.height * scaleY
+        ).integral.intersection(
+            CGRect(x: 0, y: 0, width: source.width, height: source.height)
+        )
+        guard
+            sampleRect.width >= 2,
+            sampleRect.height >= 2,
+            let crop = source.cropping(to: sampleRect)
+        else { return nil }
+
+        let width = crop.width
+        let height = crop.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let rendered = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard rendered else { return nil }
+
+        var luminances: [Double] = []
+        luminances.reserveCapacity(width * height / 4)
+        for y in stride(from: 0, to: height, by: 2) {
+            for x in stride(from: 0, to: width, by: 2) {
+                let index = ((y * width) + x) * 4
+                let red = Double(pixels[index]) / 255
+                let green = Double(pixels[index + 1]) / 255
+                let blue = Double(pixels[index + 2]) / 255
+                luminances.append((0.2126 * red) + (0.7152 * green) + (0.0722 * blue))
+            }
+        }
+        guard luminances.count >= 2 else { return nil }
+
+        luminances.sort()
+        return luminances
     }
 }

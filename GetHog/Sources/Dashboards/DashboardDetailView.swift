@@ -63,6 +63,18 @@ struct DashboardLoadFailure: Equatable {
 @MainActor
 @Observable
 final class DashboardDetailStore {
+    private struct LoadSignature: Equatable {
+        let projectID: Int
+        let dashboardID: Int
+        let refresh: Bool
+    }
+
+    private struct LoadFlight {
+        let id: Int
+        let signature: LoadSignature
+        let task: Task<Void, Never>
+    }
+
     var dashboard: Dashboard?
     private(set) var isLoading = true
     var range: DashboardRange = .saved
@@ -81,6 +93,8 @@ final class DashboardDetailStore {
     private var loadedProjectID: Int?
     private var appliedRange: DashboardRange?
     private var appliedCompare: Bool?
+    private var nextLoadFlightID = 0
+    private var loadFlight: LoadFlight?
 
     var contentState: DashboardDetailContentState {
         if let dashboard {
@@ -102,7 +116,49 @@ final class DashboardDetailStore {
         return presentation(for: tile)
     }
 
+    /// Loads only when this pooled store does not already represent the host's
+    /// dashboard. Structural remounts must not spend another dashboard request
+    /// and another query per non-Saved tile; pull-to-refresh and recompute call
+    /// `load` directly and deliberately bypass this mount guard.
+    func loadIfNeeded(client: PostHogClient, projectID: Int, dashboardID: Int) async {
+        if loadedProjectID == projectID, dashboard?.id == dashboardID { return }
+        await load(client: client, projectID: projectID, dashboardID: dashboardID, refresh: false)
+    }
+
     func load(client: PostHogClient, projectID: Int, dashboardID: Int, refresh: Bool) async {
+        let signature = LoadSignature(
+            projectID: projectID,
+            dashboardID: dashboardID,
+            refresh: refresh
+        )
+        if let loadFlight, loadFlight.signature == signature {
+            await loadFlight.task.value
+            return
+        }
+
+        nextLoadFlightID += 1
+        let flightID = nextLoadFlightID
+        let task = Task { @MainActor in
+            await self.performLoad(
+                client: client,
+                projectID: projectID,
+                dashboardID: dashboardID,
+                refresh: refresh
+            )
+        }
+        loadFlight = LoadFlight(id: flightID, signature: signature, task: task)
+        await task.value
+        if loadFlight?.id == flightID {
+            loadFlight = nil
+        }
+    }
+
+    private func performLoad(
+        client: PostHogClient,
+        projectID: Int,
+        dashboardID: Int,
+        refresh: Bool
+    ) async {
         let projectChanged = loadedProjectID.map { $0 != projectID } ?? false
         loadedProjectID = projectID
         loadGeneration += 1
@@ -355,8 +411,7 @@ struct DashboardDetailView: View {
                 in: tileTransition
             )
             .background(Theme.pageBackground)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
+            .dashboardNavigationTitle(title)
             // Same URL the "Open in PostHog" item below opens, offered to the
             // *other* device instead of this one.
             .handoff(webURL: webURL, title: title)
@@ -380,7 +435,7 @@ struct DashboardDetailView: View {
                 // Without this, a launch that lands on Dashboards leaves the
                 // scrub tip's availability rule false and it never fires.
                 AppTips.refresh(from: model)
-                await load(refresh: false)
+                await loadIfNeeded()
                 // After the load, so the home screen menu gets the dashboard's
                 // real title rather than the placeholder a link arrives with.
                 if let projectID = model.projectID {
@@ -430,13 +485,36 @@ struct DashboardDetailView: View {
             HStack(spacing: Theme.Space.m) {
                 if store.range != .saved {
                     #if os(tvOS)
-                    // `toggleStyle(.button)` is unavailable on tvOS. The
-                    // platform's own toggle is already a focusable control that
-                    // reads its state aloud, which is what the button style was
-                    // buying elsewhere.
-                    Toggle("Compare to previous", isOn: $store.compare)
-                        .font(.caption)
-                        .accessibilityLabel("Compare to the previous period")
+                    // tvOS's switch-style Toggle claims the entire row and
+                    // renders only the switch itself here, leaving the action
+                    // unnamed from ten feet away. A bounded native button keeps
+                    // the remote focus treatment while printing both the
+                    // question and its current state.
+                    Button {
+                        store.compare.toggle()
+                    } label: {
+                        HStack(spacing: Theme.Space.s) {
+                            Label(
+                                "Compare to previous",
+                                systemImage: store.compare
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                            Spacer(minLength: Theme.Space.s)
+                            Text(store.compare ? "On" : "Off")
+                        }
+                        // The TV scene tint also paints the bordered button's
+                        // focused slab. Without an explicit partner ink, its
+                        // label inherits that same teal and disappears into
+                        // the control, exactly like the key-entry actions this
+                        // shell already corrects with the shared token.
+                        .foregroundStyle(Theme.inkOnAccent)
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+                    .accessibilityLabel("Compare to the previous period")
+                    .accessibilityValue(store.compare ? "On" : "Off")
+                    .frame(maxWidth: 420, alignment: .leading)
                     #else
                     Toggle("Compare to previous", isOn: $store.compare)
                         .toggleStyle(.button)
@@ -478,6 +556,19 @@ struct DashboardDetailView: View {
 
     private var grid: some View {
         ScrollView {
+            #if os(tvOS)
+            // A system navigation title remains fixed while the focus engine
+            // scrolls this dashboard, so it ends up painted over the controls
+            // and charts it just revealed. On TV the page title belongs to the
+            // scroll content: it keeps its hierarchy at rest and moves away
+            // with that content instead of becoming an overlay.
+            Text(title)
+                .font(.title2.weight(.bold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Space.l)
+                .padding(.top, Theme.Space.m)
+            #endif
+
             rangeBar
                 .padding(.bottom, Theme.Space.xs)
 
@@ -629,6 +720,27 @@ struct DashboardDetailView: View {
         await store.load(
             client: client, projectID: projectID, dashboardID: dashboardID, refresh: refresh
         )
+    }
+
+    private func loadIfNeeded() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.loadIfNeeded(
+            client: client, projectID: projectID, dashboardID: dashboardID
+        )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func dashboardNavigationTitle(_ title: String) -> some View {
+        #if os(tvOS)
+        // Retain the navigation bar itself for Back and dashboard actions, but
+        // do not give it a fixed title that can overlap focus-scrolled content.
+        navigationTitle("")
+        #else
+        navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }
 

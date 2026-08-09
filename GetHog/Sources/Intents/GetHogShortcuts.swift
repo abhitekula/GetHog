@@ -35,7 +35,7 @@ struct GetHogShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
-            intent: SetFeatureFlagIntent(),
+            intent: SetScopedFeatureFlagIntent(),
             phrases: [
                 "Set a feature flag in \(.applicationName)",
                 "Toggle a \(.applicationName) feature flag",

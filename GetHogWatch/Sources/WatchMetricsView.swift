@@ -277,6 +277,7 @@ private struct WatchManualKeyEntryView: View {
                     Text(region.title).tag(region)
                 }
             }
+            .pickerStyle(.navigationLink)
 
             if region == .selfHosted {
                 TextField("Server URL", text: $selfHostedURL)

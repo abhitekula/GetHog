@@ -47,6 +47,10 @@ private actor DashboardConsistencyTransport: HTTPTransport {
     var queryRequestCount: Int {
         requests.count { $0.url?.path.hasSuffix("/query") == true }
     }
+
+    var dashboardRequestCount: Int {
+        requests.count { $0.url?.path.hasSuffix("/query") != true }
+    }
 }
 
 private actor GatedDashboardRangeTransport: HTTPTransport {
@@ -151,6 +155,107 @@ private actor OutOfOrderDashboardListTransport: HTTPTransport {
             url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
         )!
         return (Data(body.utf8), response)
+    }
+}
+
+private actor GatedDashboardListRetryTransport: HTTPTransport {
+    private var requestCount = 0
+    private var retryStarted = false
+    private var retryContinuation: CheckedContinuation<Void, Never>?
+
+    func waitForRetry() async {
+        while !retryStarted { await Task.yield() }
+    }
+
+    func requests() -> Int {
+        requestCount
+    }
+
+    func releaseRetry() {
+        retryContinuation?.resume()
+        retryContinuation = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 1 {
+            return reply(
+                request,
+                status: 503,
+                body: #"{"detail":"Synthetic dashboard list failed"}"#
+            )
+        }
+        if requestCount == 2 {
+            retryStarted = true
+            await withCheckedContinuation { retryContinuation = $0 }
+        }
+        return reply(
+            request,
+            status: 200,
+            body: """
+            {"count":1,"next":null,"previous":null,"results":[
+              {"id":9001,"name":"Recovered dashboard","pinned":false}
+            ]}
+            """
+        )
+    }
+
+    private func reply(
+        _ request: URLRequest,
+        status: Int,
+        body: String
+    ) -> (Data, HTTPURLResponse) {
+        (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!,
+                statusCode: status,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+        )
+    }
+}
+
+private actor HeldCancelableDashboardTransport: HTTPTransport {
+    private let responseBody: Data
+    private var requestCount = 0
+    private var requestStarted = false
+    private var heldContinuation: CheckedContinuation<Void, Never>?
+
+    init(responseBody: Data) {
+        self.responseBody = responseBody
+    }
+
+    func waitForRequest() async {
+        while !requestStarted { await Task.yield() }
+    }
+
+    func requests() -> Int {
+        requestCount
+    }
+
+    func release() {
+        heldContinuation?.resume()
+        heldContinuation = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        await withCheckedContinuation { continuation in
+            heldContinuation = continuation
+            requestStarted = true
+        }
+        try Task.checkCancellation()
+        return (
+            responseBody,
+            HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+        )
     }
 }
 
@@ -504,10 +609,169 @@ struct DashboardConsistencyTests {
         #expect(await transport.queryRequestCount == 1)
     }
 
+    @Test("a remounted non-Saved dashboard does not refetch or rerun its tiles")
+    func remountedDashboardLoadIsDeduplicated() async throws {
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.savedDashboard), .ok(Self.savedDashboard)],
+            queryReplies: [Self.totalSevenQuery, Self.totalSevenQuery]
+        )
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardDetailStore()
+        await store.load(client: client, projectID: 1, dashboardID: 9_001, refresh: false)
+        store.range = .week
+        await store.applySelectedRange(client: client, projectID: 1)
+
+        await store.loadIfNeeded(client: client, projectID: 1, dashboardID: 9_001)
+
+        let tile = try #require(store.dashboard?.tiles.first)
+        #expect(await transport.dashboardRequestCount == 1)
+        #expect(await transport.queryRequestCount == 1)
+        #expect(store.presentation(for: tile).model == Self.totalSevenModel)
+    }
+
+    @Test("an explicit dashboard refresh still fetches and reapplies a non-Saved range")
+    func explicitRefreshBypassesMountDeduplication() async throws {
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.savedDashboard), .ok(Self.refreshedDashboard)],
+            queryReplies: [Self.totalSevenQuery, Self.totalThirtyQuery]
+        )
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardDetailStore()
+        await store.load(client: client, projectID: 1, dashboardID: 9_001, refresh: false)
+        store.range = .week
+        await store.applySelectedRange(client: client, projectID: 1)
+
+        await store.loadIfNeeded(client: client, projectID: 1, dashboardID: 9_001)
+        await store.load(client: client, projectID: 1, dashboardID: 9_001, refresh: false)
+
+        let tile = try #require(store.dashboard?.tiles.first)
+        #expect(await transport.dashboardRequestCount == 2)
+        #expect(await transport.queryRequestCount == 2)
+        #expect(store.presentation(for: tile).model == Self.totalThirtyModel)
+    }
+
+    @Test("a remounted dashboard survives cancellation of the outgoing mount task")
+    func remountedDashboardSharesAStoreOwnedLoad() async {
+        let transport = HeldCancelableDashboardTransport(responseBody: Self.savedDashboard)
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardDetailStore()
+        let outgoingMount = Task {
+            await store.loadIfNeeded(client: client, projectID: 1, dashboardID: 9_001)
+        }
+        await transport.waitForRequest()
+        outgoingMount.cancel()
+
+        let release = Task {
+            await Task.yield()
+            await transport.release()
+        }
+        await store.loadIfNeeded(client: client, projectID: 1, dashboardID: 9_001)
+        await release.value
+        await outgoingMount.value
+
+        #expect(await transport.requests() == 1)
+        #expect(store.dashboard?.id == 9_001)
+        #expect(store.contentState == .tiles)
+    }
+
+    @Test("an unavailable dashboard list sends nothing and loads when availability changes")
+    func unavailableDashboardListDefersItsRequest() async {
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.dashboardList)]
+        )
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardsStore()
+
+        let unavailable = DashboardListLoadScope(projectID: 1, isAvailable: false)
+        #expect(store.contentState(isAvailable: false) == .unavailable)
+        await unavailable.load(store: store, client: client)
+        #expect(await transport.dashboardRequestCount == 0)
+
+        let available = DashboardListLoadScope(projectID: 1, isAvailable: true)
+        await available.load(store: store, client: client)
+
+        #expect(await transport.dashboardRequestCount == 1)
+        #expect(store.dashboards.map(\.title) == ["Project 1 dashboard"])
+        #expect(store.contentState(isAvailable: true) == .loaded)
+        #expect(store.contentState(isAvailable: false) == .unavailable)
+    }
+
+    @Test("repeated dashboard retries share one active request and present loading")
+    func repeatedDashboardRetryIsCoalesced() async {
+        let transport = GatedDashboardListRetryTransport()
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardsStore()
+        await store.load(client: client, projectID: 1)
+        #expect(store.error != nil)
+
+        let firstRetry = Task { await store.load(client: client, projectID: 1) }
+        await transport.waitForRetry()
+        #expect(store.contentState(isAvailable: true) == .loading)
+        let release = Task {
+            await Task.yield()
+            await transport.releaseRetry()
+        }
+        await store.load(client: client, projectID: 1)
+        await release.value
+        await firstRetry.value
+
+        #expect(await transport.requests() == 2)
+        #expect(store.dashboards.map(\.title) == ["Recovered dashboard"])
+        #expect(store.contentState(isAvailable: true) == .loaded)
+    }
+
+    @Test("a remounted dashboard list survives cancellation of the outgoing task")
+    func remountedDashboardListSharesAStoreOwnedLoad() async {
+        let transport = HeldCancelableDashboardTransport(responseBody: Self.dashboardList)
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardsStore()
+        let outgoingMount = Task { await store.load(client: client, projectID: 1) }
+        await transport.waitForRequest()
+        outgoingMount.cancel()
+
+        let release = Task {
+            await Task.yield()
+            await transport.release()
+        }
+        await store.load(client: client, projectID: 1)
+        await release.value
+        await outgoingMount.value
+
+        #expect(await transport.requests() == 1)
+        #expect(store.dashboards.map(\.title) == ["Project 1 dashboard"])
+        #expect(store.contentState(isAvailable: true) == .loaded)
+    }
+
     private static let totalSevenQuery = Data(
         """
         {"results":[{"label":"Synthetic events","count":7,
           "data":[3,4],"days":["2026-02-01","2026-02-02"]}]}
+        """.utf8
+    )
+
+    private static let dashboardList = Data(
+        """
+        {"count":1,"next":null,"previous":null,"results":[
+          {"id":9001,"name":"Project 1 dashboard","pinned":false}
+        ]}
         """.utf8
     )
 
@@ -535,6 +799,20 @@ struct DashboardConsistencyTests {
                 label: "Synthetic events",
                 total: 9,
                 points: [Point(day: "2026-02-04", value: 9)]
+            ),
+        ],
+        style: .line
+    )
+
+    private static let totalSevenModel = InsightRenderModel.timeSeries(
+        [
+            Series(
+                label: "Synthetic events",
+                total: 7,
+                points: [
+                    Point(day: "2026-02-01", value: 3),
+                    Point(day: "2026-02-02", value: 4),
+                ]
             ),
         ],
         style: .line

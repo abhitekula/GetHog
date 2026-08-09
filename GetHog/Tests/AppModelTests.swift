@@ -23,6 +23,79 @@ private actor ScriptedTransport: HTTPTransport {
     }
 }
 
+/// Holds one foreground snapshot refresh after it has captured its client and
+/// project, while allowing a replacement session's requests to continue.
+private actor HeldSnapshotTransport: HTTPTransport {
+    private let base = DemoTransport()
+    private var shouldHoldDashboardList = false
+    private var isHoldingDashboardList = false
+    private var dashboardListCount = 0
+    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+    private var countWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func holdNextDashboardList() {
+        shouldHoldDashboardList = true
+    }
+
+    func waitUntilHeld() async {
+        if isHoldingDashboardList { return }
+        await withCheckedContinuation { arrivalWaiters.append($0) }
+    }
+
+    func waitUntilDashboardListCount(_ count: Int) async {
+        if dashboardListCount >= count { return }
+        await withCheckedContinuation { continuation in
+            countWaiters.append((count, continuation))
+        }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let isDashboardList = request.httpMethod == "GET"
+            && request.url?.path(percentEncoded: false).hasSuffix("/dashboards/") == true
+        if isDashboardList {
+            dashboardListCount += 1
+            let ready = countWaiters.filter { dashboardListCount >= $0.count }
+            countWaiters.removeAll { dashboardListCount >= $0.count }
+            ready.forEach { $0.continuation.resume() }
+        }
+        if shouldHoldDashboardList, isDashboardList {
+            shouldHoldDashboardList = false
+            isHoldingDashboardList = true
+            let waiters = arrivalWaiters
+            arrivalWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+            await withCheckedContinuation { releaseContinuation = $0 }
+            isHoldingDashboardList = false
+        }
+        return try await base.send(request)
+    }
+}
+
+/// Records only method and decoded path, never the Authorization header. These
+/// tests need to prove whether a pending hand-off spent a PATCH without ever
+/// retaining the synthetic credential used to authenticate the request.
+private actor RecordingDemoTransport: HTTPTransport {
+    private let base = DemoTransport()
+    private var requests: [String] = []
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let method = request.httpMethod ?? "GET"
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        requests.append("\(method) \(path)")
+        return try await base.send(request)
+    }
+
+    func count(method: String, path: String) -> Int {
+        requests.filter { $0 == "\(method) \(path)" }.count
+    }
+}
+
 private let meJSON = """
 {"email":"a@example.com","first_name":"Ada","distinct_id":"d1",
  "team":{"id":42,"name":"Prod","api_token":"phc_x","timezone":"UTC"},
@@ -181,7 +254,35 @@ struct AppModelTests {
 
         #expect(model.phase == .ready)
         #expect(model.storedCredentialRecovery == nil)
-        #expect(try store.load() == credential)
+        let loaded = try store.load()
+        let migrated = try #require(loaded)
+        #expect(migrated.key == credential.key)
+        #expect(migrated.region == credential.region)
+        #expect(migrated.authSessionID != nil)
+        #expect(model.flagWriteScope?.authSessionID == migrated.authSessionID)
+    }
+
+    @Test("a successful legacy bootstrap durably migrates its authentication epoch")
+    func legacyCredentialMigratesAfterAuthentication() async throws {
+        let legacy = StoredCredential(key: "synthetic-legacy-key", region: .usCloud)
+        let store = InMemoryTokenStore(credential: legacy)
+        let (snapshots, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppModel(
+            store: store,
+            transport: DemoTransport(),
+            snapshotStore: snapshots
+        )
+
+        await model.bootstrap()
+
+        #expect(model.phase == .ready)
+        let loaded = try store.load()
+        let migrated = try #require(loaded)
+        let epoch = try #require(migrated.authSessionID)
+        #expect(migrated.key == legacy.key)
+        #expect(migrated.region == legacy.region)
+        #expect(model.flagWriteScope?.authSessionID == epoch)
     }
 
     @Test("onboarding offers retry for a transient failure and replacement for a rejected key")
@@ -210,7 +311,6 @@ struct AppModelTests {
     func signOutClearsEverything() async throws {
         let (snapshots, directory) = makeSnapshotStore()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let seeded = try seedProjectRecords(in: snapshots, projectID: 42)
         let store = InMemoryTokenStore()
         let model = AppModel(
             store: store,
@@ -218,8 +318,10 @@ struct AppModelTests {
             snapshotStore: snapshots
         )
         try await model.connect(key: "phx_abc", region: .usCloud)
-        // Connecting may publish a fresher snapshot for the same scope. The
-        // sign-out contract is that whatever project data is current is wiped.
+        // Seed after authentication. A legacy snapshot has no credential epoch
+        // and is correctly cleared during connection; this test is about the
+        // separate sign-out boundary.
+        let seeded = try seedProjectRecords(in: snapshots, projectID: 42)
         #expect(snapshots.loadOrNil() != nil)
         #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)
         #expect(snapshots.pendingOpen() == seeded.open)
@@ -237,6 +339,64 @@ struct AppModelTests {
         #expect(snapshots.pendingOpen() == nil)
         #expect(snapshots.metricWatches().isEmpty)
         #expect(snapshots.breachingWatchIDs().isEmpty)
+    }
+
+    @Test("a snapshot refresh held across sign out cannot republish project data")
+    func staleSnapshotRefreshCannotUndoSignOut() async throws {
+        let (snapshots, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = HeldSnapshotTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshots
+        )
+        try await model.connect(key: "synthetic-first-session", region: .usCloud)
+        #expect(snapshots.loadOrNil() != nil)
+
+        // `selectedProject` starts one publication and `activate` awaits a
+        // second. Drain both so the hold below belongs to this explicit refresh
+        // rather than to bootstrap work whose task happened to start late.
+        await transport.waitUntilDashboardListCount(2)
+        await transport.holdNextDashboardList()
+        let staleRefresh = Task { await model.publishWidgetSnapshot() }
+        await transport.waitUntilHeld()
+
+        model.signOut()
+        #expect(snapshots.loadOrNil() == nil)
+
+        await transport.release()
+        #expect(await staleRefresh.value == false)
+        #expect(snapshots.loadOrNil() == nil)
+    }
+
+    @Test("a prior auth epoch cannot overwrite a same-project replacement session")
+    func staleSnapshotRefreshCannotAdoptReplacementAuthEpoch() async throws {
+        let (snapshots, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = HeldSnapshotTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshots
+        )
+        try await model.connect(key: "synthetic-first-session", region: .usCloud)
+        let firstScope = try #require(model.flagWriteScope)
+
+        await transport.waitUntilDashboardListCount(2)
+        await transport.holdNextDashboardList()
+        let staleRefresh = Task { await model.publishWidgetSnapshot() }
+        await transport.waitUntilHeld()
+
+        try await model.connect(key: "synthetic-replacement-session", region: .usCloud)
+        let replacementScope = try #require(model.flagWriteScope)
+        #expect(replacementScope.authSessionID != firstScope.authSessionID)
+        let replacementSnapshot = try #require(snapshots.loadOrNil())
+        #expect(replacementSnapshot.authSessionID == replacementScope.authSessionID)
+
+        await transport.release()
+        #expect(await staleRefresh.value == false)
+        #expect(snapshots.loadOrNil() == replacementSnapshot)
     }
 
     @Test("entering the demo becomes ready without persisting a credential")
@@ -307,6 +467,209 @@ struct AppModelTests {
 
         #expect(try store.load()?.region == .selfHosted(host))
         #expect(model.client?.host == host)
+    }
+
+    // MARK: - Widget flag-write provenance
+
+    @Test("a cold process reuses the saved epoch and completes the widget hand-off")
+    func coldProcessCompletesAuthenticatedWidgetHandoff() async throws {
+        let (snapshotStore, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = InMemoryTokenStore()
+        let transport = RecordingDemoTransport()
+        let initial = AppModel(
+            store: store,
+            transport: transport,
+            snapshotStore: snapshotStore
+        )
+        try await initial.connect(key: "synthetic-widget-key", region: .usCloud)
+        let initialScope = try #require(initial.flagWriteScope)
+        let flagID = 710_301
+        let quickToggleScope = FlagQuickToggle.Scope(
+            projectID: initialScope.projectID,
+            region: try #require(initialScope.projectRegion)
+        )
+        FlagQuickToggle.setAllowed(true, flagID: flagID, scope: quickToggleScope)
+        defer { FlagQuickToggle.setAllowed(false, flagID: flagID, scope: quickToggleScope) }
+        try snapshotStore.enqueue(PendingFlagWrite(
+            flagID: flagID,
+            key: "example-navigation",
+            desiredActive: false,
+            projectID: initialScope.projectID,
+            projectRegion: initialScope.projectRegion,
+            authSessionID: initialScope.authSessionID
+        ))
+
+        // This is deliberately a new AppModel: a widget launches the app into a
+        // fresh process, where an in-memory UUID cannot prove the old snapshot.
+        let relaunched = AppModel(
+            store: store,
+            transport: transport,
+            snapshotStore: snapshotStore
+        )
+        await relaunched.bootstrap()
+        let relaunchedScope = try #require(relaunched.flagWriteScope)
+        #expect(relaunchedScope.authSessionID == initialScope.authSessionID)
+
+        await relaunched.consumePendingIntentWork()
+
+        let path = "/api/projects/\(initialScope.projectID)/feature_flags/\(flagID)/"
+        #expect(await transport.count(method: "PATCH", path: path) == 1)
+        #expect(snapshotStore.pendingFlagWrite() == nil)
+    }
+
+    @Test("a replacement credential rejects the prior epoch's widget hand-off")
+    func replacementCredentialRejectsPriorWidgetHandoff() async throws {
+        let (snapshotStore, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = InMemoryTokenStore()
+        let transport = RecordingDemoTransport()
+        let initial = AppModel(
+            store: store,
+            transport: transport,
+            snapshotStore: snapshotStore
+        )
+        try await initial.connect(key: "synthetic-first-widget-key", region: .usCloud)
+        let initialScope = try #require(initial.flagWriteScope)
+        let flagID = 710_301
+        let quickToggleScope = FlagQuickToggle.Scope(
+            projectID: initialScope.projectID,
+            region: try #require(initialScope.projectRegion)
+        )
+        FlagQuickToggle.setAllowed(true, flagID: flagID, scope: quickToggleScope)
+        defer { FlagQuickToggle.setAllowed(false, flagID: flagID, scope: quickToggleScope) }
+        let staleHandoff = PendingFlagWrite(
+            flagID: flagID,
+            key: "example-navigation",
+            desiredActive: true,
+            projectID: initialScope.projectID,
+            projectRegion: initialScope.projectRegion,
+            authSessionID: initialScope.authSessionID
+        )
+
+        let replacement = AppModel(
+            store: store,
+            transport: transport,
+            snapshotStore: snapshotStore
+        )
+        try await replacement.connect(
+            key: "synthetic-replacement-widget-key",
+            region: .usCloud
+        )
+        let replacementScope = try #require(replacement.flagWriteScope)
+        #expect(replacementScope.authSessionID != initialScope.authSessionID)
+
+        // Model the extension finishing after replacement activation cleared
+        // the old cache. The app must reject the record by its epoch, not merely
+        // benefit from having cleared a record that arrived earlier.
+        try snapshotStore.enqueue(staleHandoff)
+        await replacement.consumePendingIntentWork()
+
+        let path = "/api/projects/\(initialScope.projectID)/feature_flags/\(flagID)/"
+        #expect(await transport.count(method: "PATCH", path: path) == 0)
+        #expect(snapshotStore.pendingFlagWrite() == nil)
+    }
+
+    @Test("a pending widget write applies only in the authenticated snapshot scope")
+    func pendingWidgetWriteUsesRecordedScope() async throws {
+        let (snapshotStore, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = ScriptedTransport([(200, meJSON), (200, "{}")])
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshotStore
+        )
+        try await model.connect(key: "synthetic-widget-scope-key", region: .usCloud)
+        let scope = try #require(model.flagWriteScope)
+        let flagID = 71_401
+        let quickToggleScope = FlagQuickToggle.Scope(
+            projectID: scope.projectID,
+            region: try #require(scope.projectRegion)
+        )
+        FlagQuickToggle.setAllowed(true, flagID: flagID, scope: quickToggleScope)
+        defer { FlagQuickToggle.setAllowed(false, flagID: flagID, scope: quickToggleScope) }
+
+        try snapshotStore.enqueue(PendingFlagWrite(
+            flagID: flagID,
+            key: "synthetic-widget-rollout",
+            desiredActive: true,
+            projectID: scope.projectID,
+            projectRegion: scope.projectRegion,
+            authSessionID: scope.authSessionID
+        ))
+
+        await model.consumePendingIntentWork()
+
+        let writes = await transport.requestPaths.filter {
+            $0 == "/api/projects/\(scope.projectID)/feature_flags/\(flagID)"
+        }
+        #expect(writes.count == 1)
+        #expect(snapshotStore.pendingFlagWrite() == nil)
+    }
+
+    @Test("stale and legacy pending widget writes are discarded without a PATCH")
+    func pendingWidgetWriteRejectsUnprovenScope() async throws {
+        let (snapshotStore, directory) = makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = ScriptedTransport([(200, meJSON), (200, "{}")])
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshotStore
+        )
+        try await model.connect(key: "synthetic-widget-scope-key", region: .usCloud)
+        let scope = try #require(model.flagWriteScope)
+        let flagID = 71_402
+        let quickToggleScope = FlagQuickToggle.Scope(
+            projectID: scope.projectID,
+            region: try #require(scope.projectRegion)
+        )
+        FlagQuickToggle.setAllowed(true, flagID: flagID, scope: quickToggleScope)
+        defer { FlagQuickToggle.setAllowed(false, flagID: flagID, scope: quickToggleScope) }
+
+        let untrusted = [
+            PendingFlagWrite(
+                flagID: flagID,
+                key: "synthetic-widget-rollout",
+                desiredActive: true
+            ),
+            PendingFlagWrite(
+                flagID: flagID,
+                key: "synthetic-widget-rollout",
+                desiredActive: true,
+                projectID: scope.projectID + 1,
+                projectRegion: scope.projectRegion,
+                authSessionID: scope.authSessionID
+            ),
+            PendingFlagWrite(
+                flagID: flagID,
+                key: "synthetic-widget-rollout",
+                desiredActive: true,
+                projectID: scope.projectID,
+                projectRegion: .euCloud,
+                authSessionID: scope.authSessionID
+            ),
+            PendingFlagWrite(
+                flagID: flagID,
+                key: "synthetic-widget-rollout",
+                desiredActive: true,
+                projectID: scope.projectID,
+                projectRegion: scope.projectRegion,
+                authSessionID: UUID()
+            ),
+        ]
+
+        for pending in untrusted {
+            try snapshotStore.enqueue(pending)
+            await model.consumePendingIntentWork()
+            #expect(snapshotStore.pendingFlagWrite() == nil)
+        }
+
+        let writes = await transport.requestPaths.filter {
+            $0 == "/api/projects/\(scope.projectID)/feature_flags/\(flagID)"
+        }
+        #expect(writes.isEmpty)
     }
 
     // MARK: - Links naming another project

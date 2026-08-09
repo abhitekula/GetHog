@@ -2,17 +2,51 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+enum DashboardCollectionContentState: Equatable {
+    case unavailable
+    case loading
+    case failed(String)
+    case empty
+    case loaded
+}
+
 @MainActor
 @Observable
 final class DashboardsStore {
+    private struct LoadFlight {
+        let id: Int
+        let projectID: Int
+        let task: Task<Void, Never>
+    }
+
     var dashboards: [DashboardSummary] = []
-    var isLoading = false
+    var isLoading = true
     var error: String?
     var loadedAt: Date?
     private var loadedProjectID: Int?
     private var generation = 0
+    private var nextLoadFlightID = 0
+    private var loadFlight: LoadFlight?
 
     func load(client: PostHogClient, projectID: Int) async {
+        if let loadFlight, loadFlight.projectID == projectID {
+            await loadFlight.task.value
+            return
+        }
+
+        nextLoadFlightID += 1
+        let flightID = nextLoadFlightID
+        let task = Task { @MainActor in
+            await self.performLoad(client: client, projectID: projectID)
+        }
+        loadFlight = LoadFlight(id: flightID, projectID: projectID, task: task)
+        await task.value
+        if loadFlight?.id == flightID {
+            loadFlight = nil
+        }
+    }
+
+    private func performLoad(client: PostHogClient, projectID: Int) async {
         generation += 1
         let token = generation
         if loadedProjectID != projectID {
@@ -41,6 +75,32 @@ final class DashboardsStore {
 
     var pinned: [DashboardSummary] { dashboards.filter(\.pinned) }
     var others: [DashboardSummary] { dashboards.filter { !$0.pinned } }
+
+    func contentState(isAvailable: Bool) -> DashboardCollectionContentState {
+        guard isAvailable else { return .unavailable }
+        if isLoading { return .loading }
+        if dashboards.isEmpty, let error { return .failed(error) }
+        return dashboards.isEmpty ? .empty : .loaded
+    }
+}
+
+/// Everything that changes whether the dashboard list may issue a request.
+/// Using the whole value as the SwiftUI task id makes capability discovery
+/// restart a previously guarded task without requiring a project switch.
+struct DashboardListLoadScope: Hashable {
+    let projectID: Int?
+    let isAvailable: Bool
+
+    init(projectID: Int?, isAvailable: Bool) {
+        self.projectID = projectID
+        self.isAvailable = isAvailable
+    }
+
+    @MainActor
+    func load(store: DashboardsStore, client: PostHogClient?) async {
+        guard isAvailable, let projectID, let client else { return }
+        await store.load(client: client, projectID: projectID)
+    }
 }
 
 struct DashboardsRoot: View {
@@ -69,6 +129,13 @@ struct DashboardsRoot: View {
 
     private var selection: DashboardSummary? {
         selectedID.wrappedValue.flatMap { id in store.dashboards.first { $0.id == id } }
+    }
+
+    private var loadScope: DashboardListLoadScope {
+        DashboardListLoadScope(
+            projectID: model.projectID,
+            isAvailable: model.isAvailable(.dashboards)
+        )
     }
     // `.all`, not `.automatic`: explicit visibility preserves the list column
     // when the split view's own toggle is removed below.
@@ -122,7 +189,9 @@ struct DashboardsRoot: View {
             // against a shared rate limit.
             listChrome
         } detail: {
-            if let selection {
+            if store.contentState(isAvailable: loadScope.isAvailable) == .unavailable {
+                dashboardUnavailable
+            } else if let selection {
                 // `.id` rebuilds the screen per dashboard, which also clears the
                 // previously selected tile rather than leaving one dashboard's
                 // insight open beside another dashboard's grid.
@@ -134,17 +203,28 @@ struct DashboardsRoot: View {
                     )
                 )
                     .id("project-\(model.projectID ?? -1)-dashboard-\(selection.id)")
-            } else if store.dashboards.isEmpty {
-                EmptyStateView(
-                    title: "No dashboards",
-                    systemImage: "square.grid.2x2",
-                    illustration: .dashboard,
-                    message: "This project doesn't have any dashboards yet."
-                )
             } else {
-                // The detail pane is the largest surface in the app. Handing it
-                // a "Select a dashboard" placeholder wasted it on every launch.
-                ProjectOverview(dashboards: store.dashboards)
+                switch store.contentState(isAvailable: loadScope.isAvailable) {
+                case .unavailable:
+                    dashboardUnavailable
+                case .loading:
+                    ProgressView("Loading dashboards…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .failed(let error):
+                    dashboardLoadFailure(error)
+                case .empty:
+                    EmptyStateView(
+                        title: "No dashboards",
+                        systemImage: "square.grid.2x2",
+                        illustration: .dashboard,
+                        message: "This project doesn't have any dashboards yet."
+                    )
+                case .loaded:
+                    // The detail pane is the largest surface in the app.
+                    // Handing it a "Select a dashboard" placeholder wasted it
+                    // on every launch.
+                    ProjectOverview(dashboards: store.dashboards)
+                }
             }
         }
         // The insight panel temporarily yields the list column, then restores it
@@ -223,38 +303,43 @@ struct DashboardsRoot: View {
             .searchable(text: $search, prompt: "Search dashboards")
             #endif
             .screenRefreshable { await load() }
-            .task(id: model.projectID) {
-                await load()
+            .task(id: loadScope) {
+                await loadScope.load(store: store, client: model.client)
                 applyDebugSelectionIfNeeded()
             }
     }
 
     @ViewBuilder
     private var content: some View {
-        if !model.isAvailable(.dashboards) {
-            LockedCapabilityView(
-                capability: .dashboards,
-                scope: model.lockedScope(for: .dashboards)
-            ) {
-                Task { await model.refreshCapabilities() }
+        switch store.contentState(isAvailable: loadScope.isAvailable) {
+        case .unavailable:
+            if sizeClass == .compact {
+                dashboardUnavailable
+            } else {
+                // The regular detail column owns the full locked state.
+                list
             }
-        } else if let error = store.error, store.dashboards.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't load dashboards", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Try again") { Task { await load() } }
-            }
-        } else if store.dashboards.isEmpty && !store.isLoading {
-            EmptyStateView(
-                title: "No dashboards",
-                systemImage: "square.grid.2x2",
-                illustration: .dashboard,
-                message: "This project doesn't have any dashboards yet."
-            )
-        } else {
+        case .loading, .loaded:
             list
+        case .failed(let error):
+            if sizeClass == .compact {
+                dashboardLoadFailure(error)
+            } else {
+                // The regular detail column owns the full failure and retry.
+                list
+            }
+        case .empty:
+            if sizeClass == .compact {
+                EmptyStateView(
+                    title: "No dashboards",
+                    systemImage: "square.grid.2x2",
+                    illustration: .dashboard,
+                    message: "This project doesn't have any dashboards yet."
+                )
+            } else {
+                // The regular detail column owns the full branded state.
+                list
+            }
         }
     }
 
@@ -281,7 +366,9 @@ struct DashboardsRoot: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
-        .skeleton(store.isLoading && store.dashboards.isEmpty)
+        .skeleton(
+            loadScope.isAvailable && store.isLoading && store.dashboards.isEmpty
+        )
         // Same shape as the flags list. Without it, a query matching nothing
         // emptied both sections and left the freshness label floating over
         // ~1,600pt of bare page — a blank screen after typing reads as a
@@ -320,11 +407,7 @@ struct DashboardsRoot: View {
                 accessory: .none
             )
         }
-        .listRowBackground(
-            Theme.cardBackground
-                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                .padding(.vertical, 1)
-        )
+        .dashboardRowSurface()
         .listRowSeparator(.hidden)
         .contextMenu {
             // The detail's own toolbar has offered this since the tear-off
@@ -364,9 +447,27 @@ struct DashboardsRoot: View {
         return items.filter { $0.title.localizedCaseInsensitiveContains(search) }
     }
 
+    private func dashboardLoadFailure(_ error: String) -> some View {
+        ContentUnavailableView {
+            Label("Couldn't load dashboards", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error)
+        } actions: {
+            Button("Try again") { Task { await load() } }
+        }
+    }
+
+    private var dashboardUnavailable: some View {
+        LockedCapabilityView(
+            capability: .dashboards,
+            scope: model.lockedScope(for: .dashboards)
+        ) {
+            Task { await model.refreshCapabilities() }
+        }
+    }
+
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        await loadScope.load(store: store, client: model.client)
     }
 
     private func applyDebugSelectionIfNeeded() {
@@ -379,6 +480,24 @@ struct DashboardsRoot: View {
         case nil:
             break
         }
+        #endif
+    }
+}
+
+private extension View {
+    /// tvOS supplies the focused row surface and matching foreground together.
+    /// Painting the iOS card underneath kept the foreground transition while
+    /// hiding its light focus fill, producing near-black text on a dark card.
+    @ViewBuilder
+    func dashboardRowSurface() -> some View {
+        #if os(tvOS)
+        self
+        #else
+        listRowBackground(
+            Theme.cardBackground
+                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                .padding(.vertical, 1)
+        )
         #endif
     }
 }

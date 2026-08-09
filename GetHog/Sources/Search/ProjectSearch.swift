@@ -289,8 +289,20 @@ final class ProjectSearchStore {
     private(set) var loadedAt: Date?
 
     private var loadedProjectID: Int?
+    private var inFlightLoad: LoadFlight?
     /// Invalidates any response overtaken by a force reload or project switch.
     private var generation = 0
+
+    private struct LoadSignature: Equatable {
+        let client: ObjectIdentifier
+        let projectID: Int
+    }
+
+    private struct LoadFlight {
+        let signature: LoadSignature
+        let generation: Int
+        let task: Task<Void, Never>
+    }
 
     /// One request per project, then nothing.
     ///
@@ -299,7 +311,13 @@ final class ProjectSearchStore {
     /// so a field that re-queried per keystroke would spend somebody else's
     /// budget on work a phone can do in memory over 200 rows.
     func load(client: PostHogClient, projectID: Int, force: Bool = false) async {
-        guard force || loadedProjectID != projectID else { return }
+        let signature = LoadSignature(client: ObjectIdentifier(client), projectID: projectID)
+        if let inFlightLoad, inFlightLoad.signature == signature {
+            await inFlightLoad.task.value
+            return
+        }
+        guard force || loadedProjectID != projectID || inFlightLoad != nil else { return }
+        inFlightLoad?.task.cancel()
         generation += 1
         let token = generation
         if loadedProjectID != projectID {
@@ -312,8 +330,26 @@ final class ProjectSearchStore {
             loadedAt = nil
         }
         isLoading = true
+        error = nil
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performLoad(client: client, projectID: projectID, generation: token)
+        }
+        inFlightLoad = LoadFlight(signature: signature, generation: token, task: task)
+        await task.value
+    }
+
+    private func performLoad(
+        client: PostHogClient,
+        projectID: Int,
+        generation token: Int
+    ) async {
         defer {
-            if token == generation { isLoading = false }
+            if token == generation {
+                isLoading = false
+                if inFlightLoad?.generation == token { inFlightLoad = nil }
+            }
         }
         do {
             let page: Page<FileSystemEntry> = try await client.send(
@@ -325,7 +361,13 @@ final class ProjectSearchStore {
             loadedAt = Date()
             error = nil
         } catch {
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation,
+                  loadedProjectID == projectID
+            else { return }
+            if Task.isCancelled || error is CancellationError {
+                if loadedAt == nil { loadedProjectID = nil }
+                return
+            }
             self.error = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }

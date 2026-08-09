@@ -37,6 +37,11 @@ final class SessionsStore {
         loadedProjectID = projectID
         offset = 0
         pagingError = nil
+        // Every replacement invalidates any page request from the preceding
+        // generation, even when the project stayed the same and only its filter
+        // changed. That stale request's guarded defer cannot clear this flag
+        // after `generation` advances, so the new generation must own the reset.
+        isLoadingMore = false
         if projectChanged {
             // A project is a data-ownership boundary, not merely another
             // filter. Clear before the request suspends so the replacement can
@@ -45,7 +50,6 @@ final class SessionsStore {
             error = nil
             loadedAt = nil
             hasMore = false
-            isLoadingMore = false
         }
         isLoading = true
         defer {

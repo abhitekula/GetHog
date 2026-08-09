@@ -115,10 +115,25 @@ struct ToggleFlagFromWidgetIntent: AppIntent, SetValueIntent {
         guard let flag else { return .result() }
         // Re-check the opt-in at perform time. A configuration saved days ago
         // must not survive the user revoking permission in the app.
-        guard WidgetCache.quickToggleFlag(id: flag.id) != nil else { return .result() }
+        guard let snapshot = WidgetCache.snapshot(),
+              let projectRegion = snapshot.projectRegion,
+              let authSessionID = snapshot.authSessionID,
+              let currentFlag = snapshot.quickToggleFlags.first(where: {
+                  $0.id == flag.id && $0.key == flag.key
+              }) else {
+            return .result()
+        }
 
         WidgetCache.store.requestFlagWrite(
-            PendingFlagWrite(flagID: flag.id, key: flag.key, desiredActive: value, requestedAt: Date())
+            PendingFlagWrite(
+                flagID: currentFlag.id,
+                key: currentFlag.key,
+                desiredActive: value,
+                projectID: snapshot.projectID,
+                projectRegion: projectRegion,
+                authSessionID: authSessionID,
+                requestedAt: Date()
+            )
         )
         return .result()
     }

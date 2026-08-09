@@ -82,6 +82,68 @@ final class DemotedScreenDetailTests: XCTestCase {
         assertDemotedScreenOpensADetail(tab: "events", titled: "Events")
     }
 
+    /// An event selected in compact width becomes the split-view detail in
+    /// regular width, then must become the same pushed detail when the window
+    /// narrows again. The Stage Manager live pass caught a destination that
+    /// retained its Back button while its body became an empty view.
+    func testEventDetailSurvivesCompactRegularCompactTransition() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        guard
+            deviceName.localizedCaseInsensitiveContains("iPhone"),
+            deviceName.localizedCaseInsensitiveContains("Max")
+        else {
+            throw XCTSkip("This regression requires a Max-size iPhone that becomes regular in landscape.")
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
+
+        let app = DemoLaunch.launch(tab: "events")
+        XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Events"]))
+        XCTAssertTrue(app.tabBars.firstMatch.exists, "The Max-size iPhone did not start in compact width.")
+
+        let eventName = "meteor_report_opened"
+        let row = app.cells.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH %@", eventName))
+            .firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The deterministic first event never rendered.")
+        row.tap()
+
+        let detail = app.navigationBars[eventName]
+        let copy = app.buttons["Copy as JSON"]
+        XCTAssertTrue(DemoLaunch.wait(for: detail), "The event detail never opened.")
+        XCTAssertTrue(DemoLaunch.wait(for: copy), "The event detail opened without its content.")
+
+        let portraitWidth = app.windows.firstMatch.frame.width
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(
+            DemoLaunch.wait { app.windows.firstMatch.frame.width != portraitWidth },
+            "The event-detail transition into regular width never completed."
+        )
+        DemoLaunch.settle(app)
+        DemoLaunch.pause(1)
+
+        XCTAssertTrue(
+            row.exists && row.isHittable && detail.exists && copy.exists && copy.isHittable,
+            "Regular width did not render the original Events row and its selected detail together."
+        )
+
+        let landscapeWidth = app.windows.firstMatch.frame.width
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(
+            DemoLaunch.wait { app.windows.firstMatch.frame.width != landscapeWidth },
+            "The event-detail transition back into compact width never completed."
+        )
+        DemoLaunch.settle(app)
+        DemoLaunch.pause(1)
+
+        XCTAssertTrue(detail.exists, "The selected event was lost when the window narrowed again.")
+        XCTAssertTrue(
+            copy.exists && copy.isHittable,
+            "The narrowed event destination kept navigation chrome but rendered a blank body."
+        )
+    }
+
     /// Opens the first row of a demoted screen and requires *something* to have
     /// opened over the list.
     ///

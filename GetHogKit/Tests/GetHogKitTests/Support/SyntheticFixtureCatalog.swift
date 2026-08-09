@@ -33,7 +33,7 @@ enum SyntheticFixtureCatalog {
         add("018f4400", [401])
         add("018f6600", [601])
         add("018f7e00", Array(1...6))
-        add("018f9000", Array(1...506))
+        add("018f9000", Array(1...508) + Array(600...602))
         add("018f9a00", Array(1...5) + Array(7...10) + Array(12...15)
             + Array(17...19) + [21, 22])
         return values
@@ -104,7 +104,7 @@ enum SyntheticFixtureCatalog {
         return values
     }()
 
-    static let allowedSourceProjectIDs: Set<Int> = [0, 1, 2, 8, 9, 42, 77, 123, projectID]
+    static let allowedSourceProjectIDs: Set<Int> = [0, 1, 2, 8, 9, 42, 77, 123, projectID, 1_002]
 
     static let allowedSensitiveColumnValues: Set<String> = [
         "", "Automation Browser", "FixtureFox", "Mockwave", "ScriptShell", "Testbird",

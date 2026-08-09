@@ -480,6 +480,11 @@ targets:
       - GetHog/Sources/App/LinkInbox.swift
       - GetHog/Sources/App/PostHogLink.swift
       - GetHog/Sources/App/ProjectSwitcher.swift
+      # Branded empty states are shared SwiftUI views, so their named images
+      # must travel with every host that compiles those views. The TV catalog
+      # below owns only App Icon / Top Shelf artwork.
+      - path: GetHog/Resources/Assets.xcassets
+        buildPhase: resources
       - path: GetHog/Resources/DemoData
         buildPhase: resources
       # Shared screens use app-private defaults on TV too. App Store validation

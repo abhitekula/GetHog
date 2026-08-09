@@ -44,13 +44,21 @@ struct FlagDetailView: View {
         self.controller = controller
         self.projectID = projectID
         #if !os(tvOS)
-        _allowsQuickToggle = State(initialValue: FlagQuickToggle.isAllowed(flagID: flag.id))
+        _allowsQuickToggle = State(initialValue: false)
         #endif
     }
 
     private var isActive: Bool { controller.effectiveActive(flag) }
     private var isBusy: Bool { controller.isBusy(flag) }
     private var isCurrentProject: Bool { model.projectID == projectID }
+    #if !os(tvOS)
+    private var quickToggleScope: FlagQuickToggle.Scope? {
+        guard let writeScope = model.flagWriteScope,
+              writeScope.projectID == projectID,
+              let region = writeScope.projectRegion else { return nil }
+        return FlagQuickToggle.Scope(projectID: projectID, region: region)
+    }
+    #endif
 
     /// This flag's page in the console, shared by the toolbar link and the
     /// Handoff activity so the two can't name different pages.
@@ -64,6 +72,7 @@ struct FlagDetailView: View {
                 .disabled(!isCurrentProject)
             #if !os(tvOS)
             quickToggleSection
+                .disabled(quickToggleScope == nil)
             #endif
             releaseConditionsSection
             rolloutSection
@@ -158,10 +167,18 @@ struct FlagDetailView: View {
         // Offered back from the home screen icon. A flag you were just looking
         // at is the thing most likely to be worth another ten seconds.
         .onAppear {
+            #if !os(tvOS)
+            syncQuickTogglePermission()
+            #endif
             guard isCurrentProject else { return }
             QuickActions.recordVisit(.featureFlag(id: flag.id), title: flag.key, projectID: projectID)
             QuickActions.refresh(projectID: projectID)
         }
+        #if !os(tvOS)
+        .onChange(of: model.flagWriteScope) { _, _ in
+            syncQuickTogglePermission()
+        }
+        #endif
     }
 
     // MARK: - Sections
@@ -260,13 +277,22 @@ struct FlagDetailView: View {
         Section {
             Toggle("Allow quick toggle", isOn: $allowsQuickToggle)
                 .onChange(of: allowsQuickToggle) { _, allowed in
-                    FlagQuickToggle.setAllowed(allowed, flagID: flag.id)
+                    guard let quickToggleScope else { return }
+                    FlagQuickToggle.setAllowed(allowed, flagID: flag.id, scope: quickToggleScope)
                 }
         } footer: {
             Text(
                 "Off by default. Turning this on exposes \(flag.key) to Control Center and widgets, where it can be flipped without opening the app — and without the confirmation step above."
             )
         }
+    }
+
+    private func syncQuickTogglePermission() {
+        guard let quickToggleScope else {
+            allowsQuickToggle = false
+            return
+        }
+        allowsQuickToggle = FlagQuickToggle.isAllowed(flagID: flag.id, scope: quickToggleScope)
     }
     #endif
 

@@ -457,8 +457,12 @@ struct SharedSnapshotTests {
 
         #expect(store.pendingFlagWrite() == nil)
 
+        let authSessionID = UUID()
         let request = PendingFlagWrite(
             flagID: 1, key: "new-onboarding", desiredActive: false,
+            projectID: 42,
+            projectRegion: .euCloud,
+            authSessionID: authSessionID,
             requestedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
         try store.enqueue(request)
@@ -466,10 +470,34 @@ struct SharedSnapshotTests {
         let read = try #require(store.pendingFlagWrite())
         #expect(read.flagID == 1)
         #expect(read.desiredActive == false)
+        #expect(read.projectID == 42)
+        #expect(read.projectRegion == .euCloud)
+        #expect(read.authSessionID == authSessionID)
 
         // The app consumes it; a relaunch must not re-apply a flag write.
         store.clearPendingFlagWrite()
         #expect(store.pendingFlagWrite() == nil)
+    }
+
+    @Test("a pending flag write from an older binary decodes without write authority")
+    func legacyPendingFlagWriteIsUntrusted() throws {
+        let legacy = Data(#"""
+            {
+            "flagID": 7,
+            "key": "synthetic-flag",
+            "desiredActive": true,
+            "requestedAt": "2023-11-14T22:13:20Z"
+            }
+            """#.utf8)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let request = try decoder.decode(PendingFlagWrite.self, from: legacy)
+
+        #expect(request.flagID == 7)
+        #expect(request.projectID == nil)
+        #expect(request.projectRegion == nil)
+        #expect(request.authSessionID == nil)
     }
 
     @Test("a requested destination is separate from a requested flag write")

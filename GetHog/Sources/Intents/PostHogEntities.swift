@@ -172,14 +172,81 @@ struct FeatureFlagEntity: AppEntity, IndexedEntity {
         self.allowsQuickToggle = allowsQuickToggle
     }
 
-    init(_ flag: FeatureFlag) {
+    init(_ flag: FeatureFlag, scope: FlagQuickToggle.Scope) {
         self.init(
             id: flag.id,
             key: flag.key,
             name: flag.displayName,
             isActive: flag.active,
-            allowsQuickToggle: FlagQuickToggle.isAllowed(flagID: flag.id)
+            allowsQuickToggle: FlagQuickToggle.isAllowed(flagID: flag.id, scope: scope)
         )
+    }
+}
+
+/// Scope-aware entity used by the current write intent. The older
+/// `FeatureFlagEntity` and `SetFeatureFlagIntent` deliberately remain in the
+/// binary so saved shortcuts created before scope hardening can fail with an
+/// explanation instead of becoming undecodable. New writes use this exact
+/// project/host/credential identity.
+struct ScopedFeatureFlagEntity: AppEntity {
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Feature Flag")
+    static let defaultQuery = ScopedFeatureFlagEntityQuery()
+
+    let id: String
+    let flagID: Int
+    let projectID: Int
+    let projectHost: String
+    let authSessionID: UUID
+    let key: String
+    let name: String
+    let isActive: Bool
+    let allowsQuickToggle: Bool
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(
+            title: "\(key)",
+            subtitle: "\(isActive ? "Enabled" : "Disabled")\(allowsQuickToggle ? "" : " · Quick toggle off")"
+        )
+    }
+
+    init(
+        flagID: Int,
+        key: String,
+        name: String,
+        isActive: Bool,
+        allowsQuickToggle: Bool,
+        scope: FlagQuickToggle.Scope,
+        authSessionID: UUID
+    ) {
+        self.id = "\(FlagQuickToggle.defaultsKey(for: flagID, scope: scope)).auth.\(authSessionID.uuidString)"
+        self.flagID = flagID
+        self.projectID = scope.projectID
+        self.projectHost = scope.region.host.absoluteString
+        self.authSessionID = authSessionID
+        self.key = key
+        self.name = name
+        self.isActive = isActive
+        self.allowsQuickToggle = allowsQuickToggle
+    }
+
+    init(_ flag: FeatureFlag, scope: FlagQuickToggle.Scope, authSessionID: UUID) {
+        self.init(
+            flagID: flag.id,
+            key: flag.key,
+            name: flag.displayName,
+            isActive: flag.active,
+            allowsQuickToggle: FlagQuickToggle.isAllowed(flagID: flag.id, scope: scope),
+            scope: scope,
+            authSessionID: authSessionID
+        )
+    }
+
+    /// A saved entity authorizes one credential generation, not merely a host
+    /// and numeric project that a later credential can happen to share.
+    func isAuthorized(by dependencies: IntentDependencies) -> Bool {
+        projectID == dependencies.projectID
+            && projectHost == dependencies.projectRegion.host.absoluteString
+            && authSessionID == dependencies.authSessionID
     }
 }
 
@@ -221,7 +288,23 @@ enum PostHogEntityFetch {
         )
         // Deleted flags still come back from the API; offering one in a picker
         // would produce a write that can never succeed.
-        return page.results.filter { !$0.deleted && !$0.archived }.map(FeatureFlagEntity.init)
+        return page.results.filter { !$0.deleted && !$0.archived }.map {
+            FeatureFlagEntity($0, scope: deps.flagQuickToggleScope)
+        }
+    }
+
+    static func scopedFlags(projectID: Int? = nil) async throws -> [ScopedFeatureFlagEntity] {
+        let deps = try await IntentDependencies.resolve(projectID: projectID)
+        let page: Page<FeatureFlag> = try await deps.client.send(
+            PostHogAPI.featureFlags(projectID: deps.projectID)
+        )
+        return page.results.filter { !$0.deleted && !$0.archived }.map {
+            ScopedFeatureFlagEntity(
+                $0,
+                scope: deps.flagQuickToggleScope,
+                authSessionID: deps.authSessionID
+            )
+        }
     }
 }
 
@@ -300,6 +383,26 @@ struct FeatureFlagEntityQuery: EntityStringQuery {
     /// change, so burying them under 100 read-only flags would be dishonest.
     func suggestedEntities() async throws -> [FeatureFlagEntity] {
         let all = try await PostHogEntityFetch.flags()
+        let togglable = all.filter(\.allowsQuickToggle)
+        return togglable.isEmpty ? Array(all.prefix(12)) : togglable
+    }
+}
+
+struct ScopedFeatureFlagEntityQuery: EntityStringQuery {
+    func entities(for identifiers: [String]) async throws -> [ScopedFeatureFlagEntity] {
+        let wanted = Set(identifiers)
+        return try await PostHogEntityFetch.scopedFlags().filter { wanted.contains($0.id) }
+    }
+
+    func entities(matching string: String) async throws -> [ScopedFeatureFlagEntity] {
+        let needle = string.lowercased()
+        return try await PostHogEntityFetch.scopedFlags().filter {
+            $0.key.lowercased().contains(needle) || $0.name.lowercased().contains(needle)
+        }
+    }
+
+    func suggestedEntities() async throws -> [ScopedFeatureFlagEntity] {
+        let all = try await PostHogEntityFetch.scopedFlags()
         let togglable = all.filter(\.allowsQuickToggle)
         return togglable.isEmpty ? Array(all.prefix(12)) : togglable
     }

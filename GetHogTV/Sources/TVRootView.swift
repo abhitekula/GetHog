@@ -90,6 +90,13 @@ struct TVRootView: View {
     @State private var hasAppliedDebugTab = false
     #endif
 
+    static func shouldResetOpenDetails(
+        from previousScope: FlagWriteScope?,
+        to currentScope: FlagWriteScope?
+    ) -> Bool {
+        previousScope != currentScope
+    }
+
     private var selected: Binding<TVDestination> {
         Binding(
             get: { TVDestination(rawValue: selectedRaw) ?? .dashboards },
@@ -126,6 +133,15 @@ struct TVRootView: View {
             case .ready:
                 tabs
             }
+        }
+        .onChange(of: model.flagWriteScope) { previousScope, currentScope in
+            guard Self.shouldResetOpenDetails(
+                from: previousScope,
+                to: currentScope
+            ) else { return }
+            // Keep this above the phase switch: signing out removes the ready
+            // subtree in the same transition that drops write authority.
+            openDetails.reset()
         }
         .onOpenURL { url in
             guard let destination = TopShelfRoute.destination(for: url) else { return }
