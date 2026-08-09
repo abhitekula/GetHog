@@ -69,6 +69,49 @@ struct DemoTransportTests {
     private static let healthySavedQueryID = "018f9000-0000-7000-8000-000000000243"
     private static let plainSavedQueryID = "018f9000-0000-7000-8000-000000000014"
 
+    @Test("dashboard recompute failure leaves cached load and empty dashboard route intact")
+    func dashboardConsistencyDemoRoutes() async throws {
+        let transport = DemoTransport(dashboardRecomputeFailure: true)
+
+        func send(_ endpoint: Endpoint) async throws -> (Data, HTTPURLResponse) {
+            var components = URLComponents(string: "https://app.example.com" + endpoint.path)!
+            components.queryItems = endpoint.query
+            var request = URLRequest(url: components.url!)
+            request.httpMethod = endpoint.method
+            request.httpBody = endpoint.body
+            return try await transport.send(request)
+        }
+
+        let cached = try await send(
+            PostHogAPI.dashboard(
+                projectID: Self.projectID,
+                dashboardID: DemoTransport.dashboardID,
+                refresh: false
+            )
+        )
+        #expect(cached.1.statusCode == 200)
+        #expect(try Dashboard.decode(from: cached.0).tiles.isEmpty == false)
+
+        let recompute = try await send(
+            PostHogAPI.dashboard(
+                projectID: Self.projectID,
+                dashboardID: DemoTransport.dashboardID,
+                refresh: true
+            )
+        )
+        #expect(recompute.1.statusCode == 503)
+
+        let empty = try await send(
+            PostHogAPI.dashboard(
+                projectID: Self.projectID,
+                dashboardID: DemoTransport.emptyDashboardID,
+                refresh: false
+            )
+        )
+        #expect(empty.1.statusCode == 200)
+        #expect(try Dashboard.decode(from: empty.0).tiles.isEmpty)
+    }
+
     /// This catches a demo transport that accepts generation but keeps the
     /// canonical synthetic replay in its initial missing-summary state.
     @Test("demo summary generation changes one transport from absent to stored")

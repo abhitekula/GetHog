@@ -28,8 +28,11 @@ struct DemoTransport: HTTPTransport {
     static let launchArgument = "-GetHogDemo"
     static let dashboardID = 725_101
     static let hogQLDashboardID = 725_102
+    static let emptyDashboardID = 725_103
     static let emptyCollectionEnvironment = "GETHOG_DEMO_EMPTY_COLLECTION"
     static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
+    static let dashboardDetailDelayEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_DELAY_MS"
+    static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
 
     enum EmptyCollection: String, CaseIterable {
         case dashboards
@@ -52,10 +55,14 @@ struct DemoTransport: HTTPTransport {
 
     private let emptyCollection: EmptyCollection?
     private let summaryGeneration: DemoSummaryGenerationState
+    private let dashboardDetailDelayMilliseconds: Int
+    private let dashboardRecomputeFailure: Bool
 
     init(
         emptyCollection: EmptyCollection? = nil,
-        summaryInitiallyAbsent: Bool? = nil
+        summaryInitiallyAbsent: Bool? = nil,
+        dashboardDetailDelayMilliseconds: Int? = nil,
+        dashboardRecomputeFailure: Bool? = nil
     ) {
         self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
             Self.emptyCollectionEnvironment
@@ -63,6 +70,17 @@ struct DemoTransport: HTTPTransport {
         let startsAbsent = summaryInitiallyAbsent
             ?? (ProcessInfo.processInfo.environment[Self.summaryGenerationEnvironment] == "1")
         summaryGeneration = DemoSummaryGenerationState(startsAbsent: startsAbsent)
+        let environmentDelay = ProcessInfo.processInfo.environment[
+            Self.dashboardDetailDelayEnvironment
+        ].flatMap(Int.init)
+        self.dashboardDetailDelayMilliseconds = max(
+            0,
+            dashboardDetailDelayMilliseconds ?? environmentDelay ?? 0
+        )
+        self.dashboardRecomputeFailure = dashboardRecomputeFailure
+            ?? (ProcessInfo.processInfo.environment[
+                Self.dashboardRecomputeFailureEnvironment
+            ] == "1")
     }
 
     static var isEnabled: Bool {
@@ -84,6 +102,21 @@ struct DemoTransport: HTTPTransport {
         let path = request.url?.path(percentEncoded: false) ?? ""
         let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
         let query = request.url?.query ?? ""
+        let isDashboardDetail = path.contains("/dashboards/")
+            && !path.hasSuffix("/dashboards/")
+
+        if isDashboardDetail, dashboardDetailDelayMilliseconds > 0 {
+            try? await Task.sleep(for: .milliseconds(dashboardDetailDelayMilliseconds))
+        }
+        if isDashboardDetail,
+           dashboardRecomputeFailure,
+           query.contains("refresh=lazy_async") {
+            return Self.jsonReply(
+                url: request.url!,
+                data: Data(#"{"detail":"Synthetic dashboard recompute failed"}"#.utf8),
+                status: 503
+            )
+        }
 
         if request.httpMethod == "POST",
            path.hasSuffix("/create_session_summaries_individually/"),
@@ -886,6 +919,9 @@ struct DemoTransport: HTTPTransport {
             if path.hasSuffix("/dashboards/\(dashboardID)/") { return load("dashboard_detail_raw") }
             if path.hasSuffix("/dashboards/\(Self.hogQLDashboardID)/") {
                 return load("dashboard_hogql_visualizations")
+            }
+            if path.hasSuffix("/dashboards/\(Self.emptyDashboardID)/") {
+                return load("dashboard_empty_tiles")
             }
             return unrouted(path)
         }

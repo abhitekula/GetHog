@@ -2,6 +2,30 @@ import XCTest
 
 @MainActor
 final class VisionWindowTests: XCTestCase {
+    func testSectionSidebarAdaptsToANarrowWindow() {
+        let contentWidth: CGFloat = 640
+        let app = DemoLaunch.launch(environment: [
+            "GETHOG_VISION_CONTENT_WIDTH": String(Int(contentWidth)),
+        ])
+
+        let dashboard = app.staticTexts[DemoLaunch.firstTileTitle].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: dashboard),
+            "The narrow Vision window did not leave the dashboard content usable."
+        )
+
+        // At this width a native split may collapse the product sidebar. If it
+        // keeps both columns visible, the sidebar must negotiate below the old
+        // fixed 280pt width rather than consuming almost half of the window.
+        let sidebar = app.collectionViews["gethog.vision.section-sidebar"].firstMatch
+        guard sidebar.exists && sidebar.isHittable else { return }
+        XCTAssertLessThan(
+            sidebar.frame.width,
+            contentWidth * 0.4,
+            "The section sidebar retained its fixed width in a narrow Vision window."
+        )
+    }
+
     func testDashboardTearsOffIntoItsOwnWindow() {
         let app = DemoLaunch.launch()
         let analyzeSection = VisionSidebar.section("Analyze", in: app)

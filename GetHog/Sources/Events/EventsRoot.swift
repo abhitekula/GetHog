@@ -9,6 +9,9 @@ final class EventsStore {
     var isLoading = false
     var isPaging = false
     var failure: LoadFailure?
+    /// A periodic refresh failure is deliberately separate from the initial
+    /// feed failure: the rows already on screen remain valid and visible.
+    var liveTailFailure: LoadFailure?
     var loadedAt: Date?
     var reachedEnd = false
 
@@ -32,6 +35,11 @@ final class EventsStore {
     /// `EventFeed.swift` for the measurements.
     private var pager = EventFeedPager()
     private let pageSize = 50
+    /// A replacement load owns every mutation until the next replacement load.
+    /// Cancellation is advisory; the token rejects a transport that delivers
+    /// an old project's response after cancellation.
+    private var generation = 0
+    private var loadedProjectID: Int?
 
     /// The loaded page of the feed as CSV.
     ///
@@ -61,13 +69,24 @@ final class EventsStore {
     func reload(
         client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
     ) async {
+        generation += 1
+        let token = generation
+        loadedProjectID = projectID
+        liveTailFailure = nil
         pager.restart()
         events = []
         responseColumns = []
         responseRows = []
         reachedEnd = false
         isLoading = true
-        defer { isLoading = false }
+        isPaging = false
+        failure = nil
+        loadedAt = nil
+        defer {
+            if token == generation, loadedProjectID == projectID {
+                isLoading = false
+            }
+        }
 
         // A window that came back empty is not evidence that the project has no
         // events, only that this window is thin — so widen and look again before
@@ -82,17 +101,29 @@ final class EventsStore {
         // two years of events that they have none.
         repeat {
             guard await fetchPage(
-                client: client, projectID: projectID, tokens: tokens, search: search
+                client: client,
+                projectID: projectID,
+                tokens: tokens,
+                search: search,
+                generation: token
             ) else { return }
-        } while events.isEmpty && !pager.isExhausted
+        } while token == generation
+            && loadedProjectID == projectID
+            && events.isEmpty
+            && !pager.isExhausted
     }
 
     func loadMore(
         client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
     ) async {
-        guard !isPaging, !isLoading, !reachedEnd else { return }
+        guard loadedProjectID == projectID, !isPaging, !isLoading, !reachedEnd else { return }
+        let token = generation
         isPaging = true
-        defer { isPaging = false }
+        defer {
+            if token == generation, loadedProjectID == projectID {
+                isPaging = false
+            }
+        }
 
         // Keeps going until it has rows to show or the pager is finished, for
         // the same reason `reload` does: a page that came back empty *widened
@@ -108,10 +139,75 @@ final class EventsStore {
         repeat {
             let before = events.count
             guard await fetchPage(
-                client: client, projectID: projectID, tokens: tokens, search: search
+                client: client,
+                projectID: projectID,
+                tokens: tokens,
+                search: search,
+                generation: token
             ) else { return }
             if events.count > before { return }
-        } while !pager.isExhausted
+        } while token == generation && loadedProjectID == projectID && !pager.isExhausted
+    }
+
+    /// Fetches only the newest bounded page and prepends rows this feed does not
+    /// already hold. It never restarts or advances the scrollback pager, and it
+    /// never clears export rows before a network request succeeds.
+    func refreshLatest(
+        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
+    ) async {
+        guard loadedProjectID == projectID else { return }
+        let token = generation
+        do {
+            let latestPager = EventFeedPager()
+            let response: QueryResponse = try await client.send(
+                PostHogAPI.events(
+                    projectID: projectID,
+                    limit: pageSize,
+                    since: latestPager.floor(now: Date()),
+                    before: nil,
+                    tokens: tokens,
+                    search: search
+                )
+            )
+
+            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+                return
+            }
+
+            var known = Set(events.map(\.id))
+            var newEvents: [EventRow] = []
+            var newResponseRows: [[JSONValue]] = []
+            for row in response.rows {
+                guard let event = EventRow(row: row), known.insert(event.id).inserted else {
+                    continue
+                }
+                newEvents.append(event)
+                if responseColumns.isEmpty || response.columns == responseColumns {
+                    newResponseRows.append(row.values)
+                } else {
+                    // The endpoint authors a fixed SELECT, but align by name if
+                    // a server version ever reorders those columns so the CSV
+                    // still describes the values under the right headings.
+                    newResponseRows.append(
+                        responseColumns.map { row.value($0) ?? .null }
+                    )
+                }
+            }
+
+            if responseColumns.isEmpty { responseColumns = response.columns }
+            events.insert(contentsOf: newEvents, at: 0)
+            responseRows.insert(contentsOf: newResponseRows, at: 0)
+            loadedAt = Date()
+            liveTailFailure = nil
+        } catch {
+            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+                return
+            }
+            if error is CancellationError { return }
+            // Do not touch `events`, `responseRows`, `pager`, `reachedEnd`, or
+            // the full-load failure. This tick failed; the feed did not.
+            liveTailFailure = LoadFailure(error, loading: "new events")
+        }
     }
 
     /// One page. Returns whether it succeeded, so `reload` stops widening after
@@ -120,7 +216,8 @@ final class EventsStore {
         client: PostHogClient,
         projectID: Int,
         tokens: [EventFilterToken],
-        search: String?
+        search: String?,
+        generation token: Int
     ) async -> Bool {
         do {
             let response: QueryResponse = try await client.send(
@@ -133,6 +230,9 @@ final class EventsStore {
                     search: search
                 )
             )
+            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+                return false
+            }
             let page = response.rows.compactMap(EventRow.init(row:))
             events.append(contentsOf: page)
 
@@ -150,6 +250,10 @@ final class EventsStore {
             failure = nil
             return true
         } catch {
+            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+                return false
+            }
+            if error is CancellationError { return false }
             failure = LoadFailure(error, loading: "events")
             return false
         }
@@ -474,7 +578,7 @@ struct EventsRoot: View {
             if liveTail.isRunning {
                 liveTail.stop()
             } else {
-                liveTail.start { await reload() }
+                liveTail.start { await refreshLatest() }
             }
         } label: {
             if liveTail.isRunning {
@@ -525,6 +629,23 @@ struct EventsRoot: View {
 
     private var list: some View {
         List(selection: selectedID) {
+            if store.liveTailFailure != nil {
+                Section {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        Label("Live Tail couldn't refresh", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.Status.warningInk)
+                        Text("The events already loaded are still shown.")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.Ink.secondary)
+                        Button("Try Live Tail again") { Task { await refreshLatest() } }
+                            .font(.footnote.weight(.medium))
+                    }
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             ForEach(store.buckets, id: \.title) { bucket in
                 let rows = bucket.events.filter(matchesLocalSearch)
                 if !rows.isEmpty {
@@ -640,6 +761,16 @@ struct EventsRoot: View {
             search: search.isEmpty ? nil : search
         )
     }
+
+    private func refreshLatest() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.refreshLatest(
+            client: client,
+            projectID: projectID,
+            tokens: tokens,
+            search: submittedSearch.isEmpty ? nil : submittedSearch
+        )
+    }
 }
 
 /// Shape and colour for an event, keyed by its name.
@@ -715,8 +846,28 @@ enum EventAppearance {
     }
 }
 
+struct EventRowPresentation: Equatable {
+    let subtitle: String?
+    let subtitleLineLimit: Int
+
+    init(event: EventRow) {
+        if let url = event.currentURL, let path = URL(string: url)?.path, !path.isEmpty {
+            subtitle = path
+            subtitleLineLimit = 2
+        } else {
+            subtitle = event.distinctID
+            // Person identifiers are often UUIDs or much longer opaque keys.
+            // One monospaced line keeps a single row from consuming the feed;
+            // the complete value remains in the event detail.
+            subtitleLineLimit = 1
+        }
+    }
+}
+
 struct EventRowView: View {
     let event: EventRow
+
+    private var presentation: EventRowPresentation { EventRowPresentation(event: event) }
 
     var body: some View {
         DataRow(
@@ -724,27 +875,15 @@ struct EventRowView: View {
             brandGlyph: EventAppearance.brandGlyph(for: event.event),
             tint: EventAppearance.tint(for: event.event),
             title: EventAppearance.displayName(for: event.event),
-            subtitle: subtitle,
+            subtitle: presentation.subtitle,
             footnote: footnote,
             // The event name leads the row as its title now. The identifier
             // beneath it — a URL path or a distinct id — is what stays
             // monospaced, since that is the column being compared downwards.
             isSubtitleMonospaced: true,
-            // Two lines, against the one-line default. A feed is mostly repeats
-            // of `$pageview` and `$autocapture`, so the title is shared and the
-            // path or distinct id underneath is the only thing separating one
-            // row from the next — the same failure the error list had, where a
-            // narrow column cut exactly the distinguishing part.
-            subtitleLineLimit: 2,
+            subtitleLineLimit: presentation.subtitleLineLimit,
             accessory: .none
         )
-    }
-
-    private var subtitle: String? {
-        if let url = event.currentURL, let path = URL(string: url)?.path, !path.isEmpty {
-            return path
-        }
-        return event.distinctID
     }
 
     /// A clock time, not a relative one.

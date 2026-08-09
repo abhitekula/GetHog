@@ -241,6 +241,14 @@ enum WatchRefreshFailure: Equatable, Sendable {
     }
 }
 
+/// Recovery attached to one best-effort Watch section. The aggregate refresh
+/// failure still drives credential replacement on Metrics; this value prevents
+/// a failed peer endpoint from masquerading as a successful empty response.
+struct WatchSectionFailure: Equatable, Sendable {
+    let message: String
+    let canRetry: Bool
+}
+
 /// Collects failures from one sequential wrist refresh without turning the
 /// five independent best-effort sections into one all-or-nothing request.
 @MainActor
@@ -249,14 +257,24 @@ private final class WatchRequestFailures {
     private(set) var failure: WatchRefreshFailure?
     private(set) var userMessage: String?
 
-    func capture<Value>(_ operation: () async throws -> Value) async -> Value? {
+    func capture<Value>(
+        _ operation: () async throws -> Value,
+        onFailure: ((WatchSectionFailure) -> Void)? = nil
+    ) async -> Value? {
         do {
             return try await operation()
         } catch {
-            if Self.isNotConnectedToInternet(error) {
+            let isOffline = Self.isNotConnectedToInternet(error)
+            if isOffline {
                 sawNotConnectedToInternet = true
             }
             let classification = Self.classification(of: error)
+            onFailure?(WatchSectionFailure(
+                message: isOffline
+                    ? WatchRefreshGuidance.iPhoneOffline.message
+                    : Self.userMessage(for: error),
+                canRetry: classification.permitsRetry
+            ))
             if failure == nil || classification.priority > (failure?.priority ?? 0) {
                 failure = classification
                 userMessage = Self.userMessage(for: error)
@@ -377,6 +395,9 @@ final class WatchModel {
     /// presentation phase and says nothing about whether the key was rejected.
     private(set) var refreshFailure: WatchRefreshFailure?
     private(set) var refreshFailureMessage: String?
+    private(set) var flagsRefreshFailure: WatchSectionFailure?
+    private(set) var healthRefreshFailure: WatchSectionFailure?
+    private(set) var activityRefreshFailure: WatchSectionFailure?
     private(set) var snapshot: SharedSnapshot?
     private(set) var health: WatchHealth = .empty
     private(set) var activity: [ActivityLine] = []
@@ -427,6 +448,13 @@ final class WatchModel {
     private let mutationCoordinator: WatchCredentialMutationCoordinator
     private let snapshotDidChange: () -> Void
     private let now: @Sendable () -> Date
+    /// Same-generation callers await one operation. A hand-off increments the
+    /// generation and may start its forced refresh without waiting for a stale
+    /// request from the previous project.
+    @ObservationIgnored private var refreshOperations: [Int: Task<Void, Never>] = [:]
+    /// An attempt timestamp, not a success timestamp: an outage is not licence
+    /// to spend the five-request budget on every wrist raise.
+    private var lastRefreshAttemptAt: Date?
     /// Invalidates every suspended request from the previous hand-off. Main
     /// actor isolation makes the comparison atomic across each `await`.
     private var configurationGeneration = 0
@@ -483,6 +511,9 @@ final class WatchModel {
         self.refreshGuidance = nil
         self.refreshFailure = nil
         self.refreshFailureMessage = nil
+        self.flagsRefreshFailure = nil
+        self.healthRefreshFailure = nil
+        self.activityRefreshFailure = nil
         self.quarantinedProjectData = nil
         let stored = store.loadOrNil()
         let storedActivity = WatchActivity.read(from: store)
@@ -647,6 +678,9 @@ final class WatchModel {
         refreshGuidance = nil
         refreshFailure = nil
         refreshFailureMessage = nil
+        flagsRefreshFailure = nil
+        healthRefreshFailure = nil
+        activityRefreshFailure = nil
         // The rows in hand were evaluated against the *previous* thresholds,
         // so they are not merely stale, they are answers to a question nobody
         // is asking any more.
@@ -870,6 +904,49 @@ final class WatchModel {
     func refresh(force: Bool = false) async {
         let generation = configurationGeneration
         let adoptedRevision = adoptedCredentialRevision
+        if let operation = refreshOperations[generation] {
+            await operation.value
+            return
+        }
+
+        guard client != nil else {
+            refreshGuidance = nil
+            refreshFailure = nil
+            refreshFailureMessage = nil
+            flagsRefreshFailure = nil
+            healthRefreshFailure = nil
+            activityRefreshFailure = nil
+            phase = .needsKey
+            return
+        }
+
+        let attemptedAt = now()
+        let freshnessReference = [lastRefreshAttemptAt, snapshot?.capturedAt]
+            .compactMap { $0 }
+            .max()
+        if !force, let freshnessReference,
+           max(0, attemptedAt.timeIntervalSince(freshnessReference)) < Self.refreshTolerance {
+            phase = .ready
+            return
+        }
+        lastRefreshAttemptAt = attemptedAt
+
+        let operation = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRefresh(
+                generation: generation,
+                adoptedRevision: adoptedRevision
+            )
+        }
+        refreshOperations[generation] = operation
+        await operation.value
+        refreshOperations.removeValue(forKey: generation)
+    }
+
+    private func performRefresh(
+        generation: Int,
+        adoptedRevision: UInt64
+    ) async {
         guard await mutationCoordinator.waitUntilSettled(
             at: adoptedRevision
         ) else { return }
@@ -880,15 +957,13 @@ final class WatchModel {
             phase = .needsKey
             return
         }
-        if !force, !canRetryRefresh, let snapshot,
-           snapshot.staleness(now: now()) < Self.refreshTolerance {
-            phase = .ready
-            return
-        }
         if snapshot == nil { phase = .loading }
         refreshGuidance = nil
         refreshFailure = nil
         refreshFailureMessage = nil
+        flagsRefreshFailure = nil
+        healthRefreshFailure = nil
+        activityRefreshFailure = nil
 
         let failures = WatchRequestFailures()
 
@@ -933,6 +1008,9 @@ final class WatchModel {
         var fetchedFlags: [SharedSnapshot.Flag]?
         var issues: [ErrorIssue]?
         var fetchedActivity: ActivityFeed?
+        var flagsFailure: WatchSectionFailure?
+        var healthFailure: WatchSectionFailure?
+        var activityFailure: WatchSectionFailure?
 
         // 1 + 2. The pinned (or first) dashboard, cached tile results only —
         // the watch never asks PostHog to recompute anything.
@@ -976,11 +1054,14 @@ final class WatchModel {
         // 3. Flags. `quickToggleAllowed` is the *iOS* per-flag opt-in, which
         // the watch has no UI to grant — written false so a watch-local widget
         // can never offer a toggle the user did not opt into.
-        let flagPage: Page<FeatureFlag>? = await failures.capture({
-            try await client.send(
-                PostHogAPI.featureFlags(projectID: projectID, budget: Self.budget)
-            )
-        })
+        let flagPage: Page<FeatureFlag>? = await failures.capture(
+            {
+                try await client.send(
+                    PostHogAPI.featureFlags(projectID: projectID, budget: Self.budget)
+                )
+            },
+            onFailure: { flagsFailure = $0 }
+        )
         guard refreshContextIsCurrent(
             generation: generation, adoptedRevision: adoptedRevision
         ) else { return }
@@ -1003,15 +1084,18 @@ final class WatchModel {
         // `errorTrackingIssues` takes the range as a string, so the budget's
         // own `dateFrom` is passed rather than a literal that could disagree
         // with the events feed's floor one block below.
-        let errorResponse: ErrorTrackingResponse? = await failures.capture({
-            let data = try await client.data(for: PostHogAPI.errorTrackingIssues(
+        let errorResponse: ErrorTrackingResponse? = await failures.capture(
+            {
+                let data = try await client.data(for: PostHogAPI.errorTrackingIssues(
                     projectID: projectID,
                     dateFrom: Self.budget.dateFrom,
                     orderBy: "occurrences",
                     limit: Self.errorPulseLimit
                 ))
-            return try ErrorTrackingResponse.decode(from: data)
-        })
+                return try ErrorTrackingResponse.decode(from: data)
+            },
+            onFailure: { healthFailure = $0 }
+        )
         guard refreshContextIsCurrent(
             generation: generation, adoptedRevision: adoptedRevision
         ) else { return }
@@ -1022,15 +1106,18 @@ final class WatchModel {
 
         // 5. Activity: the kit's trimmed, budgeted feed — four columns, no
         // `properties`, the budget's window and page size. No paging.
-        let activityResponse: QueryResponse? = await failures.capture({
-            try await client.send(
-                PostHogAPI.recentEventLines(
-                    projectID: projectID,
-                    budget: Self.budget,
-                    now: now()
+        let activityResponse: QueryResponse? = await failures.capture(
+            {
+                try await client.send(
+                    PostHogAPI.recentEventLines(
+                        projectID: projectID,
+                        budget: Self.budget,
+                        now: now()
+                    )
                 )
-            )
-        })
+            },
+            onFailure: { activityFailure = $0 }
+        )
         guard refreshContextIsCurrent(
             generation: generation, adoptedRevision: adoptedRevision
         ) else { return }
@@ -1053,6 +1140,9 @@ final class WatchModel {
                 refreshFailureMessage = refreshGuidance?.message
                     ?? failures.userMessage
                     ?? "PostHog couldn't be reached."
+                flagsRefreshFailure = flagsFailure
+                healthRefreshFailure = healthFailure
+                activityRefreshFailure = activityFailure
                 if refreshFailure == .authentication {
                     // A stale metric remains useful context, but a real 401
                     // still exposes the only action that can recover.
@@ -1072,6 +1162,9 @@ final class WatchModel {
             refreshGuidance = failures.guidance
             refreshFailure = failures.failure
             refreshFailureMessage = refreshGuidance?.message ?? failures.userMessage
+            flagsRefreshFailure = flagsFailure
+            healthRefreshFailure = healthFailure
+            activityRefreshFailure = activityFailure
 
             // Metrics and flags merge independently with same-project carry.
             let carried = snapshot?.projectID == projectID

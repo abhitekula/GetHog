@@ -84,6 +84,12 @@ struct GetHogVisionApp: App {
                 VisionRootView()
                 #endif
             }
+                #if DEBUG
+                // A deterministic narrow proposal for the window regression
+                // test. It changes no shipped scene sizing and leaves ordinary
+                // DEBUG launches unconstrained when the variable is absent.
+                .frame(width: Self.debugContentWidth)
+                #endif
                 .environment(model)
                 .environment(
                     \.projectChartTimeZone,
@@ -180,4 +186,12 @@ struct GetHogVisionApp: App {
         return AppModel()
         #endif
     }
+
+    #if DEBUG
+    private static var debugContentWidth: CGFloat? {
+        ProcessInfo.processInfo.environment["GETHOG_VISION_CONTENT_WIDTH"]
+            .flatMap(Double.init)
+            .map { CGFloat($0) }
+    }
+    #endif
 }

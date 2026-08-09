@@ -2,6 +2,28 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+/// Which product tabs a compact Search index must exclude.
+///
+/// iPhone owns its four in `NavPreferences`; iPad owns them in SwiftUI's
+/// `TabViewCustomization`. Keeping the decision here prevents a narrow iPad
+/// from accidentally reading the unrelated phone preference store.
+enum CompactSearchIndexPolicy {
+    static func looseTabs(
+        isPad: Bool,
+        phoneTabs: [AppTab],
+        iPadTabBarVisibility: (AppTab) -> Visibility
+    ) -> [AppTab] {
+        guard isPad else { return phoneTabs }
+        return AppTab.primary.filter {
+            // These four are the only product tabs declared in compact iPad
+            // width. `automatic` therefore means the authored visible default;
+            // a secondary tab made visible in the regular sidebar is still not
+            // a compact tab and must remain reachable through Search.
+            iPadTabBarVisibility($0) != .hidden
+        }
+    }
+}
+
 // `TabRootView`, `PresentedDetail` and `DetailSheetView` moved to
 // `App/TabRootView.swift`: this file is iOS-only — `UIDevice`, the size class
 // and `tabBarMinimizeBehavior` are all named below — and is excluded from the
@@ -52,19 +74,20 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        switch model.phase {
-        case .loading:
-            VStack(spacing: Theme.Space.m) {
-                BrandConnectingAccent()
-                ProgressView("Connecting…")
-                    .controlSize(.large)
-            }
+        Group {
+            switch model.phase {
+            case .loading:
+                VStack(spacing: Theme.Space.m) {
+                    BrandConnectingAccent()
+                    ProgressView("Connecting…")
+                        .controlSize(.large)
+                }
 
-        case .onboarding:
-            OnboardingView()
+            case .onboarding:
+                OnboardingView()
 
-        case .ready:
-            tabs
+            case .ready:
+                tabs
                 .environment(openDetails)
                 .tabViewStyle(.sidebarAdaptable)
                 // **Measured** on iPad Air 11-inch (M4), 820 x 1180, sidebar
@@ -164,13 +187,6 @@ struct RootView: View {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { routePendingLinks() }
                 }
-                .onChange(of: model.projectID) { _, id in
-                    // The dynamic quick actions name objects in one project, so
-                    // they have to be rebuilt whenever that project changes —
-                    // otherwise a long-press offers the previous project's
-                    // dashboard and opens it against this one's data.
-                    QuickActions.refresh(projectID: id)
-                }
                 .alert(
                     linkNotice?.title ?? "",
                     isPresented: Binding(
@@ -224,6 +240,18 @@ struct RootView: View {
                 // reading "Running".
                 .environment(surveyLifecycle)
                 .environment(experimentLifecycle)
+            }
+        }
+        .onChange(of: model.projectID) { _, id in
+            // This observer must outlive the ready subtree: sign-out clears the
+            // project and replaces that subtree in one actor turn. Keeping it
+            // above the phase switch guarantees authentication-bound detail
+            // stores are invalidated even when no ready screen remains to
+            // observe the nil project.
+            openDetails.reset()
+            // The dynamic quick actions name objects in one project, so they
+            // have to be rebuilt whenever that project changes.
+            QuickActions.refresh(projectID: id)
         }
     }
 
@@ -251,6 +279,19 @@ struct RootView: View {
     /// The user's four on iPhone; the defaults on iPad, where SwiftUI's own
     /// customisation owns the arrangement instead.
     private var looseTabs: [AppTab] { isPad ? AppTab.primary : nav.barTabs }
+
+    /// The actual compact bar whose complement Search lists. On an iPad this
+    /// reads SwiftUI's system customization; on an iPhone it is the app-owned
+    /// preference already used to construct the bar.
+    private var compactSearchLooseTabs: [AppTab] {
+        CompactSearchIndexPolicy.looseTabs(
+            isPad: isPad,
+            phoneTabs: nav.barTabs,
+            iPadTabBarVisibility: { tab in
+                sidebarCustomization[tab: tab.rawValue].tabBarVisibility
+            }
+        )
+    }
 
     /// The five the bar draws, whatever the user chose. Search is always last,
     /// and can never be one of the four.
@@ -280,7 +321,7 @@ struct RootView: View {
             value: AppTab.search
         ) {
             NavigationStack(path: $searchPath) {
-                ProjectSearchView()
+                ProjectSearchView(compactLooseTabs: compactSearchLooseTabs)
                     .navigationDestination(for: AppTab.self) { tab in
                         TabRootView(tab: tab)
                             // Which destination is showing, for the sidebar to

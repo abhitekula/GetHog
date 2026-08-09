@@ -36,12 +36,37 @@ enum DashboardRange: String, CaseIterable, Identifiable {
     }
 }
 
+/// One dashboard tile paired with the exact model currently drawn for it.
+///
+/// Keeping these together prevents an opened inspector, share action, legend,
+/// or export from quietly falling back to the tile's saved result while the
+/// card is showing a range override.
+struct DashboardRenderedTile: Identifiable {
+    let tile: Tile
+    let model: InsightRenderModel
+
+    var id: Int { tile.id }
+}
+
+enum DashboardDetailContentState: Equatable {
+    case loading
+    case failed(DashboardLoadFailure)
+    case empty
+    case tiles
+}
+
+struct DashboardLoadFailure: Equatable {
+    let failure: LoadFailure
+    let refresh: Bool
+}
+
 @MainActor
 @Observable
 final class DashboardDetailStore {
     var dashboard: Dashboard?
-    var isLoading = false
-    var error: String?
+    private(set) var isLoading = true
+    var range: DashboardRange = .saved
+    var compare = false
 
     /// Results for tiles re-run over an overridden window, keyed by tile id.
     /// Absent means "show the saved result".
@@ -49,24 +74,112 @@ final class DashboardDetailStore {
     private(set) var isApplyingRange = false
     private(set) var rangeError: String?
     private(set) var rangeNotice: String?
+    private(set) var loadFailure: DashboardLoadFailure?
+    var selectedTileID: Int?
+    private var loadGeneration = 0
+    private var rangeGeneration = 0
+    private var loadedProjectID: Int?
+    private var appliedRange: DashboardRange?
+    private var appliedCompare: Bool?
+
+    var contentState: DashboardDetailContentState {
+        if let dashboard {
+            return dashboard.tiles.isEmpty ? .empty : .tiles
+        }
+        if isLoading { return .loading }
+        if let loadFailure { return .failed(loadFailure) }
+        return .loading
+    }
+
+    func presentation(for tile: Tile) -> DashboardRenderedTile {
+        DashboardRenderedTile(tile: tile, model: overrides[tile.id] ?? tile.renderModel)
+    }
+
+    var selectedPresentation: DashboardRenderedTile? {
+        guard let selectedTileID,
+              let tile = dashboard?.tiles.first(where: { $0.id == selectedTileID })
+        else { return nil }
+        return presentation(for: tile)
+    }
 
     func load(client: PostHogClient, projectID: Int, dashboardID: Int, refresh: Bool) async {
+        let projectChanged = loadedProjectID.map { $0 != projectID } ?? false
+        loadedProjectID = projectID
+        loadGeneration += 1
+        let generation = loadGeneration
+        if projectChanged {
+            // A same-numbered dashboard in another project is unrelated data.
+            // Clear before the replacement request suspends; if that request
+            // fails, the error is fatal rather than a warning above old tiles.
+            dashboard = nil
+            selectedTileID = nil
+            loadFailure = nil
+            clearOverrides()
+            appliedRange = nil
+            appliedCompare = nil
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+            }
+        }
         do {
-            dashboard = try await client.send(
+            let loaded: Dashboard = try await client.send(
                 PostHogAPI.dashboard(projectID: projectID, dashboardID: dashboardID, refresh: refresh)
             )
-            error = nil
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            // The old range calculation belongs to the old dashboard only once
+            // a replacement has actually arrived. A failed refresh keeps the
+            // existing dashboard, so it must not discard an in-flight range
+            // result that is still valid for that retained content.
+            rangeGeneration += 1
+            isApplyingRange = false
+            dashboard = loaded
+            loadFailure = nil
+            if let selectedTileID,
+               !loaded.tiles.contains(where: { $0.id == selectedTileID }) {
+                self.selectedTileID = nil
+            }
+            if range != .saved {
+                await applySelectedRange(client: client, projectID: projectID)
+            } else {
+                clearOverrides()
+            }
         } catch {
-            self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            if error is CancellationError { return }
+            loadFailure = DashboardLoadFailure(
+                failure: LoadFailure(error, loading: "dashboard"),
+                refresh: refresh
+            )
         }
     }
 
     func clearOverrides() {
+        rangeGeneration += 1
         overrides = [:]
         rangeError = nil
         rangeNotice = nil
+        isApplyingRange = false
+        if range == .saved {
+            appliedRange = .saved
+            appliedCompare = compare
+        }
+    }
+
+    func applySelectedRange(client: PostHogClient, projectID: Int) async {
+        guard loadedProjectID == nil || loadedProjectID == projectID else { return }
+        await apply(range: range, compare: compare, client: client, projectID: projectID)
+    }
+
+    /// A structural host mount starts the view's range task even when this
+    /// pooled store already owns the result for that selection. Skip that
+    /// duplicate one-query-per-tile batch; a dashboard reload still forces an
+    /// application after it replaces the tiles.
+    func applySelectedRangeIfNeeded(client: PostHogClient, projectID: Int) async {
+        guard appliedRange != range || appliedCompare != compare else { return }
+        await applySelectedRange(client: client, projectID: projectID)
     }
 
     /// Re-runs every tile over `range`.
@@ -81,13 +194,25 @@ final class DashboardDetailStore {
         client: PostHogClient,
         projectID: Int
     ) async {
+        rangeGeneration += 1
+        let generation = rangeGeneration
+
         guard let dateFrom = range.dateFrom, let tiles = dashboard?.tiles else {
-            clearOverrides()
+            overrides = [:]
+            rangeError = nil
+            rangeNotice = nil
+            isApplyingRange = false
+            appliedRange = range
+            appliedCompare = compare
             return
         }
 
         isApplyingRange = true
-        defer { isApplyingRange = false }
+        defer {
+            if generation == rangeGeneration {
+                isApplyingRange = false
+            }
+        }
 
         let eligibleTiles = tiles.filter { tile in
             guard let insight = tile.insight else { return false }
@@ -99,12 +224,14 @@ final class DashboardDetailStore {
         var failures = 0
 
         for tile in eligibleTiles {
+            guard generation == rangeGeneration, !Task.isCancelled else { return }
             guard let insight = tile.insight, let source = insight.rawSource else { continue }
             let rebuilt = InsightRerun.source(source, dateFrom: dateFrom, compare: compare)
             do {
                 let data = try await client.data(
                     for: PostHogAPI.runQuery(projectID: projectID, source: rebuilt)
                 )
+                guard generation == rangeGeneration, !Task.isCancelled else { return }
                 if let model = InsightRerun.renderModel(
                     from: data,
                     sourceKind: insight.sourceKind,
@@ -113,10 +240,13 @@ final class DashboardDetailStore {
                     results[tile.id] = model
                 }
             } catch {
+                guard generation == rangeGeneration, !Task.isCancelled else { return }
+                if error is CancellationError { return }
                 failures += 1
             }
         }
 
+        guard generation == rangeGeneration, !Task.isCancelled else { return }
         overrides = results
         // Named rather than swallowed: a tile silently showing its saved range
         // while the control claims 7 days is exactly the lie this feature exists
@@ -129,6 +259,30 @@ final class DashboardDetailStore {
         } else {
             rangeNotice = nil
         }
+        appliedRange = range
+        appliedCompare = compare
+    }
+}
+
+@MainActor
+final class DashboardDetailStorePool {
+    private struct Key: Hashable {
+        let projectID: Int?
+        let dashboardID: Int
+    }
+
+    private var stores: [Key: DashboardDetailStore] = [:]
+
+    func store(for dashboardID: Int, projectID: Int?) -> DashboardDetailStore {
+        let key = Key(projectID: projectID, dashboardID: dashboardID)
+        if let existing = stores[key] { return existing }
+        let store = DashboardDetailStore()
+        stores[key] = store
+        return store
+    }
+
+    func removeAll() {
+        stores.removeAll()
     }
 }
 
@@ -138,13 +292,18 @@ struct DashboardDetailView: View {
     /// window has nothing but an id, in which case the fetch supplies it.
     private let providedTitle: String?
 
-    init(dashboardID: Int, title: String? = nil) {
+    init(
+        dashboardID: Int,
+        title: String? = nil,
+        store: DashboardDetailStore? = nil
+    ) {
         self.dashboardID = dashboardID
         self.providedTitle = title
+        _store = State(initialValue: store ?? DashboardDetailStore())
     }
 
-    init(summary: DashboardSummary) {
-        self.init(dashboardID: summary.id, title: summary.title)
+    init(summary: DashboardSummary, store: DashboardDetailStore? = nil) {
+        self.init(dashboardID: summary.id, title: summary.title, store: store)
     }
 
     @Environment(AppModel.self) private var model
@@ -156,10 +315,7 @@ struct DashboardDetailView: View {
     // so the one site that reads this is already absent.
     @Environment(\.openWindow) private var openWindow
     #endif
-    @State private var store = DashboardDetailStore()
-    @State private var selectedTile: Tile?
-    @State private var range: DashboardRange = .saved
-    @State private var compare = false
+    @State private var store: DashboardDetailStore
 
     /// Pairs each tile with the detail it opens, so the card grows into the
     /// screen it becomes instead of the screen arriving from off-stage.
@@ -193,7 +349,11 @@ struct DashboardDetailView: View {
 
     var body: some View {
         grid
-            .insightDetail(tile: $selectedTile, isWide: sizeClass == .regular, in: tileTransition)
+            .insightDetail(
+                presentation: selectedPresentation,
+                isWide: sizeClass == .regular,
+                in: tileTransition
+            )
             .background(Theme.pageBackground)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -209,7 +369,7 @@ struct DashboardDetailView: View {
             .refreshable { await load(refresh: false) }
             // Keyed on both, so toggling compare re-runs rather than leaving the
             // grid showing figures that no longer match the control.
-            .task(id: RangeSelection(range: range, compare: compare)) {
+            .task(id: RangeSelection(range: store.range, compare: store.compare)) {
                 await applyRange()
             }
             // Keyed on the project, not bare: a window restored at cold launch
@@ -233,7 +393,7 @@ struct DashboardDetailView: View {
                 }
                 #if DEBUG
                 if let index = DebugLaunch.tileIndex, orderedTiles.indices.contains(index) {
-                    selectedTile = orderedTiles[index]
+                    store.selectedTileID = orderedTiles[index].id
                 }
                 #endif
             }
@@ -246,10 +406,12 @@ struct DashboardDetailView: View {
     /// window is chosen — comparing "each insight's own saved range" against a
     /// previous period is not a question with one answer.
     private var rangeBar: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
+        @Bindable var store = store
+
+        return VStack(alignment: .leading, spacing: Theme.Space.s) {
             HStack(spacing: Theme.Space.s) {
                 adaptivelyStyled(
-                    Picker("Time range", selection: $range) {
+                    Picker("Time range", selection: $store.range) {
                         ForEach(DashboardRange.allCases) { option in
                             Text(option.title).tag(option)
                         }
@@ -266,17 +428,17 @@ struct DashboardDetailView: View {
             }
 
             HStack(spacing: Theme.Space.m) {
-                if range != .saved {
+                if store.range != .saved {
                     #if os(tvOS)
                     // `toggleStyle(.button)` is unavailable on tvOS. The
                     // platform's own toggle is already a focusable control that
                     // reads its state aloud, which is what the button style was
                     // buying elsewhere.
-                    Toggle("Compare to previous", isOn: $compare)
+                    Toggle("Compare to previous", isOn: $store.compare)
                         .font(.caption)
                         .accessibilityLabel("Compare to the previous period")
                     #else
-                    Toggle("Compare to previous", isOn: $compare)
+                    Toggle("Compare to previous", isOn: $store.compare)
                         .toggleStyle(.button)
                         .buttonStyle(.bordered)
                         .font(.caption)
@@ -319,23 +481,36 @@ struct DashboardDetailView: View {
             rangeBar
                 .padding(.bottom, Theme.Space.xs)
 
-            if let error = store.error, store.dashboard == nil {
-                ContentUnavailableView {
-                    Label("Couldn't load this dashboard", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(error)
-                } actions: {
-                    Button("Try again") { Task { await load(refresh: false) } }
+            switch store.contentState {
+            case .loading:
+                ProgressView("Loading dashboard…")
+                    .frame(maxWidth: .infinity, minHeight: 280)
+            case let .failed(loadFailure):
+                LoadFailureState(
+                    title: "Couldn't load this dashboard",
+                    failure: loadFailure.failure
+                ) {
+                    Task { await load(refresh: loadFailure.refresh) }
                 }
-                .padding(.top, 60)
-            } else {
+                .frame(minHeight: 280)
+            case .empty:
+                nonfatalLoadFailure
+                EmptyStateView(
+                    title: "No tiles on this dashboard",
+                    systemImage: "square.grid.2x2",
+                    message: "This dashboard loaded successfully but does not contain any tiles."
+                )
+                .frame(minHeight: 280)
+            case .tiles:
+                nonfatalLoadFailure
+
                 MasonryLayout(columns: columnCount, spacing: Theme.Space.l) {
                     ForEach(orderedTiles) { tile in
+                        let presentation = store.presentation(for: tile)
                         TileCard(
-                            tile: tile,
-                            model: store.overrides[tile.id] ?? tile.renderModel,
+                            presentation: presentation,
                             webURL: tileWebURL(tile),
-                            open: { selectedTile = tile }
+                            open: { store.selectedTileID = tile.id }
                         )
                         .pointerHighlight()
                         // The source half of the zoom. Registered unconditionally,
@@ -353,14 +528,30 @@ struct DashboardDetailView: View {
                         // what that subview becomes.
                         .tileSpan(
                             TileStyle.preferredColumns(
-                                for: store.overrides[tile.id] ?? tile.renderModel
+                                for: presentation.model
                             )
                         )
                     }
                 }
                 .padding(Theme.Space.l)
-                .skeleton(store.isLoading && store.dashboard == nil)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var nonfatalLoadFailure: some View {
+        if let loadFailure = store.loadFailure, store.dashboard != nil {
+            SectionEmptyState(
+                text: loadFailure.refresh
+                    ? "Couldn't recompute this dashboard. \(loadFailure.failure.summary)"
+                    : "Couldn't refresh this dashboard. \(loadFailure.failure.summary)",
+                systemImage: "exclamationmark.triangle",
+                detail: loadFailure.failure.detail,
+                actionTitle: "Try again"
+            ) {
+                Task { await load(refresh: loadFailure.refresh) }
+            }
+            .padding(.horizontal, Theme.Space.l)
         }
     }
 
@@ -403,6 +594,13 @@ struct DashboardDetailView: View {
         (store.dashboard?.tiles ?? []).sorted { ($0.order ?? 0) < ($1.order ?? 0) }
     }
 
+    private var selectedPresentation: Binding<DashboardRenderedTile?> {
+        Binding(
+            get: { store.selectedPresentation },
+            set: { store.selectedTileID = $0?.id }
+        )
+    }
+
     /// This dashboard's page in the console. One property rather than two call
     /// sites, because the toolbar link and the Handoff activity must name the
     /// same page or the second device lands somewhere the first never was.
@@ -423,11 +621,7 @@ struct DashboardDetailView: View {
 
     private func applyRange() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        guard range != .saved else {
-            store.clearOverrides()
-            return
-        }
-        await store.apply(range: range, compare: compare, client: client, projectID: projectID)
+        await store.applySelectedRangeIfNeeded(client: client, projectID: projectID)
     }
 
     private func load(refresh: Bool) async {
@@ -439,10 +633,7 @@ struct DashboardDetailView: View {
 }
 
 struct TileCard: View {
-    let tile: Tile
-    /// The model to draw, which is the tile's own unless a time-range override
-    /// replaced it.
-    let model: InsightRenderModel
+    let presentation: DashboardRenderedTile
     var webURL: URL?
     /// What opening the tile does, on the one screen where a tile opens.
     ///
@@ -452,6 +643,9 @@ struct TileCard: View {
     /// claim the button trait; VoiceOver would offer an activation that has no
     /// effect.
     var open: (() -> Void)?
+
+    private var tile: Tile { presentation.tile }
+    private var model: InsightRenderModel { presentation.model }
 
     /// Both of these were suspects for the tap defect fixed in `card`, and both
     /// were **exonerated by measurement** rather than by reading. With the
@@ -746,14 +940,17 @@ private struct DashboardNonInsightTileCard: View {
 /// the panel a nested `NavigationStack` instead pushed its toolbar items up into
 /// the dashboard's navigation bar and displaced the dashboard's own title.
 struct InsightDetailBody: View {
-    let tile: Tile
+    let presentation: DashboardRenderedTile
     var webURL: URL?
+
+    private var tile: Tile { presentation.tile }
+    private var model: InsightRenderModel { presentation.model }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 InsightChartView(
-                    model: tile.renderModel,
+                    model: model,
                     compact: false,
                     webURL: webURL,
                     title: tile.title,
@@ -763,7 +960,7 @@ struct InsightDetailBody: View {
                     showsScrubTip: true
                 )
 
-                if case .timeSeries(let series, _) = tile.renderModel {
+                if case .timeSeries(let series, _) = model {
                     SeriesLegend(series: series)
                 }
 
@@ -794,14 +991,17 @@ struct InsightDetailBody: View {
 }
 
 struct InsightDetailView: View {
-    let tile: Tile
+    let presentation: DashboardRenderedTile
     var webURL: URL?
     var onClose: (() -> Void)?
+
+    private var tile: Tile { presentation.tile }
+    private var model: InsightRenderModel { presentation.model }
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        InsightDetailBody(tile: tile, webURL: webURL)
+        InsightDetailBody(presentation: presentation, webURL: webURL)
         .navigationTitle(tile.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -817,7 +1017,7 @@ struct InsightDetailView: View {
             // one more stop on the focus walk for no reward.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    InsightShareMenuItems(title: tile.title, model: tile.renderModel)
+                    InsightShareMenuItems(title: tile.title, model: model)
                     if let webURL {
                         Divider()
                         ShareLink(item: webURL) {

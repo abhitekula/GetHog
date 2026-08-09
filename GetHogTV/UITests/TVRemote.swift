@@ -24,6 +24,28 @@ enum TVRemote {
             return element.hasFocus
         }
     }
+
+    /// Moves focus to any currently mounted element in a query. Re-resolving
+    /// the focused match after every press keeps lazy containers free to
+    /// recycle rows without leaving the test pinned to a stale element.
+    static func focusAny(
+        in query: XCUIElementQuery,
+        by direction: XCUIRemote.Button,
+        limit: Int = 8
+    ) -> Bool {
+        var remaining = limit
+        return DemoLaunch.wait(timeout: Double(limit) + 1) {
+            if focusedElement(in: query).exists { return true }
+            guard remaining > 0 else { return false }
+            XCUIRemote.shared.press(direction)
+            remaining -= 1
+            return focusedElement(in: query).exists
+        }
+    }
+
+    static func focusedElement(in query: XCUIElementQuery) -> XCUIElement {
+        query.matching(NSPredicate(format: "hasFocus == true")).firstMatch
+    }
 }
 
 @MainActor

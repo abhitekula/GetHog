@@ -211,6 +211,25 @@ struct SessionsFilterScreenTests {
         #expect(!store.isLoading)
     }
 
+    @Test("switching projects clears old recordings before the replacement arrives")
+    func projectSwitchClearsRowsSynchronously() async {
+        let store = SessionsStore()
+        await store.load(client: client(RecordingsTransport(total: 10)), projectID: 1)
+        #expect(store.recordings.count == 10)
+
+        let gated = RecordingsTransport(total: 5, gated: true)
+        let replacement = Task {
+            await store.load(client: client(gated), projectID: 2)
+        }
+        while await gated.urls().isEmpty { await Task.yield() }
+
+        #expect(store.recordings.isEmpty)
+        #expect(!store.hasMore)
+        await gated.release()
+        await replacement.value
+        #expect(store.recordings.count == 5)
+    }
+
     @Test("loading more never runs against a filter that has since changed")
     func loadMoreIsGated() async throws {
         let transport = RecordingsTransport(total: 200)
@@ -241,6 +260,29 @@ struct SessionsFilterScreenTests {
         #expect(store.recordings.isEmpty)
         #expect(store.error != nil)
         #expect(!store.hasMore)
+    }
+
+    @Test("a failed next page preserves rows and remains retryable inline")
+    func nextPageFailurePreservesRowsAndRetry() async {
+        let transport = PagingRecoveryTransport()
+        let store = SessionsStore()
+
+        await store.load(client: client(transport), projectID: 1)
+        let firstPageIDs = store.recordings.map(\.id)
+        #expect(firstPageIDs.count == 50)
+        #expect(store.hasMore)
+
+        await store.loadMore(client: client(transport), projectID: 1)
+
+        #expect(store.recordings.map(\.id) == firstPageIDs)
+        #expect(store.hasMore)
+        #expect(store.pagingError != nil)
+
+        await store.loadMore(client: client(transport), projectID: 1)
+
+        #expect(store.recordings.count == 100)
+        #expect(Set(store.recordings.map(\.id)).count == 100)
+        #expect(store.pagingError == nil)
     }
 
     // MARK: - The request signature that drives the debounce
@@ -310,6 +352,43 @@ struct SessionsFilterScreenTests {
 private struct FailingTransport: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         throw PostHogError.transport("The network connection was lost.")
+    }
+}
+
+/// First page succeeds, the first attempt at page two fails, and retrying the
+/// same offset succeeds. Every identifier and response is synthetic.
+private actor PagingRecoveryTransport: HTTPTransport {
+    private var requestCount = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 2 {
+            throw PostHogError.transport("Synthetic page-two interruption")
+        }
+
+        let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+        let offset = components?.queryItems?
+            .first(where: { $0.name == "offset" })?
+            .value
+            .flatMap(Int.init) ?? 0
+        let rows = (offset + 1...offset + 50).map { index in
+            """
+            {"id":"synthetic-session-\(index)","distinct_id":"synthetic-person-\(index)",
+             "recording_duration":120,"active_seconds":60,
+             "start_time":"2026-01-15T10:00:00Z","click_count":1,
+             "keypress_count":0,"console_log_count":0,"console_warn_count":0,
+             "console_error_count":0,"snapshot_source":"web",
+             "ongoing":false,"viewed":false}
+            """
+        }
+        let body = """
+        {"results":[\(rows.joined(separator: ","))],
+         "has_next":\(offset == 0 ? "true" : "false"),"version":4}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
     }
 }
 

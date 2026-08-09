@@ -133,6 +133,10 @@ final class MacMenuBarController {
 
     private(set) var snapshot: SharedSnapshot?
     private(set) var watches: [MetricWatch] = []
+    /// The live app session allowed to adopt a snapshot. The ticker may keep
+    /// firing after sign-out, so the guard belongs here rather than only in a
+    /// view callback.
+    private(set) var authSessionID: UUID?
 
     /// The user's choice; `nil` lets the election in `MenuBarHeadline` decide.
     var headlineMetricID: String? {
@@ -154,9 +158,14 @@ final class MacMenuBarController {
 
     @ObservationIgnored private var ticker: Task<Void, Never>?
 
-    init(store: SharedSnapshotStore = .shared, defaults: UserDefaults = .standard) {
+    init(
+        store: SharedSnapshotStore = .shared,
+        defaults: UserDefaults = .standard,
+        authSessionID: UUID? = nil
+    ) {
         self.store = store
         self.defaults = defaults
+        self.authSessionID = authSessionID
         headlineMetricID = defaults.string(forKey: MacMenuBar.headlineMetricKey)
         reload()
     }
@@ -166,8 +175,21 @@ final class MacMenuBarController {
     }
 
     func reload() {
-        snapshot = store.loadOrNil()
+        let candidate = store.loadOrNil()
+        if let authSessionID, candidate?.authSessionID == authSessionID {
+            snapshot = candidate
+        } else {
+            snapshot = nil
+        }
         watches = store.metricWatches()
+    }
+
+    /// Disconnecting clears the in-memory copy immediately. Reconnecting to a
+    /// credential for the same host/project still gets a new epoch, so the old
+    /// file remains read-only until this session publishes its own snapshot.
+    func adoptAuthSession(_ authSessionID: UUID?) {
+        self.authSessionID = authSessionID
+        reload()
     }
 
     /// How often the label catches up with a write it did not make — a
@@ -197,6 +219,7 @@ final class MacMenuBarController {
 /// sparkline and everything else are one click away in the popover.
 struct MacMenuBarLabel: View {
     let controller: MacMenuBarController
+    let authSessionID: UUID?
 
     var body: some View {
         Group {
@@ -208,7 +231,15 @@ struct MacMenuBarLabel: View {
             }
         }
         .accessibilityLabel(MenuBarHeadline.accessibilityLabel(for: controller.headline))
-        .onAppear { controller.startTicking() }
+        .onAppear {
+            controller.adoptAuthSession(authSessionID)
+            controller.startTicking()
+        }
+        .onChange(of: authSessionID) { _, authSessionID in
+            // The status item is app-lifetime even when every ordinary window
+            // is closed, so it is the reliable owner of sign-out clearing.
+            controller.adoptAuthSession(authSessionID)
+        }
     }
 }
 
@@ -232,6 +263,7 @@ final class MacMenuBarFlagToggler {
 
     struct Request: Equatable {
         let flag: SharedSnapshot.Flag
+        let scope: FlagWriteScope
         var desiredActive: Bool { !flag.active }
     }
 
@@ -254,14 +286,33 @@ final class MacMenuBarFlagToggler {
     /// Only an opted-in flag may even reach the confirmation dialog — the same
     /// gate `SharedSnapshot.quickToggleFlags` applies, restated here so a caller
     /// handing in the wrong flag is refused rather than trusted.
-    func request(_ flag: SharedSnapshot.Flag) {
-        guard flag.quickToggleAllowed, inFlightFlagID == nil else { return }
+    func request(
+        _ flag: SharedSnapshot.Flag,
+        scope: FlagWriteScope,
+        currentScope: FlagWriteScope?
+    ) {
+        guard flag.quickToggleAllowed,
+              scope.projectRegion != nil,
+              scope == currentScope,
+              inFlightFlagID == nil else { return }
         notice = nil
-        pending = Request(flag: flag)
+        pending = Request(flag: flag, scope: scope)
     }
 
     func cancel() {
         pending = nil
+    }
+
+    /// A confirmation belongs to both the snapshot row that opened it and the
+    /// live session that would service it. Either side changing dismisses it.
+    func dismissStaleRequest(
+        snapshotScope: FlagWriteScope?,
+        currentScope: FlagWriteScope?
+    ) {
+        guard let pending else { return }
+        if pending.scope != snapshotScope || pending.scope != currentScope {
+            self.pending = nil
+        }
     }
 
     /// Runs the gate, then the write.
@@ -280,15 +331,29 @@ final class MacMenuBarFlagToggler {
     /// outcome without device-owner authentication; production passes neither.
     func confirm(
         _ request: Request,
+        currentScope: () -> FlagWriteScope?,
         isGateEnabled: Bool = BiometricGate.isEnabled,
         gate: () async -> BiometricGate.Outcome = BiometricGate.evaluate,
-        write: (Int, Bool) async -> Void
+        write: (Int, Bool, FlagWriteScope) async -> FlagWriteOutcome
     ) async {
         guard inFlightFlagID == nil else { return }
         pending = nil
 
+        guard requestIsCurrent(request, currentScope: currentScope) else {
+            reportStale(request)
+            return
+        }
+
         if isGateEnabled {
-            switch await gate() {
+            let outcome = await gate()
+            // Authentication is the suspension during which a project switch
+            // can turn a same-numeric-id request into a different flag. Check
+            // again before interpreting the result or entering the write path.
+            guard requestIsCurrent(request, currentScope: currentScope) else {
+                reportStale(request)
+                return
+            }
+            switch outcome {
             case .passed:
                 break
             case .unavailable(let detail):
@@ -307,8 +372,31 @@ final class MacMenuBarFlagToggler {
         }
 
         inFlightFlagID = request.flag.id
-        await write(request.flag.id, request.desiredActive)
-        inFlightFlagID = nil
+        defer { inFlightFlagID = nil }
+        switch await write(request.flag.id, request.desiredActive, request.scope) {
+        case .changed:
+            break
+        case .failed(let detail):
+            notice = Notice(
+                kind: .failure,
+                text: "PostHog left \(request.flag.key) unchanged. \(detail)"
+            )
+        }
+    }
+
+    private func requestIsCurrent(
+        _ request: Request,
+        currentScope: () -> FlagWriteScope?
+    ) -> Bool {
+        guard request.scope.projectRegion != nil else { return false }
+        return currentScope() == request.scope
+    }
+
+    private func reportStale(_ request: Request) {
+        notice = Notice(
+            kind: .failure,
+            text: "The project changed, so \(request.flag.key) was left unchanged."
+        )
     }
 }
 
@@ -352,7 +440,19 @@ struct MacMenuBarPopover: View {
         }
         .padding(Theme.Space.m)
         .frame(width: 320)
-        .task { controller.reload() }
+        .task { controller.adoptAuthSession(model.authSessionID) }
+        .onChange(of: controller.snapshot?.flagWriteScope) { _, snapshotScope in
+            toggler.dismissStaleRequest(
+                snapshotScope: snapshotScope,
+                currentScope: model.flagWriteScope
+            )
+        }
+        .onChange(of: model.flagWriteScope) { _, currentScope in
+            toggler.dismissStaleRequest(
+                snapshotScope: controller.snapshot?.flagWriteScope,
+                currentScope: currentScope
+            )
+        }
         // The `presenting:` form, as `MacRootView`'s link alert uses: SwiftUI
         // holds the presented value for the dialog's whole life and hands it to
         // the builders, so the button's action owns a `Request` outright rather
@@ -372,8 +472,11 @@ struct MacMenuBarPopover: View {
                 role: .destructive
             ) {
                 Task {
-                    await toggler.confirm(request) { id, active in
-                        await model.setFlag(id: id, active: active)
+                    await toggler.confirm(
+                        request,
+                        currentScope: { model.flagWriteScope }
+                    ) { id, active, scope in
+                        await model.setFlag(id: id, active: active, expectedScope: scope)
                     }
                     controller.reload()
                 }
@@ -468,14 +571,18 @@ struct MacMenuBarPopover: View {
     }
 
     private func flagSection(_ snapshot: SharedSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        let scope = snapshot.flagWriteScope
+        return VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Text("Quick toggles")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(snapshot.quickToggleFlags.prefix(Self.maximumQuickToggles)) { flag in
                 Toggle(isOn: Binding(
                     get: { flag.active },
-                    set: { _ in toggler.request(flag) }
+                    set: { _ in
+                        guard let scope else { return }
+                        toggler.request(flag, scope: scope, currentScope: model.flagWriteScope)
+                    }
                 )) {
                     Text(flag.key)
                         .font(.callout.monospaced())
@@ -483,7 +590,12 @@ struct MacMenuBarPopover: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .disabled(toggler.inFlightFlagID != nil || model.phase != .ready)
+                .disabled(
+                    toggler.inFlightFlagID != nil
+                        || model.phase != .ready
+                        || scope == nil
+                        || model.flagWriteScope != scope
+                )
                 .accessibilityLabel(
                     "Feature flag \(flag.key), \(flag.active ? "enabled" : "disabled")"
                 )
@@ -615,6 +727,17 @@ struct MacMenuBarPopover: View {
         try? controller.store.enqueue(PendingOpen(metricID: metricID))
         NotificationCenter.default.post(name: MacMenuBar.pendingOpenNotification, object: nil)
         MacMenuBar.openMainWindow(using: openWindow)
+    }
+}
+
+private extension SharedSnapshot {
+    var flagWriteScope: FlagWriteScope? {
+        guard let projectRegion, let authSessionID else { return nil }
+        return FlagWriteScope(
+            projectID: projectID,
+            projectRegion: projectRegion,
+            authSessionID: authSessionID
+        )
     }
 }
 

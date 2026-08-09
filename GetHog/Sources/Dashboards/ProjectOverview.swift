@@ -130,7 +130,12 @@ struct ProjectOverview: View {
                     // one tap away.
                     MasonryLayout(columns: 2, spacing: Theme.Space.l) {
                         ForEach(Array(orderedTiles(pinnedDetail).prefix(4))) { tile in
-                            TileCard(tile: tile, model: tile.renderModel)
+                            TileCard(
+                                presentation: DashboardRenderedTile(
+                                    tile: tile,
+                                    model: tile.renderModel
+                                )
+                            )
                                 .allowsHitTesting(false)
                         }
                     }

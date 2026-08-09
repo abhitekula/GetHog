@@ -256,7 +256,7 @@ enum SyntheticFixtureCatalog {
         "experiment_result_shipped.json", "group_event_breakdown.json",
         "file_system.json", "group_people.json", "group_session_recordings.json", "groups.json",
         "heatmap_screenshots_saved.json", "marketing_analytics.json",
-        "dashboard_hogql_visualizations.json",
+        "dashboard_empty_tiles.json", "dashboard_hogql_visualizations.json",
         "insights_list.json", "llm_traces.json", "notebook_detail.json",
         "notebook_detail_plain.json", "notebooks_list.json", "organization_projects.json",
         "organization_projects_second.json", "property_carrier_events.json",

@@ -27,6 +27,11 @@ struct WatchActivityView: View {
                     }
                     .accessibilityElement(children: .combine)
                 }
+                if let failure = model.activityRefreshFailure {
+                    WatchSectionFailureView(failure: failure) {
+                        Task { await model.retry() }
+                    }
+                }
                 footer
             }
             .navigationTitle("Activity")

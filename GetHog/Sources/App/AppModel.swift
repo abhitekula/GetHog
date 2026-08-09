@@ -5,6 +5,23 @@ import GetHogKit
 import WidgetKit
 #endif
 
+/// The authoritative result of a feature-flag PATCH. Callers that have a UI
+/// consume the failure; out-of-process intent hand-off may deliberately ignore
+/// it because it has nowhere to present one.
+enum FlagWriteOutcome: Equatable, Sendable {
+    case changed
+    case failed(String)
+}
+
+/// The complete namespace in which a numeric feature-flag id is meaningful.
+/// Project ids can repeat across US Cloud, EU Cloud, and self-hosted instances,
+/// so region is part of the write authority rather than display metadata.
+struct FlagWriteScope: Equatable, Sendable {
+    let projectID: Int
+    let projectRegion: PostHogRegion?
+    let authSessionID: UUID
+}
+
 /// Session-wide state: who we are, which project we're looking at, and what the
 /// current credential is actually allowed to do.
 @MainActor
@@ -17,11 +34,24 @@ final class AppModel {
         case ready
     }
 
+    /// What the saved credential needs after bootstrap failed. A transient
+    /// outage keeps the key and can retry it; a rejected key is removed and
+    /// needs replacement.
+    enum StoredCredentialRecovery: Equatable {
+        case retryable
+        case replaceCredential(PostHogRegion)
+    }
+
     private(set) var phase: Phase = .loading
+    /// Changes after every successful authentication, including reconnecting
+    /// to the same host and numeric project. It is intentionally non-secret;
+    /// its only purpose is to make old snapshot write authority expire.
+    private(set) var authSessionID: UUID?
     private(set) var client: PostHogClient?
     private(set) var me: MeResponse?
     private(set) var capabilities: CapabilityReport?
     private(set) var connectionError: String?
+    private(set) var storedCredentialRecovery: StoredCredentialRecovery?
 
     var projects: [Project] = []
     var selectedProject: Project? {
@@ -95,6 +125,18 @@ final class AppModel {
     private let snapshotStore: SharedSnapshotStore
     private var activeRegion: PostHogRegion?
 
+    /// The live session scope a snapshot-backed write must still match. A nil
+    /// region cannot authorize a write; legacy snapshots deliberately carry
+    /// nil and are therefore treated as untrusted by equality with this value.
+    var flagWriteScope: FlagWriteScope? {
+        guard let project = selectedProject, let activeRegion, let authSessionID else { return nil }
+        return FlagWriteScope(
+            projectID: project.id,
+            projectRegion: activeRegion,
+            authSessionID: authSessionID
+        )
+    }
+
     /// The transport the model was built with, kept so `signOut()` can restore
     /// it after a runtime demo session swapped it out.
     private let baseTransport: any HTTPTransport
@@ -126,6 +168,9 @@ final class AppModel {
     // MARK: - Bootstrap
 
     func bootstrap() async {
+        phase = .loading
+        connectionError = nil
+        storedCredentialRecovery = nil
         guard let credential = try? store.load() else {
             clearPublishedProjectData()
             phase = .onboarding
@@ -134,13 +179,30 @@ final class AppModel {
         do {
             try await activate(credential: credential)
         } catch {
-            // A stored key that no longer works should land the user on
-            // onboarding with an explanation, not an empty dashboard.
-            connectionError = (error as? PostHogError)?.localizedDescription
-                ?? error.localizedDescription
+            let postHogError = error as? PostHogError
+            connectionError = postHogError?.localizedDescription ?? error.localizedDescription
+            if postHogError == .unauthorized {
+                storedCredentialRecovery = .replaceCredential(credential.region)
+                // A 401 must not trap every subsequent launch in the same failed
+                // bootstrap. The rejected secret does not remain in Keychain.
+                try? store.clear()
+            } else {
+                // Only PostHog's explicit rejection implicates the credential.
+                // Network/server faults, rate limits, and even a response this
+                // build cannot decode all keep it so Retry can retry rather than
+                // making somebody paste the same key again.
+                storedCredentialRecovery = .retryable
+            }
             clearPublishedProjectData()
             phase = .onboarding
         }
+    }
+
+    /// Retries the credential still in the store after a transient bootstrap
+    /// failure. A rejected credential was deleted and therefore falls through
+    /// to ordinary onboarding rather than looping.
+    func retryStoredCredential() async {
+        await bootstrap()
     }
 
     /// Validates a credential and, on success, becomes the active session.
@@ -178,6 +240,7 @@ final class AppModel {
 
         let me: MeResponse = try await client.send(PostHogAPI.me())
 
+        self.authSessionID = UUID()
         self.client = client
         self.activeRegion = credential.region
         self.me = me
@@ -199,6 +262,7 @@ final class AppModel {
             ?? projects.first
 
         self.connectionError = nil
+        self.storedCredentialRecovery = nil
         self.phase = .ready
 
         // Restoring the organization comes *after* `.ready`, deliberately. It is
@@ -473,6 +537,7 @@ final class AppModel {
             ingestion: ingestion,
             quota: quota,
             projectRegion: projectRegion,
+            authSessionID: authSessionID,
             capturedAt: now
         )
         try? snapshotStore.write(snapshot)
@@ -609,16 +674,43 @@ final class AppModel {
         if let pending = snapshotStore.pendingFlagWrite() {
             snapshotStore.clearPendingFlagWrite()
             guard FlagQuickToggle.isAllowed(flagID: pending.flagID) else { return }
-            await setFlag(id: pending.flagID, active: pending.desiredActive)
+            _ = await setFlag(id: pending.flagID, active: pending.desiredActive)
         }
     }
 
-    func setFlag(id: Int, active: Bool) async {
-        guard let client, let project = selectedProject else { return }
-        _ = try? await client.data(
-            for: PostHogAPI.setFlagActive(projectID: project.id, flagID: id, active: active)
-        )
+    @discardableResult
+    func setFlag(id: Int, active: Bool) async -> FlagWriteOutcome {
+        guard let scope = flagWriteScope else {
+            return .failed("GetHog isn't connected to a project.")
+        }
+        return await setFlag(id: id, active: active, expectedScope: scope)
+    }
+
+    /// Applies a snapshot-originated write only while that snapshot still names
+    /// the active project and host. This check runs when the async call enters
+    /// the main actor — after any caller-side biometric suspension — so a stale
+    /// same-numeric-id flag can never be substituted into the current project.
+    @discardableResult
+    func setFlag(
+        id: Int,
+        active: Bool,
+        expectedScope: FlagWriteScope
+    ) async -> FlagWriteOutcome {
+        guard expectedScope.projectRegion != nil, flagWriteScope == expectedScope else {
+            return .failed("The project changed before the flag could be updated.")
+        }
+        guard let client, let project = selectedProject else {
+            return .failed("GetHog isn't connected to a project.")
+        }
+        do {
+            _ = try await client.data(
+                for: PostHogAPI.setFlagActive(projectID: project.id, flagID: id, active: active)
+            )
+        } catch {
+            return .failed(error.localizedDescription)
+        }
         await publishWidgetSnapshot()
+        return .changed
     }
 
     func signOut() {
@@ -643,8 +735,11 @@ final class AppModel {
         Task { await cache.clear() }
         client = nil
         activeRegion = nil
+        authSessionID = nil
         me = nil
         capabilities = nil
+        connectionError = nil
+        storedCredentialRecovery = nil
         projects = []
         selectedProject = nil
         // Organization names name a customer's business exactly as project names

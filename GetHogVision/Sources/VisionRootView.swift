@@ -295,7 +295,7 @@ struct VisionRootView: View {
     }
 
     private func sectionContainer(for section: AppTabSection) -> some View {
-        HStack(spacing: 0) {
+        NavigationSplitView {
             NavigationStack {
                 List(selection: tabSelection(in: section)) {
                     ForEach(section.tabs, id: \.self) { tab in
@@ -303,12 +303,14 @@ struct VisionRootView: View {
                             .tag(tab)
                     }
                 }
+                .accessibilityIdentifier("gethog.vision.section-sidebar")
                 .navigationTitle(section.title)
             }
-            .frame(width: 280)
-
-            Divider()
-
+            // A fixed 280pt column consumed almost half of a narrow spatial
+            // window and left the product screen squeezed beside it. Let the
+            // native split negotiate, resize, or collapse this column instead.
+            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 280)
+        } detail: {
             container(
                 for: Self.resolvedTab(
                     forDestinationID: "section.\(section.title)",

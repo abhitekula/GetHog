@@ -1,5 +1,6 @@
 import Foundation
 import GetHogKit
+import SwiftUI
 import Testing
 
 @testable import GetHog
@@ -184,8 +185,8 @@ struct ProjectSearchTests {
         // Insight is deliberately not in this list any more: it routes into the
         // app now. `insightsRouteIntoTheApp` below is the assertion that
         // replaced its membership here.
-        for type in [FileSystemItemType.cohort, .sessionRecordingPlaylist,
-                     .hogFunction(subtype: "transformation"), .unknown("notebook")] {
+        for type in [FileSystemItemType.hogFunction(subtype: "transformation"),
+                     .unknown("notebook")] {
             let entry = try #require(index.first { $0.type == type }, "no \(type.title) row")
             let route = ProjectSearchIndex.route(for: entry)
             guard case .web(let path) = route else {
@@ -296,7 +297,35 @@ struct ProjectSearchTests {
         // Flipped when the insight library shipped: this group used to be the
         // largest one on the screen wearing a "Web" pill.
         #expect(try #require(groups.first { $0.type == .insight }).routesToWeb == false)
-        #expect(try #require(groups.first { $0.type == .cohort }).routesToWeb)
+        #expect(try #require(groups.first { $0.type == .cohort }).routesToWeb == false)
+        #expect(
+            try #require(groups.first { $0.type == .sessionRecordingPlaylist }).routesToWeb
+                == false
+        )
+    }
+
+    @Test("routes cohorts and replay playlists into their native detail screens")
+    func cohortsAndPlaylistsRouteNatively() async throws {
+        let index = try await demoIndex()
+        let cohort = try #require(index.first { $0.type == .cohort })
+        let playlist = try #require(index.first { $0.type == .sessionRecordingPlaylist })
+
+        #expect(ProjectSearchIndex.route(for: cohort) == .cohort(id: 730_004))
+        #expect(
+            ProjectSearchIndex.route(for: playlist)
+                == .sessionRecordingPlaylist(shortID: "example-orbit-overview")
+        )
+        #expect(
+            ProjectSearchIndex.route(for: cohort).push(named: cohort.name)
+                == .cohort(id: 730_004, name: cohort.name)
+        )
+        #expect(
+            ProjectSearchIndex.route(for: playlist).push(named: playlist.name)
+                == .sessionRecordingPlaylist(
+                    shortID: "example-orbit-overview",
+                    name: playlist.name
+                )
+        )
     }
 
     /// Every group that leaves the app has to be able to say so in the user's
@@ -370,6 +399,75 @@ struct ProjectSearchTests {
     }
 }
 
+private actor OutOfOrderProjectIndexTransport: HTTPTransport {
+    private var firstStarted = false
+    private var releaseFirst: CheckedContinuation<Void, Never>?
+
+    func waitForFirstRequest() async {
+        while !firstStarted { await Task.yield() }
+    }
+
+    func releaseFirstRequest() {
+        releaseFirst?.resume()
+        releaseFirst = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let projectID = request.url?.pathComponents
+            .drop(while: { $0 != "projects" })
+            .dropFirst()
+            .first
+            .flatMap(Int.init) ?? 0
+
+        if projectID == 1 {
+            firstStarted = true
+            await withCheckedContinuation { continuation in
+                releaseFirst = continuation
+            }
+        }
+
+        let body = """
+        {"count":1,"next":null,"previous":null,"results":[
+          {"id":"synthetic-index-\(projectID)",
+           "path":"Synthetic/Dashboards/Project \(projectID) dashboard",
+           "depth":3,"type":"dashboard","ref":"\(projectID)",
+           "href":"/dashboard/\(projectID)","shortcut":false,
+           "last_viewed_at":null,"user_access_level":"viewer"}
+        ]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+@Suite("Project-search project recovery")
+@MainActor
+struct ProjectSearchStoreRecoveryTests {
+    private func client(_ transport: some HTTPTransport) -> PostHogClient {
+        PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+    }
+
+    @Test("a late old-project index response cannot replace the new project")
+    func lateProjectResponseIsDiscarded() async {
+        let transport = OutOfOrderProjectIndexTransport()
+        let store = ProjectSearchStore()
+        let first = Task { await store.load(client: client(transport), projectID: 1) }
+        await transport.waitForFirstRequest()
+
+        await store.load(client: client(transport), projectID: 2)
+        await transport.releaseFirstRequest()
+        await first.value
+
+        #expect(store.entries.map(\.name) == ["Project 2 dashboard"])
+        #expect(store.total == 1)
+    }
+}
+
 /// Where search lives, and whether everything else is still reachable.
 ///
 /// Written after the entry point failed on device. Search was declared as a
@@ -397,6 +495,52 @@ struct AppTabStructureTests {
     func compactBarHoldsFive() {
         #expect(prefs().alwaysVisible.count == 5)
         #expect(prefs().alwaysVisible.contains(.search))
+    }
+
+    @Test("compact iPad indexes the complement of its system-customized tab bar")
+    func compactIPadUsesSystemTabCustomization() {
+        let phoneTabs: [AppTab] = [.logs, .errorTracking, .inbox, .health]
+        let hiddenPrimary = AppTab.events
+        let regularWidthSecondary = AppTab.people
+
+        let loose = CompactSearchIndexPolicy.looseTabs(
+            isPad: true,
+            phoneTabs: phoneTabs,
+            iPadTabBarVisibility: { tab in
+                if tab == hiddenPrimary { return .hidden }
+                if tab == regularWidthSecondary { return .visible }
+                return .automatic
+            }
+        )
+        let indexed = AppTab.groupedScreens(excluding: loose).flatMap(\.tabs) + AppTab.utility
+
+        // Only the four authored primary tabs are declared as compact iPad
+        // product tabs. Automatic means their authored visibility; hiding one
+        // restores it to Search. A secondary made visible in the regular-width
+        // sidebar is not declared in the compact bar and must remain indexed.
+        #expect(loose == AppTab.primary.filter { $0 != hiddenPrimary })
+        #expect(indexed.contains(.people))
+        #expect(indexed.contains(.events))
+        #expect(indexed.contains(.logs))
+        #expect(!indexed.contains(.dashboards))
+
+        // With no stored system decision, the same policy must retain the
+        // authored iPad defaults rather than interpreting `.automatic` as all
+        // products visible and emptying the index.
+        #expect(
+            CompactSearchIndexPolicy.looseTabs(
+                isPad: true,
+                phoneTabs: phoneTabs,
+                iPadTabBarVisibility: { _ in .automatic }
+            ) == AppTab.primary
+        )
+        #expect(
+            CompactSearchIndexPolicy.looseTabs(
+                isPad: false,
+                phoneTabs: phoneTabs,
+                iPadTabBarVisibility: { _ in .visible }
+            ) == phoneTabs
+        )
     }
 
     /// Every destination is reachable: it either has a tab of its own at both

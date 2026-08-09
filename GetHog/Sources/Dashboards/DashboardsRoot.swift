@@ -9,18 +9,32 @@ final class DashboardsStore {
     var isLoading = false
     var error: String?
     var loadedAt: Date?
+    private var loadedProjectID: Int?
+    private var generation = 0
 
     func load(client: PostHogClient, projectID: Int) async {
+        generation += 1
+        let token = generation
+        if loadedProjectID != projectID {
+            loadedProjectID = projectID
+            dashboards = []
+            error = nil
+            loadedAt = nil
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if token == generation, loadedProjectID == projectID { isLoading = false }
+        }
         do {
             let page: Page<DashboardSummary> = try await client.send(
                 PostHogAPI.dashboards(projectID: projectID)
             )
+            guard token == generation, loadedProjectID == projectID else { return }
             dashboards = page.results.filter { !$0.title.isEmpty }
             loadedAt = Date()
             error = nil
         } catch {
+            guard token == generation, loadedProjectID == projectID else { return }
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }
@@ -70,7 +84,14 @@ struct DashboardsRoot: View {
                 listChrome
                     .navigationDestination(item: selectedID) { id in
                         if let summary = store.dashboards.first(where: { $0.id == id }) {
-                            DashboardDetailView(summary: summary).id(id)
+                            DashboardDetailView(
+                                summary: summary,
+                                store: openDetails.dashboardStores.store(
+                                    for: id,
+                                    projectID: model.projectID
+                                )
+                            )
+                            .id("project-\(model.projectID ?? -1)-dashboard-\(id)")
                         }
                     }
             } else {
@@ -105,8 +126,14 @@ struct DashboardsRoot: View {
                 // `.id` rebuilds the screen per dashboard, which also clears the
                 // previously selected tile rather than leaving one dashboard's
                 // insight open beside another dashboard's grid.
-                DashboardDetailView(summary: selection)
-                    .id(selection.id)
+                DashboardDetailView(
+                    summary: selection,
+                    store: openDetails.dashboardStores.store(
+                        for: selection.id,
+                        projectID: model.projectID
+                    )
+                )
+                    .id("project-\(model.projectID ?? -1)-dashboard-\(selection.id)")
             } else if store.dashboards.isEmpty {
                 EmptyStateView(
                     title: "No dashboards",

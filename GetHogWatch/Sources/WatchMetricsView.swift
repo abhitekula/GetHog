@@ -2,6 +2,30 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+/// One endpoint's non-destructive recovery, shared by the three peer pages.
+/// The page keeps any carried rows visible and adds this explanation beside
+/// them; only retryable failures offer another five-request attempt.
+struct WatchSectionFailureView: View {
+    let failure: WatchSectionFailure
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Label(failure.message, systemImage: "exclamationmark.triangle")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.accentWarm)
+            if failure.canRetry {
+                Button {
+                    retry()
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+}
+
 /// The phases that must expose the on-watch credential form.
 ///
 /// Kept as a pure mapping so a rejected nonblank key cannot regress into a

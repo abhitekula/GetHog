@@ -46,6 +46,12 @@ final class OpenDetails {
 
     private var byTab: [Slot: AnyHashable] = [:]
 
+    /// Dashboard range and inspector state crosses the same double-hosting
+    /// boundary as the selected dashboard id. Keeping the sessions in this
+    /// root-owned box lets both structural hosts resolve the same store after a
+    /// resize instead of rebuilding Saved/no-inspector defaults.
+    let dashboardStores = DashboardDetailStorePool()
+
     subscript(tab: AppTab) -> AnyHashable? {
         get { byTab[Slot(tab: tab, level: 0)] }
         set { byTab[Slot(tab: tab, level: 0)] = newValue }
@@ -56,5 +62,13 @@ final class OpenDetails {
     subscript(tab: AppTab, level level: Int) -> AnyHashable? {
         get { byTab[Slot(tab: tab, level: level)] }
         set { byTab[Slot(tab: tab, level: level)] = newValue }
+    }
+
+    /// Ends the ownership of every project-bound selection and detail session.
+    /// Called synchronously when the selected project becomes a different
+    /// security scope, including the `project -> nil` leg of sign-out.
+    func reset() {
+        byTab.removeAll()
+        dashboardStores.removeAll()
     }
 }

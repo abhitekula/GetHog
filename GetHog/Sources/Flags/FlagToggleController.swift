@@ -135,6 +135,11 @@ final class FlagToggleController {
     private(set) var failureCount = 0
     private(set) var filedCount = 0
 
+    /// Invalidates suspended work when the selected project changes. Flag ids
+    /// are only unique inside one project, so an old task must not even clear
+    /// the in-flight marker of a new-project write that happens to reuse one.
+    @ObservationIgnored private var projectGeneration: UInt64 = 0
+
     var requiredWriteScope: String { Capability.flags.writeScope ?? "feature_flag:write" }
 
     func effectiveActive(_ flag: FeatureFlag) -> Bool { overrides[flag.id] ?? flag.active }
@@ -152,19 +157,125 @@ final class FlagToggleController {
 
     func dismissMessage() { message = nil }
 
-    /// Applies a confirmed change. Callers must have shown the confirmation
-    /// dialog already — nothing in here asks the user whether they meant it.
+    /// Optimistic values belong to the project whose rows produced them. They
+    /// must not survive into a new project's list, even if the two projects
+    /// happen to reuse the same numeric flag id.
+    func resetForProjectChange() {
+        projectGeneration &+= 1
+        overrides = [:]
+        rolloutOverrides = [:]
+        inFlight = []
+        message = nil
+    }
+
+    /// Source-compatible entry point for callers that already hold one
+    /// unquestionably current project id.
     func setActive(
         _ desired: Bool,
         flag: FeatureFlag,
         client: PostHogClient,
         projectID: Int
     ) async {
+        await setActive(
+            desired,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            currentProjectID: projectID
+        )
+    }
+
+    /// Applies a confirmed change. Callers must have shown the confirmation
+    /// dialog already — nothing in here asks the user whether they meant it.
+    func setActive(
+        _ desired: Bool,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        currentProjectID: Int?
+    ) async {
+        await setActive(
+            desired,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            currentProjectID: { currentProjectID }
+        )
+    }
+
+    /// The current project is a closure, not a captured value, because device
+    /// authentication suspends this task. The root that owns this controller
+    /// can disappear on sign-out while the task remains alive; re-reading the
+    /// model after the prompt is the only check that still observes that
+    /// transition.
+    func setActive(
+        _ desired: Bool,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        currentProjectID: @MainActor () -> Int?,
+        isGateEnabled: Bool = BiometricGate.isEnabled,
+        gate: @MainActor () async -> BiometricGate.Outcome = BiometricGate.evaluate
+    ) async {
+        await setActiveAuthorized(
+            desired,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            authorizationIsCurrent: { currentProjectID() == projectID },
+            isGateEnabled: isGateEnabled,
+            gate: gate
+        )
+    }
+
+    /// Interactive writes carry the complete authentication epoch that owned
+    /// the captured client. Project ids and hosts can repeat after reconnect,
+    /// so neither one is sufficient authorization after a biometric prompt.
+    func setActive(
+        _ desired: Bool,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        expectedScope: FlagWriteScope,
+        currentScope: @MainActor () -> FlagWriteScope?,
+        isGateEnabled: Bool = BiometricGate.isEnabled,
+        gate: @MainActor () async -> BiometricGate.Outcome = BiometricGate.evaluate
+    ) async {
+        guard expectedScope.projectID == projectID else { return }
+        await setActiveAuthorized(
+            desired,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            authorizationIsCurrent: { currentScope() == expectedScope },
+            isGateEnabled: isGateEnabled,
+            gate: gate
+        )
+    }
+
+    private func setActiveAuthorized(
+        _ desired: Bool,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        authorizationIsCurrent: @MainActor () -> Bool,
+        isGateEnabled: Bool,
+        gate: @MainActor () async -> BiometricGate.Outcome
+    ) async {
+        // `projectID` is captured with the decoded flag. The other value is the
+        // project selected at commit time. Never substitute the latter into the
+        // endpoint: a stale detail must do nothing, not write its old flag id
+        // through the newly selected project.
+        guard authorizationIsCurrent() else { return }
         guard !inFlight.contains(flag.id) else { return }
+        let generation = projectGeneration
         message = nil
 
-        if BiometricGate.isEnabled {
-            switch await BiometricGate.evaluate() {
+        if isGateEnabled {
+            let outcome = await gate()
+            guard generation == projectGeneration else { return }
+            guard authorizationIsCurrent() else { return }
+            switch outcome {
             case .passed:
                 break
             case .unavailable(let detail):
@@ -182,15 +293,25 @@ final class FlagToggleController {
             }
         }
 
+        // Also covers a gate that is disabled: a caller can enqueue this task
+        // and sign out before the main actor begins executing it.
+        guard authorizationIsCurrent() else { return }
+
         let previous = effectiveActive(flag)
         apply(desired, to: flag)
         inFlight.insert(flag.id)
-        defer { inFlight.remove(flag.id) }
+        defer {
+            if generation == projectGeneration {
+                inFlight.remove(flag.id)
+            }
+        }
 
         do {
             _ = try await client.data(
                 for: PostHogAPI.setFlagActive(projectID: projectID, flagID: flag.id, active: desired)
             )
+            guard generation == projectGeneration else { return }
+            guard authorizationIsCurrent() else { return }
             successCount += 1
             // Inside the success branch, after the write returned, and never in
             // the `catch` below: the optimistic state is rolled back when the
@@ -201,6 +322,8 @@ final class FlagToggleController {
             // then be refused by `SetFeatureFlagIntent` anyway.
             IntentDonations.flagSet(flag, enabled: desired)
         } catch {
+            guard generation == projectGeneration else { return }
+            guard authorizationIsCurrent() else { return }
             apply(previous, to: flag)
             record(error, flag: flag, action: desired ? "enable" : "disable")
         }
@@ -221,6 +344,8 @@ final class FlagToggleController {
     ///
     /// Gated on the device-owner check for the same reason the toggle is: this
     /// changes what production serves to users right now.
+    /// Source-compatible entry point for a caller whose project cannot change
+    /// between decoding the flag and invoking the write.
     func setRollout(
         _ percentage: Double,
         group index: Int,
@@ -228,7 +353,93 @@ final class FlagToggleController {
         client: PostHogClient,
         projectID: Int
     ) async {
+        await setRollout(
+            percentage,
+            group: index,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            currentProjectID: projectID
+        )
+    }
+
+    func setRollout(
+        _ percentage: Double,
+        group index: Int,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        currentProjectID: Int?
+    ) async {
+        await setRollout(
+            percentage,
+            group: index,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            currentProjectID: { currentProjectID }
+        )
+    }
+
+    func setRollout(
+        _ percentage: Double,
+        group index: Int,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        currentProjectID: @MainActor () -> Int?,
+        isGateEnabled: Bool = BiometricGate.isEnabled,
+        gate: @MainActor () async -> BiometricGate.Outcome = BiometricGate.evaluate
+    ) async {
+        await setRolloutAuthorized(
+            percentage,
+            group: index,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            authorizationIsCurrent: { currentProjectID() == projectID },
+            isGateEnabled: isGateEnabled,
+            gate: gate
+        )
+    }
+
+    func setRollout(
+        _ percentage: Double,
+        group index: Int,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        expectedScope: FlagWriteScope,
+        currentScope: @MainActor () -> FlagWriteScope?,
+        isGateEnabled: Bool = BiometricGate.isEnabled,
+        gate: @MainActor () async -> BiometricGate.Outcome = BiometricGate.evaluate
+    ) async {
+        guard expectedScope.projectID == projectID else { return }
+        await setRolloutAuthorized(
+            percentage,
+            group: index,
+            flag: flag,
+            client: client,
+            projectID: projectID,
+            authorizationIsCurrent: { currentScope() == expectedScope },
+            isGateEnabled: isGateEnabled,
+            gate: gate
+        )
+    }
+
+    private func setRolloutAuthorized(
+        _ percentage: Double,
+        group index: Int,
+        flag: FeatureFlag,
+        client: PostHogClient,
+        projectID: Int,
+        authorizationIsCurrent: @MainActor () -> Bool,
+        isGateEnabled: Bool,
+        gate: @MainActor () async -> BiometricGate.Outcome
+    ) async {
+        guard authorizationIsCurrent() else { return }
         guard !inFlight.contains(flag.id) else { return }
+        let generation = projectGeneration
         message = nil
 
         guard let endpoint = PostHogAPI.setFlagRollout(
@@ -249,8 +460,11 @@ final class FlagToggleController {
             return
         }
 
-        if BiometricGate.isEnabled {
-            switch await BiometricGate.evaluate() {
+        if isGateEnabled {
+            let outcome = await gate()
+            guard generation == projectGeneration else { return }
+            guard authorizationIsCurrent() else { return }
+            switch outcome {
             case .passed:
                 break
             case .unavailable(let detail):
@@ -268,15 +482,25 @@ final class FlagToggleController {
             }
         }
 
+        guard authorizationIsCurrent() else { return }
+
         let previous = rolloutOverrides[flag.id]?[index]
         rolloutOverrides[flag.id, default: [:]][index] = percentage
         inFlight.insert(flag.id)
-        defer { inFlight.remove(flag.id) }
+        defer {
+            if generation == projectGeneration {
+                inFlight.remove(flag.id)
+            }
+        }
 
         do {
             _ = try await client.data(for: endpoint)
+            guard generation == projectGeneration else { return }
+            guard authorizationIsCurrent() else { return }
             successCount += 1
         } catch {
+            guard generation == projectGeneration else { return }
+            guard authorizationIsCurrent() else { return }
             rolloutOverrides[flag.id]?[index] = previous
             record(error, flag: flag, action: "change the rollout for")
         }

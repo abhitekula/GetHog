@@ -45,18 +45,38 @@ final class FlagsStore {
     var isLoading = false
     var error: String?
     var loadedAt: Date?
+    /// The project `flags` belongs to. Set before a request is suspended so a
+    /// project switch cannot leave the previous project's rows visible while
+    /// the replacement is in flight.
+    private(set) var loadedProjectID: Int?
+
+    /// Every load owns one publication token. A response from an older project
+    /// may still finish, but it may no longer publish into this store.
+    private var generation = 0
 
     /// Writes and their optimistic state live here so the list and the detail
     /// view agree instantly without either owning the other.
     let toggles = FlagToggleController()
 
     func load(client: PostHogClient, projectID: Int) async {
+        generation += 1
+        let token = generation
+        if loadedProjectID != projectID {
+            loadedProjectID = projectID
+            flags = []
+            error = nil
+            loadedAt = nil
+            toggles.resetForProjectChange()
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if token == generation { isLoading = false }
+        }
         do {
             let page: Page<FeatureFlag> = try await client.send(
                 PostHogAPI.featureFlags(projectID: projectID)
             )
+            guard token == generation, loadedProjectID == projectID else { return }
             flags = page.results
                 .filter { !$0.deleted }
                 .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
@@ -64,6 +84,7 @@ final class FlagsStore {
             loadedAt = Date()
             error = nil
         } catch {
+            guard token == generation, loadedProjectID == projectID else { return }
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }
@@ -129,8 +150,14 @@ struct FlagsRoot: View {
             // push on the search stack, and only the second of those was broken.
             listChrome
                 .navigationDestination(item: selectedID) { id in
-                    if let flag = store.flags.first(where: { $0.id == id }) {
-                        FlagDetailView(flag: flag, controller: store.toggles).id(id)
+                    if let flag = store.flags.first(where: { $0.id == id }),
+                       let projectID = store.loadedProjectID {
+                        FlagDetailView(
+                            flag: flag,
+                            controller: store.toggles,
+                            projectID: projectID
+                        )
+                        .id(id)
                     }
                 }
         } else {
@@ -162,6 +189,9 @@ struct FlagsRoot: View {
                     AppTips.refresh(from: model)
                     await load()
                 }
+                .onChange(of: model.projectID) { _, _ in
+                    selectedID.wrappedValue = nil
+                }
                 // Narrower than the error and session lists on purpose: the
                 // widest thing in a flag row is the key on the monospaced line,
                 // around 30 characters, and the footnote is a short
@@ -178,8 +208,8 @@ struct FlagsRoot: View {
     /// zeroes would misreport either one.
     @ViewBuilder
     private var detailPane: some View {
-        if let selection {
-            FlagDetailView(flag: selection, controller: store.toggles)
+        if let selection, let projectID = store.loadedProjectID {
+            FlagDetailView(flag: selection, controller: store.toggles, projectID: projectID)
                 .id(selection.id)
         } else if !model.isAvailable(.flags) {
             LockedCapabilityView(capability: .flags, scope: model.lockedScope(for: .flags)) {

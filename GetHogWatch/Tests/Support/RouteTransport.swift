@@ -133,6 +133,97 @@ actor HandoffRaceTransport: HTTPTransport {
     }
 }
 
+/// Fails one selected request, then delegates every later request to the full
+/// synthetic route table. This makes a retryable *partial* refresh cost the
+/// normal five requests while still leaving four sections successful.
+actor FailFirstWatchRequestTransport: HTTPTransport {
+    private let backing = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+    private let pathContains: String
+    private let bodyContains: String?
+    private var hasFailed = false
+    private(set) var requestCount = 0
+
+    init(pathContains: String, bodyContains: String? = nil) {
+        self.pathContains = pathContains
+        self.bodyContains = bodyContains
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
+        if !hasFailed,
+           path.contains(pathContains),
+           bodyContains.map(body.contains) ?? true {
+            hasFailed = true
+            return (
+                Data(#"{"detail":"Synthetic retryable failure."}"#.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 503,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+            )
+        }
+        return try await backing.send(request)
+    }
+}
+
+/// Suspends the first request so a test can start a second refresh against the
+/// same model generation before either operation completes.
+actor HeldFirstWatchRequestTransport: HTTPTransport {
+    private let backing = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+    private var heldRequest: CheckedContinuation<Void, Never>?
+    private var suspensionWaiter: CheckedContinuation<Void, Never>?
+    private var isHoldingFirstRequest = false
+    private(set) var requestCount = 0
+
+    func waitUntilFirstRequestIsHeld() async {
+        guard !isHoldingFirstRequest else { return }
+        await withCheckedContinuation { continuation in
+            suspensionWaiter = continuation
+        }
+    }
+
+    func releaseFirstRequest() {
+        heldRequest?.resume()
+        heldRequest = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 1 {
+            await withCheckedContinuation { continuation in
+                heldRequest = continuation
+                isHoldingFirstRequest = true
+                suspensionWaiter?.resume()
+                suspensionWaiter = nil
+            }
+        }
+        return try await backing.send(request)
+    }
+}
+
+/// A lock-backed clock because `WatchModel`'s injected clock is `@Sendable`
+/// and the tolerance test must advance it without weakening strict concurrency.
+final class LockedWatchTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var instant: Date
+
+    init(_ instant: Date) {
+        self.instant = instant
+    }
+
+    func now() -> Date {
+        lock.withLock { instant }
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.withLock { instant = instant.addingTimeInterval(interval) }
+    }
+}
+
 /// A credential store that freezes one load after capturing its value.
 ///
 /// The `/me` persistence race test uses this to hold the old credential load,
@@ -383,7 +474,7 @@ enum WatchFixtures {
         watchesDegraded: Bool = false,
         snapshotDidChange: @escaping () -> Void = {},
         mutationCoordinator: WatchCredentialMutationCoordinator = .init(),
-        now: Date = WatchFixtures.now
+        now: @escaping @Sendable () -> Date = { WatchFixtures.now }
     ) -> WatchModel {
         WatchModel(
             credential: credential,
@@ -396,7 +487,7 @@ enum WatchFixtures {
             authenticate: authenticate,
             watchesDegraded: watchesDegraded,
             snapshotDidChange: snapshotDidChange,
-            now: { now }
+            now: now
         )
     }
 

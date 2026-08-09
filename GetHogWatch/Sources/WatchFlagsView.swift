@@ -184,11 +184,16 @@ struct WatchFlagsView: View {
     }
 
     @ViewBuilder private var footer: some View {
-        if model.shortlistFlags.isEmpty {
+        if let failure = model.flagsRefreshFailure {
+            WatchSectionFailureView(failure: failure) {
+                Task { await model.retry() }
+            }
+        }
+        if model.shortlistFlags.isEmpty, model.flagsRefreshFailure == nil {
             Text("No flags yet.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Ink.tertiary)
-        } else {
+        } else if !model.shortlistFlags.isEmpty {
             Text("First \(WatchModel.flagShortlistCap) flags")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Ink.tertiary)

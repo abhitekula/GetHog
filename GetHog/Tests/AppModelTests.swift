@@ -147,7 +147,7 @@ struct AppModelTests {
     @Test("a stored credential that no longer works falls back to onboarding with a reason")
     func staleCredentialExplainsItself() async {
         let store = InMemoryTokenStore(
-            credential: StoredCredential(key: "phx_stale", region: .usCloud)
+            credential: StoredCredential(key: "phx_stale", region: .euCloud)
         )
         let model = AppModel(store: store, transport: ScriptedTransport([(401, "{}")]))
 
@@ -157,6 +157,53 @@ struct AppModelTests {
         // sending the user back to onboarding.
         #expect(model.phase == .onboarding)
         #expect(model.connectionError != nil)
+        #expect(model.storedCredentialRecovery == .replaceCredential(.euCloud))
+        #expect((try? store.load()) == nil)
+    }
+
+    @Test("a transient stored-credential failure keeps the credential and can retry")
+    func transientStoredCredentialFailureCanRetry() async throws {
+        let credential = StoredCredential(key: "phx_retry", region: .usCloud)
+        let store = InMemoryTokenStore(credential: credential)
+        let transport = ScriptedTransport([
+            (503, #"{"detail":"Synthetic maintenance window"}"#),
+            (200, meJSON),
+        ])
+        let model = AppModel(store: store, transport: transport)
+
+        await model.bootstrap()
+
+        #expect(model.phase == .onboarding)
+        #expect(model.storedCredentialRecovery == .retryable)
+        #expect(try store.load() == credential)
+
+        await model.retryStoredCredential()
+
+        #expect(model.phase == .ready)
+        #expect(model.storedCredentialRecovery == nil)
+        #expect(try store.load() == credential)
+    }
+
+    @Test("onboarding offers retry for a transient failure and replacement for a rejected key")
+    func onboardingRecoveryActionsMatchCredentialState() {
+        let retry = OnboardingRecoveryPresentation(
+            recovery: .retryable,
+            message: "Synthetic service interruption"
+        )
+        let replace = OnboardingRecoveryPresentation(
+            recovery: .replaceCredential(.euCloud),
+            message: "Synthetic key rejection"
+        )
+
+        #expect(retry.title == "Couldn't reconnect")
+        #expect(retry.primaryActionTitle == "Try again")
+        #expect(retry.primaryAction == .retryStoredCredential)
+        #expect(retry.message == "Synthetic service interruption")
+
+        #expect(replace.title == "Saved key rejected")
+        #expect(replace.primaryActionTitle == "Enter a new key")
+        #expect(replace.primaryAction == .replaceCredential(.euCloud))
+        #expect(replace.message == "Synthetic key rejection")
     }
 
     @Test("signing out clears the credential and the session")

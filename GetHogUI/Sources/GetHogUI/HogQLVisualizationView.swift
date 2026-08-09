@@ -191,6 +191,12 @@ private struct HogQLResultTable: View {
                             ? "gethog.hogql-table.column.\(columnIndex)"
                             : "gethog.hogql-table.row.\(rowIndex ?? 0).cell.\(columnIndex)"
                     )
+                    #if os(tvOS)
+                    // A Siri Remote moves scroll views through focus. Data
+                    // cells therefore need to be real focus destinations; the
+                    // headings stay descriptive rather than becoming stops.
+                    .focusable(!header)
+                    #endif
             }
         }
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
@@ -673,6 +679,11 @@ private struct HogQLHeatmapValueCell: View {
             .background(SeriesPalette.color(at: 0).opacity(intensity))
             .clipShape(.rect(cornerRadius: Theme.Radius.small))
             .accessibilityLabel("\(x), \(y): \(spokenValue)")
+            #if os(tvOS)
+            // Directional focus reveals cells beyond the horizontal viewport
+            // using ScrollView's native focus-following behavior.
+            .focusable()
+            #endif
     }
 }
 

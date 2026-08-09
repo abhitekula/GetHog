@@ -84,14 +84,19 @@ final class HogQLDashboardTests: XCTestCase {
         let tile = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Synthetic result table")
         ).firstMatch
-        let trailingColumn = app.staticTexts["gethog.hogql-table.column.5"].firstMatch
+        let trailingColumn = app.staticTexts["gethog.hogql-table.column.11"].firstMatch
         XCTAssertTrue(DemoLaunch.wait(for: table), "The compact table scroll view never rendered.")
         XCTAssertTrue(tile.exists, "The scroll-aware table tile was no longer an accessible button.")
         XCTAssertTrue(trailingColumn.exists, "The trailing synthetic column was not in the table.")
         XCTAssertFalse(trailingColumn.isHittable, "The trailing column unexpectedly began on screen.")
 
-        table.swipeLeft(velocity: .slow)
-        table.swipeLeft(velocity: .slow)
+        // The shared synthetic gallery deliberately overflows on tvOS too, so
+        // this table now has twelve columns. Traverse a bounded number of
+        // view-width strokes rather than baking the old six-column distance
+        // into the gesture contract.
+        for _ in 0..<8 where !trailingColumn.isHittable {
+            table.swipeLeft(velocity: .slow)
+        }
 
         XCTAssertFalse(
             DemoLaunch.wait(timeout: 2) {
@@ -101,7 +106,7 @@ final class HogQLDashboardTests: XCTestCase {
         )
         XCTAssertTrue(
             DemoLaunch.wait(timeout: 5) { trailingColumn.exists && trailingColumn.isHittable },
-            "Two horizontal swipes did not reveal the trailing table column."
+            "Bounded horizontal swipes did not reveal the trailing table column."
         )
 
         // The table owns horizontal drags, but the rest of the card still owns

@@ -70,6 +70,7 @@ struct GetHogMacApp: App {
                     #endif
                     AppTips.configure()
                     await model.bootstrap()
+                    menuBar.adoptAuthSession(model.authSessionID)
                     // After bootstrap, because the schedule stands every wake
                     // down while there is no credential and the model only
                     // knows whether it has one once it has looked.
@@ -89,6 +90,13 @@ struct GetHogMacApp: App {
                         // invalidated without anybody tracking which happened.
                         MacBackgroundRefresh.shared.start(model: model)
                     }
+                }
+                .onChange(of: model.authSessionID, initial: true) { _, authSessionID in
+                    // This lives above MacRootView's phase switch. Sign-out can
+                    // replace that whole subtree in the same actor turn, but it
+                    // cannot remove this observer before the menu bar's
+                    // in-memory snapshot loses its old write authority.
+                    menuBar.adoptAuthSession(authSessionID)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(
@@ -146,7 +154,7 @@ struct GetHogMacApp: App {
                 .environment(nav)
                 .tint(Theme.accent)
         } label: {
-            MacMenuBarLabel(controller: menuBar)
+            MacMenuBarLabel(controller: menuBar, authSessionID: model.authSessionID)
         }
         .menuBarExtraStyle(.window)
     }

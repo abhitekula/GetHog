@@ -11,6 +11,9 @@ import SwiftUI
 struct FlagDetailView: View {
     let flag: FeatureFlag
     let controller: FlagToggleController
+    /// Captured with `flag`, never read back from the currently selected
+    /// project. That distinction is the write boundary on a project switch.
+    let projectID: Int
 
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -36,9 +39,10 @@ struct FlagDetailView: View {
     /// into it does not keep snapping back.
     @State private var seededGroup: Int?
 
-    init(flag: FeatureFlag, controller: FlagToggleController) {
+    init(flag: FeatureFlag, controller: FlagToggleController, projectID: Int) {
         self.flag = flag
         self.controller = controller
+        self.projectID = projectID
         #if !os(tvOS)
         _allowsQuickToggle = State(initialValue: FlagQuickToggle.isAllowed(flagID: flag.id))
         #endif
@@ -46,6 +50,7 @@ struct FlagDetailView: View {
 
     private var isActive: Bool { controller.effectiveActive(flag) }
     private var isBusy: Bool { controller.isBusy(flag) }
+    private var isCurrentProject: Bool { model.projectID == projectID }
 
     /// This flag's page in the console, shared by the toolbar link and the
     /// Handoff activity so the two can't name different pages.
@@ -56,11 +61,13 @@ struct FlagDetailView: View {
             identitySection
             reachRow
             toggleSection
+                .disabled(!isCurrentProject)
             #if !os(tvOS)
             quickToggleSection
             #endif
             releaseConditionsSection
             rolloutSection
+                .disabled(!isCurrentProject)
             if flag.isMultivariate { variantsSection }
         }
         .pageSurface()
@@ -99,7 +106,7 @@ struct FlagDetailView: View {
             // No browser on tvOS: `Link` compiles there and does nothing when
             // pressed, which on a focus platform is worse than absence — a
             // toolbar stop the remote can reach and nothing happens.
-            if let url = webURL {
+            if isCurrentProject, let url = webURL {
                 ToolbarItem(placement: .topBarTrailing) {
                     Link(destination: url) {
                         Image(systemName: "arrow.up.forward.square")
@@ -151,7 +158,7 @@ struct FlagDetailView: View {
         // Offered back from the home screen icon. A flag you were just looking
         // at is the thing most likely to be worth another ten seconds.
         .onAppear {
-            guard let projectID = model.projectID else { return }
+            guard isCurrentProject else { return }
             QuickActions.recordVisit(.featureFlag(id: flag.id), title: flag.key, projectID: projectID)
             QuickActions.refresh(projectID: projectID)
         }
@@ -433,12 +440,21 @@ struct FlagDetailView: View {
     }
 
     private func commitRollout() {
-        guard let client = model.client, let projectID = model.projectID else { return }
+        guard let client = model.client,
+              isCurrentProject,
+              let expectedScope = model.flagWriteScope,
+              expectedScope.projectID == projectID else { return }
         let percentage = draftRollout
         let index = editedGroup
         Task {
             await controller.setRollout(
-                percentage, group: index, flag: flag, client: client, projectID: projectID
+                percentage,
+                group: index,
+                flag: flag,
+                client: client,
+                projectID: projectID,
+                expectedScope: expectedScope,
+                currentScope: { model.flagWriteScope }
             )
         }
     }
@@ -481,10 +497,18 @@ struct FlagDetailView: View {
     }
 
     private func commit(_ desired: Bool) {
-        guard let client = model.client, let projectID = model.projectID else { return }
+        guard let client = model.client,
+              isCurrentProject,
+              let expectedScope = model.flagWriteScope,
+              expectedScope.projectID == projectID else { return }
         Task {
             await controller.setActive(
-                desired, flag: flag, client: client, projectID: projectID
+                desired,
+                flag: flag,
+                client: client,
+                projectID: projectID,
+                expectedScope: expectedScope,
+                currentScope: { model.flagWriteScope }
             )
         }
     }

@@ -6,6 +6,30 @@ import Testing
 
 @testable import GetHog
 
+/// Uses the app's complete synthetic demo responder for reads, but refuses the
+/// one PATCH under test. Nothing here reaches a live PostHog project.
+private actor FailingMenuBarFlagTransport: HTTPTransport {
+    private let backing = DemoTransport()
+    private(set) var patchCount = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        if request.httpMethod == "PATCH", path.contains("/feature_flags/") {
+            patchCount += 1
+            return (
+                Data(#"{"detail":"Synthetic flag refusal."}"#.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 503,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+            )
+        }
+        return try await backing.send(request)
+    }
+}
+
 /// The menu bar extra's decisions, taken apart from the status item that shows
 /// them. Everything here is either pure — which metric leads, how it reads, what
 /// closing the last window means — or reads a store handed in by the test, so
@@ -20,12 +44,15 @@ import Testing
 @Suite("Menu bar headline")
 struct MenuBarHeadlineTests {
 
+    private static let authSessionID = UUID()
+
     private func snapshot(metrics: [SharedSnapshot.Metric]) -> SharedSnapshot {
         SharedSnapshot(
             projectID: 1,
             projectName: "P",
             metrics: metrics,
             flags: [],
+            authSessionID: Self.authSessionID,
             capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
     }
@@ -114,7 +141,11 @@ struct MenuBarHeadlineTests {
     @Test("the controller reads the store it was handed and elects from it")
     func controllerReadsItsStore() throws {
         let store = try snapshotStore(holding: snapshot(metrics: [metric("42", value: 5)]))
-        let controller = MacMenuBarController(store: store.store, defaults: defaults())
+        let controller = MacMenuBarController(
+            store: store.store,
+            defaults: defaults(),
+            authSessionID: Self.authSessionID
+        )
         #expect(controller.snapshot?.projectID == 1)
         #expect(controller.headline?.id == "42")
     }
@@ -124,11 +155,36 @@ struct MenuBarHeadlineTests {
         let store = try snapshotStore(holding: snapshot(metrics: [metric("1"), metric("2")]))
         // One defaults suite, two controllers: the second one is the relaunch.
         let defaults = defaults()
-        let chooser = MacMenuBarController(store: store.store, defaults: defaults)
+        let chooser = MacMenuBarController(
+            store: store.store,
+            defaults: defaults,
+            authSessionID: Self.authSessionID
+        )
         chooser.headlineMetricID = "2"
 
-        let relaunched = MacMenuBarController(store: store.store, defaults: defaults)
+        let relaunched = MacMenuBarController(
+            store: store.store,
+            defaults: defaults,
+            authSessionID: Self.authSessionID
+        )
         #expect(relaunched.headline?.id == "2")
+    }
+
+    @Test("sign-out clears the in-memory snapshot and a new epoch cannot revive it")
+    func authenticationEpochOwnsTheSnapshot() throws {
+        let store = try snapshotStore(holding: snapshot(metrics: [metric("42")]))
+        let controller = MacMenuBarController(
+            store: store.store,
+            defaults: defaults(),
+            authSessionID: Self.authSessionID
+        )
+        #expect(controller.snapshot != nil)
+
+        controller.adoptAuthSession(nil)
+        #expect(controller.snapshot == nil)
+
+        controller.adoptAuthSession(UUID())
+        #expect(controller.snapshot == nil)
     }
 
     // MARK: Fixtures
@@ -244,6 +300,13 @@ struct MenuBarWindowPolicyTests {
 @Suite("Menu bar flag toggling")
 struct MenuBarFlagTogglerTests {
 
+    private static let authSessionID = UUID()
+    private static let currentScope = FlagWriteScope(
+        projectID: 1_001,
+        projectRegion: .usCloud,
+        authSessionID: authSessionID
+    )
+
     private func flag(allowed: Bool = true, active: Bool = true) -> SharedSnapshot.Flag {
         .init(id: 7, key: "new-onboarding", active: active, quickToggleAllowed: allowed)
     }
@@ -252,21 +315,120 @@ struct MenuBarFlagTogglerTests {
     @MainActor
     private final class Recorder {
         var writes: [(id: Int, active: Bool)] = []
+        var currentScope: FlagWriteScope? = MenuBarFlagTogglerTests.currentScope
+        var gateCalls = 0
+    }
+
+    @MainActor
+    private final class HeldGate {
+        private(set) var started = false
+        private var continuation: CheckedContinuation<BiometricGate.Outcome, Never>?
+
+        func evaluate() async -> BiometricGate.Outcome {
+            started = true
+            return await withCheckedContinuation { continuation = $0 }
+        }
+
+        func waitUntilStarted() async {
+            while !started { await Task.yield() }
+        }
+
+        func finish(_ outcome: BiometricGate.Outcome) {
+            continuation?.resume(returning: outcome)
+            continuation = nil
+        }
     }
 
     @Test("a flag without the quick-toggle opt-in never reaches the dialog")
     func optInIsRequired() {
         let toggler = MacMenuBarFlagToggler()
-        toggler.request(flag(allowed: false))
+        toggler.request(
+            flag(allowed: false), scope: Self.currentScope, currentScope: Self.currentScope
+        )
         #expect(toggler.pending == nil)
     }
 
     @Test("a request proposes the opposite of the current state")
     func requestProposesOpposite() {
         let toggler = MacMenuBarFlagToggler()
-        toggler.request(flag(active: true))
+        toggler.request(flag(active: true), scope: Self.currentScope, currentScope: Self.currentScope)
         #expect(toggler.pending?.desiredActive == false)
         #expect(toggler.pending?.flag.key == "new-onboarding")
+        #expect(toggler.pending?.scope == Self.currentScope)
+    }
+
+    @Test("a same-ID flag from another region cannot reach confirmation")
+    func sameIDCrossRegionRequestIsDismissed() {
+        let toggler = MacMenuBarFlagToggler()
+        let staleScope = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .euCloud,
+            authSessionID: Self.authSessionID
+        )
+
+        toggler.request(flag(), scope: staleScope, currentScope: Self.currentScope)
+
+        #expect(toggler.pending == nil)
+    }
+
+    @Test("a same-project snapshot from a previous authentication cannot reach confirmation")
+    func sameProjectPreviousSessionIsDismissed() {
+        let toggler = MacMenuBarFlagToggler()
+        let staleScope = FlagWriteScope(
+            projectID: Self.currentScope.projectID,
+            projectRegion: Self.currentScope.projectRegion,
+            authSessionID: UUID()
+        )
+
+        toggler.request(flag(), scope: staleScope, currentScope: Self.currentScope)
+
+        #expect(toggler.pending == nil)
+    }
+
+    @Test("a stale request is rejected before authentication or PATCH")
+    func staleRequestIsRejectedBeforeAuthentication() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        let current = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .euCloud,
+            authSessionID: Self.authSessionID
+        )
+
+        await toggler.confirm(
+            request(flag()),
+            currentScope: { current },
+            isGateEnabled: true,
+            gate: {
+                recorder.gateCalls += 1
+                return .passed
+            }
+        ) { id, active, _ in
+            recorder.writes.append((id, active))
+            return .changed
+        }
+
+        #expect(recorder.gateCalls == 0)
+        #expect(recorder.writes.isEmpty)
+        #expect(toggler.notice?.text.contains("project changed") == true)
+    }
+
+    @Test("a pending confirmation is dismissed when its project scope changes")
+    func pendingRequestIsDismissedOnScopeChange() {
+        let toggler = MacMenuBarFlagToggler()
+        toggler.request(flag(), scope: Self.currentScope, currentScope: Self.currentScope)
+        #expect(toggler.pending != nil)
+
+        toggler.dismissStaleRequest(
+            snapshotScope: Self.currentScope,
+            currentScope: FlagWriteScope(
+                projectID: 1_001,
+                projectRegion: .euCloud,
+                authSessionID: Self.authSessionID
+            )
+        )
+
+        #expect(toggler.pending == nil)
     }
 
     @Test("the dialog dismissing before the write lands cannot swallow it")
@@ -280,14 +442,18 @@ struct MenuBarFlagTogglerTests {
         // immune, which is what this pins.
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        toggler.request(flag(active: true))
+        toggler.request(flag(active: true), scope: Self.currentScope, currentScope: Self.currentScope)
         let request = try #require(toggler.pending)
 
         toggler.cancel()
         #expect(toggler.pending == nil)
 
-        await toggler.confirm(request, isGateEnabled: false) { id, active in
+        await toggler.confirm(
+            request, currentScope: { Self.currentScope }, isGateEnabled: false
+        ) { id, active, scope in
             recorder.writes.append((id, active))
+            #expect(scope == Self.currentScope)
+            return .changed
         }
         #expect(recorder.writes.count == 1)
         #expect(recorder.writes.first?.active == false)
@@ -298,7 +464,7 @@ struct MenuBarFlagTogglerTests {
         // The Cancel button's whole job: `pending` going nil is what dismisses
         // the dialog, and no `confirm` follows it.
         let toggler = MacMenuBarFlagToggler()
-        toggler.request(flag())
+        toggler.request(flag(), scope: Self.currentScope, currentScope: Self.currentScope)
         #expect(toggler.pending != nil)
         toggler.cancel()
         #expect(toggler.pending == nil)
@@ -308,8 +474,13 @@ struct MenuBarFlagTogglerTests {
     func confirmWritesWithoutGate() async {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
-        await toggler.confirm(request(flag(active: true)), isGateEnabled: false) { id, active in
+        await toggler.confirm(
+            request(flag(active: true)),
+            currentScope: { Self.currentScope },
+            isGateEnabled: false
+        ) { id, active, _ in
             recorder.writes.append((id, active))
+            return .changed
         }
         #expect(recorder.writes.count == 1)
         #expect(recorder.writes.first?.id == 7)
@@ -322,9 +493,13 @@ struct MenuBarFlagTogglerTests {
         let toggler = MacMenuBarFlagToggler()
         let recorder = Recorder()
         await toggler.confirm(
-            request(flag(active: false)), isGateEnabled: true, gate: { .passed }
-        ) { id, active in
+            request(flag(active: false)),
+            currentScope: { Self.currentScope },
+            isGateEnabled: true,
+            gate: { .passed }
+        ) { id, active, _ in
             recorder.writes.append((id, active))
+            return .changed
         }
         #expect(recorder.writes.map(\.active) == [true])
         #expect(toggler.notice == nil)
@@ -336,10 +511,12 @@ struct MenuBarFlagTogglerTests {
         let recorder = Recorder()
         await toggler.confirm(
             request(flag()),
+            currentScope: { Self.currentScope },
             isGateEnabled: true,
             gate: { .denied("Authentication wasn't confirmed.") }
-        ) { id, active in
+        ) { id, active, _ in
             recorder.writes.append((id, active))
+            return .changed
         }
         #expect(recorder.writes.isEmpty)
         #expect(toggler.notice?.kind == .failure)
@@ -353,10 +530,12 @@ struct MenuBarFlagTogglerTests {
         let recorder = Recorder()
         await toggler.confirm(
             request(flag()),
+            currentScope: { Self.currentScope },
             isGateEnabled: true,
             gate: { .unavailable("no enrolled biometry") }
-        ) { id, active in
+        ) { id, active, _ in
             recorder.writes.append((id, active))
+            return .changed
         }
         #expect(recorder.writes.count == 1)
         // Not a failure — the write happened. Drawn in the failure ink it would
@@ -372,29 +551,198 @@ struct MenuBarFlagTogglerTests {
         let pending = request(flag())
         // Re-entered from inside the first write, which is what a double-click
         // on a dialog button amounts to.
-        await toggler.confirm(pending, isGateEnabled: false) { id, active in
+        await toggler.confirm(
+            pending, currentScope: { Self.currentScope }, isGateEnabled: false
+        ) { id, active, _ in
             recorder.writes.append((id, active))
-            await toggler.confirm(pending, isGateEnabled: false) { id, active in
+            await toggler.confirm(
+                pending, currentScope: { Self.currentScope }, isGateEnabled: false
+            ) { id, active, _ in
                 recorder.writes.append((id, active))
+                return .changed
             }
+            return .changed
         }
         #expect(recorder.writes.count == 1)
+    }
+
+    @Test("a project change while authentication is open blocks the stale same-ID PATCH")
+    func projectChangeDuringAuthenticationBlocksWrite() async {
+        let toggler = MacMenuBarFlagToggler()
+        let recorder = Recorder()
+        let gate = HeldGate()
+        let staleRequest = request(flag())
+
+        let confirmation = Task {
+            await toggler.confirm(
+                staleRequest,
+                currentScope: { recorder.currentScope },
+                isGateEnabled: true,
+                gate: { await gate.evaluate() }
+            ) { id, active, _ in
+                recorder.writes.append((id, active))
+                return .changed
+            }
+        }
+        await gate.waitUntilStarted()
+        recorder.currentScope = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .euCloud,
+            authSessionID: Self.authSessionID
+        )
+        gate.finish(.passed)
+        await confirmation.value
+
+        #expect(recorder.writes.isEmpty)
+        #expect(toggler.pending == nil)
+        #expect(toggler.inFlightFlagID == nil)
+        #expect(toggler.notice?.kind == .failure)
+        #expect(toggler.notice?.text.contains("project changed") == true)
+    }
+
+    @Test("a failed PATCH preserves the published flag and returns the refusal")
+    func failedPatchReturnsOutcomeAndPreservesSnapshot() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacMenuBarFlagTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let snapshots = SharedSnapshotStore(directory: directory)
+        let transport = FailingMenuBarFlagTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshots
+        )
+        try await model.connect(key: "synthetic-menu-key", region: .usCloud)
+        let project = try #require(model.selectedProject)
+        let before = SharedSnapshot(
+            projectID: project.id,
+            projectName: "Synthetic Menu Workspace",
+            metrics: [],
+            flags: [flag(active: true)],
+            projectRegion: .usCloud,
+            capturedAt: Date(timeIntervalSince1970: 1_754_000_000)
+        )
+        try snapshots.write(before)
+
+        let outcome = await model.setFlag(id: 7, active: false)
+
+        #expect(await transport.patchCount == 1)
+        #expect(snapshots.loadOrNil() == before)
+        if case .failed(let detail) = outcome {
+            #expect(detail.contains("Synthetic flag refusal"))
+        } else {
+            Issue.record("a refused PATCH must return a failure outcome")
+        }
+    }
+
+    @Test("a stale same-ID cross-region snapshot cannot PATCH the current project")
+    func staleSameIDCrossRegionSnapshotCannotPatch() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacMenuBarScopeTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let snapshots = SharedSnapshotStore(directory: directory)
+        let transport = FailingMenuBarFlagTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshots
+        )
+        try await model.connect(key: "synthetic-menu-key", region: .usCloud)
+        let project = try #require(model.selectedProject)
+        let before = SharedSnapshot(
+            projectID: project.id,
+            projectName: "Synthetic Menu Workspace",
+            metrics: [],
+            flags: [flag(active: true)],
+            projectRegion: .usCloud,
+            capturedAt: Date(timeIntervalSince1970: 1_754_000_000)
+        )
+        try snapshots.write(before)
+        let staleScope = FlagWriteScope(
+            projectID: project.id,
+            projectRegion: .euCloud,
+            authSessionID: try #require(model.authSessionID)
+        )
+
+        let outcome = await model.setFlag(id: 7, active: false, expectedScope: staleScope)
+
+        #expect(await transport.patchCount == 0)
+        #expect(snapshots.loadOrNil() == before)
+        if case .failed(let detail) = outcome {
+            #expect(detail.contains("project changed"))
+        } else {
+            Issue.record("a stale snapshot scope must be rejected before PATCH")
+        }
+    }
+
+    @Test("a previous authentication epoch cannot PATCH the same host and project")
+    func staleAuthenticationEpochCannotPatch() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacMenuBarAuthScopeTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let snapshots = SharedSnapshotStore(directory: directory)
+        let transport = FailingMenuBarFlagTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshots
+        )
+        try await model.connect(key: "synthetic-menu-key", region: .usCloud)
+        let current = try #require(model.flagWriteScope)
+        let staleScope = FlagWriteScope(
+            projectID: current.projectID,
+            projectRegion: current.projectRegion,
+            authSessionID: UUID()
+        )
+
+        let outcome = await model.setFlag(id: 7, active: false, expectedScope: staleScope)
+
+        #expect(await transport.patchCount == 0)
+        if case .failed(let detail) = outcome {
+            #expect(detail.contains("project changed"))
+        } else {
+            Issue.record("a stale authentication epoch must be rejected before PATCH")
+        }
+    }
+
+    @Test("a failed write states the failure and re-enables the menu toggle")
+    func failedWriteShowsNoticeAndReenablesToggle() async {
+        let toggler = MacMenuBarFlagToggler()
+        let original = flag(active: true)
+
+        await toggler.confirm(
+            request(original), currentScope: { Self.currentScope }, isGateEnabled: false
+        ) { _, _, _ in
+            .failed("Synthetic flag refusal.")
+        }
+
+        #expect(toggler.inFlightFlagID == nil)
+        #expect(toggler.notice?.kind == .failure)
+        #expect(toggler.notice?.text.contains("new-onboarding") == true)
+        #expect(toggler.notice?.text.contains("unchanged") == true)
+        #expect(toggler.notice?.text.contains("Synthetic flag refusal") == true)
+
+        toggler.request(original, scope: Self.currentScope, currentScope: Self.currentScope)
+        #expect(toggler.pending?.flag == original)
     }
 
     @Test("a new request clears the notice the last one left behind")
     func requestClearsNotice() async {
         let toggler = MacMenuBarFlagToggler()
         await toggler.confirm(
-            request(flag()), isGateEnabled: true, gate: { .denied("nope") }
-        ) { _, _ in }
+            request(flag()),
+            currentScope: { Self.currentScope },
+            isGateEnabled: true,
+            gate: { .denied("nope") }
+        ) { _, _, _ in .changed }
         #expect(toggler.notice != nil)
-        toggler.request(flag())
+        toggler.request(flag(), scope: Self.currentScope, currentScope: Self.currentScope)
         #expect(toggler.notice == nil)
     }
 
     /// What the dialog's button closure holds: the request as it stood when the
     /// dialog was built, which is the only thing `confirm` is allowed to need.
     private func request(_ flag: SharedSnapshot.Flag) -> MacMenuBarFlagToggler.Request {
-        .init(flag: flag)
+        .init(flag: flag, scope: Self.currentScope)
     }
 }

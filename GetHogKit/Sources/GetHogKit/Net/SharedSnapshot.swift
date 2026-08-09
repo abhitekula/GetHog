@@ -103,6 +103,11 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
     /// host's credential. `nil` is a legacy snapshot and callers that need
     /// isolation must treat it as untrusted.
     public let projectRegion: PostHogRegion?
+    /// One successful authentication epoch. Numeric project ids and hosts can
+    /// both repeat after sign-out, so a snapshot from a previous credential is
+    /// not write authority for the next session. `nil` is a legacy/read-only
+    /// snapshot and remains fully renderable by widgets.
+    public let authSessionID: UUID?
     public let metrics: [Metric]
     public let flags: [Flag]
     /// Ingestion warnings, reduced. `nil` means **not checked** — an app build
@@ -123,11 +128,13 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         ingestion: IngestionDigest? = nil,
         quota: QuotaDigest? = nil,
         projectRegion: PostHogRegion? = nil,
+        authSessionID: UUID? = nil,
         capturedAt: Date
     ) {
         self.projectID = projectID
         self.projectName = projectName
         self.projectRegion = projectRegion
+        self.authSessionID = authSessionID
         self.metrics = metrics
         self.flags = flags
         self.ingestion = ingestion
@@ -164,6 +171,7 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         projectID = try c.decode(Int.self, forKey: .projectID)
         projectName = try c.decode(String.self, forKey: .projectName)
         projectRegion = (try? c.decodeIfPresent(PostHogRegion.self, forKey: .projectRegion)) ?? nil
+        authSessionID = (try? c.decodeIfPresent(UUID.self, forKey: .authSessionID)) ?? nil
         capturedAt = try c.decode(Date.self, forKey: .capturedAt)
         metrics = try c.decodeIfPresent([Metric].self, forKey: .metrics) ?? []
         flags = try c.decodeIfPresent([Flag].self, forKey: .flags) ?? []

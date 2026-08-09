@@ -1,0 +1,7 @@
+{
+  "id": 725103,
+  "name": "Synthetic empty dashboard",
+  "description": "A deterministic dashboard with no tiles.",
+  "pinned": false,
+  "tiles": []
+}

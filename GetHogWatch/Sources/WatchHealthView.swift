@@ -75,7 +75,11 @@ struct WatchHealthView: View {
     }
 
     @ViewBuilder private var errorPulse: some View {
-        if let pulse = model.health.errorPulse {
+        if let failure = model.healthRefreshFailure {
+            WatchSectionFailureView(failure: failure) {
+                Task { await model.retry() }
+            }
+        } else if let pulse = model.health.errorPulse {
             if pulse.activeCount == 0 {
                 Text("No active issues")
                     .font(Theme.Typography.body)

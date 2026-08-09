@@ -398,34 +398,140 @@ struct WatchModelTests {
         #expect(model.phase == .ready)
     }
 
-    @Test("offline recovery bypasses the freshness throttle and exposes a forced retry")
-    func offlineRecoveryCanRetryImmediately() async throws {
-        let store = WatchFixtures.tempStore()
-        try store.write(
-            WatchFixtures.snapshot(capturedAt: WatchFixtures.now.addingTimeInterval(-300))
+    @Test("automatic refresh waits fifteen minutes even after a retryable partial failure")
+    func automaticRefreshHonorsToleranceAfterRetryableFailure() async {
+        let clock = LockedWatchTestClock(WatchFixtures.now)
+        let transport = FailFirstWatchRequestTransport(pathContains: "/feature_flags/")
+        let model = WatchFixtures.model(
+            transport: transport,
+            store: WatchFixtures.tempStore(),
+            now: { clock.now() }
         )
-        let transport = RouteTransport(
-            routes: [],
-            unmatchedError: .network(
-                code: NSURLErrorNotConnectedToInternet,
-                description: "Synthetic offline failure"
-            )
-        )
-        let model = WatchFixtures.model(transport: transport, store: store)
 
         await model.refresh(force: true)
-        let firstAttemptCount = await transport.requests.count
-        #expect(firstAttemptCount > 0)
-        #expect(model.canRetryRefresh)
+        #expect(await transport.requestCount == 5)
+        #expect(model.flagsRefreshFailure?.canRetry == true)
 
-        // The ordinary lifecycle refresh must not hide behind the 15-minute
-        // freshness throttle while actionable offline guidance is visible.
+        clock.advance(by: WatchModel.refreshTolerance - 1)
         await model.refresh()
-        #expect(await transport.requests.count == firstAttemptCount * 2)
+        #expect(await transport.requestCount == 5)
 
-        // The visible Retry control calls this explicitly forced action.
+        clock.advance(by: 1)
+        await model.refresh()
+        #expect(await transport.requestCount == 10)
+        #expect(model.flagsRefreshFailure == nil)
+    }
+
+    @Test("explicit retry forces exactly one five-request attempt inside the tolerance")
+    func explicitRetryForcesOneAttempt() async {
+        let clock = LockedWatchTestClock(WatchFixtures.now)
+        let transport = FailFirstWatchRequestTransport(pathContains: "/feature_flags/")
+        let model = WatchFixtures.model(
+            transport: transport,
+            store: WatchFixtures.tempStore(),
+            now: { clock.now() }
+        )
+
+        await model.refresh(force: true)
+        #expect(await transport.requestCount == 5)
+        #expect(model.flagsRefreshFailure?.canRetry == true)
+
         await model.retry()
-        #expect(await transport.requests.count == firstAttemptCount * 3)
+
+        #expect(await transport.requestCount == 10)
+        #expect(model.flagsRefreshFailure == nil)
+        #expect(model.shortlistFlags.count == 2)
+    }
+
+    @Test("concurrent refresh calls coalesce within one configuration generation")
+    func concurrentRefreshesCoalesceWithinOneGeneration() async {
+        let transport = HeldFirstWatchRequestTransport()
+        let model = WatchFixtures.model(
+            transport: transport,
+            store: WatchFixtures.tempStore()
+        )
+
+        let first = Task { @MainActor in await model.refresh(force: true) }
+        await transport.waitUntilFirstRequestIsHeld()
+        let second = Task { @MainActor in await model.refresh(force: true) }
+        // Give the second main-actor task a bounded opportunity to enter the
+        // refresh wrapper while the first network request is still suspended.
+        for _ in 0..<50 { await Task.yield() }
+
+        await transport.releaseFirstRequest()
+        await first.value
+        await second.value
+
+        #expect(await transport.requestCount == 5)
+        #expect(model.phase == .ready)
+    }
+
+    @Test("flags, health, and activity failures differ from successful empty responses")
+    func partialSectionFailuresAreDistinctFromSuccessfulEmptyResponses() async {
+        let empty = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(
+                flags: #"{"count":0,"next":null,"previous":null,"results":[]}"#,
+                errors: #"{"results":[]}"#,
+                events: WatchFixtures.events(0)
+            )),
+            store: WatchFixtures.tempStore()
+        )
+        await empty.refresh(force: true)
+        #expect(empty.shortlistFlags.isEmpty)
+        #expect(empty.flagsRefreshFailure == nil)
+        #expect(empty.health.errorPulse?.activeCount == 0)
+        #expect(empty.healthRefreshFailure == nil)
+        #expect(empty.activity.isEmpty)
+        #expect(empty.activityCapturedAt != nil)
+        #expect(empty.activityRefreshFailure == nil)
+
+        let flags = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [
+                .init(
+                    pathContains: "/feature_flags/",
+                    body: #"{"detail":"Synthetic flags failure."}"#,
+                    status: 503
+                ),
+            ])),
+            store: WatchFixtures.tempStore()
+        )
+        await flags.refresh(force: true)
+        #expect(flags.phase == .ready)
+        #expect(flags.shortlistFlags.isEmpty)
+        #expect(flags.flagsRefreshFailure?.canRetry == true)
+
+        let health = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [
+                .init(
+                    pathContains: "/query/",
+                    bodyContains: "ErrorTrackingQuery",
+                    body: #"{"detail":"Synthetic health failure."}"#,
+                    status: 503
+                ),
+            ])),
+            store: WatchFixtures.tempStore()
+        )
+        await health.refresh(force: true)
+        #expect(health.phase == .ready)
+        #expect(health.health.errorPulse == nil)
+        #expect(health.healthRefreshFailure?.canRetry == true)
+
+        let activity = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [
+                .init(
+                    pathContains: "/query/",
+                    bodyContains: "HogQLQuery",
+                    body: #"{"detail":"Synthetic activity failure."}"#,
+                    status: 503
+                ),
+            ])),
+            store: WatchFixtures.tempStore()
+        )
+        await activity.refresh(force: true)
+        #expect(activity.phase == .ready)
+        #expect(activity.activity.isEmpty)
+        #expect(activity.activityCapturedAt == nil)
+        #expect(activity.activityRefreshFailure?.canRetry == true)
     }
 
     @Test("a refresh spends exactly five requests, each within its budget")
@@ -909,7 +1015,7 @@ struct WatchModelTests {
         var reloadActivities: [ActivityFeed?] = []
         var reloadBreaches: [Set<String>] = []
         let model = WatchModel(
-            credential: try #require(try credentials.load()),
+            credential: try credentials.load(),
             projectName: nil,
             headlineMetricID: nil,
             watches: [],
@@ -1025,7 +1131,7 @@ struct WatchModelTests {
         var reloadCount = 0
         var reloadFollowedClearing = false
         let model = WatchModel(
-            credential: try #require(try credentials.load()),
+            credential: try credentials.load(),
             projectName: nil,
             headlineMetricID: nil,
             watches: [],
@@ -1105,7 +1211,7 @@ struct WatchModelTests {
         var reloadCount = 0
         var everyReloadSawEmptyActiveFiles = true
         let model = WatchModel(
-            credential: try #require(try credentials.load()),
+            credential: try credentials.load(),
             projectName: nil,
             headlineMetricID: nil,
             watches: [],

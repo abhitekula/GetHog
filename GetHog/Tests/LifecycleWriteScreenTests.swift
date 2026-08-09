@@ -34,6 +34,311 @@ private actor ScriptedTransport: HTTPTransport {
     }
 }
 
+// MARK: - Project-scoped flag recovery
+
+/// Holds project 1's list response until project 2 has already landed. Both
+/// payloads are authored and synthetic; the ordering is the behavior under
+/// test, not network timing.
+private actor OutOfOrderFlagsTransport: HTTPTransport {
+    private var firstStarted = false
+    private var releaseFirst: CheckedContinuation<Void, Never>?
+
+    func waitForFirstRequest() async {
+        while !firstStarted { await Task.yield() }
+    }
+
+    func releaseFirstRequest() {
+        releaseFirst?.resume()
+        releaseFirst = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let projectID = request.url?.pathComponents
+            .drop(while: { $0 != "projects" })
+            .dropFirst()
+            .first
+            .flatMap(Int.init) ?? 0
+
+        if projectID == 1 {
+            firstStarted = true
+            await withCheckedContinuation { continuation in
+                releaseFirst = continuation
+            }
+        }
+
+        let body = """
+        {"count":1,"next":null,"previous":null,"results":[
+          {"id":\(projectID * 100 + 1),"key":"project-\(projectID)-flag","active":true}
+        ]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+/// Holds one feature-flag PATCH so a project switch can happen while the
+/// controller is suspended in `PostHogClient.data(for:)`.
+private actor HeldFlagWriteTransport: HTTPTransport {
+    private let status: Int
+    private let body: String
+    private var started = false
+    private var release: CheckedContinuation<Void, Never>?
+
+    init(status: Int, body: String = "{}") {
+        self.status = status
+        self.body = body
+    }
+
+    func waitUntilStarted() async {
+        while !started { await Task.yield() }
+    }
+
+    func finish() {
+        release?.resume()
+        release = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        started = true
+        await withCheckedContinuation { continuation in
+            release = continuation
+        }
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+/// Holds the device-owner check so the selected project can disappear while a
+/// confirmed write is suspended exactly where Face ID or Touch ID suspends it.
+@MainActor
+private final class HeldFlagBiometricGate {
+    private(set) var started = false
+    private var continuation: CheckedContinuation<BiometricGate.Outcome, Never>?
+
+    func evaluate() async -> BiometricGate.Outcome {
+        started = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilStarted() async {
+        while !started { await Task.yield() }
+    }
+
+    func finish(_ outcome: BiometricGate.Outcome) {
+        continuation?.resume(returning: outcome)
+        continuation = nil
+    }
+}
+
+@Suite("Flag project recovery")
+@MainActor
+struct FlagProjectRecoveryTests {
+    private func scopedClient(_ transport: some HTTPTransport) -> PostHogClient {
+        PostHogClient(auth: StaticAuth(), transport: transport)
+    }
+
+    @Test("a late old-project flag response cannot replace the new project")
+    func lateProjectResponseIsDiscarded() async {
+        let transport = OutOfOrderFlagsTransport()
+        let store = FlagsStore()
+        let first = Task { await store.load(client: scopedClient(transport), projectID: 1) }
+        await transport.waitForFirstRequest()
+
+        await store.load(client: scopedClient(transport), projectID: 2)
+        await transport.releaseFirstRequest()
+        await first.value
+
+        #expect(store.flags.map(\.key) == ["project-2-flag"])
+    }
+
+    @Test("a detail loaded in one project cannot write through the current project")
+    func staleDetailCannotWrite() async throws {
+        let controller = FlagToggleController()
+        let (client, transport) = client([(200, "{}"), (200, "{}")])
+        let flag = try JSONDecoder().decode(
+            FeatureFlag.self,
+            from: Data(
+                #"{"id":710301,"key":"synthetic-project-boundary","active":true,"filters":{"groups":[{"rollout_percentage":10,"properties":[]}]}}"#.utf8
+            )
+        )
+
+        await controller.setActive(
+            false,
+            flag: flag,
+            client: client,
+            projectID: 1_001,
+            currentProjectID: 2_002
+        )
+        await controller.setRollout(
+            25,
+            group: 0,
+            flag: flag,
+            client: client,
+            projectID: 1_001,
+            currentProjectID: 2_002
+        )
+
+        #expect(await transport.requests.isEmpty)
+        #expect(controller.effectiveActive(flag))
+        #expect(controller.effectiveRollout(flag, group: 0) == 10)
+    }
+
+    @Test("a same-project reconnect while authentication is open blocks the old client's PATCH")
+    func reconnectDuringAuthenticationBlocksWrite() async throws {
+        let controller = FlagToggleController()
+        let (client, transport) = client([(200, "{}")])
+        let gate = HeldFlagBiometricGate()
+        let flag: FeatureFlag = try decode(
+            #"{"id":710301,"key":"synthetic-auth-boundary","active":true}"#
+        )
+        let originalScope = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .usCloud,
+            authSessionID: UUID()
+        )
+        var currentScope: FlagWriteScope? = originalScope
+
+        let write = Task {
+            await controller.setActive(
+                false,
+                flag: flag,
+                client: client,
+                projectID: 1_001,
+                expectedScope: originalScope,
+                currentScope: { currentScope },
+                isGateEnabled: true,
+                gate: { await gate.evaluate() }
+            )
+        }
+        await gate.waitUntilStarted()
+        currentScope = FlagWriteScope(
+            projectID: 1_001,
+            projectRegion: .usCloud,
+            authSessionID: UUID()
+        )
+        gate.finish(.passed)
+        await write.value
+
+        #expect(await transport.requests.isEmpty)
+        #expect(controller.effectiveActive(flag))
+        #expect(!controller.isBusy(flag))
+        #expect(controller.successCount == 0)
+    }
+
+    @Test("an old completion cannot finish or clear a same-ID write in the new project")
+    func oldCompletionCannotAffectNewProjectWrite() async throws {
+        let controller = FlagToggleController()
+        let oldTransport = HeldFlagWriteTransport(status: 200)
+        let newTransport = HeldFlagWriteTransport(status: 200)
+        let oldFlag: FeatureFlag = try decode(
+            #"{"id":710301,"key":"old-project-flag","active":true}"#
+        )
+        let newFlag: FeatureFlag = try decode(
+            #"{"id":710301,"key":"new-project-flag","active":true}"#
+        )
+
+        let oldWrite = Task {
+            await controller.setActive(
+                false,
+                flag: oldFlag,
+                client: scopedClient(oldTransport),
+                projectID: 1
+            )
+        }
+        await oldTransport.waitUntilStarted()
+        #expect(controller.isBusy(oldFlag))
+
+        controller.resetForProjectChange()
+        #expect(!controller.isBusy(newFlag))
+        let newWrite = Task {
+            await controller.setActive(
+                false,
+                flag: newFlag,
+                client: scopedClient(newTransport),
+                projectID: 2
+            )
+        }
+        await newTransport.waitUntilStarted()
+        #expect(controller.isBusy(newFlag))
+
+        await oldTransport.finish()
+        await oldWrite.value
+
+        // The old success is neither this project's success nor permission to
+        // remove its same-numeric-ID in-flight marker.
+        #expect(controller.successCount == 0)
+        #expect(controller.isBusy(newFlag))
+        #expect(controller.effectiveActive(newFlag) == false)
+        #expect(controller.message == nil)
+
+        await newTransport.finish()
+        await newWrite.value
+        #expect(controller.successCount == 1)
+        #expect(!controller.isBusy(newFlag))
+    }
+
+    @Test("an old rollout failure cannot roll back or report in the new project")
+    func oldRolloutFailureCannotAffectNewProject() async throws {
+        let controller = FlagToggleController()
+        let oldTransport = HeldFlagWriteTransport(
+            status: 409,
+            body: #"{"code":"conflict","detail":"Synthetic stale conflict."}"#
+        )
+        let newTransport = HeldFlagWriteTransport(status: 200)
+        let oldFlag: FeatureFlag = try decode(
+            #"{"id":710301,"key":"old-project-flag","active":true,"filters":{"groups":[{"rollout_percentage":10,"properties":[]}]}}"#
+        )
+        let newFlag: FeatureFlag = try decode(
+            #"{"id":710301,"key":"new-project-flag","active":true,"filters":{"groups":[{"rollout_percentage":80,"properties":[]}]}}"#
+        )
+
+        let oldWrite = Task {
+            await controller.setRollout(
+                25,
+                group: 0,
+                flag: oldFlag,
+                client: scopedClient(oldTransport),
+                projectID: 1
+            )
+        }
+        await oldTransport.waitUntilStarted()
+        #expect(controller.effectiveRollout(oldFlag, group: 0) == 25)
+
+        controller.resetForProjectChange()
+        let newWrite = Task {
+            await controller.setRollout(
+                60,
+                group: 0,
+                flag: newFlag,
+                client: scopedClient(newTransport),
+                projectID: 2
+            )
+        }
+        await newTransport.waitUntilStarted()
+        #expect(controller.effectiveRollout(newFlag, group: 0) == 60)
+
+        await oldTransport.finish()
+        await oldWrite.value
+
+        // The old rollback must not remove project 2's same-ID optimistic
+        // value, and its defer must not clear project 2's busy state.
+        #expect(controller.effectiveRollout(newFlag, group: 0) == 60)
+        #expect(controller.isBusy(newFlag))
+        #expect(controller.failureCount == 0)
+        #expect(controller.filedCount == 0)
+        #expect(controller.message == nil)
+
+        await newTransport.finish()
+        await newWrite.value
+        #expect(controller.successCount == 1)
+        #expect(!controller.isBusy(newFlag))
+    }
+}
+
 private struct StaticAuth: AuthProvider {
     let region = PostHogRegion.usCloud
     func authorizationHeader() async throws -> String { "Bearer test" }

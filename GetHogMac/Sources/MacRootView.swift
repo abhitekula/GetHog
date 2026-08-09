@@ -41,19 +41,27 @@ struct MacRootView: View {
     static let sections: [AppTabSection] = AppTab.sections
 
     var body: some View {
-        switch model.phase {
-        case .loading:
-            VStack(spacing: Theme.Space.m) {
-                BrandConnectingAccent()
-                ProgressView("Connecting…")
-                    .controlSize(.large)
+        Group {
+            switch model.phase {
+            case .loading:
+                VStack(spacing: Theme.Space.m) {
+                    BrandConnectingAccent()
+                    ProgressView("Connecting…")
+                        .controlSize(.large)
+                }
+
+            case .onboarding:
+                OnboardingView()
+
+            case .ready:
+                tabs
             }
-
-        case .onboarding:
-            OnboardingView()
-
-        case .ready:
-            tabs
+        }
+        .onChange(of: model.flagWriteScope) { _, _ in
+            // The pool belongs to one authenticated project epoch, not merely
+            // one numeric project id. This observer sits above the phase switch
+            // so sign-out cannot remove it before it invalidates the details.
+            openDetails.reset()
         }
     }
 

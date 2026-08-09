@@ -9,6 +9,9 @@ final class SessionsStore {
     var isLoading = false
     var isLoadingMore = false
     var error: String?
+    /// A next-page failure is not a failure of the rows already on screen. It
+    /// stays separate so the footer can retry without replacing the list.
+    var pagingError: String?
     var loadedAt: Date?
     /// Whether the API said another page exists. There is no `count` in the
     /// response, so this is the only thing that can be known about what is left.
@@ -24,14 +27,30 @@ final class SessionsStore {
     /// Bumped on every fresh load so a page that was already in flight when the
     /// filter changed cannot append its rows onto the new filter's results.
     private var generation = 0
+    private var loadedProjectID: Int?
 
     /// Loads the first page for the current filter, **replacing** what is shown.
     func load(client: PostHogClient, projectID: Int) async {
         generation += 1
         let token = generation
+        let projectChanged = loadedProjectID != projectID
+        loadedProjectID = projectID
         offset = 0
+        pagingError = nil
+        if projectChanged {
+            // A project is a data-ownership boundary, not merely another
+            // filter. Clear before the request suspends so the replacement can
+            // never present old-project recordings as its loading state.
+            recordings = []
+            error = nil
+            loadedAt = nil
+            hasMore = false
+            isLoadingMore = false
+        }
         isLoading = true
-        defer { if token == generation { isLoading = false } }
+        defer {
+            if token == generation, loadedProjectID == projectID { isLoading = false }
+        }
 
         do {
             let list: RecordingList = try await client.send(
@@ -39,18 +58,20 @@ final class SessionsStore {
                     projectID: projectID, limit: pageSize, offset: 0, filter: filter
                 )
             )
-            guard token == generation else { return }
+            guard token == generation, loadedProjectID == projectID else { return }
             recordings = list.results
             hasMore = list.hasNext
             offset = list.results.count
             loadedAt = Date()
             error = nil
+            pagingError = nil
         } catch {
-            guard token == generation else { return }
+            guard token == generation, loadedProjectID == projectID else { return }
             // A failed narrowing must not leave the previous filter's rows on
             // screen looking like the answer to the new question.
             recordings = []
             hasMore = false
+            pagingError = nil
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }
@@ -58,10 +79,13 @@ final class SessionsStore {
     /// Appends the next page. Never runs while a fresh load is in flight, and
     /// discards its result if the filter changed underneath it.
     func loadMore(client: PostHogClient, projectID: Int) async {
-        guard hasMore, !isLoading, !isLoadingMore else { return }
+        guard loadedProjectID == projectID, hasMore, !isLoading, !isLoadingMore else { return }
         let token = generation
+        pagingError = nil
         isLoadingMore = true
-        defer { if token == generation { isLoadingMore = false } }
+        defer {
+            if token == generation, loadedProjectID == projectID { isLoadingMore = false }
+        }
 
         do {
             let list: RecordingList = try await client.send(
@@ -69,7 +93,7 @@ final class SessionsStore {
                     projectID: projectID, limit: pageSize, offset: offset, filter: filter
                 )
             )
-            guard token == generation else { return }
+            guard token == generation, loadedProjectID == projectID else { return }
             // Offset paging over a live, time-ordered table can repeat a row
             // when a new recording lands between pages.
             let known = Set(recordings.map(\.id))
@@ -77,10 +101,14 @@ final class SessionsStore {
             hasMore = list.hasNext
             offset += list.results.count
             loadedAt = Date()
+            pagingError = nil
         } catch {
-            guard token == generation else { return }
-            hasMore = false
-            self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
+            guard token == generation, loadedProjectID == projectID else { return }
+            // Keep both the loaded rows and the server's assertion that another
+            // page exists. Turning `hasMore` off here removes the only retry
+            // control and converts a transient page failure into a false end.
+            pagingError = (error as? PostHogError)?.localizedDescription
+                ?? error.localizedDescription
         }
     }
 
@@ -396,6 +424,14 @@ struct SessionsRoot: View {
                 Group {
                     if store.isLoadingMore {
                         ProgressView()
+                    } else if let pagingError = store.pagingError {
+                        VStack(spacing: Theme.Space.xs) {
+                            Text(pagingError)
+                                .font(.footnote)
+                                .foregroundStyle(Theme.Status.criticalInk)
+                                .multilineTextAlignment(.center)
+                            Button("Try loading more again") { Task { await loadMore() } }
+                        }
                     } else {
                         Button("Load more sessions") { Task { await loadMore() } }
                     }

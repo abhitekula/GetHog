@@ -37,6 +37,8 @@ enum ProjectSearchRoute: Hashable {
     /// `SavedInsightDetailView` resolves from.
     case insight(shortID: String)
     case featureFlag(id: Int)
+    case cohort(id: Int)
+    case sessionRecordingPlaylist(shortID: String)
     /// A sheet, not a push: `SurveyDetailSheet` brings its own navigation stack
     /// and is presented modally everywhere else in the app.
     case survey(id: String)
@@ -50,7 +52,8 @@ enum ProjectSearchRoute: Hashable {
     /// Reinforcement only — a row that leaves the app says so in words too.
     var opensInApp: Bool {
         switch self {
-        case .dashboard, .insight, .featureFlag, .survey: true
+        case .dashboard, .insight, .featureFlag, .cohort, .sessionRecordingPlaylist, .survey:
+            true
         case .web, .unavailable: false
         }
     }
@@ -61,6 +64,9 @@ enum ProjectSearchRoute: Hashable {
         case .dashboard(let id): .dashboard(id: id, name: name)
         case .insight(let shortID): .insight(shortID: shortID, name: name)
         case .featureFlag(let id): .featureFlag(id: id, name: name)
+        case .cohort(let id): .cohort(id: id, name: name)
+        case .sessionRecordingPlaylist(let shortID):
+            .sessionRecordingPlaylist(shortID: shortID, name: name)
         case .survey, .web, .unavailable: nil
         }
     }
@@ -75,6 +81,8 @@ enum ProjectSearchPush: Hashable {
     case dashboard(id: Int, name: String)
     case insight(shortID: String, name: String)
     case featureFlag(id: Int, name: String)
+    case cohort(id: Int, name: String)
+    case sessionRecordingPlaylist(shortID: String, name: String)
 }
 
 // MARK: - Results
@@ -199,7 +207,13 @@ enum ProjectSearchIndex {
         case .survey:
             // A UUID string here, not a number.
             if let ref = entry.ref, !ref.isEmpty { return .survey(id: ref) }
-        case .cohort, .sessionRecordingPlaylist, .hogFunction, .folder, .unknown:
+        case .cohort:
+            if let id = entry.ref.flatMap(Int.init) { return .cohort(id: id) }
+        case .sessionRecordingPlaylist:
+            if let ref = entry.ref, !ref.isEmpty {
+                return .sessionRecordingPlaylist(shortID: ref)
+            }
+        case .hogFunction, .folder, .unknown:
             break
         }
         return webRoute(for: entry)
@@ -275,6 +289,8 @@ final class ProjectSearchStore {
     private(set) var loadedAt: Date?
 
     private var loadedProjectID: Int?
+    /// Invalidates any response overtaken by a force reload or project switch.
+    private var generation = 0
 
     /// One request per project, then nothing.
     ///
@@ -284,18 +300,32 @@ final class ProjectSearchStore {
     /// budget on work a phone can do in memory over 200 rows.
     func load(client: PostHogClient, projectID: Int, force: Bool = false) async {
         guard force || loadedProjectID != projectID else { return }
+        generation += 1
+        let token = generation
+        if loadedProjectID != projectID {
+            // Publish the new scope before suspending. Old rows are not an
+            // acceptable loading placeholder for a different project.
+            loadedProjectID = projectID
+            entries = []
+            total = nil
+            error = nil
+            loadedAt = nil
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if token == generation { isLoading = false }
+        }
         do {
             let page: Page<FileSystemEntry> = try await client.send(
                 PostHogAPI.fileSystem(projectID: projectID)
             )
+            guard token == generation, loadedProjectID == projectID else { return }
             entries = page.results
             total = page.count
             loadedAt = Date()
-            loadedProjectID = projectID
             error = nil
         } catch {
+            guard token == generation, loadedProjectID == projectID else { return }
             self.error = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }

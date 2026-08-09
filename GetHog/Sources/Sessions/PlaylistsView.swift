@@ -10,17 +10,36 @@ final class PlaylistsStore {
     var error: String?
     var loadedAt: Date?
 
+    /// The project whose rows are allowed to publish into this store. Updated
+    /// and cleared before a replacement request suspends.
+    private var loadedProjectID: Int?
+    private var generation = 0
+
     func load(client: PostHogClient, projectID: Int) async {
+        generation += 1
+        let token = generation
+        if loadedProjectID != projectID {
+            loadedProjectID = projectID
+            playlists = []
+            error = nil
+            loadedAt = nil
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if token == generation, loadedProjectID == projectID {
+                isLoading = false
+            }
+        }
         do {
             let page: Page<SessionRecordingPlaylist> = try await client.send(
                 PostHogAPI.sessionRecordingPlaylists(projectID: projectID)
             )
+            guard token == generation, loadedProjectID == projectID else { return }
             playlists = page.results
             loadedAt = Date()
             error = nil
         } catch {
+            guard token == generation, loadedProjectID == projectID else { return }
             self.error = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }

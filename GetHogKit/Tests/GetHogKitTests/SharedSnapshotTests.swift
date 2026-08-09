@@ -36,6 +36,7 @@ struct SharedSnapshotTests {
                 .init(id: 1, key: "new-onboarding", active: true, quickToggleAllowed: true),
                 .init(id: 2, key: "risky-migration", active: false, quickToggleAllowed: false),
             ],
+            authSessionID: UUID(),
             capturedAt: capturedAt
         )
     }
@@ -64,6 +65,7 @@ struct SharedSnapshotTests {
         #expect(read.flags.map(\.key) == ["new-onboarding", "risky-migration"])
         #expect(read.flags[0].quickToggleAllowed)
         #expect(read.flags[1].quickToggleAllowed == false)
+        #expect(read.authSessionID == written.authSessionID)
         // Sub-second drift would make "Updated 0s ago" flicker between reads.
         #expect(abs(read.capturedAt.timeIntervalSince(written.capturedAt)) < 0.001)
     }
@@ -200,6 +202,7 @@ struct SharedSnapshotTests {
         let decoded = try #require(try store.read())
         #expect(decoded.metrics.count == 1)
         #expect(decoded.metrics[0].dashboardID == nil)
+        #expect(decoded.authSessionID == nil)
     }
 
     @Test("lookup by id is available to the widget configuration query")

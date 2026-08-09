@@ -12,8 +12,11 @@ import SwiftUI
 /// clipped the tile underneath, which is precisely what a side panel is for
 /// avoiding. An explicit split is duller but it actually sits beside the data.
 struct InsightSidePanel: View {
-    let tile: Tile
+    let presentation: DashboardRenderedTile
     let onClose: () -> Void
+
+    private var tile: Tile { presentation.tile }
+    private var renderedModel: InsightRenderModel { presentation.model }
 
     @Environment(AppModel.self) private var model
     @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
@@ -22,7 +25,7 @@ struct InsightSidePanel: View {
         VStack(spacing: 0) {
             header
             Divider()
-            InsightDetailBody(tile: tile, webURL: webURL)
+            InsightDetailBody(presentation: presentation, webURL: webURL)
         }
         .background(Theme.pageBackground)
         // The panel is only in the hierarchy while an insight is open beside
@@ -32,7 +35,7 @@ struct InsightSidePanel: View {
         .focusedSceneValue(
             \.insightCSVExport,
             InsightCSVExportAction.routing(
-                ExportableInsight(title: tile.title, model: tile.renderModel).csvExport,
+                ExportableInsight(title: tile.title, model: renderedModel).csvExport,
                 through: exporter
             )
         )
@@ -84,7 +87,7 @@ struct InsightSidePanel: View {
 
             Spacer(minLength: 8)
 
-            InsightShareMenu(title: tile.title, model: tile.renderModel)
+            InsightShareMenu(title: tile.title, model: renderedModel)
 
             // The glyph is the whole button, so without a frame the tap target
             // *is* the glyph: measured from the running app on iPad, this
@@ -118,13 +121,15 @@ struct InsightSidePanel: View {
 /// Sheet presentation, which resolves the insight's web URL the same way the
 /// panel does.
 private struct SheetInsightDetail: View {
-    let tile: Tile
+    let presentation: DashboardRenderedTile
     let onClose: () -> Void
+
+    private var tile: Tile { presentation.tile }
 
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        InsightDetailView(tile: tile, webURL: webURL, onClose: onClose)
+        InsightDetailView(presentation: presentation, webURL: webURL, onClose: onClose)
             // Its own exporter, not the one at the window root. This screen is
             // presented as a sheet on iPhone, and asking the root to raise a
             // file picker over a live sheet is a nested presentation SwiftUI can
@@ -147,13 +152,23 @@ extension View {
     /// keeps the tile the user tapped one dismissal away.
     ///
     /// `namespace` is the grid's, not this modifier's: see `tileTransition`.
-    func insightDetail(tile: Binding<Tile?>, isWide: Bool, in namespace: Namespace.ID) -> some View {
-        modifier(InsightDetailPresentation(tile: tile, isWide: isWide, namespace: namespace))
+    func insightDetail(
+        presentation: Binding<DashboardRenderedTile?>,
+        isWide: Bool,
+        in namespace: Namespace.ID
+    ) -> some View {
+        modifier(
+            InsightDetailPresentation(
+                presentation: presentation,
+                isWide: isWide,
+                namespace: namespace
+            )
+        )
     }
 }
 
 private struct InsightDetailPresentation: ViewModifier {
-    @Binding var tile: Tile?
+    @Binding var presentation: DashboardRenderedTile?
     let isWide: Bool
     /// Where the grid registered its tiles as transition sources.
     let namespace: Namespace.ID
@@ -179,19 +194,19 @@ private struct InsightDetailPresentation: ViewModifier {
             // `insightPanelOpen`.
             HStack(spacing: 0) {
                 content
-                if let tile {
+                if let presentation {
                     Divider()
-                    InsightSidePanel(tile: tile) { self.tile = nil }
+                    InsightSidePanel(presentation: presentation) { self.presentation = nil }
                         .frame(minWidth: 320, idealWidth: 380, maxWidth: 460)
                         .transition(.move(edge: .trailing))
                 }
             }
-            .animation(.snappy(duration: 0.25), value: tile?.id)
+            .animation(.snappy(duration: 0.25), value: presentation?.id)
             // Lets the enclosing split view give up its sidebar while an
             // insight is open: on an 11-inch iPad the sidebar and the panel
             // cannot both be afforded, and the dashboard list is the one you do
             // not need while reading a single chart.
-            .preference(key: InsightPanelOpenKey.self, value: tile != nil)
+            .preference(key: InsightPanelOpenKey.self, value: presentation != nil)
             // No zoom on this branch, and no attempt to build one. A zoom
             // transition is a property of a *presentation* — a push, a sheet, a
             // full-screen cover — and this branch presents nothing: the panel is
@@ -200,12 +215,22 @@ private struct InsightDetailPresentation: ViewModifier {
             // beside. Reshaping that into a presentation to earn an animation
             // would trade the layout for the effect.
         } else {
-            content.sheet(item: $tile) { tile in
-                // The sheet has room for a real navigation bar, so it uses one
-                // rather than the panel's hand-drawn header.
-                zoomed(from: tile.id) {
-                    NavigationStack {
-                        SheetInsightDetail(tile: tile) { self.tile = nil }
+            content.sheet(
+                isPresented: Binding(
+                    get: { presentation != nil },
+                    set: { if !$0 { presentation = nil } }
+                )
+            ) {
+                if let presentation {
+                    // Read the binding inside the sheet rather than accepting a
+                    // snapshot from `sheet(item:)`, so an open inspector updates
+                    // when the same tile receives a new range result.
+                    zoomed(from: presentation.id) {
+                        NavigationStack {
+                            SheetInsightDetail(presentation: presentation) {
+                                self.presentation = nil
+                            }
+                        }
                     }
                 }
             }

@@ -27,6 +27,11 @@ import SwiftUI
 /// take 24 destinations down with it — on a phone this list is the only route to
 /// them.
 struct ProjectSearchView: View {
+    /// The product tabs already visible in a compact bar. Supplied by the iOS
+    /// root because only it owns the iPad system customization; other shells
+    /// use their existing navigation preference/default.
+    let compactLooseTabs: [AppTab]?
+
     @Environment(AppModel.self) private var model
     @Environment(NavPreferences.self) private var nav
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -38,10 +43,18 @@ struct ProjectSearchView: View {
     /// presented from the Surveys screen and it carries its own navigation stack.
     @State private var surveyRequest: SurveySearchRequest?
 
+    init(compactLooseTabs: [AppTab]? = nil) {
+        self.compactLooseTabs = compactLooseTabs
+    }
+
     /// The iPad sidebar already lists every screen, so only the phone needs the
     /// index half — and pushing a screen here would put it in this tab's stack
     /// where the sidebar's selection would not follow it.
     private var showsScreens: Bool { sizeClass == .compact }
+    private var screenIndexLooseTabs: [AppTab] { compactLooseTabs ?? nav.barTabs }
+    private var indexedScreens: [AppTab] {
+        AppTab.groupedScreens(excluding: screenIndexLooseTabs).flatMap(\.tabs) + AppTab.utility
+    }
 
     var body: some View {
         ScrollViewReader { scroller in
@@ -54,7 +67,7 @@ struct ProjectSearchView: View {
             if showsScreens {
                 ScreenIndexSections(
                     query: query,
-                    loose: nav.barTabs,
+                    loose: screenIndexLooseTabs,
                     rotorNamespace: screenRotor
                 )
             }
@@ -139,6 +152,10 @@ struct ProjectSearchView: View {
                 SavedInsightDetailView(identifier: shortID)
             case .featureFlag(let id, let name):
                 FlagSearchDestination(flagID: id, key: name)
+            case .cohort(let id, let name):
+                CohortSearchDestination(cohortID: id, name: name)
+            case .sessionRecordingPlaylist(let shortID, let name):
+                PlaylistSearchDestination(shortID: shortID, name: name)
             }
         }
     }
@@ -229,8 +246,8 @@ struct ProjectSearchView: View {
     private var rotorScreens: [AppTab] {
         guard showsScreens else { return [] }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return nav.indexedScreens }
-        return nav.indexedScreens.filter { $0.title.localizedCaseInsensitiveContains(needle) }
+        guard !needle.isEmpty else { return indexedScreens }
+        return indexedScreens.filter { $0.title.localizedCaseInsensitiveContains(needle) }
     }
 
     // MARK: - Objects
@@ -345,7 +362,10 @@ struct ProjectSearchView: View {
     private var resultSections: some View {
         let groups = ProjectSearchIndex.results(in: store.entries, query: query)
         if groups.isEmpty {
-            if showsScreens && ScreenIndexSections.hasMatches(query: query, loose: nav.barTabs) {
+            if showsScreens && ScreenIndexSections.hasMatches(
+                query: query,
+                loose: screenIndexLooseTabs
+            ) {
                 // Screens matched and objects did not. Said plainly rather than
                 // left blank, or a reader would reasonably conclude the field
                 // only ever searched the app's own screens.
@@ -536,6 +556,104 @@ extension View {
     }
 }
 
+// MARK: - Cohort destination
+
+/// Resolves the lightweight project-index row through the same cohort list the
+/// People screen uses, then hands the full definition to the native detail.
+private struct CohortSearchDestination: View {
+    let cohortID: Int
+    let name: String
+
+    @Environment(AppModel.self) private var model
+    @State private var store = PeopleStore()
+
+    private var cohort: Cohort? { store.cohorts.first { $0.id == cohortID } }
+    private var cohortNames: [Int: String] {
+        Dictionary(store.cohorts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    var body: some View {
+        Group {
+            if let cohort {
+                CohortDetailView(cohort: cohort, cohortNames: cohortNames)
+            } else if store.isLoadingCohorts {
+                ProgressView().controlSize(.large)
+            } else if let error = store.cohortsError {
+                EmptyStateView(
+                    title: "Couldn't load this cohort",
+                    systemImage: "exclamationmark.triangle",
+                    message: error,
+                    actionTitle: "Try again"
+                ) {
+                    Task { await load() }
+                }
+            } else {
+                EmptyStateView(
+                    title: "Cohort not found",
+                    systemImage: "person.3.sequence",
+                    message: "“\(name)” is no longer among this project's cohorts. It may have been deleted."
+                )
+            }
+        }
+        .navigationTitle(cohort?.name ?? name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: model.projectID) { await load() }
+    }
+
+    private func load() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.loadCohorts(client: client, projectID: projectID, force: true)
+    }
+}
+
+// MARK: - Playlist destination
+
+/// Resolves a playlist short id to the model the Sessions-native detail needs.
+private struct PlaylistSearchDestination: View {
+    let shortID: String
+    let name: String
+
+    @Environment(AppModel.self) private var model
+    @State private var store = PlaylistsStore()
+
+    private var playlist: SessionRecordingPlaylist? {
+        store.playlists.first { $0.shortID == shortID }
+    }
+
+    var body: some View {
+        Group {
+            if let playlist {
+                PlaylistDetailView(playlist: playlist, onApplyFilter: nil)
+            } else if store.isLoading {
+                ProgressView().controlSize(.large)
+            } else if let error = store.error {
+                EmptyStateView(
+                    title: "Couldn't load this playlist",
+                    systemImage: "exclamationmark.triangle",
+                    message: error,
+                    actionTitle: "Try again"
+                ) {
+                    Task { await load() }
+                }
+            } else {
+                EmptyStateView(
+                    title: "Playlist not found",
+                    systemImage: "rectangle.stack.badge.minus",
+                    message: "“\(name)” is no longer among this project's playlists. It may have been deleted."
+                )
+            }
+        }
+        .navigationTitle(playlist?.name ?? name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: model.projectID) { await load() }
+    }
+
+    private func load() async {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        await store.load(client: client, projectID: projectID)
+    }
+}
+
 // MARK: - Feature flag destination
 
 /// The flag screen, reached from nothing but an id.
@@ -564,8 +682,12 @@ struct FlagSearchDestination: View {
 
     var body: some View {
         Group {
-            if let flag {
-                FlagDetailView(flag: flag, controller: store.toggles)
+            if let flag, let projectID = store.loadedProjectID {
+                FlagDetailView(
+                    flag: flag,
+                    controller: store.toggles,
+                    projectID: projectID
+                )
             } else if store.isLoading {
                 ProgressView().controlSize(.large)
             } else if let error = store.error {

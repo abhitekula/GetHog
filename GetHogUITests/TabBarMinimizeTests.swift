@@ -10,26 +10,22 @@ import XCTest
 ///
 /// **Measured on iPhone 17, 402 × 874pt, demo build.** The tab bar's own frame is
 /// `{0, 791, 402, 83}` — byte-identical expanded and minimised. Expanded it holds
-/// five 54pt buttons; minimised it holds one, a 48 × 48 pill at `{28, 798}`. So
-/// the band the bar reserves, and therefore the bottom safe-area inset the
-/// screens lay out against, does not change when it minimises: the pill is
-/// strictly *inside* the space the expanded bar already occupied.
+/// five 54pt buttons; minimised it holds one, a 48 × 48 pill at `{28, 798}`. The
+/// container therefore includes seven transparent points above the control. It
+/// is the button frame, not that transparent container, that can cover content.
 ///
-/// At the end of the scroll, with the bar minimised, Errors put its last element
-/// at `maxY = 771` against the bar's `minY = 791` — 20pt of clearance, and
-/// hittable. Re-read on iPhone 17 Pro Max (440 × 956pt), also minimised: Errors
-/// `853` against `873`, the same 20pt, and People — whose page has less trailing
-/// padding — `873` against `873`, flush to the point and still hittable. Nothing
-/// on either screen is covered, and People shows the inset is exact rather than
-/// generous.
+/// Measured again on iOS 26.5, the first merely hittable Errors footer could end
+/// at `810`, but one more bounded swipe put it at `776.33` against the pill's
+/// `minY = 798`: 21.67pt of real clearance. Re-read on iPhone 17 Pro Max
+/// (440 × 956pt), People — whose page has less trailing padding — was flush to
+/// its rendered controls and still hittable. Nothing on either screen is covered.
 ///
 /// **So there is nothing to fix, and that is the point of these assertions.** The
 /// tempting repair — a `safeAreaInset` on the screens that were filed — would
 /// double-inset every one of them whenever the bar is expanded, which is most of
-/// the time. What the two assertions here pin is the pair of facts that make the
-/// repair unnecessary: the reserved band does not shrink, and content clears it.
-/// If a future iOS *does* shrink the band on minimise, the first assertion fails
-/// and the fix belongs on the `TabView`, once, not on each screen.
+/// the time. What the assertions pin is that the content can be scrolled clear
+/// of the controls the bar actually draws. If a future iOS makes that impossible,
+/// the fix belongs on the `TabView`, once, not on each screen.
 final class TabBarMinimizeTests: XCTestCase {
 
     func testErrorsClearsTheMinimisedTabBar() throws {
@@ -146,12 +142,18 @@ final class TabBarMinimizeTests: XCTestCase {
     ) {
         // To the end of the list. `FreshnessLabel` is the last thing on every one
         // of these screens and it says so out loud, which makes it the one
-        // element that is definitionally the bottom of the content.
+        // element that is definitionally the bottom of the content. Hittability
+        // alone is not the boundary: XCTest can hit a partially covered row.
         let freshness = app.staticTexts
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Data updated"))
             .firstMatch
         for _ in 0..<16 {
-            if freshness.exists && freshness.isHittable { break }
+            let obstruction = tabBarObstruction(bar)
+            if freshness.exists,
+               freshness.isHittable,
+               !freshness.frame.intersects(obstruction) {
+                break
+            }
             app.swipeUp()
             DemoLaunch.pause(0.3)
         }
@@ -165,18 +167,27 @@ final class TabBarMinimizeTests: XCTestCase {
         )
         guard freshness.exists else { return }
 
+        let obstruction = tabBarObstruction(bar)
+        XCTAssertFalse(
+            obstruction.isNull,
+            "The tab bar has no rendered controls to measure on \(title).",
+            file: file,
+            line: line
+        )
+
         print(
             "TAB-BAR-CLEARANCE \(title) bar=\(bar.frame) "
+                + "obstruction=\(obstruction) "
                 + "lastContent=\(freshness.frame) hittable=\(freshness.isHittable) "
                 + "buttons=\(bar.buttons.count)"
         )
 
-        XCTAssertLessThanOrEqual(
-            freshness.frame.maxY, bar.frame.minY,
+        XCTAssertFalse(
+            freshness.frame.intersects(obstruction),
             """
-            The last element of \(title) ends at \(freshness.frame.maxY) and the \
-            tab bar starts at \(bar.frame.minY), so the bar is over the end of \
-            the content and no amount of scrolling brings it clear.
+            The last element of \(title) is at \(freshness.frame) and the tab \
+            bar's rendered controls occupy \(obstruction), so a control is over \
+            the end of the content after bounded scrolling.
             """,
             file: file,
             line: line
@@ -187,5 +198,14 @@ final class TabBarMinimizeTests: XCTestCase {
             file: file,
             line: line
         )
+    }
+
+    /// The tab bar's accessibility container includes transparent material
+    /// above and around its controls. Unioning the buttons measures the pixels
+    /// that can actually obstruct content in both expanded and collapsed states.
+    private func tabBarObstruction(_ bar: XCUIElement) -> CGRect {
+        bar.buttons.allElementsBoundByIndex.reduce(into: CGRect.null) { frame, button in
+            frame = frame.union(button.frame)
+        }
     }
 }

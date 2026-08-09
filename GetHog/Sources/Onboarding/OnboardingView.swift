@@ -2,6 +2,34 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+/// Copy and action derived from AppModel's credential classification. Kept
+/// value-only so retry-vs-replace cannot drift between the model and the view.
+struct OnboardingRecoveryPresentation: Equatable {
+    enum PrimaryAction: Equatable {
+        case retryStoredCredential
+        case replaceCredential(PostHogRegion)
+    }
+
+    let title: String
+    let message: String
+    let primaryActionTitle: String
+    let primaryAction: PrimaryAction
+
+    init(recovery: AppModel.StoredCredentialRecovery, message: String) {
+        self.message = message
+        switch recovery {
+        case .retryable:
+            title = "Couldn't reconnect"
+            primaryActionTitle = "Try again"
+            primaryAction = .retryStoredCredential
+        case .replaceCredential(let region):
+            title = "Saved key rejected"
+            primaryActionTitle = "Enter a new key"
+            primaryAction = .replaceCredential(region)
+        }
+    }
+}
+
 /// The highest-friction moment in the app.
 ///
 /// The known failure of personal API keys is that scopes are chosen by the user,
@@ -18,6 +46,14 @@ struct OnboardingView: View {
     @State private var error: String?
 
     private enum Step { case welcome, region, key }
+
+    private var recoveryPresentation: OnboardingRecoveryPresentation? {
+        guard let recovery = model.storedCredentialRecovery else { return nil }
+        return OnboardingRecoveryPresentation(
+            recovery: recovery,
+            message: model.connectionError ?? "GetHog couldn't restore the saved connection."
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -94,6 +130,11 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
                 }
+            }
+
+            if let recoveryPresentation {
+                recoveryCard(recoveryPresentation)
+                    .padding(.top, 20)
             }
 
             Spacer(minLength: 24)
@@ -221,6 +262,48 @@ struct OnboardingView: View {
         ("lock.shield", "Stays on your device",
          "Your key lives in the Keychain. There's no backend."),
     ]
+
+    private func recoveryCard(_ presentation: OnboardingRecoveryPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(presentation.title, systemImage: "arrow.clockwise.circle")
+                .font(.headline)
+                .foregroundStyle(Theme.Status.warningInk)
+            Text(presentation.message)
+                .font(.footnote)
+                .foregroundStyle(Theme.Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(presentation.primaryActionTitle) {
+                performRecoveryAction(presentation.primaryAction)
+            }
+            .buttonStyle(.borderedProminent)
+
+            if presentation.primaryAction == .retryStoredCredential {
+                Button("Use another key") {
+                    withAnimation(.snappy) { step = .region }
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardBackground, in: .rect(cornerRadius: 12))
+    }
+
+    private func performRecoveryAction(_ action: OnboardingRecoveryPresentation.PrimaryAction) {
+        switch action {
+        case .retryStoredCredential:
+            Task { await model.retryStoredCredential() }
+        case .replaceCredential(let rejectedRegion):
+            region = rejectedRegion
+            if case .selfHosted(let url) = rejectedRegion {
+                selfHostedURL = url.absoluteString
+            } else {
+                selfHostedURL = ""
+            }
+            withAnimation(.snappy) { step = .key }
+        }
+    }
 
     // MARK: - Region
 

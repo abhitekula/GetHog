@@ -43,21 +43,34 @@ final class PeopleStore {
     /// network to expose it.
     private var loadedProjectID: Int?
 
+    /// Every cohort load owns one publication token. Project changes also bump
+    /// it so an old request cannot publish after an A → B → A scope round trip.
+    private var personsGeneration = 0
+    private var cohortsGeneration = 0
+
     private let pageSize = 50
 
     func loadPersons(client: PostHogClient, projectID: Int, search: String?) async {
         discardIfProjectChanged(to: projectID)
+        personsGeneration += 1
+        let token = personsGeneration
         isLoadingPersons = true
-        defer { isLoadingPersons = false }
+        defer {
+            if token == personsGeneration, loadedProjectID == projectID {
+                isLoadingPersons = false
+            }
+        }
         do {
             let page: Page<PersonSummary> = try await client.send(
                 PostHogAPI.persons(projectID: projectID, limit: pageSize, search: search)
             )
+            guard token == personsGeneration, loadedProjectID == projectID else { return }
             persons = page.results
             personsTotal = page.count
             personsLoadedAt = Date()
             personsError = nil
         } catch {
+            guard token == personsGeneration, loadedProjectID == projectID else { return }
             personsError = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }
@@ -66,12 +79,19 @@ final class PeopleStore {
     func loadCohorts(client: PostHogClient, projectID: Int, force: Bool = false) async {
         discardIfProjectChanged(to: projectID)
         guard force || !hasLoadedCohorts else { return }
+        cohortsGeneration += 1
+        let token = cohortsGeneration
         isLoadingCohorts = true
-        defer { isLoadingCohorts = false }
+        defer {
+            if token == cohortsGeneration, loadedProjectID == projectID {
+                isLoadingCohorts = false
+            }
+        }
         do {
             let page: Page<Cohort> = try await client.send(
                 PostHogAPI.cohorts(projectID: projectID)
             )
+            guard token == cohortsGeneration, loadedProjectID == projectID else { return }
             // Deleted cohorts stay in the API response; they are not a thing the
             // user can act on, so they never reach the list.
             cohorts = page.results.filter { !$0.deleted }
@@ -79,6 +99,7 @@ final class PeopleStore {
             cohortsError = nil
             hasLoadedCohorts = true
         } catch {
+            guard token == cohortsGeneration, loadedProjectID == projectID else { return }
             cohortsError = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }
@@ -87,13 +108,17 @@ final class PeopleStore {
     /// A different project means different people; nothing carries over.
     private func discardIfProjectChanged(to projectID: Int) {
         guard loadedProjectID != projectID else { return }
+        personsGeneration += 1
+        cohortsGeneration += 1
         loadedProjectID = projectID
         persons = []
         personsTotal = nil
         personsError = nil
         personsLoadedAt = nil
+        isLoadingPersons = false
         cohorts = []
         cohortsError = nil
+        isLoadingCohorts = false
         cohortsLoadedAt = nil
         hasLoadedCohorts = false
     }
