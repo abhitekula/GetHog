@@ -81,6 +81,18 @@ struct SearchPathResetTransition: Equatable {
     }
 }
 
+@MainActor
+enum IOSOpenDetailsAuthority {
+    static func applyChange(
+        from previous: FlagWriteScope?,
+        to current: FlagWriteScope?,
+        openDetails: OpenDetails
+    ) {
+        guard previous != current else { return }
+        openDetails.reset()
+    }
+}
+
 // `TabRootView`, `PresentedDetail` and `DetailSheetView` moved to
 // `App/TabRootView.swift`: this file is iOS-only — `UIDevice`, the size class
 // and `tabBarMinimizeBehavior` are all named below — and is excluded from the
@@ -307,13 +319,18 @@ struct RootView: View {
                 .environment(experimentLifecycle)
             }
         }
-        .onChange(of: model.projectID) { _, id in
+        .onChange(of: model.flagWriteScope) { previousScope, currentScope in
             // This observer must outlive the ready subtree: sign-out clears the
-            // project and replaces that subtree in one actor turn. Keeping it
-            // above the phase switch guarantees authentication-bound detail
-            // stores are invalidated even when no ready screen remains to
-            // observe the nil project.
-            openDetails.reset()
+            // authenticated scope and replaces that subtree in one actor turn.
+            // Keeping it above the phase switch guarantees authentication-bound
+            // detail stores are invalidated even when no ready screen remains.
+            IOSOpenDetailsAuthority.applyChange(
+                from: previousScope,
+                to: currentScope,
+                openDetails: openDetails
+            )
+        }
+        .onChange(of: model.projectID) { _, id in
             // The dynamic quick actions name objects in one project, so they
             // have to be rebuilt whenever that project changes.
             QuickActions.refresh(projectID: id)
