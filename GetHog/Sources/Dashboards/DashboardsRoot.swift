@@ -103,6 +103,16 @@ struct DashboardListLoadScope: Hashable {
     }
 }
 
+enum DashboardNavigationPath {
+    static func path(for selection: Int?) -> [Int] {
+        selection.map { [$0] } ?? []
+    }
+
+    static func selection(from path: [Int]) -> Int? {
+        path.last
+    }
+}
+
 struct DashboardsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -127,6 +137,15 @@ struct DashboardsRoot: View {
         )
     }
 
+    /// The navigation stack is only a presentation of `OpenDetails`; it must
+    /// not become a second selection owner when this screen crosses widths.
+    private var regularPath: Binding<[Int]> {
+        Binding(
+            get: { DashboardNavigationPath.path(for: selectedID.wrappedValue) },
+            set: { selectedID.wrappedValue = DashboardNavigationPath.selection(from: $0) }
+        )
+    }
+
     private var selection: DashboardSummary? {
         selectedID.wrappedValue.flatMap { id in store.dashboards.first { $0.id == id } }
     }
@@ -137,10 +156,6 @@ struct DashboardsRoot: View {
             isAvailable: model.isAvailable(.dashboards)
         )
     }
-    // `.all`, not `.automatic`: explicit visibility preserves the list column
-    // when the split view's own toggle is removed below.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-
     var body: some View {
         Group {
             if sizeClass == .compact {
@@ -162,7 +177,7 @@ struct DashboardsRoot: View {
                         }
                     }
             } else {
-                regularSplit
+                regularHub
             }
         }
         // Teaches Siri which dashboard this person actually opens.
@@ -177,68 +192,97 @@ struct DashboardsRoot: View {
         }
     }
 
-    /// Regular width keeps the two-column arrangement, and everything the
-    /// columns need to negotiate with each other.
-    private var regularSplit: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            // Bare on purpose: `listChrome` already carries the full modifier
-            // stack. This site used to re-apply all of it inline — which drew
-            // the project-switcher glyph twice in the sidebar header and, far
-            // worse, mounted a second `.task(id: model.projectID)`, fetching
-            // the dashboard list twice on appear and twice per project switch
-            // against a shared rate limit.
-            listChrome
-        } detail: {
-            if store.contentState(isAvailable: loadScope.isAvailable) == .unavailable {
-                dashboardUnavailable
-            } else if let selection {
-                // `.id` rebuilds the screen per dashboard, which also clears the
-                // previously selected tile rather than leaving one dashboard's
-                // insight open beside another dashboard's grid.
-                DashboardDetailView(
-                    summary: selection,
-                    store: openDetails.dashboardStores.store(
-                        for: selection.id,
-                        projectID: model.projectID
-                    )
-                )
-                    .id("project-\(model.projectID ?? -1)-dashboard-\(selection.id)")
-            } else {
-                switch store.contentState(isAvailable: loadScope.isAvailable) {
-                case .unavailable:
-                    dashboardUnavailable
-                case .loading:
-                    ProgressView("Loading dashboards…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .failed(let error):
-                    dashboardLoadFailure(error)
-                case .empty:
-                    EmptyStateView(
-                        title: "No dashboards",
-                        systemImage: "square.grid.2x2",
-                        illustration: .dashboard,
-                        message: "This project doesn't have any dashboards yet."
-                    )
-                case .loaded:
-                    // The detail pane is the largest surface in the app.
-                    // Handing it a "Select a dashboard" placeholder wasted it
-                    // on every launch.
-                    ProjectOverview(dashboards: store.dashboards)
+    /// One regular-width stack keeps the project signal, pinned preview and
+    /// dashboard cards on one scroll surface. `regularPath` remains derived
+    /// from `OpenDetails`, so restoration and a width crossing keep the same
+    /// selected dashboard.
+    private var regularHub: some View {
+        NavigationStack(path: regularPath) {
+            regularLanding
+                .navigationDestination(for: Int.self) { id in
+                    dashboardDetail(id: id)
+                }
+        }
+    }
+
+    private var regularLanding: some View {
+        regularLandingContent
+            .navigationTitle("Dashboards")
+#if os(macOS)
+            .toolbar(id: "dashboards") {
+                PinnedProjectSwitcher()
+                ToolbarItem(id: "refresh", placement: .primaryAction) {
+                    Button {
+                        Task { await load() }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh dashboards")
                 }
             }
-        }
-        // The insight panel temporarily yields the list column, then restores it
-        // explicitly when the panel closes.
-        .onPreferenceChange(InsightPanelOpenKey.self) { isOpen in
-            withAnimation(.snappy(duration: 0.25)) {
-                columnVisibility = isOpen ? .detailOnly : .all
+#else
+            .toolbar { ProjectSwitcher() }
+#endif
+            .projectSubtitle()
+#if !os(tvOS)
+            .searchable(text: $search, prompt: "Search dashboards")
+#endif
+            .screenRefreshable { await load() }
+            .task(id: loadScope) {
+                await loadScope.load(store: store, client: model.client)
+                applyDebugSelectionIfNeeded()
+            }
+    }
+
+    @ViewBuilder
+    private var regularLandingContent: some View {
+        switch store.contentState(isAvailable: loadScope.isAvailable) {
+        case .unavailable:
+            dashboardUnavailable
+        case .loading:
+            ProgressView("Loading dashboards…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed(let error):
+            dashboardLoadFailure(error)
+        case .empty:
+            EmptyStateView(
+                title: "No dashboards",
+                systemImage: "square.grid.2x2",
+                illustration: .dashboard,
+                message: "This project doesn't have any dashboards yet."
+            )
+        case .loaded:
+            DashboardHub(
+                dashboards: store.dashboards,
+                pinned: store.pinned,
+                others: store.others,
+                loadedAt: store.loadedAt,
+                search: $search
+            ) { dashboard in
+                dashboardHubRow(dashboard)
             }
         }
     }
 
-    /// The list and everything attached to it, shared by both widths.
-    /// The one copy of this chrome — `regularSplit` must not re-apply any of
-    /// it, or the switcher glyph doubles and the list fetches twice.
+    @ViewBuilder
+    private func dashboardDetail(id: Int) -> some View {
+        if let summary = store.dashboards.first(where: { $0.id == id }) {
+            DashboardDetailView(
+                summary: summary,
+                store: openDetails.dashboardStores.store(
+                    for: id,
+                    projectID: model.projectID
+                ),
+                onReturnToDashboards: { selectedID.wrappedValue = nil }
+            )
+                .id("project-\(model.projectID ?? -1)-dashboard-\(id)")
+        } else {
+            EmptyView()
+        }
+    }
+
+    /// Compact keeps its existing list-to-detail presentation and one list load
+    /// task. Regular width owns equivalent chrome in `regularLanding`.
     private var listChrome: some View {
         content
             // Left to its own devices the sidebar took 340pt of an 834pt
@@ -388,28 +432,45 @@ struct DashboardsRoot: View {
 
     private func row(_ dashboard: DashboardSummary) -> some View {
         NavigationLink(value: dashboard.id) {
-            DataRow(
-                glyph: dashboard.creationMode == .template ? "wand.and.stars" : "square.grid.2x2",
-                brandGlyph: DashboardBrandAppearance.glyph(for: dashboard.creationMode),
-                // Generated dashboards are tinted with the warm secondary
-                // rather than the app accent: they are real, but half this
-                // project's list is feature-flag exhaust and it should not
-                // compete with the dashboards somebody actually made.
-                tint: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent,
-                title: dashboard.title,
-                subtitle: dashboard.description,
-                // Absent for any dashboard nobody has opened, which is most of
-                // them. `DataRow` drops the line entirely rather than printing
-                // a placeholder date the API never gave us.
-                footnote: dashboard.lastRefresh.map {
-                    "Updated \($0.formatted(.relative(presentation: .named)))"
-                },
-                accessory: .none
-            )
+            dashboardRowContent(dashboard)
         }
         .dashboardRowSurface()
         .listRowSeparator(.hidden)
-        .contextMenu {
+        .contextMenu { dashboardContextMenu(dashboard) }
+    }
+
+    private func dashboardHubRow(_ dashboard: DashboardSummary) -> some View {
+        Button {
+            selectedID.wrappedValue = dashboard.id
+        } label: {
+            Card(
+                padding: Theme.Space.m,
+                accent: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent
+            ) {
+                dashboardRowContent(dashboard)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu { dashboardContextMenu(dashboard) }
+        .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
+    }
+
+    private func dashboardRowContent(_ dashboard: DashboardSummary) -> some View {
+        DataRow(
+            glyph: dashboard.creationMode == .template ? "wand.and.stars" : "square.grid.2x2",
+            brandGlyph: DashboardBrandAppearance.glyph(for: dashboard.creationMode),
+            tint: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent,
+            title: dashboard.title,
+            subtitle: dashboard.description,
+            footnote: dashboard.lastRefresh.map {
+                "Updated \($0.formatted(.relative(presentation: .named)))"
+            },
+            accessory: .none
+        )
+    }
+
+    @ViewBuilder
+    private func dashboardContextMenu(_ dashboard: DashboardSummary) -> some View {
             // The detail's own toolbar has offered this since the tear-off
             // landed; the row it was opened from did not, which put the one
             // affordance a Mac user reaches for behind a navigation step.
@@ -439,7 +500,6 @@ struct DashboardsRoot: View {
                 }
             }
             #endif
-        }
     }
 
     private func filtered(_ items: [DashboardSummary]) -> [DashboardSummary] {

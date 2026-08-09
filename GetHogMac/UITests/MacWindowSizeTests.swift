@@ -39,11 +39,20 @@ final class MacWindowSizeTests: XCTestCase {
         }
         XCTAssertEqual(collections.count, 1, "The dashboard hub must contain exactly one collection.")
         guard collections.count == 1 else { return }
+        let collectionWidth = collection.frame.width
 
         let cards = hub.buttons.matching(
             NSPredicate(format: "identifier == %@", "gethog.dashboard-card.725101")
         )
         let card = cards.firstMatch
+        // The project signal and pinned preview intentionally occupy the first
+        // viewport. `LazyVGrid` creates the dashboard cards as they approach
+        // it, so use a bounded scroll on the one hub surface before requiring
+        // the descendant card.
+        for _ in 0..<6 where !card.exists {
+            hub.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.25)
+        }
         guard DemoLaunch.wait(for: card) else {
             return XCTFail("The dashboard hub did not contain gethog.dashboard-card.725101.")
         }
@@ -53,7 +62,7 @@ final class MacWindowSizeTests: XCTestCase {
         guard DemoLaunch.wait(for: projectSignal) else {
             return XCTFail("The dashboard hub did not contain the Project signal.")
         }
-        XCTAssertGreaterThan(collection.frame.width, hub.frame.width * 0.5)
+        XCTAssertGreaterThan(collectionWidth, hub.frame.width * 0.5)
         XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
     }
 

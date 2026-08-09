@@ -347,19 +347,31 @@ struct DashboardDetailView: View {
     /// Known up front when navigating from the list; absent when a restored
     /// window has nothing but an id, in which case the fetch supplies it.
     private let providedTitle: String?
+    private let onReturnToDashboards: (() -> Void)?
 
     init(
         dashboardID: Int,
         title: String? = nil,
-        store: DashboardDetailStore? = nil
+        store: DashboardDetailStore? = nil,
+        onReturnToDashboards: (() -> Void)? = nil
     ) {
         self.dashboardID = dashboardID
         self.providedTitle = title
+        self.onReturnToDashboards = onReturnToDashboards
         _store = State(initialValue: store ?? DashboardDetailStore())
     }
 
-    init(summary: DashboardSummary, store: DashboardDetailStore? = nil) {
-        self.init(dashboardID: summary.id, title: summary.title, store: store)
+    init(
+        summary: DashboardSummary,
+        store: DashboardDetailStore? = nil,
+        onReturnToDashboards: (() -> Void)? = nil
+    ) {
+        self.init(
+            dashboardID: summary.id,
+            title: summary.title,
+            store: store,
+            onReturnToDashboards: onReturnToDashboards
+        )
     }
 
     @Environment(AppModel.self) private var model
@@ -415,7 +427,13 @@ struct DashboardDetailView: View {
             // Same URL the "Open in PostHog" item below opens, offered to the
             // *other* device instead of this one.
             .handoff(webURL: webURL, title: title)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                regularReturnControl
+            }
             .toolbar { toolbarContent }
+#if !os(tvOS)
+            .navigationBarBackButtonHidden(onReturnToDashboards != nil)
+#endif
             .keyboardActions([
                 KeyboardAction(key: "r", title: "Recompute results") {
                     Task { await load(refresh: true) }
@@ -676,6 +694,23 @@ struct DashboardDetailView: View {
                 Image(systemName: "ellipsis.circle")
             }
             .accessibilityLabel("Dashboard actions")
+        }
+    }
+
+    @ViewBuilder
+    private var regularReturnControl: some View {
+        if let onReturnToDashboards {
+            HStack {
+                Button(action: onReturnToDashboards) {
+                    Label("All dashboards", systemImage: "chevron.backward")
+                }
+                .buttonStyle(.bordered)
+                .labelStyle(.titleAndIcon)
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Space.l)
+            .padding(.vertical, Theme.Space.s)
+            .background(Theme.pageBackground)
         }
     }
 

@@ -6,6 +6,14 @@ import Testing
 
 @Suite("Dashboard Signal Grammar")
 struct SignalGrammarDashboardTests {
+    @Test("Regular dashboard path preserves the OpenDetails selection")
+    func regularDashboardPath() {
+        #expect(DashboardNavigationPath.path(for: nil).isEmpty)
+        #expect(DashboardNavigationPath.path(for: 725_101) == [725_101])
+        #expect(DashboardNavigationPath.selection(from: []) == nil)
+        #expect(DashboardNavigationPath.selection(from: [725_101]) == 725_101)
+    }
+
     @Test("Overview facts separate computed and generated dashboards")
     func overviewFacts() throws {
         let data = Data(#"""

@@ -40,11 +40,20 @@ final class DashboardConsistencyUITests: XCTestCase {
         }
         XCTAssertEqual(collections.count, 1, "The dashboard hub must contain exactly one collection.")
         guard collections.count == 1 else { return }
+        let collectionWidth = collection.frame.width
 
         let cards = hub.buttons.matching(
             NSPredicate(format: "identifier == %@", "gethog.dashboard-card.725101")
         )
         let card = cards.firstMatch
+        // The project signal and pinned preview intentionally occupy the first
+        // viewport. `LazyVGrid` creates the dashboard cards as they approach
+        // it, so use a bounded scroll on the one hub surface before requiring
+        // the descendant card.
+        for _ in 0..<6 where !card.exists {
+            hub.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.25)
+        }
         guard DemoLaunch.wait(for: card) else {
             return XCTFail("The dashboard hub did not contain gethog.dashboard-card.725101.")
         }
@@ -54,8 +63,78 @@ final class DashboardConsistencyUITests: XCTestCase {
         guard DemoLaunch.wait(for: projectSignal) else {
             return XCTFail("The dashboard hub did not contain the Project signal.")
         }
-        XCTAssertGreaterThan(collection.frame.width, hub.frame.width * 0.5)
+        XCTAssertGreaterThan(collectionWidth, hub.frame.width * 0.5)
         XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
+    }
+
+    func testRegularDashboardReturnPreservesSearch() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The regular dashboard return contract is measured on iPad."
+        )
+
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "The app window is compact; this contract measures regular-width navigation."
+        )
+
+        let query = "Example App metric 33"
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The regular dashboard landing did not expose its hub.")
+        }
+
+        let search = app.searchFields.firstMatch
+        if !search.exists {
+            let searchButton = app.navigationBars["Dashboards"].buttons["Search"].firstMatch
+            guard DemoLaunch.wait(for: searchButton) else {
+                return XCTFail("The regular dashboard landing did not expose dashboard search.")
+            }
+            searchButton.tap()
+        }
+        guard DemoLaunch.wait(for: search) else {
+            return XCTFail("The regular dashboard landing did not expose dashboard search.")
+        }
+        search.tap()
+        search.typeText(query)
+
+        let card = hub.buttons["gethog.dashboard-card.725101"].firstMatch
+        for _ in 0..<6 where !(card.exists && card.frame.intersects(hub.frame)) {
+            hub.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.25)
+        }
+        guard DemoLaunch.wait(until: { card.exists && card.frame.intersects(hub.frame) }) else {
+            return XCTFail("The searched dashboard card did not become visible in the regular hub.")
+        }
+        card.tap()
+
+        let detail = app.navigationBars[query]
+        guard DemoLaunch.wait(for: detail) else {
+            return XCTFail("Selecting the regular dashboard card did not open its detail.")
+        }
+        let tile = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", DemoLaunch.firstTileTitle)
+        ).firstMatch
+        guard DemoLaunch.wait(for: tile) else {
+            return XCTFail("The opened dashboard detail did not render its synthetic tile.")
+        }
+
+        let allDashboards = app.buttons["All dashboards"]
+        guard DemoLaunch.wait(for: allDashboards) else {
+            return XCTFail("The regular dashboard detail did not provide an All dashboards return action.")
+        }
+        allDashboards.tap()
+
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("Returning from dashboard detail did not restore the regular hub.")
+        }
+        let restoredSearch = app.searchFields.firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: restoredSearch), "Dashboard search did not return with the hub.")
+        XCTAssertEqual(restoredSearch.value as? String, query)
     }
 
     func testDashboardShowsInitialLoadingBeforeTiles() {

@@ -8,7 +8,7 @@ private struct DashboardSummaryTrigger: Equatable {
     let pinnedID: Int?
 }
 
-/// What the iPad detail pane shows before a dashboard is chosen.
+/// The project signal shown at the top of the dashboard hub.
 ///
 /// It previously showed `ContentUnavailableView("Select a dashboard")` across
 /// two thirds of a 13-inch canvas — a placeholder occupying the largest, most
@@ -20,7 +20,7 @@ private struct DashboardSummaryTrigger: Equatable {
 /// dashboard's tiles cost exactly one request — the same request opening that
 /// dashboard would make, served from the same cache, so landing here and then
 /// tapping in does not pay twice.
-struct ProjectOverview: View {
+struct ProjectOverviewContent: View {
     let dashboards: [DashboardSummary]
 
     @Environment(AppModel.self) private var model
@@ -40,7 +40,7 @@ struct ProjectOverview: View {
     }
 
     var body: some View {
-        PageScaffold(spacing: Theme.Space.xl) {
+        VStack(alignment: .leading, spacing: Theme.Space.xl) {
             summaryScene
 
             if !facts.recentlyComputed.isEmpty {

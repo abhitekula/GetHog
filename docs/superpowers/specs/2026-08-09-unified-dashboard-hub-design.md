@@ -21,7 +21,7 @@ At narrower regular widths, these regions stack vertically. At wider widths, the
 
 ## Navigation
 
-Selecting a dashboard replaces the hub in the same destination content pane with `DashboardDetailView`. The detail toolbar provides a clear `All dashboards` return that restores the hub, search text, scroll-owned model state, and current project scope.
+Selecting a dashboard replaces the hub in the same destination content pane with `DashboardDetailView`. A persistent `All dashboards` return above the detail content restores the hub, search text, scroll-owned model state, and current project scope; tab-hosted iPad suppresses child leading toolbar items, so the return is not placed in the detail toolbar.
 
 The existing `OpenDetails` selection remains the source of truth so deep links, restoration, detached Mac windows, and cross-size transitions continue to resolve the same selected dashboard. The regular-width presentation changes; selection ownership does not.
 
