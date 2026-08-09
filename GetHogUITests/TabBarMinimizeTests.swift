@@ -1,211 +1,404 @@
 import XCTest
 
-/// What `.tabBarMinimizeBehavior(.onScrollDown)` costs the content under it.
+/// Keeps the semantic end of compact screens clear of the controls the floating
+/// iOS tab bar actually draws.
 ///
-/// **The observation this closes.** A screenshot sweep filed "a bottom-left FAB
-/// overlapping content" on three screens. It is not a stray control: it is the
-/// iOS 26 tab bar in its minimised form, produced by the modifier on the
-/// `TabView` in `RootView`. Whether it *occludes* anything was never measured,
-/// and the same screenshot had been filed more than once, so it is measured here.
-///
-/// **Measured on iPhone 17, 402 × 874pt, demo build.** The tab bar's own frame is
-/// `{0, 791, 402, 83}` — byte-identical expanded and minimised. Expanded it holds
-/// five 54pt buttons; minimised it holds one, a 48 × 48 pill at `{28, 798}`. The
-/// container therefore includes seven transparent points above the control. It
-/// is the button frame, not that transparent container, that can cover content.
-///
-/// Measured again on iOS 26.5, the first merely hittable Errors footer could end
-/// at `810`, but one more bounded swipe put it at `776.33` against the pill's
-/// `minY = 798`: 21.67pt of real clearance. Re-read on iPhone 17 Pro Max
-/// (440 × 956pt), People — whose page has less trailing padding — was flush to
-/// its rendered controls and still hittable. Nothing on either screen is covered.
-///
-/// **So there is nothing to fix, and that is the point of these assertions.** The
-/// tempting repair — a `safeAreaInset` on the screens that were filed — would
-/// double-inset every one of them whenever the bar is expanded, which is most of
-/// the time. What the assertions pin is that the content can be scrolled clear
-/// of the controls the bar actually draws. If a future iOS makes that impossible,
-/// the fix belongs on the `TabView`, once, not on each screen.
+/// The tab bar's accessibility container includes transparent material around
+/// its controls, so its frame is not the obstruction. These tests union the real
+/// buttons in both rendered states: the one-button collapsed pill and the five
+/// expanded tab controls. Search and Settings then prove that a center tap opens
+/// the row it names; Health's final freshness row is informational and is never
+/// treated as a control.
+@MainActor
 final class TabBarMinimizeTests: XCTestCase {
 
-    func testErrorsClearsTheMinimisedTabBar() throws {
-        try assertContentClearsMinimisedTabBar(onTab: "errorTracking", titled: "Errors")
+    func testSearchLastDestinationCenterClearsCollapsedAndExpandedTabControls() throws {
+        try assertBottomTargetClearsFloatingBar(
+            onTab: "search",
+            titled: "Search",
+            target: { app in self.listRow(labelled: "Settings", in: app) },
+            kind: .actionable(expectedNavigationTitle: "Settings")
+        )
     }
 
-    func testPeopleClearsTheMinimisedTabBar() throws {
-        try assertContentClearsMinimisedTabBar(onTab: "people", titled: "People")
+    func testSettingsLastActionCenterClearsCollapsedAndExpandedTabControls() throws {
+        try assertBottomTargetClearsFloatingBar(
+            onTab: "settings",
+            titled: "Settings",
+            target: { app in self.listRow(labelled: "About GetHog", in: app) },
+            kind: .actionable(expectedNavigationTitle: "About")
+        )
     }
 
-    // MARK: -
+    func testHealthLastSemanticRowClearsCollapsedAndExpandedTabControls() throws {
+        try assertBottomTargetClearsFloatingBar(
+            onTab: "health",
+            titled: "Health",
+            target: { app in
+                app.staticTexts
+                    .matching(NSPredicate(format: "label BEGINSWITH %@", "Data updated"))
+                    .firstMatch
+            },
+            kind: .informational
+        )
+    }
 
-    private func assertContentClearsMinimisedTabBar(
+    func testSearchLastDestinationCenterClearsCollapsedAndExpandedTabControlsInDarkMode() throws {
+        try assertBottomTargetClearsFloatingBar(
+            onTab: "search",
+            titled: "Search",
+            target: { app in self.listRow(labelled: "Settings", in: app) },
+            kind: .actionable(expectedNavigationTitle: "Settings"),
+            extraArguments: ["-AppleInterfaceStyle", "Dark"]
+        )
+    }
+
+    func testSettingsLastActionCenterClearsCollapsedAndExpandedTabControlsInDarkMode() throws {
+        try assertBottomTargetClearsFloatingBar(
+            onTab: "settings",
+            titled: "Settings",
+            target: { app in self.listRow(labelled: "About GetHog", in: app) },
+            kind: .actionable(expectedNavigationTitle: "About"),
+            extraArguments: ["-AppleInterfaceStyle", "Dark"]
+        )
+    }
+
+    func testHealthLastSemanticRowClearsCollapsedAndExpandedTabControlsInDarkMode() throws {
+        try assertBottomTargetClearsFloatingBar(
+            onTab: "health",
+            titled: "Health",
+            target: { app in
+                app.staticTexts
+                    .matching(NSPredicate(format: "label BEGINSWITH %@", "Data updated"))
+                    .firstMatch
+            },
+            kind: .informational,
+            extraArguments: ["-AppleInterfaceStyle", "Dark"]
+        )
+    }
+
+    // MARK: - Oracle
+
+    private enum BottomTargetKind {
+        case actionable(expectedNavigationTitle: String)
+        case informational
+    }
+
+    private func assertBottomTargetClearsFloatingBar(
         onTab tab: String,
         titled title: String,
+        target: @MainActor (XCUIApplication) -> XCUIElement,
+        kind: BottomTargetKind,
+        extraArguments: [String] = [],
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
         let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
         if deviceName.localizedCaseInsensitiveContains("iPad") {
             throw XCTSkip(
-                "Tab-bar minimisation is an iPhone behavior; iPad uses the system sidebar."
+                "Floating tab-bar minimisation is an iPhone behavior; iPad uses the system sidebar."
             )
         }
 
-        let app = DemoLaunch.launch(tab: tab)
-        XCTAssertTrue(
+        let app = DemoLaunch.launch(tab: tab, extraArguments: extraArguments, file: file, line: line)
+        guard require(
             DemoLaunch.wait(for: app.navigationBars[title]),
-            "\(title) never came up.",
+            "\(title) never rendered, so bottom-chrome geometry was not measured.",
             file: file,
             line: line
-        )
+        ) else { return }
         DemoLaunch.settle(app)
 
         let bar = app.tabBars.firstMatch
-        XCTAssertTrue(bar.exists, "There is no compact tab bar on \(title).", file: file, line: line)
-        guard bar.exists else { return }
-
-        // Regular width has nothing to measure: `.sidebarAdaptable` can put the
-        // bar across the top of a landscape Max-size iPhone, where it is above
-        // the content rather than over it, and `.tabBarMinimizeBehavior` never
-        // fires. Detected by where the bar is because its position is the thing
-        // that determines whether content clearance is relevant.
-        let window = app.windows.firstMatch.frame
-        guard bar.frame.midY > window.midY else {
-            throw XCTSkip(
-                "Tab-bar minimisation is not available with the bar at \(bar.frame) in \(window)."
-            )
-        }
-
-        let expanded = bar.frame
-        XCTAssertEqual(
-            bar.buttons.count, 5,
-            "The tab bar should start expanded, with all five tabs in it.",
+        guard require(
+            bar.exists,
+            "\(title) has no compact tab bar to measure.",
             file: file,
             line: line
-        )
+        ) else { return }
 
-        // Minimising is driven by a downward scroll, so one is all it takes. The
-        // minimised bar publishes a single button whose value is "Collapsed",
-        // which is the only signal the app itself is told nothing about.
-        var minimised = false
-        for _ in 0..<12 {
-            if bar.buttons.count == 1,
-               (bar.buttons.firstMatch.value as? String) == "Collapsed" {
-                minimised = true
-                break
-            }
-            app.swipeUp(velocity: .slow)
-            DemoLaunch.pause(0.5)
-        }
-
-        // A page that fits does not scroll, and a bar that is never scrolled
-        // never minimises — by construction, not by defect. People crossed
-        // that line when person rows moved their email titles to one
-        // middle-truncated line: the demo list got ~a row shorter and stopped
-        // scrolling on this height. The facts worth pinning survive: the
-        // reserved-band equality is still asserted by every screen that does
-        // scroll (Errors), and the clearance assertions below measure the
-        // expanded bar against this page's end, which is the only bar this
-        // page can ever produce.
-        guard minimised else {
-            print("TAB-BAR-CLEARANCE \(title): content fits without scrolling; bar stays expanded.")
-            assertEndOfContentClears(bar: bar, in: app, titled: title, file: file, line: line)
-            return
-        }
-
-        XCTAssertEqual(
-            bar.frame, expanded,
-            """
-            The tab bar reserves \(bar.frame) minimised against \(expanded) \
-            expanded. It used to reserve the same band in both states, which is \
-            what makes a per-screen `safeAreaInset` unnecessary — and wrong, \
-            because it would double-inset while the bar is expanded. If this has \
-            genuinely changed, the inset belongs on the `TabView` in `RootView`, \
-            not on this screen.
-            """,
+        let windowFrame = app.windows.firstMatch.frame
+        guard require(
+            windowFrame.width > 0 && windowFrame.height > 0,
+            "\(title) published no usable window frame.",
             file: file,
             line: line
-        )
+        ) else { return }
+        guard require(
+            bar.frame.midY > windowFrame.midY,
+            "\(title) put its tab bar at \(bar.frame) in \(windowFrame), not over bottom content.",
+            file: file,
+            line: line
+        ) else { return }
+        guard require(
+            bar.buttons.count == 5,
+            "\(title) should begin with five expanded tab buttons; found \(bar.buttons.count).",
+            file: file,
+            line: line
+        ) else { return }
 
-        assertEndOfContentClears(bar: bar, in: app, titled: title, file: file, line: line)
-    }
-
-    /// The clearance half of the measurement, shared by both outcomes of the
-    /// minimise attempt: reach the definitional end of the content and assert
-    /// the bar is not over it.
-    private func assertEndOfContentClears(
-        bar: XCUIElement,
-        in app: XCUIApplication,
-        titled title: String,
-        file: StaticString,
-        line: UInt
-    ) {
-        // To the end of the list. `FreshnessLabel` is the last thing on every one
-        // of these screens and it says so out loud, which makes it the one
-        // element that is definitionally the bottom of the content. Hittability
-        // alone is not the boundary: XCTest can hit a partially covered row.
-        let freshness = app.staticTexts
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "Data updated"))
-            .firstMatch
+        // Scroll only upward through the screen, bounded. The target may not
+        // exist yet because SwiftUI's List has not built rows below the fold.
+        // `isHittable` is deliberately not the loop predicate: XCTest can throw
+        // while asking it about a lazily-created offscreen row.
         for _ in 0..<16 {
-            let obstruction = tabBarObstruction(bar)
-            if freshness.exists,
-               freshness.isHittable,
-               !freshness.frame.intersects(obstruction) {
+            if collapsedStateIsReady(
+                bar: bar,
+                target: target(app),
+                windowFrame: windowFrame,
+                requiresLowerHalf: tab == "search"
+            ) {
                 break
             }
-            app.swipeUp()
+            if tab == "search" {
+                app.swipeUp(velocity: .slow)
+            } else {
+                app.swipeUp()
+            }
             DemoLaunch.pause(0.3)
         }
-        DemoLaunch.pause(0.8)
+        DemoLaunch.pause(0.5)
 
-        XCTAssertTrue(
-            freshness.exists,
-            "The end of \(title) was never reached, so occlusion was not measured.",
+        let collapsedControl = bar.buttons.firstMatch
+        guard require(
+            bar.buttons.count == 1,
+            "\(title) never reached the one-button collapsed state; found \(bar.buttons.count).",
             file: file,
             line: line
-        )
-        guard freshness.exists else { return }
-
-        let obstruction = tabBarObstruction(bar)
-        XCTAssertFalse(
-            obstruction.isNull,
-            "The tab bar has no rendered controls to measure on \(title).",
+        ) else { return }
+        guard require(
+            (collapsedControl.value as? String) == "Collapsed",
+            "\(title)'s sole tab control did not publish the required Collapsed value.",
             file: file,
             line: line
-        )
+        ) else { return }
 
-        print(
-            "TAB-BAR-CLEARANCE \(title) bar=\(bar.frame) "
-                + "obstruction=\(obstruction) "
-                + "lastContent=\(freshness.frame) hittable=\(freshness.isHittable) "
-                + "buttons=\(bar.buttons.count)"
-        )
+        let collapsedTarget = target(app)
+        guard let collapsedTargetFrame = visibleFrame(
+            of: collapsedTarget,
+            in: windowFrame,
+            title: title,
+            state: "collapsed",
+            file: file,
+            line: line
+        ) else { return }
+        if tab == "search" {
+            guard require(
+                collapsedTargetFrame.midY > windowFrame.midY,
+                "Search's last screen destination was not measured in the lower half: "
+                    + "target=\(collapsedTargetFrame) window=\(windowFrame).",
+                file: file,
+                line: line
+            ) else { return }
+        }
+        let collapsedObstruction = tabBarObstruction(bar)
+        guard require(
+            !collapsedObstruction.isNull,
+            "\(title)'s collapsed tab bar has no rendered button union.",
+            file: file,
+            line: line
+        ) else { return }
 
+        let collapsedCenter = CGPoint(
+            x: collapsedTargetFrame.midX,
+            y: collapsedTargetFrame.midY
+        )
+        logGeometry(
+            title: title,
+            state: "collapsed",
+            targetFrame: collapsedTargetFrame,
+            center: collapsedCenter,
+            obstruction: collapsedObstruction,
+            buttonCount: bar.buttons.count,
+            windowFrame: windowFrame
+        )
         XCTAssertFalse(
-            freshness.frame.intersects(obstruction),
+            collapsedObstruction.contains(collapsedCenter),
             """
-            The last element of \(title) is at \(freshness.frame) and the tab \
-            bar's rendered controls occupy \(obstruction), so a control is over \
-            the end of the content after bounded scrolling.
+            BOTTOM-CHROME-OVERLAP \(title) collapsed target=\(collapsedTargetFrame) \
+            center=\(collapsedCenter) controls=\(collapsedObstruction) window=\(windowFrame)
             """,
             file: file,
             line: line
         )
-        XCTAssertTrue(
-            freshness.isHittable,
-            "The last element of \(title) is on screen but nothing can touch it.",
+        guard !collapsedObstruction.contains(collapsedCenter) else { return }
+
+        // Tapping the selected collapsed control expands the real five-button
+        // bar without changing the list offset. The second measurement must
+        // therefore protect the exact content position proved above.
+        collapsedControl.tap()
+        guard require(
+            DemoLaunch.wait(timeout: 8) { bar.buttons.count == 5 },
+            "\(title)'s collapsed control did not expand the bar to five buttons.",
+            file: file,
+            line: line
+        ) else { return }
+        guard require(
+            bar.buttons.count == 5,
+            "\(title) expanded to \(bar.buttons.count) buttons instead of five.",
+            file: file,
+            line: line
+        ) else { return }
+
+        let expandedTarget = target(app)
+        guard let expandedTargetFrame = visibleFrame(
+            of: expandedTarget,
+            in: windowFrame,
+            title: title,
+            state: "expanded",
+            file: file,
+            line: line
+        ) else { return }
+        let expandedObstruction = tabBarObstruction(bar)
+        guard require(
+            !expandedObstruction.isNull,
+            "\(title)'s expanded tab bar has no rendered button union.",
+            file: file,
+            line: line
+        ) else { return }
+
+        let expandedCenter = CGPoint(
+            x: expandedTargetFrame.midX,
+            y: expandedTargetFrame.midY
+        )
+        logGeometry(
+            title: title,
+            state: "expanded",
+            targetFrame: expandedTargetFrame,
+            center: expandedCenter,
+            obstruction: expandedObstruction,
+            buttonCount: bar.buttons.count,
+            windowFrame: windowFrame
+        )
+        XCTAssertFalse(
+            expandedObstruction.contains(expandedCenter),
+            """
+            BOTTOM-CHROME-OVERLAP \(title) expanded target=\(expandedTargetFrame) \
+            center=\(expandedCenter) controls=\(expandedObstruction) window=\(windowFrame)
+            """,
             file: file,
             line: line
         )
+        guard !expandedObstruction.contains(expandedCenter) else { return }
+
+        switch kind {
+        case let .actionable(expectedNavigationTitle):
+            guard require(
+                expandedTarget.isHittable,
+                "\(title)'s actionable bottom row is geometrically visible but not hittable.",
+                file: file,
+                line: line
+            ) else { return }
+            expandedTarget.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).tap()
+            XCTAssertTrue(
+                DemoLaunch.wait(for: app.navigationBars[expectedNavigationTitle], timeout: 10),
+                """
+                BOTTOM-CHROME-ROUTING Tapping \(title)'s bottom-row center did not open \
+                \(expectedNavigationTitle). Visible titles: \
+                \(app.navigationBars.allElementsBoundByIndex.map { $0.identifier })
+                """,
+                file: file,
+                line: line
+            )
+
+        case .informational:
+            // Health's final freshness row communicates state. Geometry is its
+            // whole contract here; no tappability or enabled-state claim is made.
+            break
+        }
     }
 
-    /// The tab bar's accessibility container includes transparent material
-    /// above and around its controls. Unioning the buttons measures the pixels
-    /// that can actually obstruct content in both expanded and collapsed states.
+    private func listRow(labelled label: String, in app: XCUIApplication) -> XCUIElement {
+        app.cells.containing(.staticText, identifier: label).firstMatch
+    }
+
+    private func collapsedStateIsReady(
+        bar: XCUIElement,
+        target: XCUIElement,
+        windowFrame: CGRect,
+        requiresLowerHalf: Bool
+    ) -> Bool {
+        guard bar.buttons.count == 1,
+              (bar.buttons.firstMatch.value as? String) == "Collapsed",
+              target.exists
+        else { return false }
+
+        let frame = target.frame
+        guard frame.width > 0,
+              frame.height > 0,
+              windowFrame.contains(CGPoint(x: frame.midX, y: frame.midY))
+        else { return false }
+        return !requiresLowerHalf || frame.midY > windowFrame.midY
+    }
+
+    private func visibleFrame(
+        of target: XCUIElement,
+        in windowFrame: CGRect,
+        title: String,
+        state: String,
+        file: StaticString,
+        line: UInt
+    ) -> CGRect? {
+        guard require(
+            target.exists,
+            "\(title)'s bottom target was never found in the \(state) state.",
+            file: file,
+            line: line
+        ) else { return nil }
+
+        let frame = target.frame
+        guard require(
+            frame.width > 0 && frame.height > 0,
+            "\(title)'s bottom target published the zero frame \(frame) in the \(state) state.",
+            file: file,
+            line: line
+        ) else { return nil }
+        guard require(
+            windowFrame.contains(CGPoint(x: frame.midX, y: frame.midY)),
+            "\(title)'s bottom target stayed offscreen at \(frame) in \(windowFrame).",
+            file: file,
+            line: line
+        ) else { return nil }
+        return frame
+    }
+
+    /// The container includes transparent material, while the buttons are the
+    /// pixels that can intercept a semantic-center tap.
     private func tabBarObstruction(_ bar: XCUIElement) -> CGRect {
         bar.buttons.allElementsBoundByIndex.reduce(into: CGRect.null) { frame, button in
             frame = frame.union(button.frame)
         }
+    }
+
+    private func logGeometry(
+        title: String,
+        state: String,
+        targetFrame: CGRect,
+        center: CGPoint,
+        obstruction: CGRect,
+        buttonCount: Int,
+        windowFrame: CGRect
+    ) {
+        print(
+            "BOTTOM-CHROME \(title) state=\(state) target=\(targetFrame) "
+                + "center=\(center) controls=\(obstruction) "
+                + "buttons=\(buttonCount) window=\(windowFrame)"
+        )
+    }
+
+    @discardableResult
+    private func require(
+        _ condition: @autoclosure () -> Bool,
+        _ message: String,
+        file: StaticString,
+        line: UInt
+    ) -> Bool {
+        guard condition() else {
+            XCTFail("BOTTOM-CHROME-HARNESS \(message)", file: file, line: line)
+            return false
+        }
+        return true
     }
 }
