@@ -19,6 +19,54 @@ enum WatchDemoMode {
     static let launchArgument = "-GetHogDemo"
     static let environmentFlag = "GETHOG_DEMO"
 
+    #if DEBUG
+    /// Opt-in synthetic states whose network conditions cannot be reached by
+    /// the fixture-backed happy-path demo. They remain DEBUG-only and require
+    /// the ordinary demo switch as a second gate, so setting an unrelated
+    /// environment value can never replace a live session.
+    enum SyntheticScenario: String {
+        case rejectedEU = "rejected-eu"
+        case rejectedSelfHosted = "rejected-self-hosted"
+
+        var credential: StoredCredential {
+            switch self {
+            case .rejectedEU:
+                StoredCredential(
+                    key: "synthetic-rejected-key",
+                    region: .euCloud,
+                    projectID: 1001
+                )
+            case .rejectedSelfHosted:
+                StoredCredential(
+                    key: "synthetic-rejected-key",
+                    region: .selfHosted(URL(string: "https://synthetic.example.test")!),
+                    projectID: 1001
+                )
+            }
+        }
+    }
+
+    static var syntheticScenario: SyntheticScenario? {
+        syntheticScenario(
+            arguments: ProcessInfo.processInfo.arguments,
+            environment: ProcessInfo.processInfo.environment
+        )
+    }
+
+    static func syntheticScenario(
+        arguments: [String], environment: [String: String]
+    ) -> SyntheticScenario? {
+        guard isEnabled(arguments: arguments, environment: environment),
+              let raw = environment["GETHOG_WATCH_SCENARIO"]
+        else { return nil }
+        return SyntheticScenario(rawValue: raw)
+    }
+
+    static func syntheticScenarioTransport() -> any HTTPTransport {
+        WatchRejectedCredentialTransport()
+    }
+    #endif
+
     static var isEnabled: Bool {
         isEnabled(
             arguments: ProcessInfo.processInfo.arguments,
@@ -152,6 +200,26 @@ enum WatchDemoMode {
     }
     #endif
 }
+
+#if DEBUG
+/// A complete transport boundary for replacement-form render scenarios. Every
+/// request receives a real synthetic HTTP 401, exercising the production
+/// client's classification and the model's authentication recovery path.
+private struct WatchRejectedCredentialTransport: HTTPTransport {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        try? await Task.sleep(for: .milliseconds(80))
+        return (
+            Data(#"{"detail":"Synthetic rejected credential."}"#.utf8),
+            HTTPURLResponse(
+                url: request.url ?? URL(string: "https://synthetic.example.test")!,
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+        )
+    }
+}
+#endif
 
 /// Answers the five endpoints the watch calls, from the synthetic fixtures
 /// bundled in the watch app.

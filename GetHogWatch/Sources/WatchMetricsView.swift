@@ -32,12 +32,13 @@ struct WatchSectionFailureView: View {
 /// failure-only screen with no path to replace it.
 enum WatchCredentialEntryState: Equatable {
     case missing
-    case replacement(String)
+    case replacement(message: String, region: PostHogRegion)
 
     init?(
         phase: WatchModel.Phase,
         refreshGuidance: WatchRefreshGuidance? = nil,
-        refreshFailure: WatchRefreshFailure? = nil
+        refreshFailure: WatchRefreshFailure? = nil,
+        credentialRegion: PostHogRegion? = nil
     ) {
         // A network failure is not evidence that the key is wrong. Offering a
         // replacement form here would send the user toward a destructive and
@@ -47,7 +48,8 @@ enum WatchCredentialEntryState: Equatable {
         case .needsKey:
             self = .missing
         case .failed(let message) where refreshFailure?.permitsCredentialReplacement == true:
-            self = .replacement(message)
+            guard let credentialRegion else { return nil }
+            self = .replacement(message: message, region: credentialRegion)
         case .failed, .loading, .ready:
             return nil
         }
@@ -74,7 +76,8 @@ enum WatchMetricsContentState: Equatable {
         hasHeadline: Bool,
         refreshGuidance: WatchRefreshGuidance?,
         refreshFailure: WatchRefreshFailure?,
-        refreshFailureMessage: String?
+        refreshFailureMessage: String?,
+        credentialRegion: PostHogRegion?
     ) {
         if !hasHeadline, let refreshGuidance {
             self = .offline(refreshGuidance.message)
@@ -83,7 +86,8 @@ enum WatchMetricsContentState: Equatable {
         if let entry = WatchCredentialEntryState(
             phase: phase,
             refreshGuidance: refreshGuidance,
-            refreshFailure: refreshFailure
+            refreshFailure: refreshFailure,
+            credentialRegion: credentialRegion
         ) {
             self = .credential(entry)
             return
@@ -124,7 +128,8 @@ struct WatchMetricsView: View {
                         hasHeadline: model.headlineMetric != nil,
                         refreshGuidance: model.refreshGuidance,
                         refreshFailure: model.refreshFailure,
-                        refreshFailureMessage: model.refreshFailureMessage
+                        refreshFailureMessage: model.refreshFailureMessage,
+                        credentialRegion: model.credentialRegion
                     ) {
                     case .offline(let message):
                         ContentUnavailableView(
@@ -242,6 +247,32 @@ struct WatchMetricsView: View {
 /// The independent-install fallback for a watch that cannot receive the
 /// iPhone hand-off yet. The `SecureField` owns the plaintext only while the
 /// user is entering it and clears it before every save attempt.
+struct WatchManualCredentialDraft: Equatable {
+    let region: WatchManualRegion
+    let selfHostedURL: String
+
+    init(region: WatchManualRegion, selfHostedURL: String) {
+        self.region = region
+        self.selfHostedURL = selfHostedURL
+    }
+
+    init(state: WatchCredentialEntryState) {
+        switch state {
+        case .missing:
+            self.init(region: .usCloud, selfHostedURL: "")
+        case .replacement(_, let existingRegion):
+            switch existingRegion {
+            case .usCloud:
+                self.init(region: .usCloud, selfHostedURL: "")
+            case .euCloud:
+                self.init(region: .euCloud, selfHostedURL: "")
+            case .selfHosted(let url):
+                self.init(region: .selfHosted, selfHostedURL: url.absoluteString)
+            }
+        }
+    }
+}
+
 private struct WatchManualKeyEntryView: View {
     let state: WatchCredentialEntryState
 
@@ -249,6 +280,13 @@ private struct WatchManualKeyEntryView: View {
     @State private var region = WatchManualRegion.usCloud
     @State private var selfHostedURL = ""
     @State private var error: String?
+
+    init(state: WatchCredentialEntryState) {
+        self.state = state
+        let draft = WatchManualCredentialDraft(state: state)
+        _region = State(initialValue: draft.region)
+        _selfHostedURL = State(initialValue: draft.selfHostedURL)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
@@ -259,13 +297,16 @@ private struct WatchManualKeyEntryView: View {
                     systemImage: "key.radiowaves.forward",
                     description: Text("Open GetHog on your iPhone to send its key, or enter one here.")
                 )
-            case .replacement(let message):
+            case .replacement(let message, _):
                 ContentUnavailableView(
                     "Couldn't refresh",
                     systemImage: "wifi.exclamationmark",
                     description: Text(message)
                 )
-                Text("Replace the API key below, or send it again from your iPhone.")
+                Text(
+                    "Endpoint retained below. You can edit it before replacing the API key, "
+                        + "or send it again from your iPhone."
+                )
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Ink.secondary)
             }

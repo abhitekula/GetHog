@@ -150,8 +150,9 @@ struct WatchModelTests {
         #expect(
             WatchCredentialEntryState(
                 phase: model.phase,
-                refreshFailure: model.refreshFailure
-            ) == .replacement(message)
+                refreshFailure: model.refreshFailure,
+                credentialRegion: model.credentialRegion
+            ) == .replacement(message: message, region: .usCloud)
         )
     }
 
@@ -175,8 +176,10 @@ struct WatchModelTests {
         #expect(model.refreshFailure == .authentication)
         #expect(
             WatchCredentialEntryState(
-                phase: model.phase, refreshFailure: model.refreshFailure
-            ) == .replacement(message)
+                phase: model.phase,
+                refreshFailure: model.refreshFailure,
+                credentialRegion: model.credentialRegion
+            ) == .replacement(message: message, region: .usCloud)
         )
     }
 
@@ -294,7 +297,8 @@ struct WatchModelTests {
                 hasHeadline: model.headlineMetric != nil,
                 refreshGuidance: model.refreshGuidance,
                 refreshFailure: model.refreshFailure,
-                refreshFailureMessage: model.refreshFailureMessage
+                refreshFailureMessage: model.refreshFailureMessage,
+                credentialRegion: model.credentialRegion
             ) == .failure(message)
         )
         #expect(
@@ -327,8 +331,10 @@ struct WatchModelTests {
         #expect(model.refreshFailure == .authentication)
         #expect(
             WatchCredentialEntryState(
-                phase: model.phase, refreshFailure: model.refreshFailure
-            ) == .replacement(message)
+                phase: model.phase,
+                refreshFailure: model.refreshFailure,
+                credentialRegion: model.credentialRegion
+            ) == .replacement(message: message, region: .usCloud)
         )
     }
 
@@ -2017,16 +2023,60 @@ struct WatchModelTests {
     @Test("a rejected credential keeps the replacement form available")
     func failedPhaseOffersCredentialReplacement() {
         let message = "The synthetic key was rejected."
+        let selfHostedURL = URL(string: "https://synthetic.example.test")!
 
         #expect(WatchCredentialEntryState(phase: .needsKey) == .missing)
         #expect(WatchCredentialEntryState(phase: .failed(message)) == nil)
         #expect(
             WatchCredentialEntryState(
+                phase: .failed(message),
+                refreshFailure: .authentication,
+                credentialRegion: .euCloud
+            ) == .replacement(message: message, region: .euCloud)
+        )
+        #expect(
+            WatchCredentialEntryState(
+                phase: .failed(message),
+                refreshFailure: .authentication,
+                credentialRegion: .selfHosted(selfHostedURL)
+            ) == .replacement(
+                message: message,
+                region: .selfHosted(selfHostedURL)
+            )
+        )
+        #expect(
+            WatchCredentialEntryState(
                 phase: .failed(message), refreshFailure: .authentication
-            ) == .replacement(message)
+            ) == nil
         )
         #expect(WatchCredentialEntryState(phase: .loading) == nil)
         #expect(WatchCredentialEntryState(phase: .ready) == nil)
+    }
+
+    @Test("replacement draft preselects the existing endpoint")
+    func replacementDraftPreselectsExistingEndpoint() {
+        let selfHostedURL = URL(string: "https://synthetic.example.test")!
+
+        #expect(
+            WatchManualCredentialDraft(state: .missing)
+                == WatchManualCredentialDraft(region: .usCloud, selfHostedURL: "")
+        )
+        #expect(
+            WatchManualCredentialDraft(
+                state: .replacement(message: "Rejected", region: .euCloud)
+            ) == WatchManualCredentialDraft(region: .euCloud, selfHostedURL: "")
+        )
+        #expect(
+            WatchManualCredentialDraft(
+                state: .replacement(
+                    message: "Rejected",
+                    region: .selfHosted(selfHostedURL)
+                )
+            ) == WatchManualCredentialDraft(
+                region: .selfHosted,
+                selfHostedURL: "https://synthetic.example.test"
+            )
+        )
     }
 
     @Test("the Watch test host resolves the exact iOS-style App Group identifier")

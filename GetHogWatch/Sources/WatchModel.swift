@@ -430,6 +430,11 @@ final class WatchModel {
     /// requests are not worth granting.
     var hasCredential: Bool { client != nil }
 
+    /// The endpoint carried by the active credential. Read-only outside the
+    /// model so replacement entry can preserve it without making credential
+    /// scope independently mutable from the client that uses it.
+    var credentialRegion: PostHogRegion? { projectRegion }
+
     private var client: PostHogClient?
     /// The credential used to build `client`, retained only so a successful
     /// identity bootstrap can prove it is still the credential in the
@@ -594,6 +599,20 @@ final class WatchModel {
         // launch takes them straight back out. See
         // `WatchDemoMode.reconcileSeededWatches`.
         WatchDemoMode.reconcileSeededWatches(in: .shared)
+        #if DEBUG
+        if let scenario = WatchDemoMode.syntheticScenario {
+            return WatchModel(
+                credential: scenario.credential,
+                projectName: "Synthetic rejected project",
+                headlineMetricID: nil,
+                watches: [],
+                transport: WatchDemoMode.syntheticScenarioTransport(),
+                store: .shared,
+                mutationCoordinator: .shared,
+                authenticate: { _ in true }
+            )
+        }
+        #endif
         if WatchDemoMode.isEnabled {
             return WatchModel(
                 credential: WatchDemoMode.credential,

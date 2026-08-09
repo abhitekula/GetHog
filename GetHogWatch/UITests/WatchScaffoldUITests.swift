@@ -72,4 +72,64 @@ final class WatchScaffoldUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["Self-hosted"].exists)
     }
+
+    /// A rejected key is replaced in the scope where it failed. Defaulting the
+    /// form to US Cloud would send an EU key to the wrong host, while dropping
+    /// a self-hosted URL leaves no visible record of the endpoint to repair.
+    func testRejectedCredentialRetainsCloudAndSelfHostedEndpoints() {
+        guard ExclusiveRun.claim() else { return }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-GetHogDemo"]
+        app.launchEnvironment["GETHOG_DEMO"] = "1"
+
+        func launch(_ scenario: String) {
+            app.terminate()
+            app.launchEnvironment["GETHOG_WATCH_SCENARIO"] = scenario
+            app.launch()
+            XCTAssertTrue(
+                DemoLaunch.wait(for: app.staticTexts["Couldn't refresh"], timeout: 30),
+                "The synthetic rejected credential did not reach replacement entry."
+            )
+        }
+
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<6 where !element.exists {
+                app.swipeUp()
+            }
+        }
+
+        let retainedCopy = app.staticTexts[
+            "Endpoint retained below. You can edit it before replacing the API key, "
+                + "or send it again from your iPhone."
+        ]
+
+        launch("rejected-eu")
+        reveal(retainedCopy)
+        XCTAssertTrue(retainedCopy.exists, "Replacement copy did not explain endpoint retention.")
+        let euCloud = app.staticTexts["EU Cloud"]
+        reveal(euCloud)
+        XCTAssertTrue(euCloud.exists, "The rejected EU credential defaulted to another endpoint.")
+        XCTAssertFalse(app.staticTexts["US Cloud"].exists)
+
+        launch("rejected-self-hosted")
+        reveal(retainedCopy)
+        XCTAssertTrue(retainedCopy.exists, "Replacement copy did not say the endpoint stays editable.")
+        let selfHosted = app.staticTexts["Self-hosted"]
+        reveal(selfHosted)
+        XCTAssertTrue(
+            selfHosted.exists,
+            "The rejected self-hosted credential did not retain its endpoint kind."
+        )
+        XCTAssertFalse(app.staticTexts["US Cloud"].exists)
+
+        let serverURL = app.textFields.matching(
+            NSPredicate(format: "value == %@", "https://synthetic.example.test")
+        ).firstMatch
+        reveal(serverURL)
+        XCTAssertTrue(
+            serverURL.exists,
+            "The rejected self-hosted credential hid its retained server URL."
+        )
+    }
 }
