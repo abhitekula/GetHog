@@ -8,6 +8,7 @@ struct DashboardHub<RowContent: View>: View {
     let pinned: [DashboardSummary]
     let others: [DashboardSummary]
     let loadedAt: Date?
+    let pinnedPreviewStore: PinnedDashboardPreviewStore
     @Binding var search: String
     @ViewBuilder let row: (DashboardSummary) -> RowContent
 
@@ -29,7 +30,10 @@ struct DashboardHub<RowContent: View>: View {
 
     var body: some View {
         PageScaffold(spacing: Theme.Space.xl) {
-            ProjectOverviewContent(dashboards: dashboards)
+            ProjectOverviewContent(
+                dashboards: dashboards,
+                pinnedPreviewStore: pinnedPreviewStore
+            )
             dashboardCollection
         }
         .accessibilityIdentifier("gethog.dashboard-hub")

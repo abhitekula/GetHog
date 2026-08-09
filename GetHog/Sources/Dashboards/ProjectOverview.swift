@@ -8,6 +8,131 @@ private struct DashboardSummaryTrigger: Equatable {
     let pinnedID: Int?
 }
 
+/// The complete authority for a cached pinned-preview response.
+///
+/// Dashboard ids are only unique within a PostHog project, and a credential
+/// replacement can reuse the same project number. Keeping both values in the
+/// task identity prevents an old cached response from appearing under a new
+/// project or authenticated session.
+struct PinnedDashboardPreviewScope: Hashable {
+    let projectID: Int?
+    let dashboardID: Int?
+    let authSessionID: UUID?
+
+    var canLoad: Bool {
+        projectID != nil && dashboardID != nil && authSessionID != nil
+    }
+}
+
+@MainActor
+@Observable
+final class PinnedDashboardPreviewStore {
+    private struct LoadScope: Hashable {
+        let projectID: Int
+        let dashboardID: Int
+        let authSessionID: UUID
+    }
+
+    private struct LoadFlight {
+        let id: Int
+        let scope: LoadScope
+        let task: Task<Void, Never>
+    }
+
+    private(set) var dashboard: Dashboard?
+    private(set) var isLoading = false
+    private var loadedScope: LoadScope?
+    private var generation = 0
+    private var nextFlightID = 0
+    private var loadFlight: LoadFlight?
+
+    /// A preview is retained by `DashboardsRoot`, rather than the hub view, so
+    /// a return from detail or a structural width remount joins this flight or
+    /// uses its cached result. `refresh: false` keeps the preview read-only.
+    func loadIfNeeded(
+        client: PostHogClient?,
+        projectID: Int?,
+        dashboardID: Int?,
+        authSessionID: UUID?
+    ) async {
+        let previewScope = PinnedDashboardPreviewScope(
+            projectID: projectID,
+            dashboardID: dashboardID,
+            authSessionID: authSessionID
+        )
+        guard previewScope.canLoad,
+              let client,
+              let projectID,
+              let dashboardID,
+              let authSessionID
+        else {
+            invalidate()
+            return
+        }
+
+        let scope = LoadScope(
+            projectID: projectID,
+            dashboardID: dashboardID,
+            authSessionID: authSessionID
+        )
+        if loadedScope == scope, dashboard?.id == dashboardID { return }
+        if let loadFlight, loadFlight.scope == scope {
+            await loadFlight.task.value
+            return
+        }
+
+        generation += 1
+        let token = generation
+        dashboard = nil
+        loadedScope = nil
+        isLoading = true
+        nextFlightID += 1
+        let flightID = nextFlightID
+        let task = Task { @MainActor in
+            await self.performLoad(client: client, scope: scope, token: token)
+        }
+        loadFlight = LoadFlight(id: flightID, scope: scope, task: task)
+        await task.value
+        if loadFlight?.id == flightID {
+            loadFlight = nil
+        }
+    }
+
+    private func invalidate() {
+        generation += 1
+        dashboard = nil
+        loadedScope = nil
+        isLoading = false
+        loadFlight = nil
+    }
+
+    private func performLoad(
+        client: PostHogClient,
+        scope: LoadScope,
+        token: Int
+    ) async {
+        defer {
+            if token == generation { isLoading = false }
+        }
+        do {
+            let loaded: Dashboard = try await client.send(
+                PostHogAPI.dashboard(
+                    projectID: scope.projectID,
+                    dashboardID: scope.dashboardID,
+                    refresh: false
+                )
+            )
+            guard token == generation, !Task.isCancelled else { return }
+            dashboard = loaded
+            loadedScope = scope
+        } catch {
+            // A newer project/auth scope already owns the preview surface. Its
+            // response must remain empty until that scope's own request settles.
+            guard token == generation, !Task.isCancelled else { return }
+        }
+    }
+}
+
 /// The project signal shown at the top of the dashboard hub.
 ///
 /// It previously showed `ContentUnavailableView("Select a dashboard")` across
@@ -22,10 +147,17 @@ private struct DashboardSummaryTrigger: Equatable {
 /// tapping in does not pay twice.
 struct ProjectOverviewContent: View {
     let dashboards: [DashboardSummary]
+    let pinnedPreviewStore: PinnedDashboardPreviewStore
 
     @Environment(AppModel.self) private var model
-    @State private var pinnedDetail: Dashboard?
-    @State private var isLoadingPinned = false
+
+    /// Tiles stay legible at this measured minimum. The horizontal summary only
+    /// fits when it can retain two of these columns plus their actual gap.
+    private static let pinnedPreviewMinimumColumnWidth: CGFloat = 230
+
+    private var pinnedPreviewTwoColumnWidth: CGFloat {
+        (Self.pinnedPreviewMinimumColumnWidth * 2) + Theme.Space.l
+    }
 
     private var facts: DashboardOverviewFacts {
         DashboardOverviewFacts(dashboards: dashboards)
@@ -39,6 +171,14 @@ struct ProjectOverviewContent: View {
         )
     }
 
+    private var pinnedPreviewScope: PinnedDashboardPreviewScope {
+        PinnedDashboardPreviewScope(
+            projectID: model.projectID,
+            dashboardID: facts.pinned?.id,
+            authSessionID: model.authSessionID
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xl) {
             summaryScene
@@ -47,7 +187,14 @@ struct ProjectOverviewContent: View {
                 recentSection
             }
         }
-        .task(id: facts.pinned?.id) { await loadPinned() }
+        .task(id: pinnedPreviewScope) {
+            await pinnedPreviewStore.loadIfNeeded(
+                client: model.client,
+                projectID: pinnedPreviewScope.projectID,
+                dashboardID: pinnedPreviewScope.dashboardID,
+                authSessionID: pinnedPreviewScope.authSessionID
+            )
+        }
     }
 
     // MARK: - Sections
@@ -64,7 +211,11 @@ struct ProjectOverviewContent: View {
                             maxWidth: 360,
                             alignment: .leading
                         )
-                        pinnedPreview.frame(maxWidth: .infinity, alignment: .leading)
+                        pinnedPreview.frame(
+                            minWidth: pinnedPreviewTwoColumnWidth,
+                            maxWidth: .infinity,
+                            alignment: .leading
+                        )
                     }
                     VStack(alignment: .leading, spacing: Theme.Space.xl) {
                         projectSummary
@@ -124,11 +275,15 @@ struct ProjectOverviewContent: View {
         if let pinned = facts.pinned {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 SectionLabel(text: "Pinned", productMark: .dashboard)
-                if let pinnedDetail {
+                if let pinnedDetail = pinnedPreviewStore.dashboard {
                     // Two columns of real tiles. Capped at four: this is a preview
                     // that should invite a tap, not a second copy of the dashboard
                     // one tap away.
-                    MasonryLayout(columns: 2, spacing: Theme.Space.l) {
+                    MasonryLayout(
+                        columns: 2,
+                        spacing: Theme.Space.l,
+                        minColumnWidth: Self.pinnedPreviewMinimumColumnWidth
+                    ) {
                         ForEach(Array(orderedTiles(pinnedDetail).prefix(4))) { tile in
                             TileCard(
                                 presentation: DashboardRenderedTile(
@@ -139,7 +294,7 @@ struct ProjectOverviewContent: View {
                                 .allowsHitTesting(false)
                         }
                     }
-                } else if isLoadingPinned {
+                } else if pinnedPreviewStore.isLoading {
                     HStack(spacing: Theme.Space.m) {
                         ProgressView()
                         Text("Loading \(pinned.title)…")
@@ -182,18 +337,4 @@ struct ProjectOverviewContent: View {
         dashboard.tiles.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
     }
 
-    private func loadPinned() async {
-        guard let pinned = facts.pinned,
-              let client = model.client,
-              let projectID = model.projectID
-        else { return }
-        isLoadingPinned = true
-        defer { isLoadingPinned = false }
-        // `refresh: false` so this reads the cache and never escalates to
-        // recomputation. An overview that recomputed a dashboard just by being
-        // looked at would spend the org's shared budget on a glance.
-        pinnedDetail = try? await client.send(
-            PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id, refresh: false)
-        )
-    }
 }

@@ -207,13 +207,20 @@ final class VisionWindowTests: XCTestCase {
         analyzeSection.tap()
         guard VisionSidebar.tap("Dashboards", in: app) else { return }
 
-        // The exact title appears once in the detail pane and once inside the
-        // dashboard-list row. The tappable row combines title and freshness in
-        // one Button label, so select that behavior-bearing element directly.
-        let dashboard = app.buttons.matching(NSPredicate(
-            format: "label BEGINSWITH %@", "Example App metric 33,"
-        )).firstMatch
-        XCTAssertTrue(DemoLaunch.wait(for: dashboard))
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The Vision Dashboards route did not expose its unified hub.")
+        }
+        // The hub's adaptive grid is lazy, so bring the stable card activation
+        // boundary into the one shared scroll surface before opening it.
+        let dashboard = hub.buttons["gethog.dashboard-card.725101"].firstMatch
+        for _ in 0..<6 where !dashboard.exists {
+            hub.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.25)
+        }
+        guard DemoLaunch.wait(for: dashboard) else {
+            return XCTFail("The unified dashboard hub did not expose its first card.")
+        }
         dashboard.tap()
         XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts[DemoLaunch.firstTileTitle]))
 

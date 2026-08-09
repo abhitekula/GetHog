@@ -67,6 +67,56 @@ final class DashboardConsistencyUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
     }
 
+    /// The regular hub must not accept a side-by-side project summary if doing
+    /// so leaves its pinned preview too narrow for the two readable columns the
+    /// preview promises.
+    func testRegularDashboardPinnedPreviewUsesTwoColumns() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The pinned-preview width contract is measured on iPad."
+        )
+
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "The app window is compact; this contract measures the regular-width hub."
+        )
+
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The regular dashboard landing did not expose its hub.")
+        }
+        let firstTile = DemoLaunch.elements(
+            labelled: DemoLaunch.firstTileTitle,
+            in: app
+        ).firstMatch
+        let secondTile = DemoLaunch.elements(
+            labelled: "Example daily engagement",
+            in: app
+        ).firstMatch
+        guard DemoLaunch.wait(for: firstTile) else {
+            return XCTFail("The regular dashboard hub did not render its first pinned tile.")
+        }
+        guard DemoLaunch.wait(for: secondTile) else {
+            return XCTFail("The regular dashboard hub did not render its second pinned tile.")
+        }
+
+        XCTAssertEqual(
+            firstTile.frame.minY,
+            secondTile.frame.minY,
+            accuracy: 12,
+            "The first two pinned tiles stacked into one narrow column on regular iPad."
+        )
+        XCTAssertGreaterThan(
+            secondTile.frame.minX,
+            firstTile.frame.maxX,
+            "The second pinned tile did not occupy a second column beside the first."
+        )
+    }
+
     func testRegularDashboardReturnPreservesSearch() throws {
         let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
         try XCTSkipUnless(
@@ -135,6 +185,55 @@ final class DashboardConsistencyUITests: XCTestCase {
         let restoredSearch = app.searchFields.firstMatch
         XCTAssertTrue(DemoLaunch.wait(for: restoredSearch), "Dashboard search did not return with the hub.")
         XCTAssertEqual(restoredSearch.value as? String, query)
+    }
+
+    /// A search miss is local collection state: it must not replace the project
+    /// signal or reintroduce a second regular-width dashboard surface.
+    func testRegularDashboardSearchEmptyKeepsOneHub() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The regular dashboard search-empty contract is measured on iPad."
+        )
+
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "The app window is compact; this contract measures the regular-width hub."
+        )
+
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The regular dashboard landing did not expose its hub.")
+        }
+        let search = app.searchFields.firstMatch
+        if !search.exists {
+            let searchButton = app.navigationBars["Dashboards"].buttons["Search"].firstMatch
+            guard DemoLaunch.wait(for: searchButton) else {
+                return XCTFail("The regular dashboard hub did not expose dashboard search.")
+            }
+            searchButton.tap()
+        }
+        guard DemoLaunch.wait(for: search) else {
+            return XCTFail("The regular dashboard hub did not expose dashboard search.")
+        }
+        search.tap()
+        search.typeText("unmatched synthetic dashboard title")
+
+        let noMatches = hub.staticTexts["No matching dashboards"].firstMatch
+        guard DemoLaunch.wait(for: noMatches) else {
+            return XCTFail("A regular dashboard search miss did not render its local no-results state.")
+        }
+        let collections = hub.otherElements.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-collection")
+        )
+        XCTAssertEqual(collections.count, 1, "A search miss created another dashboard collection surface.")
+        XCTAssertTrue(
+            hub.staticTexts["Project signal"].firstMatch.exists,
+            "A search miss replaced the project signal instead of only the dashboard collection."
+        )
     }
 
     func testDashboardShowsInitialLoadingBeforeTiles() {
@@ -218,6 +317,82 @@ final class DashboardConsistencyUITests: XCTestCase {
             "An empty dashboard hid its failed recompute and retry notice."
         )
         XCTAssertTrue(empty.exists, "A failed recompute replaced the valid empty state.")
+    }
+
+    /// A Max iPhone changes the dashboard host from the regular hub to the
+    /// compact list. Selection belongs to `OpenDetails`, so the detail chosen
+    /// from that list must remain selected when the hub host returns.
+    func testDashboardSelectionSurvivesRegularCompactRegularTopology() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPhone")
+                && deviceName.localizedCaseInsensitiveContains("Max"),
+            "This topology crossing is unique to a Max-size iPhone."
+        )
+
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer {
+            XCUIDevice.shared.orientation = .portrait
+            app.terminate()
+        }
+
+        let compactTabBar = app.tabBars.firstMatch
+        guard DemoLaunch.wait(for: compactTabBar) else {
+            throw XCTSkip("This Max iPhone did not start in the compact dashboard topology.")
+        }
+
+        let compactWidth = app.windows.firstMatch.frame.width
+        XCUIDevice.shared.orientation = .landscapeLeft
+        guard DemoLaunch.wait(until: { app.windows.firstMatch.frame.width != compactWidth }) else {
+            return XCTFail("The Max iPhone never crossed into the regular dashboard topology.")
+        }
+        DemoLaunch.settle(app)
+
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("Regular width did not expose the dashboard hub.")
+        }
+
+        let regularWidth = app.windows.firstMatch.frame.width
+        XCUIDevice.shared.orientation = .portrait
+        guard DemoLaunch.wait(until: { app.windows.firstMatch.frame.width != regularWidth }) else {
+            return XCTFail("The regular dashboard hub never crossed back to compact width.")
+        }
+        DemoLaunch.settle(app)
+
+        let compactRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Example App metric 33")
+        ).firstMatch
+        guard DemoLaunch.wait(for: compactRow) else {
+            return XCTFail("The compact dashboard list did not expose the deterministic dashboard row.")
+        }
+        compactRow.tap()
+
+        let detail = app.navigationBars["Example App metric 33"]
+        guard DemoLaunch.wait(for: detail) else {
+            return XCTFail("Selecting the compact dashboard row did not open its detail.")
+        }
+        let regularReturn = app.buttons["All dashboards"].firstMatch
+        XCTAssertFalse(
+            regularReturn.exists,
+            "Compact list-to-detail navigation unexpectedly exposed the regular hub return control."
+        )
+
+        let selectedCompactWidth = app.windows.firstMatch.frame.width
+        XCUIDevice.shared.orientation = .landscapeLeft
+        guard DemoLaunch.wait(until: { app.windows.firstMatch.frame.width != selectedCompactWidth }) else {
+            return XCTFail("The selected compact dashboard never crossed back to regular width.")
+        }
+        DemoLaunch.settle(app)
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: detail),
+            "Returning to the regular dashboard host discarded the selected dashboard."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: regularReturn),
+            "Regular width did not restore its hub return control for the retained selection."
+        )
     }
 
     func testDashboardRangeAndInsightSurviveFourSizeClassCrossings() throws {

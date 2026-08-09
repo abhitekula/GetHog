@@ -63,7 +63,63 @@ final class MacWindowSizeTests: XCTestCase {
             return XCTFail("The dashboard hub did not contain the Project signal.")
         }
         XCTAssertGreaterThan(collectionWidth, hub.frame.width * 0.5)
+        XCTAssertGreaterThanOrEqual(card.frame.width, 280)
         XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
+        XCTAssertLessThanOrEqual(card.frame.maxX, hub.frame.maxX)
+    }
+
+    /// The hub is only the loaded surface. An honest empty or failed list must
+    /// replace it, rather than leaving old cards or an overlapping scroll view
+    /// in the accessibility tree.
+    func testDashboardLoadedEmptyAndFailureStatesAreExclusive() {
+        var app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        guard let loadedHub = assertSingleLoadedDashboardHub(in: app, named: "loaded") else { return }
+        guard firstDashboardCard(in: loadedHub, at: "loaded") != nil else { return }
+        app.terminate()
+
+        app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: ["GETHOG_DEMO_EMPTY_COLLECTION": "dashboards"]
+        )
+        let empty = DemoLaunch.elements(labelled: "No dashboards", in: app).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: empty), "The empty dashboard list did not name its empty state.")
+        XCTAssertFalse(
+            app.scrollViews["gethog.dashboard-hub"].firstMatch.exists,
+            "A successful empty dashboard list retained the loaded hub."
+        )
+        XCTAssertFalse(
+            app.buttons["gethog.dashboard-card.725101"].firstMatch.exists,
+            "A successful empty dashboard list retained a deterministic dashboard card."
+        )
+        app.terminate()
+
+        app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: [
+                "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS": "800",
+                "GETHOG_DEMO_DASHBOARD_LIST_FAILURE": "1",
+            ]
+        )
+        let failure = DemoLaunch.elements(labelled: "Couldn't load dashboards", in: app).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: failure), "The failed dashboard list did not explain the failure.")
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.buttons["Try again"].firstMatch),
+            "The failed dashboard list did not offer retry."
+        )
+        XCTAssertFalse(
+            app.scrollViews["gethog.dashboard-hub"].firstMatch.exists,
+            "A failed dashboard list retained the loaded hub."
+        )
+        XCTAssertFalse(
+            app.buttons["gethog.dashboard-card.725101"].firstMatch.exists,
+            "A failed dashboard list retained a deterministic dashboard card."
+        )
+        XCTAssertFalse(
+            DemoLaunch.elements(labelled: "No dashboards", in: app).firstMatch.exists,
+            "A failed dashboard list was presented as a successful empty list."
+        )
     }
 
     private func capture(_ name: String) {
@@ -240,6 +296,9 @@ final class MacWindowSizeTests: XCTestCase {
                 print("PHASEB-SIZE \(label) \(title) routed=\(routed) rendered=\(rendered)")
                 capture("g-\(label)-\(title.lowercased())")
                 XCTAssertTrue(routed, "The Go menu could not reach \(title) at \(label).")
+                if title == "Dashboards" {
+                    assertUsableDashboardHub(in: app, at: label)
+                }
             }
 
             // …and a replay, which is the widest thing in the app.
@@ -263,6 +322,65 @@ final class MacWindowSizeTests: XCTestCase {
         DemoLaunch.pause(1)
         capture("g-settings-default")
         XCTAssertGreaterThan(app.windows.count, before, "⌘, opened no Settings window.")
+    }
+
+    @discardableResult
+    private func assertSingleLoadedDashboardHub(
+        in app: XCUIApplication,
+        named state: String
+    ) -> XCUIElement? {
+        let hubs = app.scrollViews.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-hub")
+        )
+        let hub = hubs.firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            XCTFail("The \(state) dashboard landing did not expose its hub.")
+            return nil
+        }
+        guard hubs.count == 1 else {
+            XCTFail("The \(state) dashboard landing exposed more than one hub.")
+            return nil
+        }
+
+        let collections = hub.otherElements.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-collection")
+        )
+        guard DemoLaunch.wait(for: collections.firstMatch) else {
+            XCTFail("The \(state) dashboard hub did not expose its collection.")
+            return nil
+        }
+        guard collections.count == 1 else {
+            XCTFail("The \(state) dashboard hub exposed more than one collection.")
+            return nil
+        }
+        return hub
+    }
+
+    private func assertUsableDashboardHub(in app: XCUIApplication, at size: String) {
+        guard let hub = assertSingleLoadedDashboardHub(in: app, named: size) else { return }
+        let collection = hub.otherElements.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-collection")
+        ).firstMatch
+        guard let card = firstDashboardCard(in: hub, at: size) else { return }
+
+        XCTAssertGreaterThan(collection.frame.width, hub.frame.width * 0.5)
+        XCTAssertGreaterThanOrEqual(card.frame.width, 280)
+        XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
+        XCTAssertLessThanOrEqual(card.frame.maxX, hub.frame.maxX)
+    }
+
+    @discardableResult
+    private func firstDashboardCard(in hub: XCUIElement, at size: String) -> XCUIElement? {
+        let card = hub.buttons["gethog.dashboard-card.725101"].firstMatch
+        for _ in 0..<6 where !card.exists {
+            hub.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.25)
+        }
+        guard DemoLaunch.wait(for: card) else {
+            XCTFail("The \(size) dashboard hub did not render its first card.")
+            return nil
+        }
+        return card
     }
 
 }

@@ -121,6 +121,7 @@ struct DashboardsRoot: View {
     @Environment(\.openWindow) private var openWindow
     #endif
     @State private var store = DashboardsStore()
+    @State private var pinnedPreviewStore = PinnedDashboardPreviewStore()
     @State private var search = ""
 
     /// The open dashboard's id, and deliberately **not** `@State`.
@@ -257,6 +258,7 @@ struct DashboardsRoot: View {
                 pinned: store.pinned,
                 others: store.others,
                 loadedAt: store.loadedAt,
+                pinnedPreviewStore: pinnedPreviewStore,
                 search: $search
             ) { dashboard in
                 dashboardHubRow(dashboard)
