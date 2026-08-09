@@ -942,6 +942,7 @@ struct DemoTransport: HTTPTransport {
         // segment; it is matched on the resource, not the prefix.
         if path.hasSuffix("/quota_limits/") { return load("quota_limits") }
         if path.contains("/sdk_health/") { return load("sdk_health_report") }
+        if path.hasSuffix("/health_issues/") { return load("health_issues_demo") }
         if path.contains("/llm_analytics/") && path.hasSuffix("/spend/") { return load("llm_spend") }
 
         // Dashboard detail is deliberately exact so an invented id cannot look valid.

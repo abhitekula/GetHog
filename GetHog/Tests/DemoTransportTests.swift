@@ -1250,7 +1250,6 @@ extension DemoTransportTests {
     @Test("a path with no fixture fails loudly instead of answering an empty page")
     func unroutedPathsAreNotEmptyPages() async throws {
         let unrouted: [(String, Endpoint)] = [
-            ("health issues", PostHogAPI.healthIssues(projectID: Self.projectID)),
             ("hog flows", PostHogAPI.hogFlows(projectID: Self.projectID)),
             ("batch exports", PostHogAPI.batchExports(projectID: Self.projectID)),
         ]
@@ -1435,6 +1434,54 @@ extension DemoTransportTests {
         // A cursor from the unfiltered page would page the excluded
         // sessions straight back in.
         #expect(filtered.hasNext == false)
+    }
+}
+
+/// The demo Health screen's complete success path.
+///
+/// This is its own suite so a fixture-routing failure can be selected without
+/// running the rest of the large demo transport catalog. It deliberately drives
+/// `PostHogAPI.healthIssues`, not a hand-written path: a builder change must
+/// break the fixture contract rather than silently leaving the app unrouted.
+@Suite("Demo health fixture")
+@MainActor
+struct DemoHealthFixtureTests {
+
+    private static let projectID = 1001
+
+    @Test("health issues serve scrollable active and resolved data with freshness")
+    func healthIssuesResolveForTheRenderedScreen() async throws {
+        let endpoint = PostHogAPI.healthIssues(projectID: Self.projectID)
+        var components = try #require(
+            URLComponents(string: "https://app.example.com" + endpoint.path)
+        )
+        components.queryItems = endpoint.query
+        var request = URLRequest(url: try #require(components.url))
+        request.httpMethod = endpoint.method
+        request.httpBody = endpoint.body
+
+        let transport = DemoTransport()
+        let (data, response) = try await transport.send(request)
+        #expect(response.statusCode == 200)
+
+        let page = try Page<HealthIssue>.decode(from: data)
+        #expect(page.results.count >= 12, "Health needs enough cards to exercise its scroll end")
+        #expect(page.results.contains { $0.status == .active })
+        #expect(page.results.contains { $0.status == .resolved })
+        #expect(page.results.contains { $0.createdAt != nil })
+
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
+            transport: transport
+        )
+        let store = HealthStore()
+        await store.load(client: client, projectID: Self.projectID)
+
+        #expect(store.error == nil)
+        #expect(store.issues.count >= 12)
+        #expect(!store.active.isEmpty)
+        #expect(!store.resolved.isEmpty)
+        #expect(store.loadedAt != nil, "FreshnessLabel must receive a successful-load date")
     }
 }
 
