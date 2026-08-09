@@ -124,7 +124,7 @@ struct OnboardingView: View {
                     // the 4.5:1 floor. Every supporting line on this flow is on
                     // one of those two surfaces, and this is the first screen
                     // anybody sees.
-                    Text("Your PostHog dashboards, events, sessions, and feature flags — native on iPhone and iPad.")
+                    Text("Your PostHog dashboards, events, sessions, and feature flags — native across Apple platforms.")
                         .font(.callout)
                         .foregroundStyle(Theme.Ink.secondary)
                         .multilineTextAlignment(.center)
