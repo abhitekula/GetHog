@@ -44,6 +44,43 @@ enum CompactNavigationPolicy {
     }
 }
 
+/// Carries the destination of an intentional Search-stack reset across
+/// SwiftUI's later empty-path observation. A genuine Back/pop has no pending
+/// destination and therefore returns to Search.
+struct SearchPathResetTransition: Equatable {
+    private(set) var pendingSelection: AppTab?
+
+    mutating func prepareProgrammaticReset(
+        finalSelection: AppTab,
+        pathWasEmpty: Bool
+    ) {
+        guard finalSelection != .search else {
+            pendingSelection = nil
+            return
+        }
+        guard !pathWasEmpty || pendingSelection != nil else { return }
+        pendingSelection = finalSelection
+    }
+
+    mutating func supersedePendingSelection(with finalSelection: AppTab) {
+        guard pendingSelection != nil else { return }
+        pendingSelection = finalSelection == .search ? nil : finalSelection
+    }
+
+    mutating func invalidateForNonemptyPath() {
+        pendingSelection = nil
+    }
+
+    mutating func selectionWhenPathBecomesEmpty(
+        pathIsCurrentlyEmpty: Bool
+    ) -> AppTab? {
+        guard pathIsCurrentlyEmpty else { return nil }
+        let selection = pendingSelection ?? .search
+        pendingSelection = nil
+        return selection
+    }
+}
+
 // `TabRootView`, `PresentedDetail` and `DetailSheetView` moved to
 // `App/TabRootView.swift`: this file is iOS-only — `UIDevice`, the size class
 // and `tabBarMinimizeBehavior` are all named below — and is excluded from the
@@ -59,6 +96,7 @@ struct RootView: View {
     /// traces into the same stack, and an object result pushes a dashboard or a
     /// flag — so no typed path can hold it.
     @State private var searchPath = NavigationPath()
+    @State private var searchPathReset = SearchPathResetTransition()
     /// Held here rather than in the screens themselves: this view is the only
     /// thing in the tree that survives a size-class change intact.
     @State private var openDetails = OpenDetails()
@@ -248,8 +286,15 @@ struct RootView: View {
                 .onChange(of: searchPath.isEmpty) { _, isEmpty in
                     // Popping back leaves `selectedTab` naming a screen that is no
                     // longer showing, which the sidebar would then restore on the
-                    // next rotation into regular width. At the root it is `.search`.
-                    if isEmpty { selectedTab = .search }
+                    // next rotation into regular width. At the root it is `.search`,
+                    // unless a visible tab deliberately cleared the old Search
+                    // stack and left its final selection for this observer.
+                    if isEmpty,
+                       let finalSelection = searchPathReset.selectionWhenPathBecomesEmpty(
+                           pathIsCurrentlyEmpty: searchPath.isEmpty
+                       ) {
+                        selectedTab = finalSelection
+                    }
                 }
                 // **Outermost, and that is load-bearing.** Both the tab tree and
                 // the `.sheet` above have to see these, and only a modifier that
@@ -337,7 +382,7 @@ struct RootView: View {
             systemImage: AppTab.search.systemImage,
             value: AppTab.search
         ) {
-            NavigationStack(path: $searchPath) {
+            NavigationStack(path: searchPathBinding) {
                 ProjectSearchView(compactLooseTabs: compactMembership.productTabs)
                     .navigationDestination(for: AppTab.self) { tab in
                         TabRootView(tab: tab)
@@ -475,6 +520,36 @@ struct RootView: View {
         )
     }
 
+    /// Child pushes enter through this binding; root-driven navigation goes
+    /// through `setSearchPath(_:finalSelection:)` below. A nonempty path always
+    /// supersedes a pending empty observation, while an empty child write is a
+    /// genuine Back/pop and must leave that observation for the resolver.
+    private var searchPathBinding: Binding<NavigationPath> {
+        Binding(
+            get: { searchPath },
+            set: { path in
+                if !path.isEmpty {
+                    searchPathReset.invalidateForNonemptyPath()
+                }
+                searchPath = path
+            }
+        )
+    }
+
+    /// The one root-level write seam for the heterogeneous Search stack.
+    private func setSearchPath(_ path: NavigationPath, finalSelection: AppTab) {
+        let pathWasEmpty = searchPath.isEmpty
+        if path.isEmpty {
+            searchPathReset.prepareProgrammaticReset(
+                finalSelection: finalSelection,
+                pathWasEmpty: pathWasEmpty
+            )
+        } else {
+            searchPathReset.invalidateForNonemptyPath()
+        }
+        searchPath = path
+    }
+
     /// Goes to a destination by name, from a keyboard shortcut or `GETHOG_TAB`.
     ///
     /// In compact width a destination outside the effective membership means
@@ -489,16 +564,22 @@ struct RootView: View {
         // destination, or a screen restored from a rotation — instead of the
         // search root. The stack is shared with links precisely so a back button
         // behaves once; that sharing is what makes clearing it necessary here.
-        if tab == .search { searchPath = NavigationPath() }
+        if tab == .search {
+            setSearchPath(NavigationPath(), finalSelection: .search)
+            return
+        }
 
         // Everything past this point is compact-only: in regular width every
         // destination has a sidebar row of its own, so selecting it is the whole
         // job and nothing needs pushing.
-        guard sizeClass == .compact else { return }
+        guard sizeClass == .compact else {
+            searchPathReset.supersedePendingSelection(with: tab)
+            return
+        }
         if compactMembership.requiresSearchPush(for: tab) {
             var path = NavigationPath()
             path.append(tab)
-            searchPath = path
+            setSearchPath(path, finalSelection: tab)
         } else {
             // A destination with a bar row of its own, so nothing needs pushing
             // - but whatever *was* pushed has to go, and that is not tidiness.
@@ -511,7 +592,7 @@ struct RootView: View {
             // sidebar can follow it. That write lands *after* `open(.logs)` and
             // puts the selection back on a screen with no bar row, so
             // `tabSelection` falls through to `.search`.
-            searchPath = NavigationPath()
+            setSearchPath(NavigationPath(), finalSelection: tab)
         }
     }
 
@@ -617,7 +698,7 @@ struct RootView: View {
             // behind whatever was already pushed.
             var path = NavigationPath()
             path.append(target.link)
-            searchPath = path
+            setSearchPath(path, finalSelection: .search)
         }
     }
 
@@ -635,6 +716,8 @@ struct RootView: View {
                   searchPathIsEmpty: searchPath.isEmpty
               )
         else { return }
-        searchPath.append(selectedTab)
+        var path = searchPath
+        path.append(selectedTab)
+        setSearchPath(path, finalSelection: selectedTab)
     }
 }

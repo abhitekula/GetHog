@@ -847,6 +847,121 @@ struct AppTabStructureTests {
         #expect(!membership.shouldRestore(destination: .dashboards, searchPathIsEmpty: true))
     }
 
+    @Test("a programmatic Search reset carries its visible destination across the empty-path observer once")
+    func programmaticResetCarriesVisibleDestinationAcrossEmptyObserver() {
+        var transition = SearchPathResetTransition()
+
+        transition.prepareProgrammaticReset(
+            finalSelection: .dashboards,
+            pathWasEmpty: false
+        )
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .dashboards
+        )
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
+    @Test("a user pop without a programmatic Search reset returns to Search")
+    func userPopWithoutProgrammaticResetReturnsToSearch() {
+        var transition = SearchPathResetTransition()
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
+    @Test("a newer visible destination supersedes a pending reset after the path already cleared")
+    func newerVisibleDestinationSupersedesPendingResetAfterPathAlreadyCleared() {
+        var transition = SearchPathResetTransition()
+
+        transition.prepareProgrammaticReset(
+            finalSelection: .dashboards,
+            pathWasEmpty: false
+        )
+        transition.prepareProgrammaticReset(
+            finalSelection: .events,
+            pathWasEmpty: true
+        )
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .events
+        )
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
+    @Test("a nonempty replacement invalidates a pending reset before a later user pop")
+    func nonemptyReplacementInvalidatesPendingResetBeforeLaterUserPop() {
+        var transition = SearchPathResetTransition()
+
+        transition.prepareProgrammaticReset(
+            finalSelection: .dashboards,
+            pathWasEmpty: false
+        )
+        transition.invalidateForNonemptyPath()
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: false) == nil
+        )
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
+    @Test("a fresh visible request on an already-empty path does not arm a later pop")
+    func freshVisibleRequestOnEmptyPathDoesNotArmLaterPop() {
+        var transition = SearchPathResetTransition()
+
+        transition.prepareProgrammaticReset(
+            finalSelection: .dashboards,
+            pathWasEmpty: true
+        )
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
+    @Test("a Search request clears a pending visible reset")
+    func searchRequestClearsPendingVisibleReset() {
+        var transition = SearchPathResetTransition()
+
+        transition.prepareProgrammaticReset(
+            finalSelection: .dashboards,
+            pathWasEmpty: false
+        )
+        transition.prepareProgrammaticReset(
+            finalSelection: .search,
+            pathWasEmpty: true
+        )
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
+    @Test("a regular visible selection supersedes a pending reset exactly once")
+    func regularVisibleSelectionSupersedesPendingResetExactlyOnce() {
+        var transition = SearchPathResetTransition()
+
+        transition.prepareProgrammaticReset(
+            finalSelection: .dashboards,
+            pathWasEmpty: false
+        )
+        transition.supersedePendingSelection(with: .events)
+
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .events
+        )
+        #expect(
+            transition.selectionWhenPathBecomesEmpty(pathIsCurrentlyEmpty: true) == .search
+        )
+    }
+
     private func compactIPadMembershipWithHiddenEvents() -> CompactTabMembership {
         CompactNavigationPolicy.membership(
             isPad: true,
