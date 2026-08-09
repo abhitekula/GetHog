@@ -135,23 +135,43 @@ struct WatchFlagsView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(model.shortlistFlags) { flag in
-                    Button {
-                        toggle.propose(flag: flag)
-                    } label: {
-                        HStack(spacing: Theme.Space.s) {
-                            Circle()
-                                .fill(flag.active ? Theme.Status.good : Theme.hairline)
-                                .frame(width: 8, height: 8)
-                                .accessibilityHidden(true)
-                            Text(flag.key)
-                                .font(Theme.Typography.body)
-                                .lineLimit(1)
-                        }
+                switch model.flagsContentState {
+                case .needsCredential:
+                    stateText("Connect to PostHog first")
+                case .notChecked:
+                    stateText("Flags not checked yet.")
+                case .loading:
+                    HStack(spacing: Theme.Space.s) {
+                        ProgressView()
+                        Text("Checking flags…")
+                            .font(Theme.Typography.caption)
                     }
-                    .accessibilityLabel("\(flag.key), \(flag.active ? "on" : "off")")
+                case .empty:
+                    stateText("No flags yet.")
+                case .rows(let flags, _):
+                    flagRows(flags)
+                    rowsFooter
+                case .carried(let flags, let failure, _):
+                    // Task 3 deliberately owns retry ordering. Preserve the
+                    // current rows-first order in this provenance-only cycle.
+                    flagRows(flags)
+                    WatchSectionFailureView(failure: failure) {
+                        Task { await model.retry() }
+                    }
+                case .failure(let failure):
+                    WatchSectionFailureView(failure: failure) {
+                        Task { await model.retry() }
+                    }
                 }
-                footer
+
+                if model.watchesDegraded {
+                    // Same fact the Health page states, said once more where a
+                    // write is possible: an out-of-date watch app took only
+                    // part of what the phone sent.
+                    Text(WatchHealthCopy.degradedFooter)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Ink.tertiary)
+                }
             }
             .navigationTitle("Flags")
             .confirmationDialog(
@@ -183,29 +203,35 @@ struct WatchFlagsView: View {
         }
     }
 
-    @ViewBuilder private var footer: some View {
-        if let failure = model.flagsRefreshFailure {
-            WatchSectionFailureView(failure: failure) {
-                Task { await model.retry() }
+    @ViewBuilder private func flagRows(_ flags: [SharedSnapshot.Flag]) -> some View {
+        ForEach(flags) { flag in
+            Button {
+                toggle.propose(flag: flag)
+            } label: {
+                HStack(spacing: Theme.Space.s) {
+                    Circle()
+                        .fill(flag.active ? Theme.Status.good : Theme.hairline)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                    Text(flag.key)
+                        .font(Theme.Typography.body)
+                        .lineLimit(1)
+                }
             }
+            .accessibilityLabel("\(flag.key), \(flag.active ? "on" : "off")")
         }
-        if model.shortlistFlags.isEmpty, model.flagsRefreshFailure == nil {
-            Text("No flags yet.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Ink.tertiary)
-        } else if !model.shortlistFlags.isEmpty {
-            Text("First \(WatchModel.flagShortlistCap) flags")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Ink.tertiary)
-        }
-        if model.watchesDegraded {
-            // Same fact the Health page states, said once more where a write
-            // is possible: an out-of-date watch app took only part of what the
-            // phone sent, and this is the page that changes shared state.
-            Text(WatchHealthCopy.degradedFooter)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Ink.tertiary)
-        }
+    }
+
+    private func stateText(_ copy: String) -> some View {
+        Text(copy)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Ink.tertiary)
+    }
+
+    private var rowsFooter: some View {
+        Text("First \(WatchModel.flagShortlistCap) flags")
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Ink.tertiary)
     }
 
     private var dialogTitle: String {

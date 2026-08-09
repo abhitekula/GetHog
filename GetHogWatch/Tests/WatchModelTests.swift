@@ -472,6 +472,158 @@ struct WatchModelTests {
         #expect(model.phase == .ready)
     }
 
+    @Test("flags presentation separates unasked, loading, answered, and failed states")
+    func flagsContentStateSeparatesUnaskedLoadingAnsweredEmptyAndFailure() async throws {
+        let noCredential = WatchModel(
+            credential: nil,
+            projectName: nil,
+            headlineMetricID: nil,
+            watches: [],
+            transport: OfflineTransport(),
+            store: WatchFixtures.tempStore(),
+            authenticate: { _ in true },
+            now: { WatchFixtures.now }
+        )
+        #expect(noCredential.flagsContentState == .needsCredential)
+
+        let loading = WatchFixtures.model(
+            transport: OfflineTransport(), store: WatchFixtures.tempStore()
+        )
+        #expect(loading.flagsContentState == .loading)
+
+        let legacyEmptyStore = WatchFixtures.tempStore()
+        try legacyEmptyStore.write(WatchFixtures.snapshot())
+        let legacyEmpty = WatchFixtures.model(
+            transport: OfflineTransport(), store: legacyEmptyStore
+        )
+        #expect(legacyEmpty.flagsContentState == .notChecked)
+
+        let empty = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(
+                flags: #"{"count":0,"next":null,"previous":null,"results":[]}"#
+            )),
+            store: WatchFixtures.tempStore()
+        )
+        await empty.refresh(force: true)
+        #expect(empty.flagsContentState == .empty(capturedAt: WatchFixtures.now))
+
+        let carriedAt = WatchFixtures.now.addingTimeInterval(-600)
+        let carriedFlag = SharedSnapshot.Flag(
+            id: 77, key: "carried-flag", active: true, quickToggleAllowed: false
+        )
+        let rowsStore = WatchFixtures.tempStore()
+        try rowsStore.write(WatchFixtures.snapshot(
+            flags: [carriedFlag], capturedAt: carriedAt
+        ))
+        let rows = WatchFixtures.model(
+            transport: OfflineTransport(), store: rowsStore
+        )
+        #expect(rows.flagsContentState == .rows([carriedFlag], capturedAt: carriedAt))
+
+        let retryableFailure = WatchSectionFailure(
+            message: "PostHog couldn't be reached.", canRetry: true
+        )
+        let failure = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [
+                .init(
+                    pathContains: "/feature_flags/",
+                    body: #"{"detail":"Synthetic flags failure."}"#,
+                    status: 503
+                ),
+            ])),
+            store: WatchFixtures.tempStore()
+        )
+        await failure.refresh(force: true)
+        #expect(failure.flagsContentState == .failure(retryableFailure))
+
+        let carriedStore = WatchFixtures.tempStore()
+        try carriedStore.write(WatchFixtures.snapshot(
+            flags: [carriedFlag], capturedAt: carriedAt
+        ))
+        let carried = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [
+                .init(
+                    pathContains: "/feature_flags/",
+                    body: #"{"detail":"Synthetic flags failure."}"#,
+                    status: 503
+                ),
+            ])),
+            store: carriedStore
+        )
+        await carried.refresh(force: true)
+        #expect(
+            carried.flagsContentState == .carried(
+                [carriedFlag],
+                failure: retryableFailure,
+                capturedAt: carriedAt
+            )
+        )
+    }
+
+    @Test("flags receipt survives relaunch only for matching project scope")
+    func flagsReceiptSurvivesRelaunchOnlyForMatchingProjectScope() async {
+        let emptyFlags = #"{"count":0,"next":null,"previous":null,"results":[]}"#
+
+        let matchingStore = WatchFixtures.tempStore()
+        let first = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(
+                flags: emptyFlags
+            )),
+            store: matchingStore
+        )
+        await first.refresh(force: true)
+        #expect(first.flagsContentState == .empty(capturedAt: WatchFixtures.now))
+
+        let relaunched = WatchFixtures.model(
+            transport: OfflineTransport(), store: matchingStore
+        )
+        #expect(relaunched.flagsContentState == .empty(capturedAt: WatchFixtures.now))
+
+        let projectStore = WatchFixtures.tempStore()
+        let projectSeed = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(
+                flags: emptyFlags
+            )),
+            store: projectStore
+        )
+        await projectSeed.refresh(force: true)
+        let differentProject = WatchModel(
+            credential: StoredCredential(
+                key: "test-key-0002", region: .usCloud, projectID: 2001
+            ),
+            projectName: "Different synthetic project",
+            headlineMetricID: nil,
+            watches: [],
+            transport: OfflineTransport(),
+            store: projectStore,
+            authenticate: { _ in true },
+            now: { WatchFixtures.now }
+        )
+        #expect(differentProject.flagsContentState == .loading)
+
+        let regionStore = WatchFixtures.tempStore()
+        let regionSeed = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(
+                flags: emptyFlags
+            )),
+            store: regionStore
+        )
+        await regionSeed.refresh(force: true)
+        let differentRegion = WatchModel(
+            credential: StoredCredential(
+                key: "test-key-0003", region: .euCloud, projectID: 1001
+            ),
+            projectName: "Different synthetic region",
+            headlineMetricID: nil,
+            watches: [],
+            transport: OfflineTransport(),
+            store: regionStore,
+            authenticate: { _ in true },
+            now: { WatchFixtures.now }
+        )
+        #expect(differentRegion.flagsContentState == .loading)
+    }
+
     @Test("flags, health, and activity failures differ from successful empty responses")
     func partialSectionFailuresAreDistinctFromSuccessfulEmptyResponses() async {
         let empty = WatchFixtures.model(
@@ -485,6 +637,7 @@ struct WatchModelTests {
         await empty.refresh(force: true)
         #expect(empty.shortlistFlags.isEmpty)
         #expect(empty.flagsRefreshFailure == nil)
+        #expect(empty.flagsContentState == .empty(capturedAt: WatchFixtures.now))
         #expect(empty.health.errorPulse?.activeCount == 0)
         #expect(empty.healthRefreshFailure == nil)
         #expect(empty.activity.isEmpty)
@@ -505,6 +658,36 @@ struct WatchModelTests {
         #expect(flags.phase == .ready)
         #expect(flags.shortlistFlags.isEmpty)
         #expect(flags.flagsRefreshFailure?.canRetry == true)
+        #expect(flags.flagsContentState == .failure(WatchSectionFailure(
+            message: "PostHog couldn't be reached.", canRetry: true
+        )))
+
+        let carriedStore = WatchFixtures.tempStore()
+        let carriedAt = WatchFixtures.now.addingTimeInterval(-300)
+        let carriedFlag = SharedSnapshot.Flag(
+            id: 77, key: "carried-flag", active: false, quickToggleAllowed: false
+        )
+        try? carriedStore.write(WatchFixtures.snapshot(
+            flags: [carriedFlag], capturedAt: carriedAt
+        ))
+        let carriedFlags = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [
+                .init(
+                    pathContains: "/feature_flags/",
+                    body: #"{"detail":"Synthetic flags failure."}"#,
+                    status: 503
+                ),
+            ])),
+            store: carriedStore
+        )
+        await carriedFlags.refresh(force: true)
+        #expect(carriedFlags.flagsContentState == .carried(
+            [carriedFlag],
+            failure: WatchSectionFailure(
+                message: "PostHog couldn't be reached.", canRetry: true
+            ),
+            capturedAt: carriedAt
+        ))
 
         let health = WatchFixtures.model(
             transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(extra: [

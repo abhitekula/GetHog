@@ -27,8 +27,11 @@ enum WatchDemoMode {
     enum SyntheticScenario: String {
         case rejectedEU = "rejected-eu"
         case rejectedSelfHosted = "rejected-self-hosted"
+        case noCredential = "no-credential"
+        case flagsLoading = "flags-loading"
+        case flagsEmpty = "flags-empty"
 
-        var credential: StoredCredential {
+        var credential: StoredCredential? {
             switch self {
             case .rejectedEU:
                 StoredCredential(
@@ -41,6 +44,20 @@ enum WatchDemoMode {
                     key: "synthetic-rejected-key",
                     region: .selfHosted(URL(string: "https://synthetic.example.test")!),
                     projectID: 1001
+                )
+            case .noCredential:
+                nil
+            case .flagsLoading:
+                StoredCredential(
+                    key: "synthetic-flags-key",
+                    region: .usCloud,
+                    projectID: 2002
+                )
+            case .flagsEmpty:
+                StoredCredential(
+                    key: "synthetic-flags-key",
+                    region: .usCloud,
+                    projectID: 2003
                 )
             }
         }
@@ -62,8 +79,10 @@ enum WatchDemoMode {
         return SyntheticScenario(rawValue: raw)
     }
 
-    static func syntheticScenarioTransport() -> any HTTPTransport {
-        WatchRejectedCredentialTransport()
+    static func syntheticScenarioTransport(
+        for scenario: SyntheticScenario
+    ) -> any HTTPTransport {
+        WatchSyntheticScenarioTransport(scenario: scenario)
     }
     #endif
 
@@ -202,17 +221,47 @@ enum WatchDemoMode {
 }
 
 #if DEBUG
-/// A complete transport boundary for replacement-form render scenarios. Every
-/// request receives a real synthetic HTTP 401, exercising the production
-/// client's classification and the model's authentication recovery path.
-private struct WatchRejectedCredentialTransport: HTTPTransport {
+/// A complete transport boundary for otherwise unreachable render states.
+/// Every branch is fixture-only and delegates ordinary routes to the authored
+/// demo transport; no scenario can open a socket or consume a live budget.
+private struct WatchSyntheticScenarioTransport: HTTPTransport {
+    let scenario: WatchDemoMode.SyntheticScenario
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        try? await Task.sleep(for: .milliseconds(80))
-        return (
-            Data(#"{"detail":"Synthetic rejected credential."}"#.utf8),
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        switch scenario {
+        case .rejectedEU, .rejectedSelfHosted:
+            try? await Task.sleep(for: .milliseconds(80))
+            return reply(
+                Data(#"{"detail":"Synthetic rejected credential."}"#.utf8),
+                status: 401,
+                request: request
+            )
+        case .flagsLoading where path.contains("/feature_flags/"):
+            // Long enough for XCUITest to observe the first-load state before
+            // this authored response releases the deterministic flag rows.
+            try? await Task.sleep(for: .seconds(4))
+            return try await WatchDemoTransport().send(request)
+        case .flagsEmpty where path.contains("/feature_flags/"):
+            try? await Task.sleep(for: .milliseconds(80))
+            return reply(
+                Data(#"{"count":0,"next":null,"previous":null,"results":[]}"#.utf8),
+                status: 200,
+                request: request
+            )
+        case .noCredential, .flagsLoading, .flagsEmpty:
+            return try await WatchDemoTransport().send(request)
+        }
+    }
+
+    private func reply(
+        _ data: Data, status: Int, request: URLRequest
+    ) -> (Data, HTTPURLResponse) {
+        (
+            data,
             HTTPURLResponse(
                 url: request.url ?? URL(string: "https://synthetic.example.test")!,
-                statusCode: 401,
+                statusCode: status,
                 httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]
             )!

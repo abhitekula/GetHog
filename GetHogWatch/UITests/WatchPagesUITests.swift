@@ -81,6 +81,61 @@ final class WatchPagesUITests: XCTestCase {
         ).firstMatch, timeout: 60))
     }
 
+    /// Empty flags mean the endpoint answered with no rows. A missing key or
+    /// an in-flight first request has not answered that question yet and must
+    /// never inherit the successful-empty sentence.
+    func testFlagsStatesDistinguishNeedsKeyLoadingAndAnsweredEmpty() {
+        guard ExclusiveRun.claim() else { return }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-GetHogDemo"]
+        app.launchEnvironment["GETHOG_DEMO"] = "1"
+        app.launchEnvironment["GETHOG_WATCH_PAGE"] = "flags"
+
+        func launch(_ scenario: String) {
+            app.terminate()
+            app.launchEnvironment["GETHOG_WATCH_SCENARIO"] = scenario
+            app.launch()
+            XCTAssertTrue(
+                DemoLaunch.wait(for: app.navigationBars["Flags"], timeout: 30),
+                "The synthetic Flags page did not render for \(scenario)."
+            )
+        }
+
+        let empty = app.staticTexts["No flags yet."]
+
+        launch("no-credential")
+        XCTAssertTrue(
+            DemoLaunch.wait(
+                for: app.staticTexts["Connect to PostHog first"], timeout: 5
+            ),
+            "Missing credentials were presented as answered-empty flags."
+        )
+        XCTAssertFalse(empty.exists)
+
+        launch("flags-loading")
+        let loading = app.staticTexts["Checking flags…"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: loading, timeout: 3),
+            "The held first flag request did not expose progress."
+        )
+        XCTAssertFalse(empty.exists)
+        let deterministicRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "example-navigation,")
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: deterministicRow, timeout: 30),
+            "The held synthetic flag response never released its authored row."
+        )
+
+        launch("flags-empty")
+        XCTAssertTrue(
+            DemoLaunch.wait(for: empty, timeout: 30),
+            "A successfully answered empty flag page did not render its empty state."
+        )
+        XCTAssertFalse(loading.exists)
+    }
+
     func testActivityPageShowsRecentEvents() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "activity"])
 

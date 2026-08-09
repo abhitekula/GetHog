@@ -249,6 +249,71 @@ struct WatchSectionFailure: Equatable, Sendable {
     let canRetry: Bool
 }
 
+/// The Flags page's complete presentation contract. An empty array is not a
+/// state by itself: the endpoint may not have been asked, may still be in
+/// flight, or may have answered successfully with no rows.
+enum WatchFlagsContentState: Equatable {
+    case needsCredential
+    case notChecked
+    case loading
+    case empty(capturedAt: Date)
+    case rows([SharedSnapshot.Flag], capturedAt: Date?)
+    case carried(
+        [SharedSnapshot.Flag],
+        failure: WatchSectionFailure,
+        capturedAt: Date?
+    )
+    case failure(WatchSectionFailure)
+}
+
+/// Durable proof that the flags endpoint itself answered for one project
+/// scope. Kept beside, rather than inside, the cross-platform snapshot so an
+/// older app/widget binary can continue decoding that shared contract.
+struct WatchFlagsReceipt: Codable, Equatable, Sendable {
+    let projectID: Int
+    let projectRegion: PostHogRegion
+    let capturedAt: Date
+
+    private static let fileName = "watch-flags-receipt.json"
+
+    static func fileURL(in store: SharedSnapshotStore) -> URL {
+        store.directory.appendingPathComponent(fileName)
+    }
+
+    func matches(
+        snapshot: SharedSnapshot,
+        projectID: Int,
+        projectRegion: PostHogRegion
+    ) -> Bool {
+        self.projectID == projectID
+            && self.projectRegion == projectRegion
+            && snapshot.projectID == projectID
+            && snapshot.projectRegion == projectRegion
+    }
+
+    static func read(from store: SharedSnapshotStore) -> WatchFlagsReceipt? {
+        guard let data = try? Data(contentsOf: fileURL(in: store)) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(WatchFlagsReceipt.self, from: data)
+    }
+
+    func write(to store: SharedSnapshotStore) throws {
+        try FileManager.default.createDirectory(
+            at: store.directory, withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(self).write(
+            to: Self.fileURL(in: store), options: [.atomic]
+        )
+    }
+
+    static func clear(from store: SharedSnapshotStore) {
+        try? FileManager.default.removeItem(at: fileURL(in: store))
+    }
+}
+
 /// Collects failures from one sequential wrist refresh without turning the
 /// five independent best-effort sections into one all-or-nothing request.
 @MainActor
@@ -399,6 +464,7 @@ final class WatchModel {
     private(set) var healthRefreshFailure: WatchSectionFailure?
     private(set) var activityRefreshFailure: WatchSectionFailure?
     private(set) var snapshot: SharedSnapshot?
+    private var flagsReceipt: WatchFlagsReceipt?
     private(set) var health: WatchHealth = .empty
     private(set) var activity: [ActivityLine] = []
     /// When `activity` was read from PostHog, which is not always when the
@@ -471,6 +537,7 @@ final class WatchModel {
 
     private struct QuarantinedProjectData {
         let snapshot: SharedSnapshot?
+        let flagsReceipt: WatchFlagsReceipt?
         let activity: ActivityFeed?
         let breachingWatchIDs: Set<String>
     }
@@ -519,8 +586,10 @@ final class WatchModel {
         self.flagsRefreshFailure = nil
         self.healthRefreshFailure = nil
         self.activityRefreshFailure = nil
+        self.flagsReceipt = nil
         self.quarantinedProjectData = nil
         let stored = store.loadOrNil()
+        let storedFlagsReceipt = WatchFlagsReceipt.read(from: store)
         let storedActivity = WatchActivity.read(from: store)
         let storedBreaches = store.breachingWatchIDs()
         let isAwaitingProjectVerification = credential != nil && credential?.projectID == nil
@@ -530,10 +599,20 @@ final class WatchModel {
            stored.projectID == credentialProjectID,
            stored.projectRegion == credential?.region {
             carried = stored
+            if let credentialRegion = credential?.region,
+               let storedFlagsReceipt,
+               storedFlagsReceipt.matches(
+                   snapshot: stored,
+                   projectID: credentialProjectID,
+                   projectRegion: credentialRegion
+               ) {
+                self.flagsReceipt = storedFlagsReceipt
+            }
         } else {
             carried = nil
         }
         let hasStoredProjectData = stored != nil
+            || storedFlagsReceipt != nil
             || storedActivity != nil
             || !storedBreaches.isEmpty
         // A manually entered or DEBUG-only key has no project id until `/me`
@@ -543,6 +622,7 @@ final class WatchModel {
         if isAwaitingProjectVerification, hasStoredProjectData {
             quarantinedProjectData = QuarantinedProjectData(
                 snapshot: stored,
+                flagsReceipt: storedFlagsReceipt,
                 activity: storedActivity,
                 breachingWatchIDs: storedBreaches
             )
@@ -550,6 +630,7 @@ final class WatchModel {
         let clearedActiveProjectData = carried == nil && hasStoredProjectData
         if clearedActiveProjectData {
             store.clearSnapshot()
+            WatchFlagsReceipt.clear(from: store)
             WatchActivity.clear(from: store)
             store.clearBreachingWatchIDs()
         }
@@ -606,7 +687,7 @@ final class WatchModel {
                 projectName: "Synthetic rejected project",
                 headlineMetricID: nil,
                 watches: [],
-                transport: WatchDemoMode.syntheticScenarioTransport(),
+                transport: WatchDemoMode.syntheticScenarioTransport(for: scenario),
                 store: .shared,
                 mutationCoordinator: .shared,
                 authenticate: { _ in true }
@@ -732,11 +813,13 @@ final class WatchModel {
     private func clearProjectScopedState() {
         quarantinedProjectData = nil
         snapshot = nil
+        flagsReceipt = nil
         renders.removeAll()
         activity = []
         activityCapturedAt = nil
         health = .empty
         store.clearSnapshot()
+        WatchFlagsReceipt.clear(from: store)
         WatchActivity.clear(from: store)
         store.clearBreachingWatchIDs()
         snapshotDidChange()
@@ -757,9 +840,19 @@ final class WatchModel {
               stored.projectRegion == projectRegion else {
             return false
         }
+        let restoredFlagsReceipt = quarantinedProjectData.flagsReceipt.flatMap { receipt in
+            receipt.matches(
+                snapshot: stored,
+                projectID: projectID,
+                projectRegion: projectRegion
+            ) ? receipt : nil
+        }
 
         do {
             try store.write(stored)
+            if let restoredFlagsReceipt {
+                try restoredFlagsReceipt.write(to: store)
+            }
             if let storedActivity = quarantinedProjectData.activity {
                 try WatchActivity.write(storedActivity, to: store)
             }
@@ -770,12 +863,14 @@ final class WatchModel {
             // Restoration is all-or-nothing from the extension's point of
             // view. Remove any prefix that landed before the failed write.
             store.clearSnapshot()
+            WatchFlagsReceipt.clear(from: store)
             WatchActivity.clear(from: store)
             store.clearBreachingWatchIDs()
             return true
         }
 
         snapshot = stored
+        flagsReceipt = restoredFlagsReceipt
         if let storedActivity = quarantinedProjectData.activity {
             activity = storedActivity.lines
             activityCapturedAt = storedActivity.capturedAt
@@ -910,6 +1005,27 @@ final class WatchModel {
         Array((snapshot?.flags ?? []).prefix(Self.flagShortlistCap))
     }
 
+    var flagsContentState: WatchFlagsContentState {
+        guard hasCredential else { return .needsCredential }
+
+        let rows = shortlistFlags
+        let capturedAt = flagsReceipt?.capturedAt
+            ?? (rows.isEmpty ? nil : snapshot?.capturedAt)
+        if let flagsRefreshFailure {
+            return rows.isEmpty
+                ? .failure(flagsRefreshFailure)
+                : .carried(
+                    rows,
+                    failure: flagsRefreshFailure,
+                    capturedAt: capturedAt
+                )
+        }
+        if phase == .loading { return .loading }
+        if !rows.isEmpty { return .rows(rows, capturedAt: capturedAt) }
+        if let flagsReceipt { return .empty(capturedAt: flagsReceipt.capturedAt) }
+        return .notChecked
+    }
+
     // MARK: - Refresh
 
     private func refreshContextIsCurrent(
@@ -1025,6 +1141,7 @@ final class WatchModel {
         var fetchedMetrics: [SharedSnapshot.Metric]?
         var freshRenders: [String: InsightRenderModel] = [:]
         var fetchedFlags: [SharedSnapshot.Flag]?
+        var flagsCapturedAt: Date?
         var issues: [ErrorIssue]?
         var fetchedActivity: ActivityFeed?
         var flagsFailure: WatchSectionFailure?
@@ -1086,6 +1203,7 @@ final class WatchModel {
         ) else { return }
         if let page = flagPage {
             reachedTheAPI = true
+            flagsCapturedAt = now()
             fetchedFlags = page.results
                 .filter { !$0.deleted && !$0.archived }
                 .map {
@@ -1203,10 +1321,29 @@ final class WatchModel {
                 )
                 snapshot = merged
                 publishedSnapshot = merged
+                let answeredFlagsReceipt = flagsCapturedAt.map {
+                    WatchFlagsReceipt(
+                        projectID: projectID,
+                        projectRegion: projectRegion,
+                        capturedAt: $0
+                    )
+                }
+                if let answeredFlagsReceipt {
+                    flagsReceipt = answeredFlagsReceipt
+                }
                 if fetchedMetrics != nil {
                     renders = freshRenders
                 }
-                try? store.write(merged)
+                do {
+                    try store.write(merged)
+                    if let answeredFlagsReceipt {
+                        try answeredFlagsReceipt.write(to: store)
+                    }
+                } catch {
+                    // In-memory state still reflects the response. A failed
+                    // receipt write degrades a later empty relaunch to
+                    // `notChecked`, never to a false answered-empty state.
+                }
             }
             if let fetchedActivity {
                 activity = fetchedActivity.lines
