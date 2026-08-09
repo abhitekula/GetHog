@@ -357,33 +357,45 @@ struct VisionRootView: View {
             current: selectedTab
         )
 
-        return ScrollView(.horizontal) {
-            HStack(spacing: Theme.Space.s) {
-                ForEach(section.tabs, id: \.self) { tab in
-                    Button {
-                        open(tab)
-                    } label: {
-                        Label {
-                            Text(tab.title)
-                        } icon: {
-                            Image(
-                                systemName: tab == current
-                                    ? "checkmark.circle.fill"
-                                    : tab.systemImage
-                            )
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: Theme.Space.s) {
+                    ForEach(section.tabs, id: \.self) { tab in
+                        Button {
+                            open(tab)
+                        } label: {
+                            Label {
+                                Text(tab.title)
+                            } icon: {
+                                Image(
+                                    systemName: tab == current
+                                        ? "checkmark.circle.fill"
+                                        : tab.systemImage
+                                )
+                            }
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityValue(tab == current ? "Selected" : "")
+                        .accessibilityIdentifier("gethog.vision.section-destination.\(tab.title)")
+                        .help(tab.title)
+                        .id(tab)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityValue(tab == current ? "Selected" : "")
-                    .accessibilityIdentifier("gethog.vision.section-destination.\(tab.title)")
-                    .help(tab.title)
+                }
+                .padding(.horizontal, Theme.Space.s)
+                .padding(.vertical, Theme.Space.xs)
+            }
+            .scrollIndicators(.visible)
+            .accessibilityIdentifier("gethog.vision.section-destination-strip")
+            .onAppear {
+                proxy.scrollTo(current, anchor: .center)
+            }
+            .onChange(of: current) { _, selection in
+                withAnimation(.snappy) {
+                    proxy.scrollTo(selection, anchor: .center)
                 }
             }
-            .padding(.horizontal, Theme.Space.s)
-            .padding(.vertical, Theme.Space.xs)
         }
-        .scrollIndicators(.hidden)
     }
 
     private func sectionDetail(for section: AppTabSection) -> some View {

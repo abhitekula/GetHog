@@ -196,6 +196,156 @@ final class VisionWindowTests: XCTestCase {
         )
     }
 
+    func testRestoredLateMonitorRouteIsFullyVisibleAtNarrowWidth() {
+        let width = "640"
+        let app = DemoLaunch.launch(
+            tab: "ingestion",
+            environment: ["GETHOG_VISION_CONTENT_WIDTH": width]
+        )
+
+        guard assertIngestionIsFullyVisible(in: app) != nil else { return }
+        DemoLaunch.settle(app)
+        app.terminate()
+
+        let restored = DemoLaunch.launch(
+            environment: ["GETHOG_VISION_CONTENT_WIDTH": width]
+        )
+        guard let ingestion = assertIngestionIsFullyVisible(in: restored) else { return }
+
+        let strip = restored.scrollViews["gethog.vision.section-destination-strip"].firstMatch
+        guard DemoLaunch.wait(for: strip) else {
+            return XCTFail("The restored Monitor section did not expose its destination strip.")
+        }
+
+        // Move away from the restored late route before returning to it. This
+        // proves that the overflow strip can both reveal an earlier route and
+        // activate Ingestion again; an offscreen element that merely reports
+        // `isHittable` cannot satisfy the selected-value transitions.
+        let signals = VisionSidebar.destinationControl("Signals", in: restored)
+        for _ in 0..<4 where !isFullyVisible(signals, in: restored) {
+            strip.swipeRight(velocity: .slow)
+        }
+        guard DemoLaunch.wait(until: {
+            isFullyVisible(signals, in: restored) && signals.isHittable
+        }) else {
+            return XCTFail("The Monitor strip could not reveal its earlier Signals route.")
+        }
+        signals.tap()
+        guard DemoLaunch.wait(until: {
+            (signals.value as? String) == "Selected"
+        }) else {
+            return XCTFail("The revealed Signals route did not accept activation.")
+        }
+
+        for _ in 0..<4 where !isFullyVisible(ingestion, in: restored) {
+            strip.swipeLeft(velocity: .slow)
+        }
+        guard DemoLaunch.wait(until: {
+            isFullyVisible(ingestion, in: restored) && ingestion.isHittable
+        }) else {
+            return XCTFail("The Monitor strip could not return to the Ingestion route.")
+        }
+        ingestion.tap()
+
+        let loadedWarning = restored.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@",
+                "Cannot merge already identified",
+                "Cannot merge already identified"
+            )
+        ).firstMatch
+        let cleanState = restored.staticTexts["Ingestion looks clean"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                loadedWarning.exists || cleanState.exists
+            }),
+            "Activating Ingestion did not reach a loaded terminal state."
+        )
+        XCTAssertEqual(
+            ingestion.value as? String,
+            "Selected",
+            "The Ingestion route did not retain selection after activation."
+        )
+    }
+
+    @discardableResult
+    private func assertIngestionIsFullyVisible(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement? {
+        guard DemoLaunch.wait(for: app.navigationBars["Ingestion"].firstMatch),
+              let viewport = contentViewportFrame(in: app)
+        else {
+            XCTFail("The Vision app did not expose its content viewport.", file: file, line: line)
+            return nil
+        }
+
+        let ingestion = VisionSidebar.destinationControl("Ingestion", in: app)
+        guard DemoLaunch.wait(for: ingestion) else {
+            XCTFail("The Monitor section did not expose Ingestion.", file: file, line: line)
+            return nil
+        }
+        XCTAssertEqual(
+            ingestion.value as? String,
+            "Selected",
+            "The restored Monitor route was not Ingestion.",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            ingestion.frame.width,
+            0,
+            "The selected Ingestion route had no rendered width.",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            ingestion.frame.minX,
+            viewport.minX - 1,
+            "The selected Ingestion route was clipped beyond the viewport's leading edge.",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(
+            ingestion.frame.maxX,
+            viewport.maxX + 1,
+            "The selected Ingestion route was clipped beyond the viewport's trailing edge.",
+            file: file,
+            line: line
+        )
+        return ingestion
+    }
+
+    private func isFullyVisible(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard element.exists, let viewport = contentViewportFrame(in: app) else {
+            return false
+        }
+        let frame = element.frame
+        return frame.width > 0
+            && frame.minX >= viewport.minX - 1
+            && frame.maxX <= viewport.maxX + 1
+    }
+
+    /// Vision's AX window list starts with the ornament and reports the main
+    /// scene as a screen-sized proxy, so neither frame is the rendered product
+    /// window. The widest visible navigation bar marks the product pane; union
+    /// with the section roster gives the actual horizontal content envelope.
+    private func contentViewportFrame(in app: XCUIApplication) -> CGRect? {
+        let navigationBars = app.navigationBars.allElementsBoundByIndex.filter {
+            $0.exists && $0.frame.width > 0 && $0.frame.height > 0
+        }
+        guard let contentBar = navigationBars.max(by: {
+            $0.frame.width < $1.frame.width
+        }) else { return nil }
+
+        let roster = app.collectionViews["gethog.vision.section-sidebar"].firstMatch
+        guard roster.exists, roster.frame.width > 0, roster.frame.height > 0 else {
+            return contentBar.frame
+        }
+        return contentBar.frame.union(roster.frame)
+    }
+
     func testDashboardTearsOffIntoItsOwnWindow() {
         let app = DemoLaunch.launch()
         let analyzeSection = VisionSidebar.section("Analyze", in: app)
