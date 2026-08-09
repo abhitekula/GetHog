@@ -761,7 +761,7 @@ struct AppTabStructureTests {
         let hiddenPrimary = AppTab.events
         let regularWidthSecondary = AppTab.people
 
-        let loose = CompactSearchIndexPolicy.looseTabs(
+        let loose = CompactNavigationPolicy.membership(
             isPad: true,
             phoneTabs: phoneTabs,
             iPadTabBarVisibility: { tab in
@@ -769,7 +769,7 @@ struct AppTabStructureTests {
                 if tab == regularWidthSecondary { return .visible }
                 return .automatic
             }
-        )
+        ).productTabs
         let indexed = AppTab.groupedScreens(excluding: loose).flatMap(\.tabs) + AppTab.utility
 
         // Only the four authored primary tabs are declared as compact iPad
@@ -786,18 +786,79 @@ struct AppTabStructureTests {
         // authored iPad defaults rather than interpreting `.automatic` as all
         // products visible and emptying the index.
         #expect(
-            CompactSearchIndexPolicy.looseTabs(
+            CompactNavigationPolicy.membership(
                 isPad: true,
                 phoneTabs: phoneTabs,
                 iPadTabBarVisibility: { _ in .automatic }
-            ) == AppTab.primary
+            ).productTabs == AppTab.primary
         )
         #expect(
-            CompactSearchIndexPolicy.looseTabs(
+            CompactNavigationPolicy.membership(
                 isPad: false,
                 phoneTabs: phoneTabs,
                 iPadTabBarVisibility: { _ in .visible }
-            ) == phoneTabs
+            ).productTabs == phoneTabs
+        )
+    }
+
+    @Test("compact iPad uses automatic, hidden, and visible membership consistently")
+    func compactIPadMembershipUsesAutomaticHiddenAndVisibleConsistently() {
+        let membership = CompactNavigationPolicy.membership(
+            isPad: true,
+            phoneTabs: [.logs, .errorTracking, .inbox, .health],
+            iPadTabBarVisibility: { tab in
+                switch tab {
+                case .dashboards, .flags: .automatic
+                case .events: .hidden
+                case .sessions, .people: .visible
+                default: .automatic
+                }
+            }
+        )
+        let indexed = AppTab.groupedScreens(excluding: membership.productTabs).flatMap(\.tabs)
+
+        #expect(membership.productTabs == [.dashboards, .sessions, .flags])
+        #expect(indexed.contains(.people))
+    }
+
+    @Test("a hidden compact iPad tab selects the Search shell")
+    func hiddenCompactIPadTabSelectsTheSearchShell() {
+        let membership = compactIPadMembershipWithHiddenEvents()
+
+        #expect(membership.shellSelection(for: .events) == .search)
+        #expect(membership.shellSelection(for: .dashboards) == .dashboards)
+    }
+
+    @Test("a hidden compact iPad tab requires a Search push")
+    func hiddenCompactIPadTabRequiresSearchPush() {
+        let membership = compactIPadMembershipWithHiddenEvents()
+
+        #expect(membership.requiresSearchPush(for: .events))
+        #expect(!membership.requiresSearchPush(for: .dashboards))
+        #expect(!membership.requiresSearchPush(for: .search))
+    }
+
+    @Test("a hidden compact iPad tab restores through Search only for an empty path")
+    func hiddenCompactIPadTabRestoresThroughSearchOnlyWhenPathIsEmpty() {
+        let membership = compactIPadMembershipWithHiddenEvents()
+
+        #expect(membership.shouldRestore(destination: .events, searchPathIsEmpty: true))
+        #expect(!membership.shouldRestore(destination: .events, searchPathIsEmpty: false))
+        #expect(!membership.shouldRestore(destination: .dashboards, searchPathIsEmpty: true))
+    }
+
+    private func compactIPadMembershipWithHiddenEvents() -> CompactTabMembership {
+        CompactNavigationPolicy.membership(
+            isPad: true,
+            phoneTabs: [.logs, .errorTracking, .inbox, .health],
+            iPadTabBarVisibility: { tab in
+                switch tab {
+                case .dashboards, .flags: .automatic
+                case .events: .hidden
+                case .sessions, .people: .visible
+                default: .automatic
+                }
+            }
         )
     }
 

@@ -2,25 +2,45 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
-/// Which product tabs a compact Search index must exclude.
-///
-/// iPhone owns its four in `NavPreferences`; iPad owns them in SwiftUI's
-/// `TabViewCustomization`. Keeping the decision here prevents a narrow iPad
-/// from accidentally reading the unrelated phone preference store.
-enum CompactSearchIndexPolicy {
-    static func looseTabs(
+/// One effective description of the compact tab bar, shared by Search and
+/// every navigation decision that has to translate a destination into it.
+struct CompactTabMembership: Equatable {
+    let productTabs: [AppTab]
+
+    var visibleTabs: [AppTab] { productTabs + [.search] }
+
+    func shellSelection(for destination: AppTab) -> AppTab {
+        visibleTabs.contains(destination) ? destination : .search
+    }
+
+    func requiresSearchPush(for destination: AppTab) -> Bool {
+        !visibleTabs.contains(destination)
+    }
+
+    func shouldRestore(destination: AppTab, searchPathIsEmpty: Bool) -> Bool {
+        searchPathIsEmpty && requiresSearchPush(for: destination)
+    }
+}
+
+/// iPhone owns its four product tabs in `NavPreferences`; iPad owns the
+/// visibility of its four authored primary tabs in SwiftUI's
+/// `TabViewCustomization`. Keeping the effective membership here prevents a
+/// narrow iPad from reading the unrelated phone preference store, or treating
+/// a regular-width secondary as a compact tab that SwiftUI never declared.
+enum CompactNavigationPolicy {
+    static func membership(
         isPad: Bool,
         phoneTabs: [AppTab],
         iPadTabBarVisibility: (AppTab) -> Visibility
-    ) -> [AppTab] {
-        guard isPad else { return phoneTabs }
-        return AppTab.primary.filter {
+    ) -> CompactTabMembership {
+        let productTabs = isPad ? AppTab.primary.filter {
             // These four are the only product tabs declared in compact iPad
             // width. `automatic` therefore means the authored visible default;
             // a secondary tab made visible in the regular sidebar is still not
             // a compact tab and must remain reachable through Search.
             iPadTabBarVisibility($0) != .hidden
-        }
+        } : phoneTabs
+        return CompactTabMembership(productTabs: productTabs)
     }
 }
 
@@ -118,12 +138,12 @@ struct RootView: View {
                 // opt back in with `.sentences` locally, which wins over this.
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                // Only the loose tabs get a number: they are the ones always
-                // present in the tab bar, and which four those are is now the
-                // user's choice - so Cmd-1..4 name whatever they put there rather
-                // than four screens that may have left it. Settings takes the
-                // platform-conventional comma rather than a fifth number it
-                // would have to compete for.
+                // On iPhone, Cmd-1..4 follow the user's four product tabs. On
+                // iPad they remain the four authored primary commands; if the
+                // system customization hides one, `open(_:)` routes it through
+                // Search under the same effective compact policy. Settings
+                // takes the platform-conventional comma rather than a fifth
+                // number it would have to compete for.
                 .keyboardActions(
                     looseTabs.enumerated().map { index, tab in
                         // `KeyEquivalent` is expressible by a literal but not
@@ -280,11 +300,12 @@ struct RootView: View {
     /// customisation owns the arrangement instead.
     private var looseTabs: [AppTab] { isPad ? AppTab.primary : nav.barTabs }
 
-    /// The actual compact bar whose complement Search lists. On an iPad this
-    /// reads SwiftUI's system customization; on an iPhone it is the app-owned
-    /// preference already used to construct the bar.
-    private var compactSearchLooseTabs: [AppTab] {
-        CompactSearchIndexPolicy.looseTabs(
+    /// The effective compact bar, including the decisions Search, selection,
+    /// opening, and scene restoration all derive from. The static `Tab`
+    /// declarations below stay authored and stable; SwiftUI's customization
+    /// modifier owns which of the iPad declarations are actually visible.
+    private var compactMembership: CompactTabMembership {
+        CompactNavigationPolicy.membership(
             isPad: isPad,
             phoneTabs: nav.barTabs,
             iPadTabBarVisibility: { tab in
@@ -292,10 +313,6 @@ struct RootView: View {
             }
         )
     }
-
-    /// The five the bar draws, whatever the user chose. Search is always last,
-    /// and can never be one of the four.
-    private var alwaysVisible: [AppTab] { looseTabs + [.search] }
 
     private var tabs: some View {
         TabView(selection: tabSelection) {
@@ -321,7 +338,7 @@ struct RootView: View {
             value: AppTab.search
         ) {
             NavigationStack(path: $searchPath) {
-                ProjectSearchView(compactLooseTabs: compactSearchLooseTabs)
+                ProjectSearchView(compactLooseTabs: compactMembership.productTabs)
                     .navigationDestination(for: AppTab.self) { tab in
                         TabRootView(tab: tab)
                             // Which destination is showing, for the sidebar to
@@ -444,10 +461,10 @@ struct RootView: View {
         Binding(
             get: {
                 if sizeClass == .compact {
-                    // Nothing past the fifth has a tab of its own on a phone;
-                    // those destinations sit on the search tab's stack, and
-                    // search is the tab selected while one of them is showing.
-                    alwaysVisible.contains(selectedTab) ? selectedTab : .search
+                    // A destination outside the effective compact membership
+                    // sits on Search's stack. This covers secondary screens on
+                    // every device and an authored primary hidden on iPad.
+                    compactMembership.shellSelection(for: selectedTab)
                 } else {
                     // Every tab has a sidebar row of its own in regular width,
                     // search included, so nothing needs translating here.
@@ -460,9 +477,9 @@ struct RootView: View {
 
     /// Goes to a destination by name, from a keyboard shortcut or `GETHOG_TAB`.
     ///
-    /// In compact width a secondary destination means selecting search *and*
-    /// pushing, replacing whatever was pushed before rather than landing behind
-    /// it: `⌘,` has to reach Settings from anywhere.
+    /// In compact width a destination outside the effective membership means
+    /// selecting Search *and* pushing, replacing whatever was pushed before
+    /// rather than landing behind it: `⌘,` has to reach Settings from anywhere.
     private func open(_ tab: AppTab) {
         selectedTab = tab
 
@@ -478,7 +495,7 @@ struct RootView: View {
         // destination has a sidebar row of its own, so selecting it is the whole
         // job and nothing needs pushing.
         guard sizeClass == .compact else { return }
-        if !alwaysVisible.contains(tab) {
+        if compactMembership.requiresSearchPush(for: tab) {
             var path = NavigationPath()
             path.append(tab)
             searchPath = path
@@ -604,7 +621,8 @@ struct RootView: View {
         }
     }
 
-    /// Puts a secondary destination back on the search tab's stack.
+    /// Puts a destination outside the effective compact membership back on the
+    /// Search tab's stack.
     ///
     /// `selectedTab` is scene storage and survives a relaunch; the stack is
     /// `@State` and does not. Without this, `GETHOG_TAB=errorTracking` — and
@@ -612,8 +630,10 @@ struct RootView: View {
     /// on the screen.
     private func restorePushedTab() {
         guard sizeClass == .compact,
-              searchPath.isEmpty,
-              !alwaysVisible.contains(selectedTab)
+              compactMembership.shouldRestore(
+                  destination: selectedTab,
+                  searchPathIsEmpty: searchPath.isEmpty
+              )
         else { return }
         searchPath.append(selectedTab)
     }
