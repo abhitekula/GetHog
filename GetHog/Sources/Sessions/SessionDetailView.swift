@@ -121,6 +121,9 @@ struct SessionDetailView: View {
                     },
                     onRetry: { Task { await loadSummary() } }
                 )
+                #if os(tvOS)
+                .focusSection()
+                #endif
                 .padding(.horizontal, Theme.Space.l)
 
                 SessionTimelineView(
