@@ -14,6 +14,49 @@ final class MacWindowSizeTests: XCTestCase {
         continueAfterFailure = true
     }
 
+    /// Catches a Dashboard landing change that restores separate signal and
+    /// collection scroll containers instead of one default-size dashboard hub.
+    func testDashboardLandingUsesOneHub() {
+        let app = DemoLaunch.launch(tab: "dashboards")
+
+        let hubs = app.scrollViews.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-hub")
+        )
+        let hub = hubs.firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The default dashboard landing did not expose gethog.dashboard-hub.")
+        }
+        XCTAssertEqual(hubs.count, 1, "The dashboard landing must expose exactly one hub.")
+        guard hubs.count == 1 else { return }
+
+        let projectSignal = hub.staticTexts["Project signal"].firstMatch
+        let collections = hub.otherElements.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-collection")
+        )
+        let collection = collections.firstMatch
+        guard DemoLaunch.wait(for: collection) else {
+            return XCTFail("The dashboard hub did not contain gethog.dashboard-collection.")
+        }
+        XCTAssertEqual(collections.count, 1, "The dashboard hub must contain exactly one collection.")
+        guard collections.count == 1 else { return }
+
+        let cards = hub.buttons.matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-card.725101")
+        )
+        let card = cards.firstMatch
+        guard DemoLaunch.wait(for: card) else {
+            return XCTFail("The dashboard hub did not contain gethog.dashboard-card.725101.")
+        }
+        XCTAssertEqual(cards.count, 1, "The dashboard hub must contain exactly one first dashboard card.")
+        guard cards.count == 1 else { return }
+
+        guard DemoLaunch.wait(for: projectSignal) else {
+            return XCTFail("The dashboard hub did not contain the Project signal.")
+        }
+        XCTAssertGreaterThan(collection.frame.width, hub.frame.width * 0.5)
+        XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
+    }
+
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
