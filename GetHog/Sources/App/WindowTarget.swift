@@ -1,4 +1,5 @@
 import GetHogKit
+import Observation
 import SwiftUI
 
 /// What a torn-off iPad window shows.
@@ -43,6 +44,94 @@ struct DetachedWindowView: View {
     }
 }
 
+/// One authoritative state for a recording detached from its source list.
+///
+/// The numeric project id cannot establish authority by itself: ids may repeat
+/// between PostHog regions, and replacing a credential must invalidate work
+/// started by the prior authentication epoch.
+@MainActor
+@Observable
+final class DetachedRecordingStore {
+    enum State: Equatable {
+        case waitingForSession
+        case loading(FlagWriteScope)
+        case loaded(FlagWriteScope, SessionRecording)
+        case failed(FlagWriteScope, String)
+    }
+
+    private(set) var state: State = .waitingForSession
+    private var generation: UInt64 = 0
+
+    func load(
+        client: PostHogClient?,
+        recordingID: String,
+        scope: FlagWriteScope?
+    ) async {
+        generation &+= 1
+        let loadGeneration = generation
+
+        guard
+            let client,
+            let scope,
+            let projectRegion = scope.projectRegion,
+            client.region == projectRegion
+        else {
+            state = .waitingForSession
+            return
+        }
+
+        state = .loading(scope)
+
+        do {
+            let recording: SessionRecording = try await client.send(
+                PostHogAPI.sessionRecording(
+                    projectID: scope.projectID,
+                    recordingID: recordingID
+                )
+            )
+            guard
+                generation == loadGeneration,
+                currentScope == scope,
+                !Task.isCancelled
+            else { return }
+            state = .loaded(scope, recording)
+        } catch {
+            guard
+                generation == loadGeneration,
+                currentScope == scope,
+                !Task.isCancelled
+            else { return }
+            let message = (error as? PostHogError)?.localizedDescription
+                ?? error.localizedDescription
+            state = .failed(scope, message)
+        }
+    }
+
+    private var currentScope: FlagWriteScope? {
+        switch state {
+        case .waitingForSession:
+            nil
+        case .loading(let scope), .loaded(let scope, _), .failed(let scope, _):
+            scope
+        }
+    }
+}
+
+/// Every value that can change which recording request is authoritative.
+struct DetachedRecordingTaskID: Hashable {
+    let recordingID: String
+    let projectID: Int?
+    let projectRegion: PostHogRegion?
+    let authSessionID: UUID?
+
+    init(recordingID: String, scope: FlagWriteScope?) {
+        self.recordingID = recordingID
+        projectID = scope?.projectID
+        projectRegion = scope?.projectRegion
+        authSessionID = scope?.authSessionID
+    }
+}
+
 /// Resolves a recording id back into the full record the detail screen needs.
 ///
 /// The list screen already holds decoded recordings, but a restored window only
@@ -51,14 +140,17 @@ struct DetachedRecordingView: View {
     let recordingID: String
 
     @Environment(AppModel.self) private var model
-    @State private var recording: SessionRecording?
-    @State private var error: String?
+    @State private var store = DetachedRecordingStore()
 
     var body: some View {
         Group {
-            if let recording {
+            switch store.state {
+            case .waitingForSession, .loading:
+                ProgressView("Loading recording…")
+                    .controlSize(.large)
+            case .loaded(_, let recording):
                 SessionDetailView(recording: recording)
-            } else if let error {
+            case .failed(_, let error):
                 ContentUnavailableView {
                     Label("Couldn't load this recording", systemImage: "exclamationmark.triangle")
                 } description: {
@@ -66,30 +158,21 @@ struct DetachedRecordingView: View {
                 } actions: {
                     Button("Try again") { Task { await load() } }
                 }
-            } else {
-                ProgressView("Loading recording…")
-                    .controlSize(.large)
             }
         }
-        // Keyed on the project as well as the recording, because the guard in
-        // `load()` returns silently when there is no client yet and nothing
-        // else would ever retry it. A window restored at launch mounts before
-        // the app's `bootstrap()` has resolved one — measured through the
-        // solo-window route, where `GETHOG_SOLO_RECORDING` sat on "Loading
-        // recording…" for the life of the window. Adding the project id to the
-        // task's identity re-runs the load the moment bootstrap lands one.
-        .task(id: [recordingID, model.projectID.map(String.init) ?? ""]) { await load() }
+        .task(
+            id: DetachedRecordingTaskID(
+                recordingID: recordingID,
+                scope: model.flagWriteScope
+            )
+        ) {
+            await load()
+        }
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        do {
-            recording = try await client.send(
-                PostHogAPI.sessionRecording(projectID: projectID, recordingID: recordingID)
-            )
-            error = nil
-        } catch {
-            self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
-        }
+        let client = model.client
+        let scope = model.flagWriteScope
+        await store.load(client: client, recordingID: recordingID, scope: scope)
     }
 }
