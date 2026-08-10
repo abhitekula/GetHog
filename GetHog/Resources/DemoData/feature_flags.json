@@ -536,7 +536,7 @@
                 "operator": "exact"
               }
             ],
-            "rollout_percentage": 207,
+            "rollout_percentage": 27,
             "aggregation_group_type_index": null
           },
           {

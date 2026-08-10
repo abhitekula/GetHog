@@ -525,6 +525,7 @@ final class AppModel {
     ) async -> Bool {
         guard snapshotPublicationIsCurrent(context) else { return false }
         var metrics: [SharedSnapshot.Metric] = []
+        var metricSource: SharedSnapshot.MetricSource = .unknown
         var flags: [SharedSnapshot.Flag] = []
         var reachedTheAPI = false
 
@@ -563,14 +564,16 @@ final class AppModel {
                 // for a nil project would empty the home screen instead.
                 QuickActions.refresh(projectID: projectID)
             }
-            if let pinned = summaries.results.first(where: \.pinned) ?? summaries.results.first {
+            let pinnedDashboard = summaries.results.first(where: \.pinned)
+            if let dashboardSummary = pinnedDashboard ?? summaries.results.first {
+                metricSource = pinnedDashboard == nil ? .deterministicFallback : .pinnedDashboard
                 let dashboard: Dashboard? = try? await client.send(
-                    PostHogAPI.dashboard(projectID: projectID, dashboardID: pinned.id)
+                    PostHogAPI.dashboard(projectID: projectID, dashboardID: dashboardSummary.id)
                 )
                 guard snapshotPublicationIsCurrent(context) else { return false }
                 if let dashboard {
                     metrics = dashboard.tiles.compactMap {
-                        SharedSnapshot.Metric(tile: $0, dashboardID: pinned.id)
+                        SharedSnapshot.Metric(tile: $0, dashboardID: dashboardSummary.id)
                     }
                 }
             }
@@ -654,6 +657,7 @@ final class AppModel {
             projectID: projectID,
             projectName: projectName,
             metrics: metrics,
+            metricSource: metricSource,
             flags: flags,
             ingestion: ingestion,
             quota: quota,

@@ -140,6 +140,19 @@ public struct FlagGroup: Sendable, Decodable, Hashable {
         case properties
         case rolloutPercentage = "rollout_percentage"
     }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        properties = try container.decodeIfPresent([FlagProperty].self, forKey: .properties)
+        rolloutPercentage = Self.validPercentage(
+            try container.decodeIfPresent(Double.self, forKey: .rolloutPercentage)
+        )
+    }
+
+    private static func validPercentage(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, (0...100).contains(value) else { return nil }
+        return value
+    }
 }
 
 public struct FlagProperty: Sendable, Decodable, Hashable {
@@ -174,5 +187,15 @@ public struct FlagVariant: Sendable, Decodable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case key, name
         case rolloutPercentage = "rollout_percentage"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decode(String.self, forKey: .key)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        let decoded = try container.decodeIfPresent(Double.self, forKey: .rolloutPercentage)
+        rolloutPercentage = decoded.flatMap { value in
+            value.isFinite && (0...100).contains(value) ? value : nil
+        }
     }
 }

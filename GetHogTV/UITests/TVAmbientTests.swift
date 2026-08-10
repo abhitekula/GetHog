@@ -22,6 +22,10 @@ final class TVAmbientTests: XCTestCase {
 
         XCTAssertTrue(DemoLaunch.wait(for: metric, timeout: 60))
         XCTAssertNotEqual(metric.label, "Nothing pinned yet")
+        XCTAssertTrue(
+            metric.label.contains("Pinned dashboard"),
+            "Ambient did not identify the pinned-dashboard provenance of its snapshot."
+        )
 
         TVRemote.press(.menu)
         XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Example App metric 33"], timeout: 30))

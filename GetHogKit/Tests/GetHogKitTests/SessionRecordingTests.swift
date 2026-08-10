@@ -71,4 +71,67 @@ struct FeatureFlagTests {
         // explicit in-app opt-in; the server has no such concept.
         #expect(!first.allowsQuickToggle)
     }
+
+    @Test("rollout decoding discards values outside a percentage's real range")
+    func invalidRolloutsAreNotPublished() throws {
+        // Mutation caught: removing input validation lets a malformed server
+        // value such as 207% reach the flags list and its write confirmation.
+        let data = Data("""
+        {
+          "results": [{
+            "id": 71,
+            "key": "example-rollout-boundary",
+            "active": true,
+            "filters": {
+              "groups": [
+                {"rollout_percentage": -1},
+                {"rollout_percentage": 101},
+                {"rollout_percentage": 25}
+              ],
+              "multivariate": {
+                "variants": [
+                  {"key": "outside", "rollout_percentage": 207},
+                  {"key": "inside", "rollout_percentage": 40}
+                ]
+              }
+            }
+          }]
+        }
+        """.utf8)
+
+        let flag = try #require(Page<FeatureFlag>.decode(from: data).results.first)
+        #expect(flag.conditionGroups.map(\.rolloutPercentage) == [nil, nil, 25])
+        #expect(flag.rolloutPercentage == 25)
+        #expect(flag.variants.map(\.rolloutPercentage) == [nil, 40])
+    }
+
+    @Test("the authored feature-flag fixture contains only valid rollout percentages")
+    func fixtureRolloutsStayWithinBounds() throws {
+        // Mutation caught: reintroducing the impossible 207% authored fixture
+        // makes a deterministic demo claim a rollout the server cannot have.
+        // Inspect the authored JSON rather than the decoded model: decoding is
+        // intentionally defensive and would sanitize 207 to nil, masking the
+        // fixture regression this test exists to catch.
+        func rolloutPercentages(in value: Any) -> [Double] {
+            if let dictionary = value as? [String: Any] {
+                return dictionary.flatMap { key, child in
+                    if key == "rollout_percentage", let number = child as? NSNumber {
+                        return [number.doubleValue]
+                    }
+                    return rolloutPercentages(in: child)
+                }
+            }
+            if let array = value as? [Any] {
+                return array.flatMap { rolloutPercentages(in: $0) }
+            }
+            return []
+        }
+
+        let object = try JSONSerialization.jsonObject(
+            with: Fixture.data("feature_flags.json")
+        )
+        let values = rolloutPercentages(in: object)
+        #expect(!values.isEmpty)
+        #expect(values.allSatisfy { (0...100).contains($0) })
+    }
 }

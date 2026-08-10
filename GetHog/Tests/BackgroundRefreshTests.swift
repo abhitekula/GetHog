@@ -11,6 +11,32 @@ private struct OfflineTransport: HTTPTransport {
     }
 }
 
+/// Keeps the authored demo payloads but removes the user's explicit dashboard
+/// choice from the collection response. The detail route remains real, so the
+/// snapshot publisher must both render the first dashboard and label that
+/// choice as a fallback.
+private struct UnpinnedDemoTransport: HTTPTransport {
+    private let base = DemoTransport()
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await base.send(request)
+        let path = request.url?.path ?? ""
+        guard path.hasSuffix("/dashboards/") || path.hasSuffix("/dashboards") else {
+            return (data, response)
+        }
+
+        var root = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var dashboards = try #require(root["results"] as? [[String: Any]])
+        for index in dashboards.indices {
+            dashboards[index]["pinned"] = false
+        }
+        root["results"] = dashboards
+        return (try JSONSerialization.data(withJSONObject: root), response)
+    }
+}
+
 /// The refresh a `BGAppRefreshTask` performs, invoked directly.
 ///
 /// The cadence itself is pure and tested in `BackgroundRefreshPolicyTests`;
@@ -108,7 +134,36 @@ struct BackgroundRefreshTests {
         #expect(!snapshot.flags.isEmpty)
         // Reduced from tiles, so every metric has to carry something drawable.
         #expect(snapshot.metrics.allSatisfy { !$0.title.isEmpty })
+        #expect(snapshot.metricSource == .pinnedDashboard)
         #expect(snapshot.projectRegion == .usCloud)
+    }
+
+    @Test("a dashboard fallback is published without claiming it was pinned")
+    func dueWakeLabelsDashboardFallback() async throws {
+        let (snapshots, directory) = try makeSnapshotStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = UnpinnedDemoTransport()
+        let probe = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
+            transport: transport
+        )
+        let summaries: Page<DashboardSummary> = try await probe.send(
+            PostHogAPI.dashboards(projectID: 1001, limit: 50)
+        )
+        let pinnedIDs = summaries.results.filter { $0.pinned }.map(\.id)
+        #expect(pinnedIDs.isEmpty)
+
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            snapshotStore: snapshots
+        )
+        try await model.connect(key: "demo", region: .usCloud)
+
+        #expect(await model.performBackgroundRefresh(now: due))
+        let snapshot = try #require(snapshots.loadOrNil())
+        #expect(!snapshot.metrics.isEmpty)
+        #expect(snapshot.metricSource == .deterministicFallback)
     }
 
     @Test("a cold background launch publishes the credential's durable epoch")

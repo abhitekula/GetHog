@@ -24,10 +24,15 @@ final class TVAmbientCycler {
     static let interval: Duration = .seconds(12)
 
     private(set) var metrics: [SharedSnapshot.Metric]
+    private(set) var source: SharedSnapshot.MetricSource
     private(set) var index = 0
 
-    init(metrics: [SharedSnapshot.Metric] = []) {
+    init(
+        metrics: [SharedSnapshot.Metric] = [],
+        source: SharedSnapshot.MetricSource = .unknown
+    ) {
         self.metrics = metrics
+        self.source = source
     }
 
     var isEmpty: Bool { metrics.isEmpty }
@@ -49,10 +54,14 @@ final class TVAmbientCycler {
     /// is the whole list, values included, so a refreshed number is adopted
     /// even when the titles are identical.
     @discardableResult
-    func replace(metrics: [SharedSnapshot.Metric]) -> Bool {
-        guard metrics != self.metrics else { return false }
+    func replace(
+        metrics: [SharedSnapshot.Metric],
+        source: SharedSnapshot.MetricSource = .unknown
+    ) -> Bool {
+        guard metrics != self.metrics || source != self.source else { return false }
         let previousID = current?.id
         self.metrics = metrics
+        self.source = source
         // Held where the reader was, by identity rather than by position: a
         // snapshot that gained or lost a tile must not jump the screen to a
         // different metric mid-read. Falls back to the start when the metric
@@ -192,7 +201,8 @@ struct TVAmbientView: View {
                 clock += 1
             }
             .onAppear {
-                cycler.replace(metrics: Self.pinnedMetrics())
+                let snapshot = Self.ambientSnapshot()
+                cycler.replace(metrics: snapshot.metrics, source: snapshot.source)
                 awake.present()
                 applyHold()
             }
@@ -237,7 +247,8 @@ struct TVAmbientView: View {
                     // the one surface whose whole purpose is being left on.
                     // `replace` is a no-op unless the snapshot actually changed,
                     // so the cycle index is not reset every twelve seconds.
-                    cycler.replace(metrics: Self.pinnedMetrics())
+                    let snapshot = Self.ambientSnapshot()
+                    cycler.replace(metrics: snapshot.metrics, source: snapshot.source)
                     cycler.advance()
                     // The periodic re-assert, through the same rule as every
                     // other write. One claim at `onAppear` is a claim about a
@@ -269,11 +280,18 @@ struct TVAmbientView: View {
         awake.applyIdleTimerHold()
     }
 
-    /// The pinned dashboard's tiles, as the phone and the watch already reduce
-    /// them — the same App Group snapshot the Top Shelf reads, so the wallboard
-    /// and the shelf can never disagree about what is pinned.
-    private static func pinnedMetrics() -> [SharedSnapshot.Metric] {
-        SharedSnapshotStore.shared.loadOrNil()?.metrics ?? []
+    /// The dashboard tiles the phone already reduced, together with whether
+    /// they came from an explicit pin or the deterministic fallback. This is
+    /// the same App Group snapshot Top Shelf reads, so the wallboard and shelf
+    /// cannot disagree about either the metrics or their provenance.
+    private static func ambientSnapshot() -> (
+        metrics: [SharedSnapshot.Metric],
+        source: SharedSnapshot.MetricSource
+    ) {
+        guard let snapshot = SharedSnapshotStore.shared.loadOrNil() else {
+            return ([], .unknown)
+        }
+        return (snapshot.metrics, snapshot.metricSource)
     }
 
     @ViewBuilder
@@ -282,6 +300,10 @@ struct TVAmbientView: View {
             VStack(alignment: .leading, spacing: Theme.Space.l) {
                 Text(metric.title)
                     .font(Theme.Typography.title)
+                    .foregroundStyle(Theme.Ink.secondary)
+
+                Text(Self.provenanceCaption(cycler.source))
+                    .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Ink.secondary)
 
                 Text(metric.value.compactFormatted)
@@ -307,9 +329,7 @@ struct TVAmbientView: View {
                 if let delta = Self.deltaPhrase(metric) {
                     Text(delta)
                         .font(Theme.Typography.title)
-                        .foregroundStyle(
-                            metric.direction == .down ? Theme.Status.criticalInk : Theme.Status.goodInk
-                        )
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
 
                 sparkline(metric)
@@ -319,7 +339,7 @@ struct TVAmbientView: View {
             .padding(Theme.Space.xl)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(Self.spoken(metric))
+            .accessibilityLabel(Self.spoken(metric, source: cycler.source))
             .accessibilityIdentifier("tv-ambient-wallboard")
         } else {
             ContentUnavailableView(
@@ -376,15 +396,22 @@ struct TVAmbientView: View {
     static func deltaPhrase(_ metric: SharedSnapshot.Metric) -> String? {
         guard let fraction = metric.deltaFraction else { return nil }
         let percent = abs(fraction).formatted(.percent.precision(.fractionLength(0)))
-        switch metric.direction {
-        case .up: return "Up \(percent)"
-        case .down: return "Down \(percent)"
-        default: return "No change"
+        return metric.direction == .flat ? "No change" : "Changed \(percent)"
+    }
+
+    static func provenanceCaption(_ source: SharedSnapshot.MetricSource) -> String {
+        switch source {
+        case .pinnedDashboard: "Pinned dashboard"
+        case .deterministicFallback: "First dashboard (fallback)"
+        case .unknown: "Dashboard snapshot"
         }
     }
 
-    static func spoken(_ metric: SharedSnapshot.Metric) -> String {
-        [metric.title, headline(metric), deltaPhrase(metric)]
+    static func spoken(
+        _ metric: SharedSnapshot.Metric,
+        source: SharedSnapshot.MetricSource = .unknown
+    ) -> String {
+        [metric.title, provenanceCaption(source), headline(metric), deltaPhrase(metric)]
             .compactMap { $0 }
             .joined(separator: ", ")
     }

@@ -12,6 +12,17 @@ import Foundation
 /// is to render what it finds, and to be honest about how old it is.
 public struct SharedSnapshot: Codable, Sendable, Equatable {
 
+    /// Where the metric list came from when the app published this snapshot.
+    ///
+    /// A pin is an explicit user choice. Falling back to the first dashboard
+    /// makes the snapshot useful before someone has pinned one, but it must not
+    /// be presented as that choice.
+    public enum MetricSource: String, Codable, Sendable, Equatable {
+        case pinnedDashboard
+        case deterministicFallback
+        case unknown
+    }
+
     public struct Metric: Codable, Sendable, Identifiable, Equatable {
         /// The insight id as a string — `AppEntity` identifiers are stringly
         /// typed and this value is round-tripped through widget configuration.
@@ -109,6 +120,12 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
     /// snapshot and remains fully renderable by widgets.
     public let authSessionID: UUID?
     public let metrics: [Metric]
+    /// The source dashboard selection behind `metrics`.
+    ///
+    /// `unknown` is a snapshot written by a build before source provenance was
+    /// recorded. Readers can still render its values without claiming either a
+    /// pin or the deterministic fallback.
+    public let metricSource: MetricSource
     public let flags: [Flag]
     /// Ingestion warnings, reduced. `nil` means **not checked** — an app build
     /// that predates the section, or a fetch PostHog refused — which is a
@@ -124,6 +141,7 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         projectID: Int,
         projectName: String,
         metrics: [Metric],
+        metricSource: MetricSource = .unknown,
         flags: [Flag],
         ingestion: IngestionDigest? = nil,
         quota: QuotaDigest? = nil,
@@ -136,6 +154,7 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         self.projectRegion = projectRegion
         self.authSessionID = authSessionID
         self.metrics = metrics
+        self.metricSource = metricSource
         self.flags = flags
         self.ingestion = ingestion
         self.quota = quota
@@ -174,6 +193,7 @@ public struct SharedSnapshot: Codable, Sendable, Equatable {
         authSessionID = (try? c.decodeIfPresent(UUID.self, forKey: .authSessionID)) ?? nil
         capturedAt = try c.decode(Date.self, forKey: .capturedAt)
         metrics = try c.decodeIfPresent([Metric].self, forKey: .metrics) ?? []
+        metricSource = (try? c.decodeIfPresent(MetricSource.self, forKey: .metricSource)) ?? .unknown
         flags = try c.decodeIfPresent([Flag].self, forKey: .flags) ?? []
         // `try?`, not `try`: a section whose own decode throws — a future field
         // that turned out to be required, a missing timestamp — is dropped, and

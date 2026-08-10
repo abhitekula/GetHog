@@ -15,7 +15,10 @@ struct SharedSnapshotTests {
         return (SharedSnapshotStore(directory: dir), dir)
     }
 
-    private func sample(capturedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)) -> SharedSnapshot {
+    private func sample(
+        capturedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
+        metricSource: SharedSnapshot.MetricSource = .pinnedDashboard
+    ) -> SharedSnapshot {
         SharedSnapshot(
             projectID: 1_001,
             projectName: "Default project",
@@ -32,6 +35,7 @@ struct SharedSnapshotTests {
                 .init(id: "43", title: "Bounce rate", value: 41.2, unit: "%", previous: nil,
                       sparkline: [], dashboardID: nil),
             ],
+            metricSource: metricSource,
             flags: [
                 .init(id: 1, key: "new-onboarding", active: true, quickToggleAllowed: true),
                 .init(id: 2, key: "risky-migration", active: false, quickToggleAllowed: false),
@@ -62,6 +66,7 @@ struct SharedSnapshotTests {
         #expect(read.metrics[1].previous == nil)
         #expect(read.metrics[1].unit == "%")
         #expect(read.metrics[1].sparkline.isEmpty)
+        #expect(read.metricSource == .pinnedDashboard)
         #expect(read.flags.map(\.key) == ["new-onboarding", "risky-migration"])
         #expect(read.flags[0].quickToggleAllowed)
         #expect(read.flags[1].quickToggleAllowed == false)
@@ -202,7 +207,23 @@ struct SharedSnapshotTests {
         let decoded = try #require(try store.read())
         #expect(decoded.metrics.count == 1)
         #expect(decoded.metrics[0].dashboardID == nil)
+        #expect(decoded.metricSource == .unknown)
         #expect(decoded.authSessionID == nil)
+    }
+
+    @Test("an unrecognized metric source remains renderable as unknown")
+    func futureMetricSourceIsBackwardsCompatible() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let future = """
+            {"projectID":1,"projectName":"P","flags":[],\
+            "capturedAt":"2026-01-20T00:00:00Z",\
+            "metricSource":"futureSelectionPolicy","metrics":[]}
+            """
+        try Data(future.utf8).write(to: store.fileURL)
+
+        #expect(try store.read()?.metricSource == .unknown)
     }
 
     @Test("lookup by id is available to the widget configuration query")

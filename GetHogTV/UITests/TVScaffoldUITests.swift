@@ -15,4 +15,15 @@ final class TVScaffoldUITests: XCTestCase {
         let app = DemoLaunch.launch()
         XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Dashboards"], timeout: 60))
     }
+
+    func testDashboardLoadingIsAnnouncedBeforeTheCompactListHasRows() {
+        let app = DemoLaunch.launch(environment: [
+            "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS": "5000",
+        ])
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.staticTexts["Loading dashboards…"], timeout: 10),
+            "The compact dashboard list rendered as an unlabelled empty skeleton while its request ran."
+        )
+    }
 }

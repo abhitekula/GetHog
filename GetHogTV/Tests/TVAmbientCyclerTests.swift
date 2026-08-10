@@ -133,6 +133,18 @@ struct TVAmbientCyclerTests {
         #expect(cycler.current?.value == 99)
     }
 
+    @Test("a provenance-only snapshot change updates the wallboard without moving the reader")
+    func replaceAdoptsChangedSource() {
+        let metrics = [Self.metric("a"), Self.metric("b")]
+        let cycler = TVAmbientCycler(metrics: metrics, source: .pinnedDashboard)
+        cycler.advance()
+        #expect(cycler.current?.id == "b")
+
+        #expect(cycler.replace(metrics: metrics, source: .deterministicFallback))
+        #expect(cycler.source == .deterministicFallback)
+        #expect(cycler.current?.id == "b")
+    }
+
     @Test("a refreshed snapshot holds the reader on the metric they were reading")
     func replaceHoldsPositionByIdentity() {
         // Held by identity, not by index: a snapshot that gained a tile at the
@@ -271,15 +283,28 @@ struct TVAmbientCyclerTests {
         #expect(TVAmbientView.deltaPhrase(Self.metric("a")) == nil)
     }
 
-    @Test("a fall is spoken as a fall, with the magnitude it actually was")
+    @Test("a directionless fall is described neutrally, with its real magnitude")
     func downwardDeltaReads() {
         let metric = SharedSnapshot.Metric(
             id: "a", title: "Signups", value: 750, unit: nil,
             previous: 1_000, sparkline: [], dashboardID: 1
         )
-        #expect(TVAmbientView.deltaPhrase(metric) == "Down 25%")
+        // Mutation caught: treating a numerical fall as a bad outcome when the
+        // snapshot did not provide polarity metadata for the metric.
+        #expect(TVAmbientView.deltaPhrase(metric) == "Changed 25%")
         #expect(TVAmbientView.spoken(metric).contains("Signups"))
-        #expect(TVAmbientView.spoken(metric).contains("Down 25%"))
+        #expect(TVAmbientView.spoken(metric).contains("Changed 25%"))
+    }
+
+    @Test("fallback and legacy snapshots state their provenance without inventing a pin")
+    func provenanceCaptionsStayHonest() {
+        #expect(
+            TVAmbientView.provenanceCaption(.deterministicFallback)
+                == "First dashboard (fallback)"
+        )
+        #expect(TVAmbientView.provenanceCaption(.unknown) == "Dashboard snapshot")
+        #expect(!TVAmbientView.provenanceCaption(.deterministicFallback).contains("Pinned"))
+        #expect(!TVAmbientView.provenanceCaption(.unknown).contains("Pinned"))
     }
 
     @Test("a unit rides with the headline rather than being dropped")

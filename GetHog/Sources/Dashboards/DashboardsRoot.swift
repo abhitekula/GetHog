@@ -365,7 +365,13 @@ struct DashboardsRoot: View {
                 // The regular detail column owns the full locked state.
                 list
             }
-        case .loading, .loaded:
+        case .loading:
+            if sizeClass == .compact {
+                dashboardLoading
+            } else {
+                list
+            }
+        case .loaded:
             list
         case .failed(let error):
             if sizeClass == .compact {
@@ -517,6 +523,14 @@ struct DashboardsRoot: View {
         } actions: {
             Button("Try again") { Task { await load() } }
         }
+    }
+
+    private var dashboardLoading: some View {
+        ContentUnavailableView(
+            "Loading dashboards…",
+            systemImage: "square.grid.2x2",
+            description: Text("Fetching this project's dashboard list.")
+        )
     }
 
     private var dashboardUnavailable: some View {
