@@ -31,17 +31,20 @@ import XCTest
 /// audit type here without re-measuring, or adding an issue handler that returns
 /// `true`, converts a working regression detector back into decoration.
 ///
-/// **Twenty-nine screens now, and eight of them are recent.** `events` was
+/// **Thirty-nine screens now, and eighteen of them are recent.** `events` was
 /// excluded because it could not quiesce rather than because it failed;
 /// `insights` shipped unaudited; `dashboardDetail` is the first screen here that
 /// is not a list; `onboarding` is the first that demo mode cannot reach at all;
 /// `experimentResults` is the first sheet, reached by a tap because nothing
 /// opens it from the launch environment; and `notebooks`, `warehouse` and
 /// `notebookDocument` are the three whose demo routes only landed after their
-/// fixtures did, so nothing had ever drawn them with data. Each carries its own
-/// note below. The `.all` table above is the original sweep and has *not* been
-/// re-measured across the eight additions — what was measured is the assertion
-/// this file actually makes, which is still zero across all twenty-nine.
+/// fixtures did, so nothing had ever drawn them with data. Clickmap, LLM,
+/// Pipelines, Automation, Actions, Annotations, Early Access, Max, Renders and
+/// Templates close the remaining root-page gap. Each carries its own terminal
+/// or populated-content witness below. The `.all` table above is the original
+/// sweep and has *not* been re-measured across the eighteen additions — what was
+/// measured is the assertion this file actually makes, which is still zero
+/// across all thirty-nine.
 ///
 /// **The audit is a floor, not a description.** Measured while adding
 /// `dashboardDetail`: a tile carrying two elements labelled `chart.xyaxis.line` —
@@ -114,6 +117,22 @@ final class AccessibilityAuditTests: XCTestCase {
     }
     func testGroups() { audit("groups", titled: "Groups") }
     func testWebAnalytics() { audit("webAnalytics", titled: "Web") }
+    func testClickmap() {
+        auditSurface(
+            "clickmap",
+            titled: "Clickmap",
+            witnesses: [
+                (
+                    .contains("Pages with a render"),
+                    "Clickmap drew no renderable-page section from its demo fixture."
+                ),
+                (
+                    .exact("No scroll-depth data"),
+                    "Clickmap never reached its truthful empty scroll-depth state."
+                ),
+            ]
+        )
+    }
     func testSQL() { audit("sql", titled: "SQL") }
     func testTaxonomy() { audit("taxonomy", titled: "Taxonomy") }
     /// Audits the populated authored-demo list. An empty fixture would exercise
@@ -122,6 +141,111 @@ final class AccessibilityAuditTests: XCTestCase {
     func testExperiments() { audit("experiments", titled: "Experiments") }
     func testSurveys() { audit("surveys", titled: "Surveys") }
     func testSettings() { audit("settings", titled: "Settings") }
+
+    /// These roots previously had screenshot coverage but no strict audit. Each
+    /// waits for authored content rather than merely accepting the navigation
+    /// title, because the title appears before its asynchronous fixture settles.
+    func testLLM() {
+        auditSurface(
+            "llm",
+            titled: "LLM",
+            witnesses: [(
+                .contains("synthetic-id-0099"),
+                "LLM drew no trace for synthetic-id-0099 from its demo fixture."
+            )]
+        )
+    }
+
+    func testPipelines() {
+        auditSurface(
+            "pipelines",
+            titled: "Pipelines",
+            witnesses: [(
+                .exact("No pipelines"),
+                "Pipelines never reached its truthful terminal empty state."
+            )]
+        )
+    }
+
+    func testAutomation() {
+        auditSurface(
+            "automation",
+            titled: "Automation",
+            witnesses: [(
+                .exact(
+                    "Workflows chain messaging and automation steps behind a trigger. "
+                        + "This project has none."
+                ),
+                "Automation never rendered its complete empty-workflows explanation."
+            )]
+        )
+    }
+
+    func testActions() {
+        auditSurface(
+            "actions",
+            titled: "Actions",
+            witnesses: [(
+                .exact("No actions"),
+                "Actions never reached its truthful terminal empty state."
+            )]
+        )
+    }
+
+    func testAnnotations() {
+        auditSurface(
+            "annotations",
+            titled: "Annotations",
+            witnesses: [(
+                .exact("No annotations"),
+                "Annotations never reached its truthful terminal empty state."
+            )]
+        )
+    }
+
+    func testEarlyAccess() {
+        auditSurface(
+            "earlyAccess",
+            titled: "Early access",
+            witnesses: [(
+                .exact("No early access features"),
+                "Early Access never reached its truthful terminal empty state."
+            )]
+        )
+    }
+
+    func testMax() {
+        auditSurface(
+            "max",
+            titled: "Max",
+            witnesses: [(
+                .exact("No Max conversations"),
+                "Max never reached its truthful terminal empty state."
+            )]
+        )
+    }
+
+    func testRenders() {
+        auditList(
+            "renders",
+            titled: "Renders",
+            rows: [(
+                "Example filename 0312",
+                "Renders drew no row for Example filename 0312 from its demo fixture."
+            )]
+        )
+    }
+
+    func testTemplates() {
+        auditList(
+            "templates",
+            titled: "Templates",
+            rows: [(
+                "Example App metric 125",
+                "Templates drew no card for Example App metric 125 from its demo fixture."
+            )]
+        )
+    }
 
     /// Excluded from this sweep until the feed learned to stop.
     ///
@@ -473,6 +597,56 @@ final class AccessibilityAuditTests: XCTestCase {
             XCTAssertFalse(
                 failure.exists,
                 "'\(screen)' rendered its demo fixture as a partial load: \(prefix)",
+                file: file,
+                line: line
+            )
+        }
+        assertAuditPasses(on: app, named: screen, file: file, line: line)
+    }
+
+    private enum AuditWitness {
+        case exact(String)
+        case contains(String)
+
+        var predicate: NSPredicate {
+            switch self {
+            case .exact(let text):
+                NSPredicate(format: "label == %@", text)
+            case .contains(let text):
+                NSPredicate(format: "label CONTAINS[c] %@", text)
+            }
+        }
+    }
+
+    /// Audits an empty, mixed or populated root only after every content state
+    /// that identifies that root has rendered. Unlike `auditList`, witnesses can
+    /// match terminal prose or a stable fragment inside a combined row label.
+    private func auditSurface(
+        _ screen: String,
+        titled title: String,
+        witnesses: [(match: AuditWitness, missing: String)],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let app = DemoLaunch.launch(tab: screen, file: file, line: line)
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars[title]),
+            "'\(screen)' never showed its own navigation bar, so there was nothing of it to audit.",
+            file: file,
+            line: line
+        )
+        for witness in witnesses {
+            let element = app.descendants(matching: .any)
+                .matching(witness.match.predicate)
+                .firstMatch
+            for _ in 0..<30 {
+                if element.exists { break }
+                app.swipeUp(velocity: .slow)
+                DemoLaunch.pause(0.25)
+            }
+            XCTAssertTrue(
+                DemoLaunch.wait(for: element, timeout: 5),
+                witness.missing,
                 file: file,
                 line: line
             )
