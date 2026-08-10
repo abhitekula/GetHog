@@ -1,7 +1,29 @@
+import UIKit
 import XCTest
 
 final class DashboardConsistencyUITests: XCTestCase {
     private static let emptyDashboardID = 725_103
+
+    func testPinnedDashboardPreviewFailureIsVisibleAndRetryable() {
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: ["GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE": "1"]
+        )
+        defer { app.terminate() }
+
+        let failure = app.staticTexts["Couldn't load pinned dashboard preview"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: failure),
+            "A failed pinned preview collapsed into a blank Pinned section."
+        )
+        XCTAssertTrue(app.staticTexts["Pinned"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["Try again"].firstMatch.exists)
+        XCTAssertFalse(
+            app.staticTexts[DemoLaunch.firstTileTitle].firstMatch.exists,
+            "A failed pinned preview left stale chart content under its retry state."
+        )
+        capture("Pinned dashboard preview failure")
+    }
 
     /// Catches a Dashboard landing change that restores separate signal and
     /// collection scroll containers instead of one regular-width dashboard hub.
@@ -65,6 +87,38 @@ final class DashboardConsistencyUITests: XCTestCase {
         }
         XCTAssertGreaterThan(collectionWidth, hub.frame.width * 0.5)
         XCTAssertGreaterThanOrEqual(card.frame.minX, hub.frame.minX)
+    }
+
+    func testRegularDashboardLoadingUsesTheAppGround() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The regular dashboard loading state is measured on iPad."
+        )
+
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: ["GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS": "5000"]
+        )
+        let loading = app.staticTexts["Loading dashboards…"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: loading, timeout: 3),
+            "The delayed collection never exposed its regular-width loading state."
+        )
+
+        let screenshot = XCUIScreen.main.screenshot()
+        let frame = app.frame
+        let sample = try pixel(
+            in: screenshot,
+            at: CGPoint(x: frame.minX + frame.width * 0.75, y: frame.minY + frame.height * 0.75),
+            screenFrame: frame
+        )
+        let lightGround = (red: 242, green: 239, blue: 233)
+        let darkGround = (red: 21, green: 20, blue: 19)
+        XCTAssertTrue(
+            sample.matches(lightGround) || sample.matches(darkGround),
+            "Regular dashboard loading sampled \(sample), not the app ground."
+        )
     }
 
     /// The regular hub must not accept a side-by-side project summary if doing
@@ -615,4 +669,47 @@ final class DashboardConsistencyUITests: XCTestCase {
         }
         XCUIDevice.shared.orientation = .portrait
     }
+
+    private func pixel(
+        in screenshot: XCUIScreenshot,
+        at point: CGPoint,
+        screenFrame: CGRect
+    ) throws -> RGBPixel {
+        let image = try XCTUnwrap(screenshot.image.cgImage)
+        let scaleX = CGFloat(image.width) / screenFrame.width
+        let scaleY = CGFloat(image.height) / screenFrame.height
+        let x = Int((point.x - screenFrame.minX) * scaleX)
+        let y = Int((point.y - screenFrame.minY) * scaleY)
+        let crop = try XCTUnwrap(
+            image.cropping(to: CGRect(x: x, y: y, width: 1, height: 1))
+        )
+        var bytes = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(
+            CGContext(
+                data: &bytes,
+                width: 1,
+                height: 1,
+                bitsPerComponent: 8,
+                bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        )
+        context.draw(crop, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return RGBPixel(red: Int(bytes[0]), green: Int(bytes[1]), blue: Int(bytes[2]))
+    }
+}
+
+private struct RGBPixel: CustomStringConvertible {
+    let red: Int
+    let green: Int
+    let blue: Int
+
+    func matches(_ expected: (red: Int, green: Int, blue: Int)) -> Bool {
+        abs(red - expected.red) <= 3
+            && abs(green - expected.green) <= 3
+            && abs(blue - expected.blue) <= 3
+    }
+
+    var description: String { "rgb(\(red), \(green), \(blue))" }
 }

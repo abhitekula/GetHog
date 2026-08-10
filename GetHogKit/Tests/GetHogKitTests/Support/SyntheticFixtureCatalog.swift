@@ -223,6 +223,7 @@ enum SyntheticFixtureCatalog {
         "dashboards_list.json",
         "error_tracking.json",
         "exports.json",
+        "external_data_sources.json",
         "feature_flags.json",
         "groups_types.json",
         "ingestion_warnings_v2.json",
@@ -240,6 +241,7 @@ enum SyntheticFixtureCatalog {
         "single_session_summary.json",
         "snapshot_blobs.jsonl",
         "snapshot_sources.json",
+        "warehouse_tables.json",
         "web_overview.json",
     ].map { ($0, $0) })
 

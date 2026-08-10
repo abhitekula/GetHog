@@ -187,9 +187,7 @@ struct PeopleOverview: View {
         #endif
         .pointerHighlight(cornerRadius: Theme.Radius.medium)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(person.displayName), \(person.isIdentified ? "identified" : "anonymous")"
-        )
+        .accessibilityLabel(PersonRowAccessibility.spokenSummary(person))
     }
 
     private func distinctID(_ person: PersonSummary) -> String? {

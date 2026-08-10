@@ -85,6 +85,33 @@ final class AccessibilityAuditTests: XCTestCase {
     func testSignals() { audit("signals", titled: "Signals") }
     func testSupport() { audit("support", titled: "Support") }
     func testPeople() { audit("people", titled: "People") }
+
+    /// Both copies of the regular-width person row must speak the identity facts
+    /// that distinguish one person from another, not only name and status.
+    @MainActor
+    func testPeopleRowsSpeakDistinctIdentityAndFirstSeen() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The list-and-overview row parity contract is measured at regular width."
+        )
+
+        let app = DemoLaunch.launch(tab: "people")
+        XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["People"]))
+
+        let rows = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Sable Okafor")
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { rows.count >= 2 }),
+            "Regular width did not render both the directory and overview copies of the first person."
+        )
+        for row in rows.allElementsBoundByIndex {
+            XCTAssertTrue(row.label.contains("person:sable:primary"), row.label)
+            XCTAssertTrue(row.label.contains("3 distinct IDs"), row.label)
+            XCTAssertTrue(row.label.contains("First seen Jan 8, 2026"), row.label)
+        }
+    }
     func testGroups() { audit("groups", titled: "Groups") }
     func testWebAnalytics() { audit("webAnalytics", titled: "Web") }
     func testSQL() { audit("sql", titled: "SQL") }
@@ -128,22 +155,22 @@ final class AccessibilityAuditTests: XCTestCase {
     /// an empty state and reported clean about a screen that had never rendered
     /// a row, which is exactly what `testExperiments` above records having done.
     ///
-    /// Warehouse is deliberately audited **knowing two of its three lists still
-    /// answer 501**: the authored demo has no `/external_data_sources/` or
-    /// `/warehouse_tables/` for this project. So this measures the views section
-    /// and the screen's partial-failure layout, not a whole warehouse.
-    ///
-    /// Both wait for a named row before auditing, the way `testExperimentResults`
+    /// Both wait for named rows before auditing, the way `testExperimentResults`
     /// does and for the same reason: this audit passes clean on an empty state,
     /// so a method that only waited for the navigation bar would keep passing if
     /// the route were dropped again and report it as a screen with no findings.
+    /// Warehouse waits on one row from each of its three independent collections;
+    /// a source, table or saved-view route can therefore no longer disappear
+    /// while this audit reports a complete screen.
     func testNotebooks() {
         auditList(
             "notebooks",
             titled: "Notebooks",
-            rowBeginning: "Orbit field log",
-            missing: "The notebooks list drew no row for the rich demo notebook. Check that "
-                + "DemoTransport still routes /notebooks/ to notebooks_list."
+            rows: [(
+                "Orbit field log",
+                "The notebooks list drew no row for the rich demo notebook. Check that "
+                    + "DemoTransport still routes /notebooks/ to notebooks_list."
+            )]
         )
     }
 
@@ -151,9 +178,29 @@ final class AccessibilityAuditTests: XCTestCase {
         auditList(
             "warehouse",
             titled: "Warehouse",
-            rowBeginning: "example_meteor_delivery_failures",
-            missing: "The warehouse drew no row for the failing saved query. Check that "
-                + "DemoTransport still routes /warehouse_saved_queries/."
+            rows: [
+                (
+                    "S3, Completed",
+                    "The warehouse drew no source row. Check that DemoTransport still routes "
+                        + "/external_data_sources/."
+                ),
+                (
+                    "demo_accounts, imported table",
+                    "The warehouse drew no S3 table row. Check that DemoTransport still routes "
+                        + "/warehouse_tables/."
+                ),
+                (
+                    "example_pull_requests, imported table",
+                    "The warehouse drew no Github table row. Check that DemoTransport still routes "
+                        + "/warehouse_tables/."
+                ),
+                (
+                    "example_meteor_delivery_failures",
+                    "The warehouse drew no failing saved-query row. Check that DemoTransport "
+                        + "still routes /warehouse_saved_queries/."
+                ),
+            ],
+            forbiddenPrefixes: ["Couldn't load sources.", "Couldn't load tables."]
         )
     }
 
@@ -373,8 +420,8 @@ final class AccessibilityAuditTests: XCTestCase {
     private func auditList(
         _ screen: String,
         titled title: String,
-        rowBeginning prefix: String,
-        missing message: String,
+        rows: [(prefix: String, missing: String)],
+        forbiddenPrefixes: [String] = [],
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
@@ -385,12 +432,38 @@ final class AccessibilityAuditTests: XCTestCase {
             file: file,
             line: line
         )
-        // The rows combine their children, so each is one button whose label
-        // opens with the object's own name.
-        let row = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", prefix)
-        ).firstMatch
-        XCTAssertTrue(DemoLaunch.wait(for: row), message, file: file, line: line)
+        // Rows combine their children, so each label opens with the object's
+        // own name. Query every element type because read-only source rows are
+        // not buttons while table and saved-view rows navigate.
+        for expected in rows {
+            let row = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH %@", expected.prefix)
+            ).firstMatch
+            // `List` builds rows lazily. Bring a later collection into the tree
+            // before treating its absence as a dropped route.
+            for _ in 0..<30 {
+                if row.exists { break }
+                app.swipeUp(velocity: .slow)
+                DemoLaunch.pause(0.25)
+            }
+            XCTAssertTrue(
+                DemoLaunch.wait(for: row, timeout: 5),
+                expected.missing,
+                file: file,
+                line: line
+            )
+        }
+        for prefix in forbiddenPrefixes {
+            let failure = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH %@", prefix)
+            ).firstMatch
+            XCTAssertFalse(
+                failure.exists,
+                "'\(screen)' rendered its demo fixture as a partial load: \(prefix)",
+                file: file,
+                line: line
+            )
+        }
         assertAuditPasses(on: app, named: screen, file: file, line: line)
     }
 

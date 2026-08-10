@@ -41,6 +41,7 @@ final class PinnedDashboardPreviewStore {
 
     private(set) var dashboard: Dashboard?
     private(set) var isLoading = false
+    private(set) var failure: LoadFailure?
     private var loadedScope: LoadScope?
     private var generation = 0
     private var nextFlightID = 0
@@ -85,6 +86,7 @@ final class PinnedDashboardPreviewStore {
         let token = generation
         dashboard = nil
         loadedScope = nil
+        failure = nil
         isLoading = true
         nextFlightID += 1
         let flightID = nextFlightID
@@ -102,6 +104,7 @@ final class PinnedDashboardPreviewStore {
         generation += 1
         dashboard = nil
         loadedScope = nil
+        failure = nil
         isLoading = false
         loadFlight = nil
     }
@@ -125,10 +128,12 @@ final class PinnedDashboardPreviewStore {
             guard token == generation, !Task.isCancelled else { return }
             dashboard = loaded
             loadedScope = scope
+            failure = nil
         } catch {
             // A newer project/auth scope already owns the preview surface. Its
             // response must remain empty until that scope's own request settles.
             guard token == generation, !Task.isCancelled else { return }
+            failure = LoadFailure(error, loading: "pinned dashboard")
         }
     }
 }
@@ -192,12 +197,7 @@ struct ProjectOverviewContent: View {
             }
         }
         .task(id: pinnedPreviewScope) {
-            await pinnedPreviewStore.loadIfNeeded(
-                client: model.client,
-                projectID: pinnedPreviewScope.projectID,
-                dashboardID: pinnedPreviewScope.dashboardID,
-                authSessionID: pinnedPreviewScope.authSessionID
-            )
+            await loadPinnedPreview()
         }
     }
 
@@ -305,6 +305,22 @@ struct ProjectOverviewContent: View {
                         ProgressView()
                         Text("Loading \(pinned.title)…")
                     }
+                } else if let failure = pinnedPreviewStore.failure {
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        Label(
+                            "Couldn't load pinned dashboard preview",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.headline)
+                        Text(failure.summary)
+                            .font(.callout)
+                            .foregroundStyle(Theme.Ink.secondary)
+                        Button("Try again") {
+                            Task { await loadPinnedPreview() }
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("gethog.dashboard-pinned-failure")
                 }
             }
             .accessibilityElement(children: .contain)
@@ -343,6 +359,15 @@ struct ProjectOverviewContent: View {
 
     private func orderedTiles(_ dashboard: Dashboard) -> [Tile] {
         dashboard.tiles.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+    }
+
+    private func loadPinnedPreview() async {
+        await pinnedPreviewStore.loadIfNeeded(
+            client: model.client,
+            projectID: pinnedPreviewScope.projectID,
+            dashboardID: pinnedPreviewScope.dashboardID,
+            authSessionID: pinnedPreviewScope.authSessionID
+        )
     }
 
 }

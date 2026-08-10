@@ -513,6 +513,24 @@ struct PeopleRoot: View {
 
 // MARK: - Rows
 
+enum PersonRowAccessibility {
+    static func spokenSummary(_ person: PersonSummary) -> String {
+        var parts = [
+            person.displayName,
+            person.isIdentified ? "identified" : "anonymous",
+        ]
+        if let first = person.distinctIDs.first, first != person.displayName {
+            parts.append(first)
+        }
+        let count = person.distinctIDs.count
+        parts.append(count == 1 ? "1 distinct ID" : "\(count) distinct IDs")
+        if let created = person.createdAt {
+            parts.append("First seen \(created.formatted(.dateTime.year().month().day()))")
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
 struct PersonRowView: View {
     let person: PersonSummary
 
@@ -552,6 +570,8 @@ struct PersonRowView: View {
         // code for "no linguistic content", so no hyphenation dictionary applies
         // and the title breaks only where the string already allows it.
         .typesettingLanguage(Locale.Language(identifier: "zxx"))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(PersonRowAccessibility.spokenSummary(person))
     }
 
     private var distinctID: String? {

@@ -904,6 +904,45 @@ struct DashboardConsistencyTests {
         #expect(store.dashboard?.id == 9_001)
     }
 
+    @Test("a failed pinned preview stays visible and can recover on retry")
+    func pinnedPreviewFailureCanRetry() async {
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [
+                .status(503, #"{"detail":"Synthetic pinned preview failed"}"#),
+                .ok(Self.savedDashboard),
+            ]
+        )
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = PinnedDashboardPreviewStore()
+        let authSessionID = UUID(uuidString: "018F9000-0000-7000-8000-000000000600")!
+
+        await store.loadIfNeeded(
+            client: client,
+            projectID: 1_001,
+            dashboardID: 9_001,
+            authSessionID: authSessionID
+        )
+
+        #expect(store.dashboard == nil)
+        #expect(store.failure != nil)
+        #expect(!store.isLoading)
+
+        await store.loadIfNeeded(
+            client: client,
+            projectID: 1_001,
+            dashboardID: 9_001,
+            authSessionID: authSessionID
+        )
+
+        #expect(await transport.dashboardRequestCount == 2)
+        #expect(store.dashboard?.id == 9_001)
+        #expect(store.failure == nil)
+        #expect(!store.isLoading)
+    }
+
     @Test("a late pinned preview cannot publish across a same-id project switch")
     func pinnedPreviewIsProjectScoped() async {
         let transport = OutOfOrderPinnedPreviewTransport()

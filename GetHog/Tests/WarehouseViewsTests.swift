@@ -110,6 +110,21 @@ struct WarehouseViewsTests {
 
     // MARK: - Store
 
+    @Test("The demo publishes source and table rows without a partial failure")
+    func demoWarehouseStoreIsComplete() async {
+        let store = WarehouseStore()
+        await store.load(client: client(DemoTransport()), projectID: 1001)
+
+        #expect(store.sourcesError == nil)
+        #expect(store.tablesError == nil)
+        #expect(Set(store.sources.map(\.displayName)) == ["S3", "Github (example_)"])
+        #expect(Set(store.tables.map(\.name)) == [
+            "demo_accounts", "example_pull_requests",
+        ])
+        #expect(store.loadedAt != nil)
+        #expect(!store.isLoading)
+    }
+
     private func loadedStore(_ fixture: String = "warehouse_saved_queries") async throws -> SavedQueryStore {
         let transport = StubTransport(
             bodies: ["warehouse_saved_queries": try demoFixture(fixture)]

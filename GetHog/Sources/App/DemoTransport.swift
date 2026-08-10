@@ -47,6 +47,7 @@ struct DemoTransport: HTTPTransport {
     static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
     static let replaySourceFailuresEnvironment = "GETHOG_DEMO_REPLAY_SOURCE_FAILURES"
     static let dashboardDetailDelayEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_DELAY_MS"
+    static let dashboardDetailFailureEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
     #if DEBUG
     static let dashboardListDelayEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS"
@@ -76,6 +77,7 @@ struct DemoTransport: HTTPTransport {
     private let summaryGeneration: DemoSummaryGenerationState
     private let replaySources: DemoReplaySourceState
     private let dashboardDetailDelayMilliseconds: Int
+    private let dashboardDetailFailure: Bool
     private let dashboardRecomputeFailure: Bool
     private let dashboardListDelayMilliseconds: Int
     private let dashboardListFailure: Bool
@@ -84,6 +86,7 @@ struct DemoTransport: HTTPTransport {
         emptyCollection: EmptyCollection? = nil,
         summaryInitiallyAbsent: Bool? = nil,
         dashboardDetailDelayMilliseconds: Int? = nil,
+        dashboardDetailFailure: Bool? = nil,
         dashboardRecomputeFailure: Bool? = nil,
         replaySourceFailures: Int? = nil
     ) {
@@ -106,6 +109,10 @@ struct DemoTransport: HTTPTransport {
             0,
             dashboardDetailDelayMilliseconds ?? environmentDelay ?? 0
         )
+        self.dashboardDetailFailure = dashboardDetailFailure
+            ?? (ProcessInfo.processInfo.environment[
+                Self.dashboardDetailFailureEnvironment
+            ] == "1")
         self.dashboardRecomputeFailure = dashboardRecomputeFailure
             ?? (ProcessInfo.processInfo.environment[
                 Self.dashboardRecomputeFailureEnvironment
@@ -173,6 +180,13 @@ struct DemoTransport: HTTPTransport {
         if isDashboardDetail, dashboardDetailDelayMilliseconds > 0 {
             try? await Task.sleep(for: .milliseconds(dashboardDetailDelayMilliseconds))
         }
+        if isDashboardDetail, dashboardDetailFailure {
+            return Self.jsonReply(
+                url: request.url!,
+                data: Data(#"{"detail":"Synthetic pinned dashboard preview failed"}"#.utf8),
+                status: 503
+            )
+        }
         if isDashboardDetail,
            dashboardRecomputeFailure,
            query.contains("refresh=lazy_async") {
@@ -217,7 +231,12 @@ struct DemoTransport: HTTPTransport {
         {
             Reply(Self.emptyPage)
         } else {
-            Self.fixture(for: path, body: body, query: query)
+            Self.fixture(
+                for: path,
+                method: request.httpMethod ?? "GET",
+                body: body,
+                query: query
+            )
         }
         // A touch of latency so loading states actually render rather than
         // flashing past — otherwise skeletons and spinners go untested.
@@ -728,7 +747,12 @@ struct DemoTransport: HTTPTransport {
         return (try? JSONSerialization.data(withJSONObject: row)).map { Reply($0) }
     }
 
-    private static func fixture(for path: String, body: String, query: String) -> Reply {
+    private static func fixture(
+        for path: String,
+        method: String,
+        body: String,
+        query: String
+    ) -> Reply {
         // Deterministic fixture routing preserves the response shape and status for this case.
         if path.hasSuffix("/query/") {
             // Web analytics: six sections, six kinds, one screen.
@@ -1182,6 +1206,18 @@ struct DemoTransport: HTTPTransport {
             if path.contains("/\(richDemoNotebook)/") { return load("notebook_detail") }
             if path.contains("/\(plainTextDemoNotebook)/") { return load("notebook_detail_plain") }
             return unrouted(path)
+        }
+
+        // Warehouse collection routes are exact. The demo declares these two
+        // lists, not an arbitrary source or table detail, so a child path must
+        // keep falling through to the explicit 501 below.
+        if method == "GET",
+           path.hasSuffix("/external_data_sources/") {
+            return load("external_data_sources")
+        }
+        if method == "GET",
+           path.hasSuffix("/warehouse_tables/") {
+            return load("warehouse_tables")
         }
 
         // Deterministic fixture routing preserves the response shape and status for this case.

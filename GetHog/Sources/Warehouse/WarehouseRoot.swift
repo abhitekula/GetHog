@@ -16,11 +16,11 @@ final class WarehouseStore {
     /// ask before it writes anything: *did my own request answer?* Without that,
     /// a section whose request failed falls through to its empty branch and
     /// states "No external data sources." — an absence presented as a finding
-    /// about a request that never returned. Measured in demo mode, where
-    /// `/external_data_sources/` and `/warehouse_tables/` are both deliberately
-    /// unrouted and answer 501: both sections said "No …" while the views list
-    /// beside them loaded, and the screen-level notice was suppressed because
-    /// the screen was no longer empty.
+    /// about a request that never returned. This was measured when demo mode had
+    /// no fixtures for `/external_data_sources/` or `/warehouse_tables/`: both
+    /// answered 501 while the views list beside them loaded, and the screen-level
+    /// notice was suppressed because the screen was no longer empty. Demo mode
+    /// now routes both collections, while failure tests preserve this distinction.
     var sourcesError: String?
     var tablesError: String?
 
@@ -316,7 +316,8 @@ struct WarehouseRoot: View {
             // suppressed, and the only things left speaking for those two
             // requests were the "No external data sources." and "No warehouse
             // tables." lines that had already stated their absence as findings.
-            // Reproduced in demo mode, where both paths answer 501 by design.
+            // Originally reproduced in demo mode, before both collection
+            // endpoints gained deterministic fixtures.
             //
             // The fix is split rather than widened here, because a failure has
             // two shapes and they want different sentences. A list that failed

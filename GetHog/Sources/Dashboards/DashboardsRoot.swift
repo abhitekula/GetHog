@@ -242,7 +242,7 @@ struct DashboardsRoot: View {
             dashboardUnavailable
         case .loading:
             ProgressView("Loading dashboards…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .appGround()
         case .failed(let error):
             dashboardLoadFailure(error)
         case .empty:

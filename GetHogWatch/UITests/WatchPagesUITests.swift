@@ -64,6 +64,28 @@ final class WatchPagesUITests: XCTestCase {
         ).firstMatch, timeout: 30))
     }
 
+    /// The visual caption and value are one fact, exposed by separate elements.
+    /// The numeric value therefore stays value-only so VoiceOver says the metric
+    /// title exactly once before announcing its value.
+    func testMetricsHeadlinePublishesItsTitleOnce() {
+        let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "metrics"])
+
+        let title = "Example daily engagement"
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.staticTexts[title], timeout: 60),
+            "The headline metric did not expose its visual caption."
+        )
+        let titleLabels = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", title)
+        ).allElementsBoundByIndex.map(\.label)
+        XCTAssertEqual(titleLabels.filter { $0 == title }.count, 1, titleLabels.description)
+        XCTAssertEqual(
+            titleLabels.filter { $0 != title }.count,
+            0,
+            "Another accessibility element repeated the headline title: \(titleLabels)"
+        )
+    }
+
     func testMetricsKeepsStableTitleAndReadableProjectScope() {
         guard ExclusiveRun.claim() else { return }
 

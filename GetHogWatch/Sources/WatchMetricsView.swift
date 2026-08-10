@@ -211,7 +211,10 @@ struct WatchMetricsView: View {
             Text(metric.value.compactFormatted)
                 .font(Theme.Typography.metric)
                 .foregroundStyle(Theme.accent)
-                .accessibilityLabel("\(metric.title), \(metric.value.compactFormatted)")
+                // The visible caption immediately before this value already
+                // supplies its context. Repeating it here made VoiceOver say the
+                // title twice before reaching the delta and trend.
+                .accessibilityLabel(metric.value.compactFormatted)
             deltaLine(metric)
             trend(for: metric)
             if let snapshot = model.snapshot {

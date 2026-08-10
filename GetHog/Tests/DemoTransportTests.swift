@@ -1855,6 +1855,72 @@ extension DemoTransportTests {
         #expect(byActive.results.map(\.id) != byTotal.results.map(\.id))
     }
 
+    /// The warehouse's imported-data half: two independent collections whose
+    /// absence must remain distinguishable from a successfully empty project.
+    @Test("warehouse collection routes serve the source and table catalogues")
+    @MainActor
+    func warehouseCollectionRoutes() async throws {
+        let sourceReply = try await reply(
+            for: WarehouseStore.sourcesEndpoint(projectID: Self.projectID)
+        )
+        #expect(sourceReply.1.statusCode == 200)
+        let sources = try Page<ExternalDataSource>.decode(from: sourceReply.0)
+        #expect(sources.count == 2)
+        #expect(sources.results.map(\.id) == [
+            "018f9000-0000-7000-8000-000000000222",
+            "018f9000-0000-7000-8000-000000000223",
+        ])
+        #expect(sources.results.map(\.displayName) == ["S3", "Github (example_)"])
+
+        let tableReply = try await reply(
+            for: WarehouseStore.tablesEndpoint(projectID: Self.projectID)
+        )
+        #expect(tableReply.1.statusCode == 200)
+        let tables = try Page<WarehouseTable>.decode(from: tableReply.0)
+        #expect(tables.count == tables.results.count)
+        #expect(tables.count == 2)
+        #expect(tables.results.map(\.id) == [
+            "018f9000-0000-7000-8000-000000000264",
+            "018f9000-0000-7000-8000-000000000265",
+        ])
+        #expect(tables.results.map(\.name) == [
+            "demo_accounts", "example_pull_requests",
+        ])
+        for table in tables.results where table.isManaged {
+            let sourceID = try #require(table.sourceID)
+            let schemaName = try #require(table.schemaName)
+            let source = try #require(sources.results.first { $0.id == sourceID })
+            #expect(
+                source.schemas.contains { $0.name == schemaName },
+                "\(table.name) references a schema absent from source \(sourceID)"
+            )
+        }
+
+        // These are list-only demo declarations. Matching `contains` instead of
+        // the collection suffix would turn every invented child into the list,
+        // hiding the same missing-fixture class this test is here to prevent.
+        for path in [
+            "/api/projects/\(Self.projectID)/external_data_sources/not-authored/",
+            "/api/projects/\(Self.projectID)/warehouse_tables/not-authored/",
+        ] {
+            let (_, response) = try await reply(for: Endpoint(path: path, category: .crud))
+            #expect(response.statusCode == 501, "\(path) must remain an undeclared detail")
+        }
+        for path in [
+            WarehouseStore.sourcesEndpoint(projectID: Self.projectID).path,
+            WarehouseStore.tablesEndpoint(projectID: Self.projectID).path,
+        ] {
+            for method in ["POST", "PATCH", "DELETE"] {
+                let endpoint = Endpoint(path: path, method: method, category: .crud)
+                let (_, response) = try await reply(for: endpoint)
+                #expect(
+                    response.statusCode == 501,
+                    "\(method) \(path) must not receive the GET collection fixture"
+                )
+            }
+        }
+    }
+
     /// The warehouse's modelling half: one list, four details, and a run history
     /// that answers three different ways.
     @Test("each saved query serves its own definition and its own run history")
