@@ -432,27 +432,34 @@ struct OnboardingView: View {
         }
     }
 
-    /// The exact scopes to tick, copyable so the user doesn't have to transcribe.
+    /// The least-privilege read baseline, copyable so the user does not have to
+    /// transcribe it. Optional writes are explained only after connection.
     private var scopeChecklist: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Tick these scopes when creating the key")
+            Text("Core read scopes")
                 .font(.subheadline.weight(.semibold))
 
-            ForEach(Self.requiredScopes, id: \.self) { scope in
+            Text("These unlock GetHog's main read surfaces. They are a baseline, not a complete contract.")
+                .font(.caption)
+                .foregroundStyle(Theme.Ink.secondary)
+
+            ForEach(APIKeyScopeGuidance.coreReadScopes) { descriptor in
                 HStack(spacing: 8) {
                     // A tick beside a scope the user has to find and switch on is
                     // a meaningful graphic, so it owes WCAG's 3:1 for non-text;
                     // `.tertiary` gave it 1.73:1 on this card.
                     Image(systemName: "checkmark.circle")
                         .foregroundStyle(Theme.Ink.tertiary)
-                    Text(scope)
+                    Text(descriptor.scope)
                         .font(.footnote.monospaced())
                     Spacer()
                 }
             }
 
             Button {
-                UIPasteboard.general.string = Self.requiredScopes.joined(separator: "\n")
+                UIPasteboard.general.string = APIKeyScopeGuidance.coreReadScopes
+                    .map(\.scope)
+                    .joined(separator: "\n")
             } label: {
                 Label("Copy scope list", systemImage: "doc.on.doc")
                     .font(.caption.weight(.medium))
@@ -461,16 +468,6 @@ struct OnboardingView: View {
         .padding()
         .background(Theme.cardBackground, in: .rect(cornerRadius: 12))
     }
-
-    private static let requiredScopes: [String] = {
-        var scopes = Set<String>()
-        for capability in Capability.allCases {
-            scopes.formUnion(capability.requiredScopes)
-            if let write = capability.writeScope { scopes.insert(write) }
-        }
-        scopes.insert("project:read")
-        return scopes.sorted()
-    }()
 
     private func connect() async {
         isConnecting = true

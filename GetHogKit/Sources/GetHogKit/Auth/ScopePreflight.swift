@@ -25,19 +25,14 @@ public enum Capability: String, Sendable, CaseIterable, Identifiable {
     }
 
     public var requiredScopes: [String] {
-        switch self {
-        case .dashboards: ["dashboard:read", "insight:read"]
-        case .events: ["query:read"]
-        case .sessions: ["session_recording:read"]
-        case .flags: ["feature_flag:read"]
-        case .replay: ["session_recording:read"]
-        }
+        APIKeyScopeGuidance.requiredReadScopes(for: self).map(\.scope)
     }
 
-    /// Toggling a flag needs a write scope, which is only discovered on first use
-    /// because a read probe cannot detect it.
+    /// Toggling a flag needs a write scope, which is only discovered on first
+    /// use because a read probe cannot detect it. Kept for the existing flag
+    /// action while the catalog remains the one owner of its value.
     public var writeScope: String? {
-        self == .flags ? "feature_flag:write" : nil
+        APIKeyScopeGuidance.optionalWriteScope(for: self)?.scope
     }
 
     public var systemImage: String {
