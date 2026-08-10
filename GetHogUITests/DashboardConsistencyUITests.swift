@@ -428,11 +428,12 @@ final class DashboardConsistencyUITests: XCTestCase {
             return XCTFail("The opened dashboard detail did not render its synthetic tile.")
         }
 
-        let allDashboards = app.buttons["All dashboards"]
-        guard DemoLaunch.wait(for: allDashboards) else {
-            return XCTFail("The regular dashboard detail did not provide an All dashboards return action.")
+        let nativeBack = app.buttons["BackButton"].firstMatch
+        guard DemoLaunch.wait(for: nativeBack, timeout: 5) else {
+            return XCTFail("The regular dashboard detail did not provide its native Back control.")
         }
-        allDashboards.tap()
+        XCTAssertTrue(nativeBack.isHittable, "The native dashboard Back control is not tappable.")
+        nativeBack.tap()
 
         guard DemoLaunch.wait(for: hub) else {
             return XCTFail("Returning from dashboard detail did not restore the regular hub.")
@@ -635,12 +636,6 @@ final class DashboardConsistencyUITests: XCTestCase {
         guard DemoLaunch.wait(for: detail) else {
             return XCTFail("Selecting the compact dashboard row did not open its detail.")
         }
-        let regularReturn = app.buttons["All dashboards"].firstMatch
-        XCTAssertFalse(
-            regularReturn.exists,
-            "Compact list-to-detail navigation unexpectedly exposed the regular hub return control."
-        )
-
         let selectedCompactWidth = app.windows.firstMatch.frame.width
         XCUIDevice.shared.orientation = .landscapeLeft
         guard DemoLaunch.wait(until: { app.windows.firstMatch.frame.width != selectedCompactWidth }) else {
@@ -652,10 +647,12 @@ final class DashboardConsistencyUITests: XCTestCase {
             DemoLaunch.wait(for: detail),
             "Returning to the regular dashboard host discarded the selected dashboard."
         )
+        let nativeBack = app.buttons["BackButton"].firstMatch
         XCTAssertTrue(
-            DemoLaunch.wait(for: regularReturn),
-            "Regular width did not restore its hub return control for the retained selection."
+            DemoLaunch.wait(for: nativeBack, timeout: 5),
+            "Regular width did not preserve its native Back control for the retained selection."
         )
+        XCTAssertTrue(nativeBack.isHittable, "The regular-width native Back control is not tappable.")
     }
 
     func testDashboardRangeAndInsightSurviveFourSizeClassCrossings() throws {

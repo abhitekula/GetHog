@@ -132,7 +132,16 @@ final class BrandedEmptyStateAccessibilityTests: XCTestCase {
 
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["LLM"]))
         let search = app.searchFields.firstMatch
-        XCTAssertTrue(DemoLaunch.wait(for: search), "LLM did not expose trace search.")
+        if !search.exists {
+            let searchButton = app.navigationBars["LLM"].buttons["Search"].firstMatch
+            guard DemoLaunch.wait(for: searchButton) else {
+                return XCTFail("LLM did not expose its trace-search control.")
+            }
+            searchButton.tap()
+        }
+        guard DemoLaunch.wait(for: search) else {
+            return XCTFail("LLM did not expose trace search.")
+        }
         search.tap()
 
         let query = "unmatched synthetic trace"
