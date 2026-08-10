@@ -33,19 +33,22 @@
 - Consumes: `DashboardHub`'s single `PageScaffold`; `ProjectOverviewContent`; `MasonryLayout(columns:spacing:minColumnWidth:)`; existing `gethog.dashboard-hub` identifier.
 - Produces: stable rendered anchors `gethog.dashboard-project-summary` and `gethog.dashboard-pinned-preview`; a full-width summary band above the pinned preview.
 
-- [ ] **Step 1: Add stable rendered geometry anchors**
+- [x] **Step 1: Add stable rendered geometry anchors**
 
-Attach clear background accessibility anchors without combining or hiding the existing text/chart descendants:
+Attach identifiers to the meaningful summary, preview, and chart-card containers
+themselves. Keep their named descendants exposed with `.contain`; do not add
+invisible `Color.clear` accessibility elements, which become blank VoiceOver
+stops:
 
 ```swift
-.background {
-    Color.clear
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("gethog.dashboard-project-summary")
-}
+summary
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("gethog.dashboard-project-summary")
 ```
 
-Use the same pattern with `gethog.dashboard-pinned-preview` on the preview container. Parse `ProjectOverview.swift` and run `git diff --check` before a simulator run.
+Use the same pattern with `gethog.dashboard-pinned-preview` on the preview
+container and stable IDs on the actual pinned chart cards. Parse
+`ProjectOverview.swift` and run `git diff --check` before a simulator run.
 
 - [ ] **Step 2: Strengthen the existing cross-platform geometry contracts**
 
