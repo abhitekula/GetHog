@@ -872,7 +872,10 @@ struct AsyncResourceRequestOwnershipTests {
 
         store.search = currentDescriptor.search
         superseded.cancel()
-        await store.load(client: client, request: currentDescriptor)
+        let current = BoundedStoreLoad.start {
+            await store.load(client: client, request: currentDescriptor)
+        }
+        #expect(await current.finishes())
         #expect(store.rows.map(\.id) == ["new-log"])
 
         await transport.release(0)
@@ -1113,9 +1116,15 @@ struct AsyncResourceRequestOwnershipTests {
             search: ""
         )
 
-        await store.load(client: client, request: descriptor)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
+        #expect(await baseline.finishes())
         let loadedAt = store.loadedAt
-        await store.load(client: client, request: descriptor)
+        let refresh = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
+        #expect(await refresh.finishes())
 
         #expect(store.rows.map(\.id) == ["kept-log"])
         #expect(store.loadedAt == loadedAt)
@@ -1143,7 +1152,10 @@ struct AsyncResourceRequestOwnershipTests {
         let store = LogsStore()
         let client = Self.client(transport)
 
-        await store.load(client: client, request: old)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: client, request: old)
+        }
+        #expect(await baseline.finishes())
         let pending = BoundedStoreLoad.start {
             await store.load(client: client, request: replacement)
         }
@@ -1189,7 +1201,10 @@ struct AsyncResourceRequestOwnershipTests {
 
         store.service = currentDescriptor.service
         superseded.cancel()
-        await store.load(client: client, request: currentDescriptor)
+        let current = BoundedStoreLoad.start {
+            await store.load(client: client, request: currentDescriptor)
+        }
+        #expect(await current.finishes())
         #expect(store.traces.map(\.id) == ["new-trace"])
 
         await transport.release(0)
@@ -1278,7 +1293,10 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = TracingStore()
 
-        await store.load(client: Self.client(transport), request: previous)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: Self.client(transport), request: previous)
+        }
+        #expect(await baseline.finishes())
         #expect(store.services == ["legacy-only", "shared-worker"])
 
         // This filter mutation intentionally clears `currentRequest` while the
@@ -1510,9 +1528,15 @@ struct AsyncResourceRequestOwnershipTests {
             errorsOnly: false
         )
 
-        await store.load(client: client, request: descriptor)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
+        #expect(await baseline.finishes())
         let loadedAt = store.loadedAt
-        await store.load(client: client, request: descriptor)
+        let refresh = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
+        #expect(await refresh.finishes())
 
         #expect(store.traces.map(\.id) == ["kept-trace"])
         #expect(store.loadedAt == loadedAt)
@@ -1551,7 +1575,10 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = TracingStore()
 
-        await store.load(client: Self.client(transport), request: old)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: Self.client(transport), request: old)
+        }
+        #expect(await baseline.finishes())
         let pending = BoundedStoreLoad.start {
             await store.load(
                 client: Self.client(transport, region: .euCloud),
@@ -1588,7 +1615,10 @@ struct AsyncResourceRequestOwnershipTests {
             authority: Self.authority(projectID: currentProjectID)
         )
 
-        await store.load(client: client, request: previousDescriptor)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: client, request: previousDescriptor)
+        }
+        #expect(await baseline.finishes())
         let superseded = BoundedStoreLoad.start {
             await store.load(client: client, request: previousDescriptor)
         }
@@ -1734,9 +1764,15 @@ struct AsyncResourceRequestOwnershipTests {
             authority: Self.authority(projectID: 71)
         )
 
-        await store.load(client: client, request: descriptor)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
+        #expect(await baseline.finishes())
         let loadedAt = store.loadedAt
-        await store.load(client: client, request: descriptor)
+        let refresh = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
+        #expect(await refresh.finishes())
 
         #expect(store.exports.map(\.id) == [7_001])
         #expect(store.loadedAt == loadedAt)
@@ -1766,7 +1802,10 @@ struct AsyncResourceRequestOwnershipTests {
         let store = RendersStore()
         let client = Self.client(transport)
 
-        await store.load(client: client, request: old)
+        let baseline = BoundedStoreLoad.start {
+            await store.load(client: client, request: old)
+        }
+        #expect(await baseline.finishes())
         let pending = BoundedStoreLoad.start {
             await store.load(client: client, request: replacement)
         }
