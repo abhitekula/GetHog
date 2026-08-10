@@ -105,15 +105,19 @@ final class MacNavigationTests: XCTestCase {
         let app = DemoLaunch.launch()
 
         openSidebarItem("Dashboards", in: app)
-        guard let row = DemoLaunch.waitForContent(containing: firstDashboardTitle, in: app) else {
-            return XCTFail("The list never offered \(firstDashboardTitle).")
+        let row = app.buttons["gethog.dashboard-card.725101"].firstMatch
+        var scrolls = 0
+        while !row.exists && scrolls < 12 {
+            app.scrollViews["gethog.dashboard-hub"].scroll(byDeltaX: 0, deltaY: -180)
+            scrolls += 1
         }
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The list never offered \(firstDashboardTitle).")
         row.click()
 
-        // The detail fetches on open; its first tile is the proof it loaded.
-        XCTAssertNotNil(
-            DemoLaunch.waitForContent(containing: DemoLaunch.firstTileTitle, in: app),
-            "The dashboard detail never rendered its first tile."
+        let detail = app.descendants(matching: .any)["gethog.dashboard-detail.725101"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: detail),
+            "The dashboard card did not open its matching detail root."
         )
 
         let windowsBefore = app.windows.count

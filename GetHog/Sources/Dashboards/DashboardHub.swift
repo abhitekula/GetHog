@@ -2,6 +2,14 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+func filteredDashboards(
+    _ dashboards: [DashboardSummary],
+    matching search: String
+) -> [DashboardSummary] {
+    guard !search.isEmpty else { return dashboards }
+    return dashboards.filter { $0.title.localizedCaseInsensitiveContains(search) }
+}
+
 /// The single regular-width surface for a project's dashboard signal and list.
 struct DashboardHub<RowContent: View>: View {
     let dashboards: [DashboardSummary]
@@ -32,7 +40,9 @@ struct DashboardHub<RowContent: View>: View {
         PageScaffold(spacing: Theme.Space.xl) {
             ProjectOverviewContent(
                 dashboards: dashboards,
-                pinnedPreviewStore: pinnedPreviewStore
+                recentDashboards: filteredDashboards(dashboards, matching: search),
+                pinnedPreviewStore: pinnedPreviewStore,
+                recentRow: row
             )
             dashboardCollection
         }
@@ -83,7 +93,6 @@ struct DashboardHub<RowContent: View>: View {
     }
 
     private func filtered(_ dashboards: [DashboardSummary]) -> [DashboardSummary] {
-        guard !search.isEmpty else { return dashboards }
-        return dashboards.filter { $0.title.localizedCaseInsensitiveContains(search) }
+        filteredDashboards(dashboards, matching: search)
     }
 }

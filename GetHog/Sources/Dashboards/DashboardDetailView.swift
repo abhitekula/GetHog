@@ -423,6 +423,7 @@ struct DashboardDetailView: View {
                 in: tileTransition
             )
             .background(Theme.pageBackground)
+            .accessibilityIdentifier("gethog.dashboard-detail.\(dashboardID)")
             .dashboardNavigationTitle(title)
             // Same URL the "Open in PostHog" item below opens, offered to the
             // *other* device instead of this one.
@@ -623,6 +624,7 @@ struct DashboardDetailView: View {
                             webURL: tileWebURL(tile),
                             open: { store.selectedTileID = tile.id }
                         )
+                        .accessibilityIdentifier("gethog.dashboard-tile.\(tile.id)")
                         .pointerHighlight()
                         // The source half of the zoom. Registered unconditionally,
                         // including under Reduce Motion and on iPad where the

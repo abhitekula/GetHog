@@ -6,12 +6,18 @@ import Testing
 
 @Suite("Dashboard Signal Grammar")
 struct SignalGrammarDashboardTests {
-    @Test("Regular dashboard path preserves the OpenDetails selection")
-    func regularDashboardPath() {
-        #expect(DashboardNavigationPath.path(for: nil).isEmpty)
-        #expect(DashboardNavigationPath.path(for: 725_101) == [725_101])
-        #expect(DashboardNavigationPath.selection(from: []) == nil)
-        #expect(DashboardNavigationPath.selection(from: [725_101]) == 725_101)
+    @Test("Dashboard search filters recent candidates with the collection")
+    func dashboardSearchFiltersRecentCandidates() throws {
+        let data = Data(#"""
+        {"results":[
+          {"id":725101,"name":"Example App metric 33","pinned":true,"last_refresh":"2026-07-31T12:00:00Z"},
+          {"id":725102,"name":"Activation","pinned":false,"last_refresh":"2026-07-30T12:00:00Z"}
+        ]}
+        """#.utf8)
+        let page = try JSONDecoder().decode(Page<DashboardSummary>.self, from: data)
+
+        #expect(filteredDashboards(page.results, matching: "definitely-no-dashboard").isEmpty)
+        #expect(filteredDashboards(page.results, matching: "activation").map(\.id) == [725_102])
     }
 
     @Test("Overview facts separate computed and generated dashboards")

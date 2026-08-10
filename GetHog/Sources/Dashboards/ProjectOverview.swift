@@ -150,26 +150,29 @@ final class PinnedDashboardPreviewStore {
 /// dashboard's tiles cost exactly one request — the same request opening that
 /// dashboard would make, served from the same cache, so landing here and then
 /// tapping in does not pay twice.
-struct ProjectOverviewContent: View {
+struct ProjectOverviewContent<RecentRow: View>: View {
     let dashboards: [DashboardSummary]
+    let recentDashboards: [DashboardSummary]
     let pinnedPreviewStore: PinnedDashboardPreviewStore
+    @ViewBuilder let recentRow: (DashboardSummary) -> RecentRow
 
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    /// Tiles stay legible at this measured minimum.
-    private static let pinnedPreviewMinimumColumnWidth: CGFloat = 230
-    /// AX titles and chart legends need a wider measure than standard text.
-    private static let accessibilityPinnedPreviewMinimumColumnWidth: CGFloat = 390
-
     private var pinnedPreviewMinimumColumnWidth: CGFloat {
+        // Tiles stay legible at 230pt; AX titles and chart legends need the
+        // wider 390pt measure.
         dynamicTypeSize.isAccessibilitySize
-            ? Self.accessibilityPinnedPreviewMinimumColumnWidth
-            : Self.pinnedPreviewMinimumColumnWidth
+            ? 390
+            : 230
     }
 
     private var facts: DashboardOverviewFacts {
         DashboardOverviewFacts(dashboards: dashboards)
+    }
+
+    private var recentFacts: DashboardOverviewFacts {
+        DashboardOverviewFacts(dashboards: recentDashboards)
     }
 
     private var summaryTrigger: DashboardSummaryTrigger {
@@ -192,7 +195,7 @@ struct ProjectOverviewContent: View {
         VStack(alignment: .leading, spacing: Theme.Space.xl) {
             summaryScene
 
-            if !facts.recentlyComputed.isEmpty {
+            if !recentFacts.recentlyComputed.isEmpty {
                 recentSection
             }
         }
@@ -337,23 +340,11 @@ struct ProjectOverviewContent: View {
             SectionLabel(text: "Recently computed", systemImage: "clock.arrow.circlepath")
 
             VStack(spacing: Theme.Space.s) {
-                ForEach(facts.recentlyComputed) { summary in
-                    Card(padding: Theme.Space.m) {
-                        DataRow(
-                            glyph: summary.creationMode == .template
-                                ? "wand.and.stars" : "square.grid.2x2",
-                            brandGlyph: DashboardBrandAppearance.glyph(
-                                for: summary.creationMode
-                            ),
-                            tint: summary.creationMode == .template
-                                ? Theme.accentWarm : Theme.accent,
-                            title: summary.title,
-                            footnote: summary.lastRefresh.map {
-                                "Updated \($0.formatted(.relative(presentation: .named)))"
-                            },
-                            accessory: .none
+                ForEach(recentFacts.recentlyComputed) { summary in
+                    recentRow(summary)
+                        .accessibilityIdentifier(
+                            "gethog.dashboard-recent-card.\(summary.id)"
                         )
-                    }
                 }
             }
         }

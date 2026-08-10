@@ -103,16 +103,6 @@ struct DashboardListLoadScope: Hashable {
     }
 }
 
-enum DashboardNavigationPath {
-    static func path(for selection: Int?) -> [Int] {
-        selection.map { [$0] } ?? []
-    }
-
-    static func selection(from path: [Int]) -> Int? {
-        path.last
-    }
-}
-
 struct DashboardsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -138,15 +128,6 @@ struct DashboardsRoot: View {
         )
     }
 
-    /// The navigation stack is only a presentation of `OpenDetails`; it must
-    /// not become a second selection owner when this screen crosses widths.
-    private var regularPath: Binding<[Int]> {
-        Binding(
-            get: { DashboardNavigationPath.path(for: selectedID.wrappedValue) },
-            set: { selectedID.wrappedValue = DashboardNavigationPath.selection(from: $0) }
-        )
-    }
-
     private var selection: DashboardSummary? {
         selectedID.wrappedValue.flatMap { id in store.dashboards.first { $0.id == id } }
     }
@@ -166,16 +147,7 @@ struct DashboardsRoot: View {
                 // view nested in that stack could open nothing at all.
                 listChrome
                     .navigationDestination(item: selectedID) { id in
-                        if let summary = store.dashboards.first(where: { $0.id == id }) {
-                            DashboardDetailView(
-                                summary: summary,
-                                store: openDetails.dashboardStores.store(
-                                    for: id,
-                                    projectID: model.projectID
-                                )
-                            )
-                            .id("project-\(model.projectID ?? -1)-dashboard-\(id)")
-                        }
+                        dashboardDetail(id: id)
                     }
             } else {
                 regularHub
@@ -194,13 +166,13 @@ struct DashboardsRoot: View {
     }
 
     /// One regular-width stack keeps the project signal, pinned preview and
-    /// dashboard cards on one scroll surface. `regularPath` remains derived
-    /// from `OpenDetails`, so restoration and a width crossing keep the same
+    /// dashboard cards on one scroll surface. `OpenDetails` remains the only
+    /// selection owner, so restoration and a width crossing keep the same
     /// selected dashboard.
     private var regularHub: some View {
-        NavigationStack(path: regularPath) {
+        NavigationStack {
             regularLanding
-                .navigationDestination(for: Int.self) { id in
+                .navigationDestination(item: selectedID) { id in
                     dashboardDetail(id: id)
                 }
         }
@@ -279,7 +251,13 @@ struct DashboardsRoot: View {
             )
                 .id("project-\(model.projectID ?? -1)-dashboard-\(id)")
         } else {
-            EmptyView()
+            EmptyStateView(
+                title: "Dashboard unavailable",
+                systemImage: "square.grid.2x2",
+                message: "This dashboard is no longer available in the current project.",
+                actionTitle: "Back to dashboards",
+                action: { selectedID.wrappedValue = nil }
+            )
         }
     }
 
@@ -473,7 +451,7 @@ struct DashboardsRoot: View {
             footnote: dashboard.lastRefresh.map {
                 "Updated \($0.formatted(.relative(presentation: .named)))"
             },
-            accessory: .none
+            accessory: .chevron
         )
     }
 

@@ -248,6 +248,28 @@ final class MacSurfaceSweepTests: XCTestCase {
 
         for (title, rowText, name) in Self.detailFlows {
             open(title, in: app)
+            if title == "Dashboards" {
+                let row = app.buttons["gethog.dashboard-card.725101"].firstMatch
+                var scrolls = 0
+                while !row.exists && scrolls < 12 {
+                    app.scrollViews["gethog.dashboard-hub"].scroll(byDeltaX: 0, deltaY: -180)
+                    scrolls += 1
+                }
+                guard DemoLaunch.wait(for: row) else {
+                    XCTFail("Dashboards never offered gethog.dashboard-card.725101.")
+                    continue
+                }
+                row.click()
+                let detail = app.descendants(matching: .any)["gethog.dashboard-detail.725101"]
+                XCTAssertTrue(
+                    DemoLaunch.wait(for: detail),
+                    "The dashboard card did not open its matching detail root."
+                )
+                DemoLaunch.settle(app)
+                capture(app, name: "\(name)-default")
+                XCTAssertEqual(app.state, .runningForeground, "Dashboards' detail took the app down.")
+                continue
+            }
             guard let row = DemoLaunch.waitForContent(containing: rowText, in: app) else {
                 XCTFail("\(title) never offered a row containing \(rowText).")
                 continue
