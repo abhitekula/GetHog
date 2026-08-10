@@ -103,11 +103,28 @@ final class WatchPagesUITests: XCTestCase {
     func testHealthPageShowsTheWatchesAndTheErrorPulse() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "health"])
 
-        XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Metric watches"], timeout: 60))
-        XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Errors, last 24 h"], timeout: 30))
-        XCTAssertTrue(DemoLaunch.wait(for: app.descendants(matching: .any).matching(
+        let metricWatches = app.staticTexts["Metric watches"]
+        let headlineWatch = app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@", "Example daily engagement")
-        ).firstMatch, timeout: 30))
+        ).firstMatch
+        let errorsHeader = app.staticTexts["Errors, last 24 h"]
+
+        XCTAssertTrue(DemoLaunch.wait(for: metricWatches, timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(for: headlineWatch, timeout: 30))
+
+        let healthNavigation = app.navigationBars["Health"]
+        scrollUntilFullyVisible(
+            errorsHeader,
+            in: app,
+            below: healthNavigation,
+            maximumDrags: 2,
+            dragDistance: 60
+        )
+        guard DemoLaunch.wait(for: errorsHeader, timeout: 5) else {
+            return XCTFail("The Errors section was not revealed by bounded Health scrolling.")
+        }
+        XCTAssertGreaterThanOrEqual(errorsHeader.frame.minY, healthNavigation.frame.maxY)
+        XCTAssertLessThanOrEqual(errorsHeader.frame.maxY, app.frame.maxY + 1)
     }
 
     func testFlagsPageShowsTheShortlist() {
@@ -403,12 +420,14 @@ final class WatchPagesUITests: XCTestCase {
         _ element: XCUIElement,
         in app: XCUIApplication,
         below navigationBar: XCUIElement,
-        maximumDrags: Int = 3
+        maximumDrags: Int = 3,
+        dragDistance: CGFloat = 14
     ) {
         for _ in 0..<maximumDrags {
             if isFullyVisible(element, in: app, below: navigationBar) { return }
+            if element.exists, element.frame.minY < navigationBar.frame.maxY { return }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
-            let end = start.withOffset(CGVector(dx: 0, dy: -14))
+            let end = start.withOffset(CGVector(dx: 0, dy: -dragDistance))
             start.press(forDuration: 0.1, thenDragTo: end)
             _ = DemoLaunch.wait(timeout: 2) {
                 isFullyVisible(element, in: app, below: navigationBar)
