@@ -220,6 +220,153 @@ struct MenuBarHeadlineTests {
     }
 }
 
+@MainActor
+@Suite("Menu bar refresh")
+struct MacMenuBarRefreshTests {
+
+    @Test("a failed refresh preserves the stale snapshot, reports failure, and re-enables Retry")
+    func failurePreservesStaleSnapshot() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacMenuBarRefreshTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let store = SharedSnapshotStore(directory: directory)
+        let snapshot = SharedSnapshot(
+            projectID: 1_001,
+            projectName: "Example retained snapshot workspace",
+            metrics: [],
+            flags: [],
+            projectRegion: .usCloud,
+            authSessionID: Self.authSessionID,
+            capturedAt: Date(timeIntervalSince1970: 1_754_000_000)
+        )
+        try store.write(snapshot)
+        let snapshotController = MacMenuBarController(
+            store: store,
+            defaults: isolatedDefaults(),
+            authSessionID: Self.authSessionID
+        )
+        let refresh = MacMenuBarRefreshController()
+
+        await refresh.refresh(
+            publish: { false },
+            reload: { snapshotController.reload() }
+        )
+
+        #expect(snapshotController.snapshot == snapshot)
+        #expect(refresh.state == .failed)
+        #expect(!refresh.isRefreshing)
+    }
+
+    @Test("rapid refresh calls coalesce into one publication")
+    func rapidRefreshCoalesces() async {
+        let refresh = MacMenuBarRefreshController()
+        let publication = HeldPublication()
+
+        let leader = Task { @MainActor in
+            await refresh.refresh(
+                publish: { await publication.publish() },
+                reload: {}
+            )
+        }
+        await publication.waitUntilStarted()
+
+        let follower = Task { @MainActor in
+            await refresh.refresh(
+                publish: { await publication.publish() },
+                reload: {}
+            )
+        }
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(publication.callCount == 1)
+        publication.finish(returning: true)
+        await leader.value
+        await follower.value
+        #expect(publication.callCount == 1)
+    }
+
+    @Test("success clears the prior failure")
+    func successClearsFailure() async {
+        let refresh = MacMenuBarRefreshController()
+
+        await refresh.refresh(publish: { false }, reload: {})
+        #expect(refresh.state == .failed)
+
+        await refresh.refresh(publish: { true }, reload: {})
+        #expect(refresh.state == .idle)
+    }
+
+    @Test("ready without a snapshot is unsynced, while onboarding still asks to connect")
+    func emptyCopyDistinguishesSessionState() {
+        let ready = MacMenuBarEmptyPresentation.resolve(
+            phase: AppModel.Phase.ready,
+            isRuntimeDemo: false,
+            refreshState: .idle
+        )
+        #expect(ready.title == "No menu bar data yet")
+        #expect(
+            ready.message
+                == "GetHog is connected, but no menu bar data has synced yet. Try Refresh."
+        )
+        #expect(ready.isRefreshEnabled)
+
+        let onboarding = MacMenuBarEmptyPresentation.resolve(
+            phase: AppModel.Phase.onboarding,
+            isRuntimeDemo: false,
+            refreshState: .idle
+        )
+        #expect(onboarding.title == "Connect GetHog")
+        #expect(onboarding.message.contains("connect to PostHog"))
+        #expect(!onboarding.isRefreshEnabled)
+
+        let runtimeDemo = MacMenuBarEmptyPresentation.resolve(
+            phase: AppModel.Phase.ready,
+            isRuntimeDemo: true,
+            refreshState: .idle
+        )
+        #expect(runtimeDemo.title == "Menu bar data stays live-only")
+        #expect(runtimeDemo.message.lowercased().contains("demo data is not published"))
+        #expect(!runtimeDemo.isRefreshEnabled)
+    }
+
+    private static let authSessionID = UUID(
+        uuidString: "018f9000-0000-7000-8000-000000000601"
+    )!
+
+    private func isolatedDefaults(_ name: String = #function) -> UserDefaults {
+        let suite = "MacMenuBarRefreshTests.\(name).\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    @MainActor
+    private final class HeldPublication {
+        private(set) var callCount = 0
+        private var result: Bool?
+        private var continuations: [CheckedContinuation<Bool, Never>] = []
+
+        func publish() async -> Bool {
+            callCount += 1
+            if let result { return result }
+            return await withCheckedContinuation { continuations.append($0) }
+        }
+
+        func waitUntilStarted() async {
+            while callCount == 0 { await Task.yield() }
+        }
+
+        func finish(returning result: Bool) {
+            self.result = result
+            let pending = continuations
+            continuations.removeAll()
+            pending.forEach { $0.resume(returning: result) }
+        }
+    }
+}
+
 @Suite("Menu bar contract")
 struct MenuBarContractTests {
 

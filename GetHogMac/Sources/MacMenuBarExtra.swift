@@ -402,6 +402,72 @@ final class MacMenuBarFlagToggler {
 
 // MARK: - Popover
 
+@MainActor
+@Observable
+final class MacMenuBarRefreshController {
+    enum State: Equatable {
+        case idle
+        case refreshing
+        case failed
+    }
+
+    private(set) var state: State = .idle
+
+    var isRefreshing: Bool { state == .refreshing }
+
+    func refresh(
+        publish: @MainActor () async -> Bool,
+        reload: @MainActor () -> Void
+    ) async {
+        guard state != .refreshing else { return }
+        state = .refreshing
+        let published = await publish()
+        reload()
+        state = published ? .idle : .failed
+    }
+}
+
+struct MacMenuBarEmptyPresentation: Equatable {
+    let title: String
+    let message: String
+    let isRefreshEnabled: Bool
+
+    static func resolve(
+        phase: AppModel.Phase,
+        isRuntimeDemo: Bool,
+        refreshState: MacMenuBarRefreshController.State
+    ) -> Self {
+        if isRuntimeDemo {
+            return Self(
+                title: "Menu bar data stays live-only",
+                message: "Demo data is not published to the menu bar.",
+                isRefreshEnabled: false
+            )
+        }
+
+        return switch phase {
+        case .loading:
+            Self(
+                title: "Loading menu bar data",
+                message: "GetHog is checking the current connection.",
+                isRefreshEnabled: false
+            )
+        case .onboarding:
+            Self(
+                title: "Connect GetHog",
+                message: "Open GetHog and connect to PostHog to sync menu bar data.",
+                isRefreshEnabled: false
+            )
+        case .ready:
+            Self(
+                title: "No menu bar data yet",
+                message: "GetHog is connected, but no menu bar data has synced yet. Try Refresh.",
+                isRefreshEnabled: refreshState != .refreshing
+            )
+        }
+    }
+}
+
 /// The mini-dashboard (spec §4): headline metric with its sparkline, the health
 /// verdict, and quick flag toggles — every pixel of it from the snapshot file,
 /// no API call on this render path.
@@ -413,7 +479,15 @@ struct MacMenuBarPopover: View {
     let controller: MacMenuBarController
 
     @State private var toggler = MacMenuBarFlagToggler()
-    @State private var isRefreshing = false
+    @State private var refresh: MacMenuBarRefreshController
+
+    init(
+        controller: MacMenuBarController,
+        refresh: MacMenuBarRefreshController = MacMenuBarRefreshController()
+    ) {
+        self.controller = controller
+        _refresh = State(initialValue: refresh)
+    }
 
     /// The ceiling an ambient surface can honestly manage. The flags screen
     /// holds the rest, and "Open GetHog" is one click below this list.
@@ -434,6 +508,12 @@ struct MacMenuBarPopover: View {
                 }
             } else {
                 emptyState
+            }
+            if controller.snapshot != nil, refresh.state == .failed {
+                Text("Couldn't refresh. Your last synced data is still shown.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Status.criticalInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Divider()
             footer
@@ -612,13 +692,15 @@ struct MacMenuBarPopover: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text("No data yet")
+        let presentation = MacMenuBarEmptyPresentation.resolve(
+            phase: model.phase,
+            isRuntimeDemo: model.isRuntimeDemo,
+            refreshState: refresh.state
+        )
+        return VStack(alignment: .leading, spacing: Theme.Space.s) {
+            Text(presentation.title)
                 .font(.headline)
-            Text(
-                "Open GetHog and connect to PostHog; the menu bar shows your headline metric "
-                    + "after the first sync."
-            )
+            Text(presentation.message)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -632,24 +714,37 @@ struct MacMenuBarPopover: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button {
+                guard canRefresh else { return }
                 Task {
-                    isRefreshing = true
-                    _ = await model.publishWidgetSnapshot()
-                    controller.reload()
-                    isRefreshing = false
+                    await refresh.refresh(
+                        publish: { await model.publishWidgetSnapshot() },
+                        reload: { controller.reload() }
+                    )
                 }
             } label: {
-                if isRefreshing {
+                if refresh.isRefreshing {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "arrow.clockwise")
                 }
             }
-            .disabled(isRefreshing || model.phase != .ready)
+            .disabled(!canRefresh)
             .accessibilityLabel("Refresh now")
             Button("Open GetHog") { openApp(metricID: nil) }
             overflowMenu
         }
+    }
+
+    private var canRefresh: Bool {
+        guard model.phase == .ready, !model.isRuntimeDemo, !refresh.isRefreshing else {
+            return false
+        }
+        guard controller.snapshot == nil else { return true }
+        return MacMenuBarEmptyPresentation.resolve(
+            phase: model.phase,
+            isRuntimeDemo: model.isRuntimeDemo,
+            refreshState: refresh.state
+        ).isRefreshEnabled
     }
 
     /// Settings and Quit, behind one control so the footer stays three wide.
