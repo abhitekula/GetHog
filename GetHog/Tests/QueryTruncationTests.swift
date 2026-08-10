@@ -309,7 +309,7 @@ struct QueryTruncationTests {
                 authority: ResourceRequestAuthority(
                     projectID: 1,
                     region: .usCloud,
-                    authSessionID: UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
+                    authSessionID: UUID(uuidString: "018F9000-0000-7000-8000-000000000600")!
                 ),
                 window: .day,
                 search: ""
@@ -342,7 +342,7 @@ struct QueryTruncationTests {
                 authority: ResourceRequestAuthority(
                     projectID: 1,
                     region: .usCloud,
-                    authSessionID: UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
+                    authSessionID: UUID(uuidString: "018F9000-0000-7000-8000-000000000601")!
                 ),
                 window: .day,
                 search: ""
@@ -370,7 +370,7 @@ struct QueryTruncationTests {
                 authority: ResourceRequestAuthority(
                     projectID: 1,
                     region: .usCloud,
-                    authSessionID: UUID(uuidString: "10000000-0000-0000-0000-000000000003")!
+                    authSessionID: UUID(uuidString: "018F9000-0000-7000-8000-000000000602")!
                 ),
                 window: .day,
                 search: ""
@@ -847,12 +847,12 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("logs reject a cancellation-ignoring response from the superseded filter")
     func logsRejectSupersededFilterResponse() async throws {
         let previousDescriptor = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 41),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             search: "legacy"
         )
         let currentDescriptor = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 41),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             search: "current"
         )
@@ -892,7 +892,7 @@ struct AsyncResourceRequestOwnershipTests {
     )
     func logsRejectTheFilterSchedulingGap(_ dimension: LogsFilterDimension) async throws {
         let descriptor = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 44),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             search: "original"
         )
@@ -932,7 +932,7 @@ struct AsyncResourceRequestOwnershipTests {
     func logsRejectSuccessForChangedLiveAuthority(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let requestAuthority = Self.authority(projectID: 48)
+        let requestAuthority = Self.authority(projectID: 1_001)
         let liveAuthority = MutableResourceAuthority(requestAuthority)
         let descriptor = LogsRequestDescriptor(
             authority: requestAuthority,
@@ -971,7 +971,7 @@ struct AsyncResourceRequestOwnershipTests {
     func logsRejectFailureForChangedLiveAuthority(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let requestAuthority = Self.authority(projectID: 49)
+        let requestAuthority = Self.authority(projectID: 1_001)
         let liveAuthority = MutableResourceAuthority(requestAuthority)
         let descriptor = LogsRequestDescriptor(
             authority: requestAuthority,
@@ -1005,7 +1005,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("logs coalesce concurrent requests for one descriptor")
     func logsCoalesceTheSameDescriptor() async throws {
         let descriptor = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 45), window: .day, search: ""
+            authority: Self.authority(projectID: 1_001), window: .day, search: ""
         )
         let transport = DelayedResourceStoreTransport([
             .held(Self.logsReply(id: "coalesced-log", body: "One request")),
@@ -1040,7 +1040,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("logs keep a shared flight alive when its first caller cancels")
     func logsKeepSharedFlightForRemainingCaller() async throws {
         let descriptor = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 46), window: .day, search: ""
+            authority: Self.authority(projectID: 1_001), window: .day, search: ""
         )
         let transport = DelayedResourceStoreTransport([
             .cancellationAwareHeld(Self.logsReply(id: "shared-log", body: "Shared result")),
@@ -1077,7 +1077,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("a cancelled logs waiter returns while its transport is still held")
     func cancelledLogsWaiterReturnsPromptly() async throws {
         let descriptor = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 47), window: .day, search: ""
+            authority: Self.authority(projectID: 1_001), window: .day, search: ""
         )
         let transport = DelayedResourceStoreTransport([
             .held(Self.logsReply(id: "cancelled-log", body: "Must not publish")),
@@ -1140,10 +1140,10 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("logs clear synchronously when filter authority changes")
     func logsClearAtFilterBoundary() async throws {
         let old = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 43), window: .day, search: "old"
+            authority: Self.authority(projectID: 1_001), window: .day, search: "old"
         )
         let replacement = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 43), window: .lastHour, search: "old"
+            authority: Self.authority(projectID: 1_001), window: .lastHour, search: "old"
         )
         let transport = DelayedResourceStoreTransport([
             .immediate(Self.logsReply(id: "old-filter-log", body: "Old filter")),
@@ -1172,14 +1172,14 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("tracing rejects a cancellation-ignoring response from the superseded filter")
     func tracingRejectsSupersededFilterResponse() async throws {
         let previousDescriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 51),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "",
             errorsOnly: false
         )
         let currentDescriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 51),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: "checkout",
             spanName: "",
@@ -1226,7 +1226,7 @@ struct AsyncResourceRequestOwnershipTests {
     )
     func tracingRejectsTheFilterSchedulingGap(_ dimension: TracingFilterDimension) async throws {
         let descriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 54),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "original",
@@ -1271,7 +1271,7 @@ struct AsyncResourceRequestOwnershipTests {
     func tracingDropsFacetAcrossCompoundAuthorityBoundary(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let previousAuthority = Self.authority(projectID: 58)
+        let previousAuthority = Self.authority(projectID: 1_001)
         let replacementAuthority = Self.changedAuthority(previousAuthority, dimension: dimension)
         let previous = TracingRequestDescriptor(
             authority: previousAuthority,
@@ -1326,7 +1326,7 @@ struct AsyncResourceRequestOwnershipTests {
     func tracingRejectsSuccessForChangedLiveAuthority(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let requestAuthority = Self.authority(projectID: 59)
+        let requestAuthority = Self.authority(projectID: 1_001)
         let liveAuthority = MutableResourceAuthority(requestAuthority)
         let descriptor = TracingRequestDescriptor(
             authority: requestAuthority,
@@ -1368,7 +1368,7 @@ struct AsyncResourceRequestOwnershipTests {
     func tracingRejectsFailureForChangedLiveAuthority(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let requestAuthority = Self.authority(projectID: 60)
+        let requestAuthority = Self.authority(projectID: 1_001)
         let liveAuthority = MutableResourceAuthority(requestAuthority)
         let descriptor = TracingRequestDescriptor(
             authority: requestAuthority,
@@ -1405,7 +1405,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("tracing coalesces concurrent requests for one descriptor")
     func tracingCoalescesTheSameDescriptor() async throws {
         let descriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 55),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "",
@@ -1443,7 +1443,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("tracing keeps a shared flight alive when its first caller cancels")
     func tracingKeepsSharedFlightForRemainingCaller() async throws {
         let descriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 56),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "",
@@ -1483,7 +1483,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("a cancelled tracing waiter returns while its transport is still held")
     func cancelledTracingWaiterReturnsPromptly() async throws {
         let descriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 57),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "",
@@ -1521,7 +1521,7 @@ struct AsyncResourceRequestOwnershipTests {
         let store = TracingStore()
         let client = Self.client(transport)
         let descriptor = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 52),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "",
@@ -1552,7 +1552,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("tracing clears synchronously when region authority changes")
     func tracingClearsAtRegionBoundary() async throws {
         let old = TracingRequestDescriptor(
-            authority: Self.authority(projectID: 53),
+            authority: Self.authority(projectID: 1_001),
             window: .day,
             service: nil,
             spanName: "",
@@ -1560,7 +1560,7 @@ struct AsyncResourceRequestOwnershipTests {
         )
         let replacement = TracingRequestDescriptor(
             authority: ResourceRequestAuthority(
-                projectID: 53,
+                projectID: 1_001,
                 region: .euCloud,
                 authSessionID: old.authority.authSessionID
             ),
@@ -1599,12 +1599,12 @@ struct AsyncResourceRequestOwnershipTests {
     /// only on task cancellation lets the old response replace the new project.
     @Test("renders clear at a project boundary and reject the superseded response")
     func rendersRejectSupersededProjectResponse() async throws {
-        let previousProjectID = 61
-        let currentProjectID = 62
+        let previousProjectID = 1_001
+        let currentProjectID = 1_002
         let transport = DelayedResourceStoreTransport([
-            .immediate(Self.rendersReply(id: 6_100, filename: "Old baseline.mp4")),
-            .held(Self.rendersReply(id: 6_101, filename: "Old project.mp4")),
-            .held(Self.rendersReply(id: 6_201, filename: "Current project.mp4")),
+            .immediate(Self.rendersReply(id: 7_201, filename: "Old baseline.mp4")),
+            .held(Self.rendersReply(id: 7_202, filename: "Old project.mp4")),
+            .held(Self.rendersReply(id: 7_203, filename: "Current project.mp4")),
         ])
         let store = RendersStore()
         let client = Self.client(transport)
@@ -1643,7 +1643,7 @@ struct AsyncResourceRequestOwnershipTests {
 
         await transport.release(2)
         #expect(await replacement.finishes())
-        #expect(store.exports.map(\.id) == [6_201])
+        #expect(store.exports.map(\.id) == [7_203])
     }
 
     /// Production mutation caught: relying on SwiftUI's authority observer
@@ -1656,7 +1656,7 @@ struct AsyncResourceRequestOwnershipTests {
         let authority = try #require(Self.authority(from: model))
         let descriptor = RendersRequestDescriptor(authority: authority)
         let transport = DelayedResourceStoreTransport([
-            .held(Self.rendersReply(id: 6_301, filename: "Signed out.mp4")),
+            .held(Self.rendersReply(id: 7_204, filename: "Signed out.mp4")),
         ])
         let store = RendersStore()
         let client = Self.client(transport)
@@ -1690,11 +1690,11 @@ struct AsyncResourceRequestOwnershipTests {
     func rendersRejectSuccessForChangedLiveAuthority(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let requestAuthority = Self.authority(projectID: 63)
+        let requestAuthority = Self.authority(projectID: 1_001)
         let liveAuthority = MutableResourceAuthority(requestAuthority)
         let descriptor = RendersRequestDescriptor(authority: requestAuthority)
         let transport = DelayedResourceStoreTransport([
-            .held(Self.rendersReply(id: 6_302, filename: "Must not publish.mp4")),
+            .held(Self.rendersReply(id: 7_301, filename: "Must not publish.mp4")),
         ])
         let store = RendersStore()
         let pending = BoundedStoreLoad.start {
@@ -1725,7 +1725,7 @@ struct AsyncResourceRequestOwnershipTests {
     func rendersRejectFailureForChangedLiveAuthority(
         _ dimension: ResourceAuthorityDimension
     ) async throws {
-        let requestAuthority = Self.authority(projectID: 64)
+        let requestAuthority = Self.authority(projectID: 1_001)
         let liveAuthority = MutableResourceAuthority(requestAuthority)
         let descriptor = RendersRequestDescriptor(authority: requestAuthority)
         let transport = DelayedResourceStoreTransport([
@@ -1755,13 +1755,13 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("renders keep same-scope rows when refresh fails")
     func rendersKeepRowsAcrossRefreshFailure() async {
         let transport = DelayedResourceStoreTransport([
-            .immediate(Self.rendersReply(id: 7_001, filename: "Kept render.mp4")),
+            .immediate(Self.rendersReply(id: 7_302, filename: "Kept render.mp4")),
             .immediate(.unavailable("Synthetic renders refresh failed")),
         ])
         let store = RendersStore()
         let client = Self.client(transport)
         let descriptor = RendersRequestDescriptor(
-            authority: Self.authority(projectID: 71)
+            authority: Self.authority(projectID: 1_001)
         )
 
         let baseline = BoundedStoreLoad.start {
@@ -1774,7 +1774,7 @@ struct AsyncResourceRequestOwnershipTests {
         }
         #expect(await refresh.finishes())
 
-        #expect(store.exports.map(\.id) == [7_001])
+        #expect(store.exports.map(\.id) == [7_302])
         #expect(store.loadedAt == loadedAt)
         guard case .failed(let message) = store.state else {
             Issue.record("Expected a retryable Renders failure beside the carried render.")
@@ -1787,12 +1787,12 @@ struct AsyncResourceRequestOwnershipTests {
     /// one credential's render library into its same-project replacement.
     @Test("renders clear synchronously when authentication authority changes")
     func rendersClearAtAuthenticationBoundary() async throws {
-        let old = RendersRequestDescriptor(authority: Self.authority(projectID: 72))
+        let old = RendersRequestDescriptor(authority: Self.authority(projectID: 1_001))
         let replacement = RendersRequestDescriptor(
             authority: ResourceRequestAuthority(
-                projectID: 72,
+                projectID: 1_001,
                 region: .usCloud,
-                authSessionID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+                authSessionID: UUID(uuidString: "018F2000-0000-7000-8000-000000000601")!
             )
         )
         let transport = DelayedResourceStoreTransport([
@@ -1822,7 +1822,7 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("renders coalesce concurrent requests for one descriptor")
     func rendersCoalesceTheSameDescriptor() async throws {
         let descriptor = RendersRequestDescriptor(
-            authority: Self.authority(projectID: 73)
+            authority: Self.authority(projectID: 1_001)
         )
         let transport = DelayedResourceStoreTransport([
             .held(Self.rendersReply(id: 7_301, filename: "Coalesced.mp4")),
@@ -1855,11 +1855,11 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("renders keep a shared flight alive when its first caller cancels")
     func rendersKeepSharedFlightForRemainingCaller() async throws {
         let descriptor = RendersRequestDescriptor(
-            authority: Self.authority(projectID: 74)
+            authority: Self.authority(projectID: 1_001)
         )
         let transport = DelayedResourceStoreTransport([
             .cancellationAwareHeld(Self.rendersReply(id: 7_401, filename: "Shared.mp4")),
-            .immediate(Self.rendersReply(id: 7_402, filename: "Duplicate.mp4")),
+            .immediate(Self.rendersReply(id: 7_403, filename: "Duplicate.mp4")),
         ])
         let store = RendersStore()
         let client = Self.client(transport)
@@ -1892,10 +1892,10 @@ struct AsyncResourceRequestOwnershipTests {
     @Test("a cancelled renders waiter returns while its transport is still held")
     func cancelledRendersWaiterReturnsPromptly() async throws {
         let descriptor = RendersRequestDescriptor(
-            authority: Self.authority(projectID: 75)
+            authority: Self.authority(projectID: 1_001)
         )
         let transport = DelayedResourceStoreTransport([
-            .held(Self.rendersReply(id: 7_501, filename: "Must not publish.mp4")),
+            .held(Self.rendersReply(id: 7_405, filename: "Must not publish.mp4")),
         ])
         let store = RendersStore()
         let client = Self.client(transport)
@@ -1929,7 +1929,7 @@ struct AsyncResourceRequestOwnershipTests {
         ResourceRequestAuthority(
             projectID: projectID,
             region: .usCloud,
-            authSessionID: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+            authSessionID: UUID(uuidString: "018F2000-0000-7000-8000-000000000602")!
         )
     }
 
@@ -1954,7 +1954,7 @@ struct AsyncResourceRequestOwnershipTests {
             ResourceRequestAuthority(
                 projectID: authority.projectID,
                 region: authority.region,
-                authSessionID: UUID(uuidString: "99999999-AAAA-BBBB-CCCC-DDDDDDDDDDDD")!
+                authSessionID: UUID(uuidString: "018F2000-0000-7000-8000-000000000603")!
             )
         }
     }
