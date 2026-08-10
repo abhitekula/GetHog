@@ -481,6 +481,29 @@ final class VisionWindowTests: XCTestCase {
         return candidates.first(where: \.exists)
     }
 
+    /// A restored recording window mounts before bootstrap has supplied its
+    /// client and authority scope. The same mounted destination must resume
+    /// loading when that session arrives, rather than staying on its spinner.
+    func testSoloRecordingWindowLoadsDeterministicSession() {
+        let app = DemoLaunch.launch(
+            environment: [
+                "GETHOG_SOLO_RECORDING": "018f1000-0000-7000-8000-000000000001",
+            ]
+        )
+
+        guard DemoLaunch.wait(for: app.navigationBars["Alex Example"].firstMatch) else {
+            return XCTFail("The solo recording window did not load Alex Example.")
+        }
+
+        let replay = app.buttons["Session replay"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 120, until: {
+                replay.exists && replay.isEnabled
+            }),
+            "The loaded solo recording never enabled its replay control."
+        )
+    }
+
     func testDashboardTearsOffIntoItsOwnWindow() {
         let app = DemoLaunch.launch()
         let analyzeSection = VisionSidebar.section("Analyze", in: app)
