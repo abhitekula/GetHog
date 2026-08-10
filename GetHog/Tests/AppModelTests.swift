@@ -608,6 +608,28 @@ struct AppModelTests {
         #expect(snapshotStore.pendingFlagWrite() == nil)
     }
 
+    @Test("widget flag write names the catalog fallback when a 403 omits its scope")
+    func widgetFlagWriteUsesFeatureFlagScopeFallback() async throws {
+        let transport = ScriptedTransport([
+            (200, meJSON),
+            (403, #"{"detail":"Synthetic permission refusal"}"#),
+        ])
+        let model = AppModel(store: InMemoryTokenStore(), transport: transport)
+        try await model.connect(key: "synthetic-widget-scope-key", region: .usCloud)
+
+        let outcome = await model.setFlag(id: 71_403, active: true)
+        let message: String
+        switch outcome {
+        case .changed:
+            Issue.record("The synthetic 403 was reported as a successful flag write.")
+            return
+        case .failed(let failure):
+            message = failure
+        }
+
+        #expect(message.contains("feature_flag:write"))
+    }
+
     @Test("stale and legacy pending widget writes are discarded without a PATCH")
     func pendingWidgetWriteRejectsUnprovenScope() async throws {
         let (snapshotStore, directory) = makeSnapshotStore()

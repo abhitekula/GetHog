@@ -22,9 +22,12 @@ struct APIKeyScopeGuidanceTests {
         #expect(descriptors == APIKeyScopeGuidance.optionalWriteActions(for: .fullClient))
     }
 
-    @Test("Apple TV advertises no write action its read-only shell cannot perform")
-    func appleTVHasNoOptionalWrites() {
-        #expect(APIKeyScopeGuidance.optionalWriteActions(for: .appleTV).isEmpty)
+    @Test("Apple TV advertises only the write action its shell can perform")
+    func appleTVHasOnlyFeatureFlagWrites() {
+        #expect(
+            APIKeyScopeGuidance.optionalWriteActions(for: .appleTV).map(\.scope)
+                == ["feature_flag:write"]
+        )
     }
 
     @Test("locked resource recovery falls back to the same core read scopes")

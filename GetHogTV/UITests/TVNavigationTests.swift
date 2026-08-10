@@ -84,6 +84,74 @@ final class TVNavigationTests: XCTestCase {
 }
 
 @MainActor
+final class TVScopeGuidanceUITests: XCTestCase {
+    func testSettingsRendersOnlyTheWriteScopeTVCanUse() {
+        let app = DemoLaunch.launch()
+        TVSidebar.select("Settings", in: app)
+        XCTAssertTrue(DemoLaunch.wait(for: app.buttons["Sign out"], timeout: 60))
+
+        let requiredScope = "feature_flag:write"
+        let unavailableScopes = [
+            "alert:write",
+            "annotation:write",
+            "error_tracking:write",
+            "experiment:write",
+            "survey:write",
+        ]
+        let requiredRow = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@",
+                requiredScope,
+                requiredScope
+            )
+        ).firstMatch
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: requiredRow, timeout: 60),
+            "TV Settings did not render the scope for its live feature-flag toggle."
+        )
+        for scope in unavailableScopes {
+            XCTAssertEqual(
+                app.descendants(matching: .any).matching(
+                    NSPredicate(
+                        format: "label CONTAINS %@ OR value CONTAINS %@",
+                        scope,
+                        scope
+                    )
+                ).count,
+                0,
+                "TV Settings advertised the unavailable \(scope) action."
+            )
+        }
+
+        // Move into the Settings list and retain the first frame in which the
+        // complete projected row is customer-visible, rather than accepting a
+        // partially clipped accessibility match as rendered evidence.
+        TVRemote.press(.right)
+        let visibleFrame = app.windows.firstMatch.frame.insetBy(dx: 16, dy: 16)
+        var isFullyVisible = requiredRow.isHittable
+            && visibleFrame.contains(requiredRow.frame)
+        var remainingFocusMoves = 16
+        while !isFullyVisible && remainingFocusMoves > 0 {
+            TVRemote.press(.down)
+            isFullyVisible = DemoLaunch.wait(timeout: 1) {
+                requiredRow.isHittable && visibleFrame.contains(requiredRow.frame)
+            }
+            remainingFocusMoves -= 1
+        }
+        XCTAssertTrue(
+            isFullyVisible,
+            "The complete feature-flag scope row never became visible on screen."
+        )
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "TV Settings feature flag write scope"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+}
+
+@MainActor
 final class TVHogQLFocusTests: XCTestCase {
     private static let dashboardID = "725102"
 

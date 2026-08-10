@@ -31,6 +31,11 @@ struct APIKeyScopeContractTests {
                 scope: SetScopedFeatureFlagIntent.requiredWriteScope
             ),
             Contract(
+                consumer: "app model",
+                action: .featureFlags,
+                scope: AppModel.requiredFlagWriteScope
+            ),
+            Contract(
                 consumer: "alerts",
                 action: .alerts,
                 scope: AlertWriteController().requiredWriteScope
@@ -57,8 +62,30 @@ struct APIKeyScopeContractTests {
             ),
         ]
 
-        #expect(Set(contracts.map(\.action)) == Set(APIKeyScopeGuidance.OptionalWriteAction.allCases))
-        #expect(Set(contracts.map(\.consumer)).count == contracts.count)
+        // This is intentionally a per-consumer inventory, not a Set of action
+        // kinds. Three independent feature-flag writers share one descriptor;
+        // collapsing them would let any one disappear while coverage stayed
+        // green because `.featureFlags` was still present.
+        #expect(contracts.map(\.consumer) == [
+            "flag controller",
+            "flag intent",
+            "app model",
+            "alerts",
+            "annotations",
+            "error tracking",
+            "experiments",
+            "surveys",
+        ])
+        #expect(contracts.map(\.action) == [
+            .featureFlags,
+            .featureFlags,
+            .featureFlags,
+            .alerts,
+            .annotations,
+            .errorTracking,
+            .experiments,
+            .surveys,
+        ])
 
         for contract in contracts {
             #expect(

@@ -128,13 +128,14 @@ public enum APIKeyScopeGuidance {
     }
 
     /// Granted only when a person intends to perform one of the actions the
-    /// current shell can actually execute. Apple TV is a read-only shell.
+    /// current shell can actually execute. Apple TV exposes the live flag
+    /// toggle but none of the other five write surfaces.
     public static func optionalWriteActions(for surface: ClientSurface) -> [Descriptor] {
         switch surface {
         case .fullClient:
             OptionalWriteAction.allCases.map(optionalWriteDescriptor(for:))
         case .appleTV:
-            []
+            [optionalWriteDescriptor(for: .featureFlags)]
         }
     }
 

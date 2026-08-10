@@ -1391,6 +1391,12 @@ final class WatchModel {
 
     // MARK: - Flag writes
 
+    /// Watch owns a direct PATCH path, so its recovery contract must move with
+    /// the same named catalog descriptor as the full client's flag writers.
+    static var requiredFlagWriteScope: String {
+        APIKeyScopeGuidance.optionalWriteDescriptor(for: .featureFlags).scope
+    }
+
     /// Returns `nil` on success, or the sentence to show.
     ///
     /// The confirm dialog and the device-owner gate have both already run by
@@ -1413,6 +1419,15 @@ final class WatchModel {
                 for: PostHogAPI.setFlagActive(projectID: projectID, flagID: id, active: active)
             )
         } catch {
+            if let posthog = error as? PostHogError,
+               case .forbidden(missingScope: nil, detail: let detail) = posthog {
+                let said = detail.map { " PostHog said: \($0)" } ?? ""
+                return """
+                    PostHog refused the flag change and didn't say which permission was missing.\
+                    \(said) If your key is missing the \(Self.requiredFlagWriteScope) scope, \
+                    adding it may fix this; otherwise ask an organization admin to check your role.
+                    """
+            }
             return (error as? PostHogError)?.errorDescription
                 ?? "PostHog refused the change."
         }

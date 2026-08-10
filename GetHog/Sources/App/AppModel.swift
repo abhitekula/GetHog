@@ -797,6 +797,13 @@ final class AppModel {
     /// number from the screen it opens would make both of them untrustworthy.
     static let snapshotIngestionWindow: IngestionWarningWindow = .sevenDays
 
+    /// The out-of-process widget and menu-bar hand-off owns the same feature-
+    /// flag mutation as the on-screen controller. Keep its unnamed-403 fallback
+    /// linked to the catalog rather than retaining another scope spelling.
+    static var requiredFlagWriteScope: String {
+        APIKeyScopeGuidance.optionalWriteDescriptor(for: .featureFlags).scope
+    }
+
     // The tile-to-metric reduction lives in the kit, as
     // `SharedSnapshot.Metric.init?(tile:dashboardID:)`. It was duplicated
     // here, and a rule with two copies is a rule that can disagree with
@@ -878,6 +885,17 @@ final class AppModel {
                 for: PostHogAPI.setFlagActive(projectID: project.id, flagID: id, active: active)
             )
         } catch {
+            if let posthog = error as? PostHogError,
+               case .forbidden(missingScope: nil, detail: let detail) = posthog {
+                let said = detail.map { " PostHog said: \($0)" } ?? ""
+                return .failed(
+                    """
+                    PostHog refused the flag change and didn't say which permission was missing.\
+                    \(said) If your key is missing the \(Self.requiredFlagWriteScope) scope, \
+                    adding it may fix this; otherwise ask an organization admin to check your role.
+                    """
+                )
+            }
             return .failed(error.localizedDescription)
         }
         await publishWidgetSnapshot()

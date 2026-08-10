@@ -876,6 +876,31 @@ struct WatchModelTests {
         #expect(store.loadOrNil()?.flag(id: 1)?.active == true)
     }
 
+    @Test("flag write names the catalog fallback when a 403 omits its scope")
+    func setFlagUsesFeatureFlagScopeFallback() async {
+        #expect(
+            WatchModel.requiredFlagWriteScope
+                == APIKeyScopeGuidance.optionalWriteDescriptor(for: .featureFlags).scope
+        )
+        let model = WatchFixtures.model(
+            transport: RouteTransport(routes: WatchFixtures.fullRefreshRoutes(
+                extra: [
+                    .init(
+                        pathContains: "/feature_flags/2/",
+                        body: #"{"detail":"Synthetic permission refusal"}"#,
+                        status: 403
+                    ),
+                ]
+            )),
+            store: WatchFixtures.tempStore()
+        )
+        await model.refresh()
+
+        let failure = await model.setFlag(id: 2, active: true)
+
+        #expect(failure?.contains("feature_flag:write") == true)
+    }
+
     @Test("a fresh snapshot throttles the refresh away, and still has a trend to draw")
     func freshSnapshotThrottlesRefresh() async throws {
         let store = WatchFixtures.tempStore()
