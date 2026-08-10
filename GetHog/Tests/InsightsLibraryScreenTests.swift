@@ -87,6 +87,86 @@ private actor HogQLResultTransport: HTTPTransport {
     }
 }
 
+/// Succeeds once, then holds a replacement request until the test releases it
+/// as a failure. The suspension exposes the store's published state while a
+/// new filter or project owns the in-flight request.
+private actor SuspendedInsightReplacementTransport: HTTPTransport {
+    private var requestCount = 0
+    private var secondRequestWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseSecondRequest: CheckedContinuation<Void, Never>?
+    private var shouldFailSecondRequest = false
+
+    func waitForSecondRequest() async {
+        if requestCount >= 2 { return }
+        await withCheckedContinuation { secondRequestWaiters.append($0) }
+    }
+
+    func failSecondRequest() {
+        if let releaseSecondRequest {
+            releaseSecondRequest.resume()
+            self.releaseSecondRequest = nil
+        } else {
+            shouldFailSecondRequest = true
+        }
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let url = try #require(request.url)
+        requestCount += 1
+        if requestCount == 1 {
+            let body = #"""
+            {"count":1,"next":null,"previous":null,"results":[
+              {"id":101,"name":"Project A insight",
+               "query":{"source":{"kind":"TrendsQuery"}}}
+            ]}
+            """#
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(
+                    url: url, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!
+            )
+        }
+
+        let waiters = secondRequestWaiters
+        secondRequestWaiters = []
+        waiters.forEach { $0.resume() }
+        if !shouldFailSecondRequest {
+            await withCheckedContinuation { releaseSecondRequest = $0 }
+        }
+        throw URLError(.cannotConnectToHost)
+    }
+}
+
+private struct FailingInsightTransport: HTTPTransport {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        throw URLError(.cannotConnectToHost)
+    }
+}
+
+/// Signals once the request has suspended, then relies on cooperative task
+/// cancellation to release it. This distinguishes cancellation control flow
+/// from a transport failure without sleeps in the test itself.
+private actor SuspendedCancellationTransport: HTTPTransport {
+    private var started = false
+    private var startedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { startedWaiters.append($0) }
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        started = true
+        let waiters = startedWaiters
+        startedWaiters = []
+        waiters.forEach { $0.resume() }
+
+        try await Task.sleep(for: .seconds(60))
+        throw URLError(.timedOut)
+    }
+}
+
 private func client(_ transport: some HTTPTransport) -> PostHogClient {
     PostHogClient(
         auth: PersonalKeyAuthProvider(key: "phx_test", region: .usCloud),
@@ -205,6 +285,140 @@ struct InsightsLibraryScreenTests {
         #expect(InsightsRequest(favoritesOnly: true).isFiltering)
     }
 
+    @Test("a replacement filter withdraws old rows and provenance before suspending")
+    func filterReplacementWithdrawsPublishedRows() async {
+        let transport = SuspendedInsightReplacementTransport()
+        let store = InsightsStore()
+        let api = client(transport)
+        let original = InsightsRequest()
+        let replacement = InsightsRequest(search: "checkout")
+
+        await store.load(
+            client: api,
+            projectID: 1,
+            request: original,
+            projectName: "Project A"
+        )
+        #expect(store.insights.map(\.id) == [101])
+        #expect(store.loadedProjectID == 1)
+        #expect(store.loadedRequest == original)
+        #expect(store.loadedProjectName == "Project A")
+
+        let load = Task { @MainActor in
+            await store.load(
+                client: api,
+                projectID: 1,
+                request: replacement,
+                projectName: "Project A"
+            )
+        }
+        await transport.waitForSecondRequest()
+
+        #expect(store.insights.isEmpty)
+        #expect(store.loadedProjectID == nil)
+        #expect(store.loadedRequest == nil)
+        #expect(store.loadedProjectName == nil)
+        #expect(!store.publishes(projectID: 1, request: replacement))
+
+        await transport.failSecondRequest()
+        await load.value
+        #expect(store.failure != nil)
+        #expect(store.insights.isEmpty)
+        #expect(store.loadedRequest == nil)
+    }
+
+    @Test("a failed project replacement cannot publish the previous project identity")
+    func projectReplacementFailureWithdrawsPublishedRows() async {
+        let transport = SuspendedInsightReplacementTransport()
+        let store = InsightsStore()
+        let api = client(transport)
+        let request = InsightsRequest()
+
+        await store.load(
+            client: api,
+            projectID: 1,
+            request: request,
+            projectName: "Project A"
+        )
+        let load = Task { @MainActor in
+            await store.load(
+                client: api,
+                projectID: 2,
+                request: request,
+                projectName: "Project B"
+            )
+        }
+        await transport.waitForSecondRequest()
+
+        #expect(store.insights.isEmpty)
+        #expect(store.loadedProjectID == nil)
+        #expect(store.loadedProjectName == nil)
+        #expect(!store.publishes(projectID: 2, request: request))
+
+        await transport.failSecondRequest()
+        await load.value
+        #expect(store.failure != nil)
+        #expect(store.loadedProjectID == nil)
+        #expect(store.loadedProjectName == nil)
+    }
+
+    @Test("a first-page failure is visible only to the project and filter that produced it")
+    func firstPageFailureHasScope() async {
+        let store = InsightsStore()
+        let failedRequest = InsightsRequest(search: "checkout")
+
+        await store.load(
+            client: client(FailingInsightTransport()),
+            projectID: 1,
+            request: failedRequest
+        )
+
+        #expect(store.failure != nil)
+        #expect(store.failure(projectID: 1, request: failedRequest) != nil)
+        // Models the debounce interval: controls already answer a new request,
+        // while that request has not entered `store.load` yet.
+        #expect(store.failure(projectID: 1, request: InsightsRequest(search: "funnel")) == nil)
+        #expect(store.failure(projectID: 2, request: failedRequest) == nil)
+    }
+
+    @Test("cooperative first-page cancellation does not become a visible failure")
+    func cancelledFirstPageHasNoFailure() async {
+        let transport = SuspendedCancellationTransport()
+        let store = InsightsStore()
+        let request = InsightsRequest(search: "superseded")
+        let load = Task { @MainActor in
+            await store.load(
+                client: client(transport),
+                projectID: 1,
+                request: request
+            )
+        }
+
+        await transport.waitUntilStarted()
+        load.cancel()
+        await load.value
+
+        #expect(store.failure == nil)
+        #expect(store.failure(projectID: 1, request: request) == nil)
+        #expect(!store.isLoading)
+    }
+
+    @Test("compact selection is withdrawn synchronously outside the published scope")
+    func compactSelectionRequiresPublishedScope() {
+        #expect(
+            InsightsSelectionAuthority.current(
+                selectedID: 101,
+                publishesCurrentScope: true
+            ) == 101
+        )
+        #expect(
+            InsightsSelectionAuthority.current(
+                selectedID: 101,
+                publishesCurrentScope: false
+            ) == nil
+        )
+    }
+
     // MARK: - Presentation
 
     /// Starred first, and the rest in the order the server sent them — a
@@ -237,6 +451,73 @@ struct InsightsLibraryScreenTests {
         // No summary at all before anything has loaded, rather than "0 insights"
         // over a skeleton.
         #expect(InsightsStore().coverageSummary == nil)
+    }
+
+    @Test("overview ranks loaded kinds, including unknown query shapes")
+    func overviewKindGroups() throws {
+        let insights = try JSONDecoder().decode(
+            [Insight].self,
+            from: Data(#"""
+            [
+              {"id":1,"name":"Created trend","favorited":true,
+               "created_at":"2026-01-04T12:00:00Z",
+               "query":{"source":{"kind":"TrendsQuery"}}},
+              {"id":2,"name":"Newest trend","favorited":false,
+               "last_modified_at":"2026-01-03T12:00:00Z",
+               "query":{"source":{"kind":"TrendsQuery"}}},
+              {"id":3,"name":"Unknown shape","favorited":true,
+               "last_modified_at":"2026-01-02T12:00:00Z",
+               "query":{"source":{"kind":"SyntheticQuery"}}}
+            ]
+            """#.utf8)
+        )
+
+        let facts = InsightOverviewFacts(
+            insights: insights,
+            total: 9,
+            hasMore: true,
+            isFiltering: false
+        )
+
+        #expect(facts.loadedCount == 3)
+        #expect(facts.favoriteCount == 2)
+        #expect(facts.kindCount == 2)
+        #expect(facts.kindGroups.map(\.title) == ["Trends", "Other"])
+        #expect(facts.kindGroups.map(\.count) == [2, 1])
+        #expect(facts.kindGroups.first?.newest.id == 1)
+        #expect(facts.recentlyEdited.map(\.id) == [2, 3])
+        #expect(facts.coverageSummary == "Showing 3 of 9 insights.")
+        #expect(facts.qualifiesMetricsAsLoaded)
+    }
+
+    @Test("overview labels filtered rows as loaded even when every match arrived")
+    func overviewFilteredScope() throws {
+        let insight = try JSONDecoder().decode(
+            Insight.self,
+            from: Data(#"""
+            {"id":7,"name":"Only match","query":{"source":{"kind":"FunnelsQuery"}}}
+            """#.utf8)
+        )
+        let facts = InsightOverviewFacts(
+            insights: [insight],
+            total: 1,
+            hasMore: false,
+            isFiltering: true
+        )
+
+        #expect(facts.coverageSummary == "1 matching insight.")
+        #expect(facts.qualifiesMetricsAsLoaded)
+    }
+
+    @Test("overview accessibility says the same loaded count as the visible kind row")
+    func overviewKindAccessibilityIncludesCount() {
+        #expect(
+            InsightOverviewAccessibility.spokenSummary(
+                title: "Trends",
+                subtitle: "3 insights loaded",
+                footnote: "Newest edited yesterday"
+            ) == "Trends, 3 insights loaded, Newest edited yesterday"
+        )
     }
 
     // MARK: - Result readiness

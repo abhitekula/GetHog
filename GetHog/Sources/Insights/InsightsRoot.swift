@@ -46,14 +46,44 @@ struct InsightsRoot: View {
         )
     }
 
+    /// Compact navigation must stop being driven by an old project/filter id
+    /// in the same render that the live scope changes. Gating only the detail's
+    /// seed is too late: a non-nil destination can still fetch that id against
+    /// the replacement project.
+    private var currentScopeSelectedID: Binding<Int?> {
+        Binding(
+            get: {
+                InsightsSelectionAuthority.current(
+                    selectedID: selectedID.wrappedValue,
+                    publishesCurrentScope: publishesCurrentScope
+                )
+            },
+            set: { selectedID.wrappedValue = $0 }
+        )
+    }
+
     private var selected: Insight? {
-        selectedID.wrappedValue.flatMap { id in store.insights.first { $0.id == id } }
+        guard publishesCurrentScope else { return nil }
+        return selectedID.wrappedValue.flatMap { id in
+            store.insights.first { $0.id == id }
+        }
     }
 
     /// The three filters as one value, so `.task(id:)` fires once when two of
     /// them change together rather than racing two reloads against each other.
     private var request: InsightsRequest {
         InsightsRequest(search: search, kind: kind, favoritesOnly: favoritesOnly)
+    }
+
+    /// The screen may change authority one render before its replacement task
+    /// begins. Gate every row-derived surface against committed provenance so
+    /// that frame cannot relabel old rows with the new project or filters.
+    private var publishesCurrentScope: Bool {
+        store.publishes(projectID: model.projectID, request: request)
+    }
+
+    private var currentScopeFailure: LoadFailure? {
+        store.failure(projectID: model.projectID, request: request)
     }
 
     private var usesHostNavigation: Bool {
@@ -68,7 +98,7 @@ struct InsightsRoot: View {
                 // driven by the *container's* path, which this screen can
                 // neither read nor write, so an insight open at one width would
                 // be invisible at the other.
-                .navigationDestination(item: selectedID) { id in
+                .navigationDestination(item: currentScopeSelectedID) { id in
                     SavedInsightDetailView(
                         identifier: String(id),
                         seed: store.insights.first { $0.id == id }
@@ -123,13 +153,14 @@ struct InsightsRoot: View {
             ) {
                 Task { await model.refreshCapabilities() }
             }
+        } else if !publishesCurrentScope {
+            pendingScopeState
         } else if store.insights.isEmpty {
             emptyState
         } else {
-            EmptyStateView(
-                title: "Pick an insight",
-                systemImage: "chart.xyaxis.line",
-                message: store.coverageSummary
+            InsightsOverview(
+                store: store,
+                selection: selectedID
             )
         }
     }
@@ -173,6 +204,12 @@ struct InsightsRoot: View {
                 }
                 await load()
             }
+            .onChange(of: model.projectID) { _, _ in
+                // An insight id is project-scoped. Keeping a compact push alive
+                // across a switch could ask Project B for Project A's id before
+                // the replacement list has committed.
+                selectedID.wrappedValue = nil
+            }
     }
 
     /// One value so a change to the project or to any filter re-runs exactly
@@ -195,7 +232,9 @@ struct InsightsRoot: View {
             ) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let failure = store.failure, store.insights.isEmpty {
+        } else if !publishesCurrentScope {
+            pendingScopeState
+        } else if let failure = currentScopeFailure, store.insights.isEmpty {
             LoadFailureState(title: "Couldn't load insights", failure: failure) {
                 Task { await load() }
             }
@@ -203,6 +242,22 @@ struct InsightsRoot: View {
             emptyState
         } else {
             rows
+        }
+    }
+
+    /// The current authority has not published a valid first page yet. This is
+    /// intentionally distinct from a successful empty result, whose provenance
+    /// is committed and therefore flows into `emptyState` above.
+    @ViewBuilder
+    private var pendingScopeState: some View {
+        if let failure = currentScopeFailure, !store.isLoading {
+            LoadFailureState(title: "Couldn't load insights", failure: failure) {
+                Task { await load() }
+            }
+        } else {
+            ProgressView("Loading insights…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.pageBackground)
         }
     }
 
@@ -415,7 +470,7 @@ struct InsightsRoot: View {
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Ink.secondary)
                 }
-            } else if let failure = store.failure, !store.insights.isEmpty {
+            } else if let failure = currentScopeFailure, !store.insights.isEmpty {
                 // A failed *next* page, with rows already on screen. Stated
                 // here rather than replacing the list, which would throw away
                 // 50 good insights because the 51st did not arrive.
@@ -442,11 +497,237 @@ struct InsightsRoot: View {
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID, request: request)
+        await store.load(
+            client: client,
+            projectID: projectID,
+            request: request,
+            projectName: model.selectedProject?.name
+        )
     }
 
     private func loadMore() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.loadMore(client: client, projectID: projectID)
     }
+}
+
+/// What the regular-width detail pane shows before an insight is picked.
+///
+/// The library is paged and can also be filtered, so every aggregate here is
+/// scoped to the rows already loaded. Nothing on this surface triggers a query
+/// or computes an insight result; its only actions select real rows the sidebar
+/// is already holding.
+private struct InsightsOverview: View {
+    let store: InsightsStore
+    @Binding var selection: Int?
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var facts: InsightOverviewFacts {
+        InsightOverviewFacts(
+            insights: store.insights,
+            total: store.total,
+            hasMore: store.hasMore,
+            isFiltering: store.loadedRequest?.isFiltering ?? false
+        )
+    }
+
+    var body: some View {
+        PageScaffold(spacing: Theme.Space.xl) {
+            summaryScene
+            kindsSection
+            recentlyEditedSection
+            FreshnessLabel(date: store.loadedAt)
+        }
+        .accessibilityIdentifier("gethog.insights-overview")
+    }
+
+    // MARK: - Summary
+
+    private var summaryScene: some View {
+        Card(accent: Theme.SignalChrome.teal) {
+            summaryLayout
+        }
+        // A real accessibility container, not an invisible geometry anchor:
+        // descendants keep their labels while the summary exposes the card's
+        // rendered frame to the focused regular-width visual contract.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("gethog.signal-summary.insights")
+        .signalConfirmation(trigger: store.loadedAt)
+    }
+
+    @ViewBuilder
+    private var summaryLayout: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            compactSummary
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Theme.Space.xxl) {
+                    libraryIdentity
+                        .frame(maxWidth: 320, alignment: .leading)
+                    libraryMetrics
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                compactSummary
+            }
+        }
+    }
+
+    private var compactSummary: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.l) {
+            libraryIdentity
+            SignalRule(mark: .dashboard)
+            libraryMetrics
+        }
+    }
+
+    private var libraryIdentity: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            Text(store.loadedProjectName ?? "PostHog")
+                .font(.largeTitle.weight(.semibold))
+
+            Text(facts.coverageSummary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Ink.secondary)
+        }
+    }
+
+    private var libraryMetrics: some View {
+        StatStrip(stacksAtAccessibilitySizes: true) {
+            MetricTile(
+                label: facts.qualifiesMetricsAsLoaded ? "Loaded insights" : "Insights",
+                value: "\(facts.loadedCount)",
+                compact: true
+            )
+            MetricTile(
+                label: facts.qualifiesMetricsAsLoaded ? "Loaded favorites" : "Favorites",
+                value: "\(facts.favoriteCount)",
+                compact: true
+            )
+            MetricTile(
+                label: facts.qualifiesMetricsAsLoaded ? "Loaded kinds" : "Kinds",
+                value: "\(facts.kindCount)",
+                compact: true
+            )
+        }
+        .padding(.horizontal, -Theme.Space.l)
+    }
+
+    // MARK: - Groups
+
+    private var kindsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            SectionLabel(text: "Kinds represented", systemImage: "chart.bar.xaxis")
+
+            Text("Among the \(facts.loadedCount) insights loaded. Open the newest of each kind.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Ink.secondary)
+
+            VStack(spacing: Theme.Space.s) {
+                ForEach(facts.kindGroups) { group in
+                    overviewRow(
+                        group.newest,
+                        identifier: "gethog.insights-overview.kind.\(group.id)",
+                        title: group.title,
+                        subtitle: group.count == 1
+                            ? "1 insight loaded" : "\(group.count) insights loaded",
+                        footnote: newestFootnote(group.newest),
+                        accessory: .metric("\(group.count)")
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recentlyEditedSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            SectionLabel(
+                text: "Recently edited of those loaded",
+                systemImage: "clock.arrow.circlepath"
+            )
+
+            if facts.recentlyEdited.isEmpty {
+                Card {
+                    Label(
+                        "No loaded insight includes an edit timestamp.",
+                        systemImage: "info.circle"
+                    )
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Ink.secondary)
+                }
+            } else {
+                VStack(spacing: Theme.Space.s) {
+                    ForEach(facts.recentlyEdited) { insight in
+                        overviewRow(
+                            insight,
+                            identifier: "gethog.insights-overview.recent.\(insight.id)",
+                            title: insight.title,
+                            subtitle: insight.description,
+                            footnote: recentFootnote(insight),
+                            accessory: .none
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Rows
+
+    private func overviewRow(
+        _ insight: Insight,
+        identifier: String,
+        title: String,
+        subtitle: String?,
+        footnote: String?,
+        accessory: RowAccessory
+    ) -> some View {
+        Button {
+            selection = insight.id
+        } label: {
+            Card(padding: Theme.Space.m) {
+                DataRow(
+                    glyph: TileStyle.symbol(for: insight.renderModel),
+                    tint: insight.favorited ? Theme.accentWarm : Theme.accent,
+                    title: title,
+                    subtitle: subtitle,
+                    footnote: footnote,
+                    footnoteLineLimit: 2,
+                    accessory: accessory
+                )
+            }
+        }
+        #if os(tvOS)
+        .buttonStyle(.card)
+        #else
+        .buttonStyle(.plain)
+        #endif
+        .pointerHighlight(cornerRadius: Theme.Radius.medium)
+        .accessibilityIdentifier(identifier)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            InsightOverviewAccessibility.spokenSummary(
+                title: title,
+                subtitle: subtitle,
+                footnote: footnote
+            )
+        )
+    }
+
+    private func newestFootnote(_ insight: Insight) -> String? {
+        if let modified = insight.lastModifiedAt {
+            return "Newest edited \(modified.formatted(.relative(presentation: .named)))"
+        }
+        return insight.createdAt.map {
+            "Newest created \($0.formatted(.relative(presentation: .named)))"
+        }
+    }
+
+    private func recentFootnote(_ insight: Insight) -> String {
+        let kind = insight.kind?.title ?? "Other"
+        guard let modified = insight.lastModifiedAt else { return kind }
+        return "\(kind) · Edited \(modified.formatted(.relative(presentation: .named)))"
+    }
+
 }

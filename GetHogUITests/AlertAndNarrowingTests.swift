@@ -155,3 +155,66 @@ final class AlertAndNarrowingTests: XCTestCase {
         item.tap()
     }
 }
+
+/// The regular-width library overview is both an information surface and a
+/// navigation source. This class stays in the existing Insights UI-test file so
+/// adding it does not require regenerating the project during a serialized run.
+final class InsightsOverviewUITests: XCTestCase {
+    func testRegularOverviewUsesTheDetailPaneAndOpensItsKindRepresentative() throws {
+        let app = DemoLaunch.launch(tab: "insights")
+        defer { app.terminate() }
+
+        guard DemoLaunch.wait(for: app.navigationBars["Insights"]) else {
+            return XCTFail("The insight library never came up.")
+        }
+        DemoLaunch.settle(app)
+
+        let overview = app.scrollViews["gethog.insights-overview"].firstMatch
+        if app.windows.firstMatch.frame.width <= 700 {
+            XCTAssertFalse(
+                overview.exists,
+                "The compact host mounted a second navigation surface in its content."
+            )
+            XCTAssertTrue(app.staticTexts["Example meteor report"].firstMatch.exists)
+            return
+        }
+
+        guard DemoLaunch.wait(for: overview) else {
+            return XCTFail("The regular Insights detail pane did not expose its overview.")
+        }
+        let summary = app.descendants(matching: .any)["gethog.signal-summary.insights"].firstMatch
+        let trends = app.descendants(matching: .any)[
+            "gethog.insights-overview.kind.trends"
+        ].firstMatch
+        guard DemoLaunch.wait(for: summary), DemoLaunch.wait(for: trends) else {
+            return XCTFail("The overview did not expose its summary and kind navigation.")
+        }
+
+        print(
+            "iPad Insights overview geometry: window=\(app.windows.firstMatch.frame), "
+                + "overview=\(overview.frame), summary=\(summary.frame), trends=\(trends.frame)"
+        )
+        capture("iPad Insights overview \(Int(overview.frame.width))pt")
+
+        XCTAssertGreaterThan(summary.frame.minX, app.windows.firstMatch.frame.width * 0.35)
+        XCTAssertGreaterThan(summary.frame.width, app.windows.firstMatch.frame.width * 0.5)
+        XCTAssertEqual(trends.frame.minX, summary.frame.minX, accuracy: 16)
+        XCTAssertEqual(trends.frame.width, summary.frame.width, accuracy: 16)
+        XCTAssertTrue(summary.staticTexts["4 insights."].exists)
+        XCTAssertTrue(overview.staticTexts["Kinds represented"].exists)
+        XCTAssertFalse(app.staticTexts["Pick an insight"].exists)
+
+        trends.tap()
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["Example meteor report"]),
+            "The Trends overview row did not open its newest loaded insight."
+        )
+    }
+
+    private func capture(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}
