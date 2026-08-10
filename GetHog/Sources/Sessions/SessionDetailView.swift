@@ -7,6 +7,15 @@ import SwiftUI
 
 struct SessionDetailView: View {
     let recording: SessionRecording
+    let onOpenInNewWindow: (() -> Void)?
+
+    init(
+        recording: SessionRecording,
+        onOpenInNewWindow: (() -> Void)? = nil
+    ) {
+        self.recording = recording
+        self.onOpenInNewWindow = onOpenInNewWindow
+    }
 
     @Environment(AppModel.self) private var model
 
@@ -175,6 +184,16 @@ struct SessionDetailView: View {
         // is the thing a phone is worst at and a large screen is best at.
         .handoff(webURL: replayWebURL, title: recording.personDisplayName)
         .toolbar {
+            if let onOpenInNewWindow {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: onOpenInNewWindow) {
+                        Label(
+                            "Open recording in new window",
+                            systemImage: "macwindow.badge.plus"
+                        )
+                    }
+                }
+            }
             #if os(macOS)
             ToolbarItem(placement: .primaryAction) {
                 Button {

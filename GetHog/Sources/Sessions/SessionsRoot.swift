@@ -129,7 +129,7 @@ struct SessionsRoot: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.screenNavigationPlacement) private var navigationPlacement
     @Environment(OpenDetails.self) private var openDetails
-    #if os(macOS)
+    #if os(macOS) || os(visionOS)
     @Environment(\.openWindow) private var openWindow
     #endif
     @State private var store = SessionsStore()
@@ -163,7 +163,7 @@ struct SessionsRoot: View {
                 listChrome
                     .navigationDestination(item: selectedID) { id in
                         if let recording = store.recordings.first(where: { $0.id == id }) {
-                            SessionDetailView(recording: recording).id(id)
+                            sessionDetail(recording).id(id)
                         }
                     }
             } else {
@@ -275,7 +275,7 @@ struct SessionsRoot: View {
     @ViewBuilder
     private var detailPane: some View {
         if let selection {
-            SessionDetailView(recording: selection).id(selection.id)
+            sessionDetail(selection).id(selection.id)
         } else if !model.isAvailable(.sessions) {
             LockedCapabilityView(capability: .sessions, scope: model.lockedScope(for: .sessions)) {
                 Task { await model.refreshCapabilities() }
@@ -301,6 +301,20 @@ struct SessionsRoot: View {
                 selection: selectedID
             )
         }
+    }
+
+    @ViewBuilder
+    private func sessionDetail(_ recording: SessionRecording) -> some View {
+        #if os(visionOS)
+        SessionDetailView(
+            recording: recording,
+            onOpenInNewWindow: {
+                openWindow(value: WindowTarget.recording(id: recording.id))
+            }
+        )
+        #else
+        SessionDetailView(recording: recording)
+        #endif
     }
 
     /// Empty means one of two different things, and they need different words.

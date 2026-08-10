@@ -504,6 +504,54 @@ final class VisionWindowTests: XCTestCase {
         )
     }
 
+    func testSessionDetailTearsOffRecordingIntoItsOwnWindow() {
+        let app = DemoLaunch.launch(tab: "sessions")
+        defer { app.terminate() }
+
+        let alex = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Alex Example")
+        ).firstMatch
+        guard DemoLaunch.wait(for: alex) else {
+            return XCTFail("Sessions did not expose the synthetic Alex Example recording.")
+        }
+        alex.tap()
+
+        let detailBars = app.navigationBars.matching(
+            NSPredicate(
+                format: "identifier == %@ OR label == %@",
+                "Alex Example",
+                "Alex Example"
+            )
+        )
+        guard DemoLaunch.wait(for: detailBars.firstMatch) else {
+            return XCTFail("The Alex Example row did not open its loaded session detail.")
+        }
+
+        let startingWindows = app.windows.count
+        let tearOffActions = DemoLaunch.elements(
+            labelled: "Open recording in new window",
+            in: app
+        )
+        let tearOff = tearOffActions.firstMatch
+        guard DemoLaunch.wait(for: tearOff) else {
+            return XCTFail("The production session detail exposed no recording tear-off action.")
+        }
+        tearOff.tap()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 30, until: {
+                detailBars.count >= 2 && app.windows.count >= startingWindows + 1
+            }),
+            "The recording did not render as Alex Example in an additional Vision window."
+        )
+        XCTAssertGreaterThanOrEqual(app.windows.count, startingWindows + 1)
+        XCTAssertEqual(
+            tearOffActions.count,
+            1,
+            "The detached recording detail exposed a recursive tear-off action."
+        )
+    }
+
     func testDashboardTearsOffIntoItsOwnWindow() {
         let app = DemoLaunch.launch()
         let analyzeSection = VisionSidebar.section("Analyze", in: app)
