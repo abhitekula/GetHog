@@ -4,7 +4,7 @@ import XCTest
 final class VisionWindowTests: XCTestCase {
     /// Catches a Dashboard landing change that restores separate signal and
     /// collection scroll containers instead of one regular-width dashboard hub.
-    func testDashboardLandingUsesOneRegularWidthHub() {
+    func testDashboardLandingUsesOneRegularWidthHub() throws {
         let app = DemoLaunch.launch(
             tab: "dashboards",
             environment: ["GETHOG_VISION_CONTENT_WIDTH": "1280"]
@@ -27,36 +27,51 @@ final class VisionWindowTests: XCTestCase {
         let pinnedPreview = hub.descendants(matching: .any)[
             "gethog.dashboard-pinned-preview"
         ].firstMatch
-        let firstTile = DemoLaunch.elements(
-            labelled: DemoLaunch.firstTileTitle,
-            in: app
-        ).firstMatch
-        let secondTile = DemoLaunch.elements(
-            labelled: "Example daily engagement",
-            in: app
-        ).firstMatch
+        let firstCard = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-tile.77021"
+        ].firstMatch
+        let secondCard = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-tile.700009"
+        ].firstMatch
         guard DemoLaunch.wait(for: projectSummary) else {
             return XCTFail("The dashboard hub did not expose its project-summary geometry.")
         }
         guard DemoLaunch.wait(for: pinnedPreview) else {
             return XCTFail("The dashboard hub did not expose its pinned-preview geometry.")
         }
-        guard DemoLaunch.wait(for: firstTile) else {
-            return XCTFail("The dashboard hub did not render its first pinned tile.")
+        guard DemoLaunch.wait(for: firstCard) else {
+            return XCTFail("The dashboard hub did not expose its first pinned card frame.")
         }
-        guard DemoLaunch.wait(for: secondTile) else {
-            return XCTFail("The dashboard hub did not render its second pinned tile.")
+        guard DemoLaunch.wait(for: secondCard) else {
+            return XCTFail("The dashboard hub did not expose its second pinned card frame.")
         }
 
         print(
             "Vision dashboard geometry: hub=\(hub.frame), summary=\(projectSummary.frame), "
-                + "preview=\(pinnedPreview.frame), first=\(firstTile.frame), second=\(secondTile.frame)"
+                + "preview=\(pinnedPreview.frame), first=\(firstCard.frame), second=\(secondCard.frame)"
         )
         XCTAssertGreaterThan(projectSummary.frame.width, hub.frame.width * 0.75)
         XCTAssertGreaterThanOrEqual(pinnedPreview.frame.minY, projectSummary.frame.maxY - 12)
+        XCTAssertLessThanOrEqual(pinnedPreview.frame.minY, projectSummary.frame.maxY + 28)
         XCTAssertGreaterThan(pinnedPreview.frame.width, hub.frame.width * 0.75)
-        XCTAssertEqual(firstTile.frame.minY, secondTile.frame.minY, accuracy: 12)
-        XCTAssertGreaterThan(secondTile.frame.minX, firstTile.frame.maxX)
+        XCTAssertEqual(firstCard.frame.minX, pinnedPreview.frame.minX, accuracy: 12)
+        XCTAssertEqual(secondCard.frame.maxX, pinnedPreview.frame.maxX, accuracy: 12)
+        XCTAssertEqual(firstCard.frame.width, secondCard.frame.width, accuracy: 12)
+        XCTAssertGreaterThanOrEqual(firstCard.frame.width, 230)
+        XCTAssertGreaterThanOrEqual(secondCard.frame.width, 230)
+        XCTAssertGreaterThan(firstCard.frame.height, 200)
+        XCTAssertGreaterThan(secondCard.frame.height, 200)
+        XCTAssertEqual(firstCard.frame.minY, secondCard.frame.minY, accuracy: 12)
+        XCTAssertGreaterThan(secondCard.frame.minX, firstCard.frame.maxX)
+        XCTAssertEqual(
+            secondCard.frame.maxX - firstCard.frame.minX,
+            pinnedPreview.frame.width,
+            accuracy: 12
+        )
+        try app.performAccessibilityAudit(for: [
+            .sufficientElementDescription,
+            .trait,
+        ])
 
         let collections = hub.otherElements.matching(
             NSPredicate(format: "identifier == %@", "gethog.dashboard-collection")

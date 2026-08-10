@@ -150,9 +150,18 @@ struct ProjectOverviewContent: View {
     let pinnedPreviewStore: PinnedDashboardPreviewStore
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Tiles stay legible at this measured minimum.
     private static let pinnedPreviewMinimumColumnWidth: CGFloat = 230
+    /// AX titles and chart legends need a wider measure than standard text.
+    private static let accessibilityPinnedPreviewMinimumColumnWidth: CGFloat = 390
+
+    private var pinnedPreviewMinimumColumnWidth: CGFloat {
+        dynamicTypeSize.isAccessibilitySize
+            ? Self.accessibilityPinnedPreviewMinimumColumnWidth
+            : Self.pinnedPreviewMinimumColumnWidth
+    }
 
     private var facts: DashboardOverviewFacts {
         DashboardOverviewFacts(dashboards: dashboards)
@@ -209,11 +218,6 @@ struct ProjectOverviewContent: View {
                 .frame(width: 3)
                 .accessibilityHidden(true)
         }
-        .background {
-            Color.clear
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier("gethog.signal-summary.dashboard")
-        }
         .signalConfirmation(trigger: summaryTrigger)
     }
 
@@ -233,11 +237,8 @@ struct ProjectOverviewContent: View {
                 }
             }
         }
-        .background {
-            Color.clear
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier("gethog.dashboard-project-summary")
-        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("gethog.dashboard-project-summary")
     }
 
     private var projectTitle: some View {
@@ -283,7 +284,7 @@ struct ProjectOverviewContent: View {
                     MasonryLayout(
                         columns: 2,
                         spacing: Theme.Space.l,
-                        minColumnWidth: Self.pinnedPreviewMinimumColumnWidth
+                        minColumnWidth: pinnedPreviewMinimumColumnWidth
                     ) {
                         ForEach(Array(orderedTiles(pinnedDetail).prefix(4))) { tile in
                             TileCard(
@@ -292,6 +293,10 @@ struct ProjectOverviewContent: View {
                                     model: tile.renderModel
                                 )
                             )
+                                .accessibilityElement(children: .contain)
+                                .accessibilityIdentifier(
+                                    "gethog.dashboard-pinned-tile.\(tile.id)"
+                                )
                                 .allowsHitTesting(false)
                         }
                     }
@@ -302,11 +307,8 @@ struct ProjectOverviewContent: View {
                     }
                 }
             }
-            .background {
-                Color.clear
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityIdentifier("gethog.dashboard-pinned-preview")
-            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("gethog.dashboard-pinned-preview")
         }
     }
 

@@ -89,25 +89,27 @@ final class DashboardConsistencyUITests: XCTestCase {
         guard DemoLaunch.wait(for: hub) else {
             return XCTFail("The regular dashboard landing did not expose its hub.")
         }
-        let projectSummary = hub.descendants(matching: .any)[
-            "gethog.dashboard-project-summary"
-        ].firstMatch
-        let pinnedPreview = hub.descendants(matching: .any)[
-            "gethog.dashboard-pinned-preview"
-        ].firstMatch
-        let firstTile = DemoLaunch.elements(
-            labelled: DemoLaunch.firstTileTitle,
-            in: app
-        ).firstMatch
-        let secondTile = DemoLaunch.elements(
-            labelled: "Example daily engagement",
-            in: app
-        ).firstMatch
-        guard DemoLaunch.wait(for: firstTile) else {
-            return XCTFail("The regular dashboard hub did not render its first pinned tile.")
+        let projectSummaries = hub.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-project-summary")
+        )
+        let projectSummary = projectSummaries.firstMatch
+        let pinnedPreviews = hub.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-pinned-preview")
+        )
+        let pinnedPreview = pinnedPreviews.firstMatch
+        let firstCards = hub.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-pinned-tile.77021")
+        )
+        let firstCard = firstCards.firstMatch
+        let secondCards = hub.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "gethog.dashboard-pinned-tile.700009")
+        )
+        let secondCard = secondCards.firstMatch
+        guard DemoLaunch.wait(for: firstCard) else {
+            return XCTFail("The regular dashboard hub did not expose its first pinned card frame.")
         }
-        guard DemoLaunch.wait(for: secondTile) else {
-            return XCTFail("The regular dashboard hub did not render its second pinned tile.")
+        guard DemoLaunch.wait(for: secondCard) else {
+            return XCTFail("The regular dashboard hub did not expose its second pinned card frame.")
         }
         guard DemoLaunch.wait(for: projectSummary) else {
             return XCTFail("The regular dashboard hub did not expose its project-summary geometry.")
@@ -116,9 +118,18 @@ final class DashboardConsistencyUITests: XCTestCase {
             return XCTFail("The regular dashboard hub did not expose its pinned-preview geometry.")
         }
 
+        XCTAssertEqual(projectSummaries.count, 1)
+        XCTAssertEqual(pinnedPreviews.count, 1)
+        XCTAssertEqual(firstCards.count, 1)
+        XCTAssertEqual(secondCards.count, 1)
+        XCTAssertTrue(projectSummary.staticTexts["Project signal"].firstMatch.exists)
+        XCTAssertTrue(pinnedPreview.staticTexts["Pinned"].firstMatch.exists)
+        XCTAssertTrue(firstCard.staticTexts[DemoLaunch.firstTileTitle].firstMatch.exists)
+        XCTAssertTrue(secondCard.staticTexts["Example daily engagement"].firstMatch.exists)
+
         print(
             "iPad dashboard geometry: hub=\(hub.frame), summary=\(projectSummary.frame), "
-                + "preview=\(pinnedPreview.frame), first=\(firstTile.frame), second=\(secondTile.frame)"
+                + "preview=\(pinnedPreview.frame), first=\(firstCard.frame), second=\(secondCard.frame)"
         )
         capture("iPad Dashboard \(Int(hub.frame.width))pt")
 
@@ -132,23 +143,130 @@ final class DashboardConsistencyUITests: XCTestCase {
             projectSummary.frame.maxY - 12,
             "The pinned preview rendered beside or above the project summary."
         )
+        XCTAssertLessThanOrEqual(
+            pinnedPreview.frame.minY,
+            projectSummary.frame.maxY + 28,
+            "The pinned preview left an excessive gap below the project summary."
+        )
         XCTAssertGreaterThan(
             pinnedPreview.frame.width,
             hub.frame.width * 0.75,
             "The pinned preview did not span the regular dashboard hub."
         )
-
         XCTAssertEqual(
-            firstTile.frame.minY,
-            secondTile.frame.minY,
+            firstCard.frame.minX,
+            pinnedPreview.frame.minX,
+            accuracy: 12,
+            "The first pinned card did not start at the preview's leading edge."
+        )
+        XCTAssertEqual(
+            secondCard.frame.maxX,
+            pinnedPreview.frame.maxX,
+            accuracy: 12,
+            "The second pinned card did not reach the preview's trailing edge."
+        )
+        XCTAssertEqual(
+            firstCard.frame.width,
+            secondCard.frame.width,
+            accuracy: 12,
+            "The first preview row did not use equal chart columns."
+        )
+        XCTAssertGreaterThanOrEqual(firstCard.frame.width, 230)
+        XCTAssertGreaterThanOrEqual(secondCard.frame.width, 230)
+        XCTAssertGreaterThan(firstCard.frame.height, 200)
+        XCTAssertGreaterThan(secondCard.frame.height, 200)
+        XCTAssertEqual(
+            firstCard.frame.minY,
+            secondCard.frame.minY,
             accuracy: 12,
             "The first two pinned tiles stacked into one narrow column on regular iPad."
         )
         XCTAssertGreaterThan(
-            secondTile.frame.minX,
-            firstTile.frame.maxX,
+            secondCard.frame.minX,
+            firstCard.frame.maxX,
             "The second pinned tile did not occupy a second column beside the first."
         )
+        XCTAssertEqual(
+            secondCard.frame.maxX - firstCard.frame.minX,
+            pinnedPreview.frame.width,
+            accuracy: 12,
+            "The first preview row did not cover the full pinned-preview width."
+        )
+        try app.performAccessibilityAudit(for: [
+            .sufficientElementDescription,
+            .trait,
+        ])
+    }
+
+    func testRegularDashboardAX5UsesVerticalSummaryAndOneReadableChartColumn() throws {
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            extraArguments: [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL",
+            ]
+        )
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "This contract requires a regular-width proposal, independent of device identity."
+        )
+
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The AX5 dashboard did not expose its regular-width hub.")
+        }
+        let projectSummary = hub.descendants(matching: .any)[
+            "gethog.dashboard-project-summary"
+        ].firstMatch
+        let pinnedPreview = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-preview"
+        ].firstMatch
+        let firstCard = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-tile.77021"
+        ].firstMatch
+        let secondCard = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-tile.700009"
+        ].firstMatch
+        let projectTitle = hub.staticTexts["Starling Metrics Lab"].firstMatch
+        let dashboards = DemoLaunch.elements(labelled: "Dashboards, 11", in: app).firstMatch
+        for (element, name) in [
+            (projectSummary, "project summary"),
+            (pinnedPreview, "pinned preview"),
+            (firstCard, "first pinned card"),
+            (secondCard, "second pinned card"),
+            (projectTitle, "project title"),
+            (dashboards, "Dashboards metric"),
+        ] {
+            guard DemoLaunch.wait(for: element) else {
+                return XCTFail("The AX5 dashboard did not expose its \(name).")
+            }
+        }
+
+        capture("iPad AX5 Dashboard \(Int(hub.frame.width))pt")
+
+        XCTAssertGreaterThanOrEqual(
+            dashboards.frame.minY,
+            projectTitle.frame.maxY - 12,
+            "The summary did not use its vertical fallback at AX5."
+        )
+        XCTAssertGreaterThanOrEqual(pinnedPreview.frame.minY, projectSummary.frame.maxY - 12)
+        XCTAssertLessThanOrEqual(pinnedPreview.frame.minY, projectSummary.frame.maxY + 28)
+        XCTAssertEqual(firstCard.frame.minX, pinnedPreview.frame.minX, accuracy: 12)
+        XCTAssertEqual(secondCard.frame.minX, pinnedPreview.frame.minX, accuracy: 12)
+        XCTAssertEqual(firstCard.frame.width, pinnedPreview.frame.width, accuracy: 12)
+        XCTAssertEqual(secondCard.frame.width, pinnedPreview.frame.width, accuracy: 12)
+        XCTAssertGreaterThanOrEqual(firstCard.frame.width, 230)
+        XCTAssertGreaterThanOrEqual(
+            secondCard.frame.minY,
+            firstCard.frame.maxY - 12,
+            "The AX5 preview did not collapse to one readable chart column."
+        )
+        try app.performAccessibilityAudit(for: [
+            .sufficientElementDescription,
+            .trait,
+        ])
     }
 
     private func capture(_ name: String) {
