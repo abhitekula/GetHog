@@ -278,18 +278,20 @@ struct SettingsPermissionsSection: View {
             Text("Scopes are chosen when you create a personal API key. Add a missing one in PostHog, then re-check.")
         }
 
-        Section {
-            ForEach(APIKeyScopeGuidance.optionalWriteActions) { descriptor in
-                LabeledContent(descriptor.action) {
-                    Text(descriptor.scope)
-                        .font(.footnote.monospaced())
-                        .typesettingLanguage(Locale.Language(identifier: "zxx"))
+        if !APIKeyScopeGuidance.currentPlatformOptionalWriteActions.isEmpty {
+            Section {
+                ForEach(APIKeyScopeGuidance.currentPlatformOptionalWriteActions) { descriptor in
+                    LabeledContent(descriptor.action) {
+                        Text(descriptor.scope)
+                            .font(.footnote.monospaced())
+                            .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                    }
                 }
+            } header: {
+                SectionLabel(text: "Optional write actions", systemImage: "pencil.and.outline")
+            } footer: {
+                Text("Core read scopes support GetHog's main read surfaces. Add a write scope only when you intend to use its action; write access is not probed in advance.")
             }
-        } header: {
-            SectionLabel(text: "Optional write actions", systemImage: "pencil.and.outline")
-        } footer: {
-            Text("Core read scopes support GetHog's main read surfaces. Add a write scope only when you intend to use its action; write access is not probed in advance.")
         }
     }
 }

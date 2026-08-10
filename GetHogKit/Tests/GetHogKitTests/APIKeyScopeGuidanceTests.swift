@@ -7,28 +7,24 @@ struct APIKeyScopeGuidanceTests {
 
     @Test("the onboarding baseline contains only the core read contract")
     func onboardingUsesCoreReadsOnly() {
-        #expect(APIKeyScopeGuidance.coreReadScopes.map(\.scope) == [
-            "dashboard:read",
-            "insight:read",
-            "query:read",
-            "session_recording:read",
-            "feature_flag:read",
-            "project:read",
-        ])
         #expect(APIKeyScopeGuidance.coreReadScopes.allSatisfy { $0.kind == .coreRead })
+        #expect(Set(APIKeyScopeGuidance.coreReadScopes.map(\.id)).count == APIKeyScopeGuidance.coreReadScopes.count)
     }
 
-    @Test("Settings names every currently offered write as optional")
-    func settingsOffersOnlyKnownOptionalWrites() {
-        #expect(APIKeyScopeGuidance.optionalWriteActions.map(\.scope) == [
-            "feature_flag:write",
-            "alert:write",
-            "annotation:write",
-            "error_tracking:write",
-            "experiment:write",
-            "survey:write",
-        ])
-        #expect(APIKeyScopeGuidance.optionalWriteActions.allSatisfy { $0.kind == .optionalWrite })
+    @Test("every named write action resolves to one unique optional descriptor")
+    func namedWriteActionsResolveUniquely() {
+        let descriptors = APIKeyScopeGuidance.OptionalWriteAction.allCases.map {
+            APIKeyScopeGuidance.optionalWriteDescriptor(for: $0)
+        }
+
+        #expect(descriptors.allSatisfy { $0.kind == .optionalWrite })
+        #expect(Set(descriptors.map(\.id)).count == descriptors.count)
+        #expect(descriptors == APIKeyScopeGuidance.optionalWriteActions(for: .fullClient))
+    }
+
+    @Test("Apple TV advertises no write action its read-only shell cannot perform")
+    func appleTVHasNoOptionalWrites() {
+        #expect(APIKeyScopeGuidance.optionalWriteActions(for: .appleTV).isEmpty)
     }
 
     @Test("locked resource recovery falls back to the same core read scopes")

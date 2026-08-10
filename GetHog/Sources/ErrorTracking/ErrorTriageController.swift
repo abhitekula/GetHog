@@ -55,7 +55,7 @@ final class ErrorTriageController {
     /// its own — the screen is gated on `.events`, because it is served by
     /// `/query/` — and inventing one would change what onboarding asks every user
     /// to tick. Named here so the 403 path can still be specific.
-    let requiredWriteScope = "error_tracking:write"
+    let requiredWriteScope = APIKeyScopeGuidance.optionalWriteDescriptor(for: .errorTracking).scope
 
     func isBusy(_ issue: ErrorIssue) -> Bool { inFlight.contains(issue.id) }
 

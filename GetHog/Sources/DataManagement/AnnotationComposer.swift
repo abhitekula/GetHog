@@ -61,7 +61,7 @@ final class AnnotationComposer {
     /// exist to be drawn on insights — and inventing one would change what
     /// onboarding asks every user to tick. Named here so the 403 path can still
     /// say exactly which box to tick.
-    let requiredWriteScope = "annotation:write"
+    let requiredWriteScope = APIKeyScopeGuidance.optionalWriteDescriptor(for: .annotations).scope
 
     func dismissMessage() { message = nil }
 

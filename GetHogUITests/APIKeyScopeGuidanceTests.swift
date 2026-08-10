@@ -7,7 +7,42 @@ import XCTest
 /// a write permission in the first checklist therefore changes the customer's
 /// security decision, not merely a label. The Settings screen and a locked
 /// resource must make the same distinction after connection.
+@MainActor
 final class APIKeyScopeGuidanceTests: XCTestCase {
+
+    /// Independently derived from the production call-site inventory. Keeping
+    /// these literals outside GetHogKit means the rendered checklist cannot pass
+    /// by using the same builder as its expectation.
+    private static let coreReadScopes = [
+        "dashboard:read",
+        "insight:read",
+        "query:read",
+        "session_recording:read",
+        "feature_flag:read",
+        "project:read",
+    ]
+
+    private static let optionalWriteScopes = [
+        "feature_flag:write",
+        "alert:write",
+        "annotation:write",
+        "error_tracking:write",
+        "experiment:write",
+        "survey:write",
+    ]
+
+    /// `LabeledContent` exposes each visible pair as one customer-readable
+    /// accessibility label. These expected rows remain independent of the
+    /// production catalog so an action, scope, omission, or extra row drifts
+    /// this rendered contract.
+    private static let optionalWriteRows = [
+        "Toggle feature flags and change rollouts, feature_flag:write",
+        "Create, change, and snooze alerts, alert:write",
+        "Create annotations, annotation:write",
+        "Triage error issues, error_tracking:write",
+        "End, pause, or resume experiments, experiment:write",
+        "Launch, stop, or resume surveys, survey:write",
+    ]
 
     func testOnboardingOffersOnlyCoreReadScopes() {
         let app = XCUIApplication()
@@ -30,12 +65,26 @@ final class APIKeyScopeGuidanceTests: XCTestCase {
             "The key entry must identify its checklist as the least-privilege read baseline."
         )
 
-        let writeScope = DemoLaunch.elements(labelled: "feature_flag:write", in: app)
-        XCTAssertEqual(
-            writeScope.count,
-            0,
-            "Onboarding must not request feature_flag:write before the customer chooses a flag-changing action."
+        let renderedCoreScopes = Set(
+            app.staticTexts.matching(
+                NSPredicate(format: "label ENDSWITH %@", ":read")
+            ).allElementsBoundByIndex.map(\.label)
         )
+        XCTAssertEqual(
+            renderedCoreScopes,
+            Set(Self.coreReadScopes),
+            "Onboarding did not render exactly the independently inventoried core-read list."
+        )
+
+        for scope in Self.optionalWriteScopes {
+            XCTAssertEqual(
+                app.staticTexts.matching(
+                    NSPredicate(format: "label CONTAINS %@", scope)
+                ).count,
+                0,
+                "Onboarding must not request the optional \(scope) grant."
+            )
+        }
     }
 
     func testSettingsSeparatesOptionalWritesFromCoreReads() {
@@ -53,6 +102,33 @@ final class APIKeyScopeGuidanceTests: XCTestCase {
         XCTAssertTrue(
             DemoLaunch.wait(for: optionalWrites),
             "Settings must identify write permissions as optional instead of presenting them as core access."
+        )
+
+        let firstScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        firstScreenshot.name = "Settings optional write guidance start"
+        firstScreenshot.lifetime = .keepAlways
+        add(firstScreenshot)
+
+        let visibleWriteRows = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", ":write")
+        )
+        let nextSection = DemoLaunch.elements(labelled: "API key", in: app).firstMatch
+        var renderedRows = Set<String>()
+        for _ in 0 ..< 8 {
+            renderedRows.formUnion(visibleWriteRows.allElementsBoundByIndex.map(\.label))
+            if nextSection.exists { break }
+            app.swipeUp()
+        }
+
+        let lastScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        lastScreenshot.name = "Settings optional write guidance end"
+        lastScreenshot.lifetime = .keepAlways
+        add(lastScreenshot)
+
+        XCTAssertEqual(
+            renderedRows,
+            Set(Self.optionalWriteRows),
+            "Settings did not render exactly the independently inventoried optional-write rows."
         )
     }
 }

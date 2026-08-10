@@ -66,7 +66,7 @@ final class AlertWriteController {
     /// no `Capability` case of their own — the screens are gated on `.dashboards`,
     /// because an alert watches an insight — and inventing one would change what
     /// onboarding asks every user to tick.
-    let requiredWriteScope = "alert:write"
+    let requiredWriteScope = APIKeyScopeGuidance.optionalWriteDescriptor(for: .alerts).scope
 
     func dismissMessage() { message = nil }
 

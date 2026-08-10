@@ -160,6 +160,9 @@ struct SetScopedFeatureFlagIntent: AppIntent {
         "Enables or disables a PostHog feature flag you have opted in to quick toggling.",
         categoryName: "Feature Flags"
     )
+    static let requiredWriteScope = APIKeyScopeGuidance
+        .optionalWriteDescriptor(for: .featureFlags)
+        .scope
 
     /// Biometrics can only be evaluated with a foreground UI, and `LAContext` is
     /// not `Sendable` — it can't be handed to whatever process the system picked
@@ -284,7 +287,7 @@ struct SetScopedFeatureFlagIntent: AppIntent {
             throw IntentError.from(
                 error,
                 action: "\(verb) \(flag.key)",
-                writeScope: "feature_flag:write"
+                writeScope: Self.requiredWriteScope
             )
         }
 

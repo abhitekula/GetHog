@@ -83,7 +83,7 @@ final class ExperimentLifecycleController {
     /// `pause/` and `resume/` declare **only** `experiment:write` and then flip a
     /// production feature flag. So this is the scope to add, and it is a wider
     /// grant than its name suggests.
-    let requiredWriteScope = "experiment:write"
+    let requiredWriteScope = APIKeyScopeGuidance.optionalWriteDescriptor(for: .experiments).scope
 
     func isBusy(_ experiment: Experiment) -> Bool { inFlight.contains(experiment.id) }
 

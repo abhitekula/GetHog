@@ -44,7 +44,7 @@ final class SurveyLifecycleController {
     /// Not a `Capability.writeScope`: surveys have no `Capability` case of their
     /// own — the screen is gated on `.dashboards` — so this is named here rather
     /// than added to onboarding's checklist for everyone.
-    let requiredWriteScope = "survey:write"
+    let requiredWriteScope = APIKeyScopeGuidance.optionalWriteDescriptor(for: .surveys).scope
 
     func isBusy(_ survey: Survey) -> Bool { inFlight.contains(survey.id) }
 

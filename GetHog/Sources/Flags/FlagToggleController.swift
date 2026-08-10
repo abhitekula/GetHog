@@ -152,7 +152,9 @@ final class FlagToggleController {
     /// the in-flight marker of a new-project write that happens to reuse one.
     @ObservationIgnored private var projectGeneration: UInt64 = 0
 
-    var requiredWriteScope: String { Capability.flags.writeScope ?? "feature_flag:write" }
+    var requiredWriteScope: String {
+        APIKeyScopeGuidance.optionalWriteDescriptor(for: .featureFlags).scope
+    }
 
     func effectiveActive(_ flag: FeatureFlag) -> Bool { overrides[flag.id] ?? flag.active }
 
