@@ -90,7 +90,10 @@ final class TVScopeGuidanceUITests: XCTestCase {
         TVSidebar.select("Settings", in: app)
         XCTAssertTrue(DemoLaunch.wait(for: app.buttons["Sign out"], timeout: 60))
 
+        let requiredAction = "Toggle feature flags"
         let requiredScope = "feature_flag:write"
+        let requiredPair = "\(requiredAction), \(requiredScope)"
+        let unavailableRolloutPair = "Toggle feature flags and change rollouts, \(requiredScope)"
         let unavailableScopes = [
             "alert:write",
             "annotation:write",
@@ -98,17 +101,35 @@ final class TVScopeGuidanceUITests: XCTestCase {
             "experiment:write",
             "survey:write",
         ]
-        let requiredRow = app.descendants(matching: .any).matching(
+        let requiredRows = app.descendants(matching: .any).matching(
             NSPredicate(
-                format: "label CONTAINS %@ OR value CONTAINS %@",
-                requiredScope,
-                requiredScope
+                format: "label == %@ OR value == %@",
+                requiredPair,
+                requiredPair
             )
-        ).firstMatch
+        )
+        let requiredRow = requiredRows.firstMatch
+        let unavailableRolloutRows = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label == %@ OR value == %@",
+                unavailableRolloutPair,
+                unavailableRolloutPair
+            )
+        )
 
         XCTAssertTrue(
-            DemoLaunch.wait(for: requiredRow, timeout: 60),
+            DemoLaunch.wait(timeout: 60) {
+                requiredRow.exists || unavailableRolloutRows.firstMatch.exists
+            },
+            "TV Settings did not render any feature-flag write-scope row."
+        )
+        XCTAssertTrue(
+            requiredRow.exists,
             "TV Settings did not render the scope for its live feature-flag toggle."
+        )
+        XCTAssertFalse(
+            unavailableRolloutRows.firstMatch.exists,
+            "TV Settings reused the full-client rollout action copy."
         )
         for scope in unavailableScopes {
             XCTAssertEqual(
@@ -128,14 +149,16 @@ final class TVScopeGuidanceUITests: XCTestCase {
         // complete projected row is customer-visible, rather than accepting a
         // partially clipped accessibility match as rendered evidence.
         TVRemote.press(.right)
+        let renderedRows = requiredRow.exists ? requiredRows : unavailableRolloutRows
+        let renderedRow = renderedRows.firstMatch
         let visibleFrame = app.windows.firstMatch.frame.insetBy(dx: 16, dy: 16)
-        var isFullyVisible = requiredRow.isHittable
-            && visibleFrame.contains(requiredRow.frame)
+        var isFullyVisible = renderedRow.isHittable
+            && visibleFrame.contains(renderedRow.frame)
         var remainingFocusMoves = 16
         while !isFullyVisible && remainingFocusMoves > 0 {
             TVRemote.press(.down)
             isFullyVisible = DemoLaunch.wait(timeout: 1) {
-                requiredRow.isHittable && visibleFrame.contains(requiredRow.frame)
+                renderedRow.isHittable && visibleFrame.contains(renderedRow.frame)
             }
             remainingFocusMoves -= 1
         }
@@ -143,6 +166,31 @@ final class TVScopeGuidanceUITests: XCTestCase {
             isFullyVisible,
             "The complete feature-flag scope row never became visible on screen."
         )
+        let measuredPair = (0 ..< renderedRows.count)
+            .map { renderedRows.element(boundBy: $0) }
+            // The exact combined label appears on the full list row, its
+            // measured pair, and a compact text node. Select the widest match
+            // inside the full row: that is the 460pt/900pt layout container,
+            // not the outer hit region or the text's intrinsic width.
+            .filter {
+                $0.exists
+                    && $0.frame.width > 0
+                    && $0.frame.width < renderedRow.frame.width
+            }
+            .max { $0.frame.width < $1.frame.width }
+        XCTAssertNotNil(measuredPair, "TV Settings exposed no measurable action/scope pair.")
+        if let measuredPair {
+            XCTAssertGreaterThan(
+                measuredPair.frame.width,
+                800,
+                "TV Settings retained the 460-point iPad pair cap instead of using the television row."
+            )
+            XCTAssertLessThan(
+                measuredPair.frame.height,
+                90,
+                "The TV action/scope pair wrapped instead of keeping feature_flag:write on one line."
+            )
+        }
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "TV Settings feature flag write scope"

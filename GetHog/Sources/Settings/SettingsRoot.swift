@@ -59,14 +59,23 @@ struct SettingsRoot: View {
         }
         .listStyle(.insetGrouped)
         .pageSurface()
-        // Every label/value pair below stops at a readable measure instead of
-        // spanning the window. See `Theme.Measure.pair`.
-        .measuredPairs()
+        // Phones and tablets keep the iPad-derived readable measure. A TV row
+        // needs the wider, viewing-distance-aware measure so identifiers stay
+        // intact instead of wrapping while most of the canvas sits unused.
+        .measuredPairs(maxWidth: pairMeasure)
         .navigationTitle("Settings")
         // No `ProjectSwitcher()` here: the Project section below already is
         // the switcher, and two controls for one piece of state on one
         // screen is a bug report waiting to happen.
         .task { AppTips.refresh(from: model) }
+    }
+
+    private var pairMeasure: CGFloat {
+        #if os(tvOS)
+        Theme.Measure.televisionPair
+        #else
+        Theme.Measure.pair
+        #endif
     }
 
     /// `phx_••••••••4f21` — enough to tell two keys apart without exposing one.
@@ -285,6 +294,10 @@ struct SettingsPermissionsSection: View {
                         Text(descriptor.scope)
                             .font(.footnote.monospaced())
                             .typesettingLanguage(Locale.Language(identifier: "zxx"))
+                            #if os(tvOS)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            #endif
                     }
                 }
             } header: {

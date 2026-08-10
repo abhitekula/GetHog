@@ -25,7 +25,7 @@ public enum APIKeyScopeGuidance {
     /// Write surfaces differ by shell even though they share the same catalog.
     public enum ClientSurface: Sendable {
         case fullClient
-        case appleTV
+        case flagToggleOnly
     }
 
     public struct Descriptor: Sendable, Equatable, Identifiable {
@@ -128,14 +128,19 @@ public enum APIKeyScopeGuidance {
     }
 
     /// Granted only when a person intends to perform one of the actions the
-    /// current shell can actually execute. Apple TV exposes the live flag
-    /// toggle but none of the other five write surfaces.
+    /// current shell can actually execute. TV and Watch expose a live flag
+    /// toggle, but neither exposes rollout editing or the other five writes.
     public static func optionalWriteActions(for surface: ClientSurface) -> [Descriptor] {
         switch surface {
         case .fullClient:
-            OptionalWriteAction.allCases.map(optionalWriteDescriptor(for:))
-        case .appleTV:
-            [optionalWriteDescriptor(for: .featureFlags)]
+            return OptionalWriteAction.allCases.map(optionalWriteDescriptor(for:))
+        case .flagToggleOnly:
+            let featureFlags = optionalWriteDescriptor(for: .featureFlags)
+            return [Descriptor(
+                scope: featureFlags.scope,
+                action: "Toggle feature flags",
+                kind: featureFlags.kind
+            )]
         }
     }
 
@@ -143,8 +148,8 @@ public enum APIKeyScopeGuidance {
     /// shared Settings view cannot accidentally advertise another shell's
     /// capabilities.
     public static var currentPlatformOptionalWriteActions: [Descriptor] {
-        #if os(tvOS)
-        optionalWriteActions(for: .appleTV)
+        #if os(tvOS) || os(watchOS)
+        optionalWriteActions(for: .flagToggleOnly)
         #else
         optionalWriteActions(for: .fullClient)
         #endif

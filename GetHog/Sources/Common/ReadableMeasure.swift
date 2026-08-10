@@ -32,7 +32,7 @@ import SwiftUI
 extension Theme {
 
     /// Widths past which a layout stops being readable and starts being a
-    /// journey. All three are *caps*: below them nothing changes, so the phone
+    /// journey. All four are *caps*: below them nothing changes, so the phone
     /// layouts these numbers were derived against are untouched.
     enum Measure {
 
@@ -43,6 +43,14 @@ extension Theme {
         /// portrait. Chosen so the pair reads as the same component on both
         /// devices rather than as two different designs.
         static let pair: CGFloat = 460
+
+        /// A label and value read from across a television room.
+        ///
+        /// 900pt keeps the two facts inside one glance on a 1920pt canvas while
+        /// leaving enough room for scope identifiers to remain intact. It is a
+        /// Settings-only opt-in; the iPad-derived `pair` cap remains the default
+        /// for every other screen and platform.
+        static let televisionPair: CGFloat = 900
 
         /// One control in a filter bar.
         ///
@@ -99,14 +107,21 @@ extension Theme {
 ///   said nothing would have doubled every stop on Settings, Support, Taxonomy,
 ///   Tracing and People.
 struct MeasuredPairStyle: LabeledContentStyle {
+    let maxWidth: CGFloat
+
+    init(maxWidth: CGFloat = Theme.Measure.pair) {
+        self.maxWidth = maxWidth
+    }
+
     func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration)
+        Row(configuration: configuration, maxWidth: maxWidth)
     }
 
     private struct Row: View {
         @Environment(\.dynamicTypeSize) private var typeSize
 
         let configuration: LabeledContentStyleConfiguration
+        let maxWidth: CGFloat
 
         var body: some View {
             pair
@@ -116,7 +131,7 @@ struct MeasuredPairStyle: LabeledContentStyle {
                 // centred in whatever the row was offered — a centred pair on an
                 // iPad would leave the labels no longer lining up with the
                 // section header above them.
-                .frame(maxWidth: Theme.Measure.pair)
+                .frame(maxWidth: maxWidth)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
         }
@@ -156,8 +171,8 @@ extension View {
     /// Reflows every `LabeledContent` beneath this view to a readable measure.
     ///
     /// Applied once per screen, at the top of the `List`, `Form` or scaffold.
-    func measuredPairs() -> some View {
-        labeledContentStyle(MeasuredPairStyle())
+    func measuredPairs(maxWidth: CGFloat = Theme.Measure.pair) -> some View {
+        labeledContentStyle(MeasuredPairStyle(maxWidth: maxWidth))
     }
 
     /// Caps a block that is not a `LabeledContent` to a named measure, and keeps

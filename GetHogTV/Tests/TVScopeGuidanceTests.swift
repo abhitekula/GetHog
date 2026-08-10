@@ -6,8 +6,11 @@ struct TVScopeGuidanceTests {
 
     @Test("the current-platform Settings projection contains only the live flag toggle")
     func currentPlatformContainsOnlyFeatureFlagWrites() {
-        let renderedScopes = APIKeyScopeGuidance.currentPlatformOptionalWriteActions.map(\.scope)
+        let descriptors = APIKeyScopeGuidance.currentPlatformOptionalWriteActions
 
-        #expect(renderedScopes == ["feature_flag:write"])
+        #expect(descriptors.count == 1)
+        #expect(descriptors.first?.action == "Toggle feature flags")
+        #expect(descriptors.first?.scope == "feature_flag:write")
+        #expect(descriptors.allSatisfy { !$0.action.localizedCaseInsensitiveContains("rollout") })
     }
 }

@@ -24,10 +24,12 @@ struct APIKeyScopeGuidanceTests {
 
     @Test("Apple TV advertises only the write action its shell can perform")
     func appleTVHasOnlyFeatureFlagWrites() {
-        #expect(
-            APIKeyScopeGuidance.optionalWriteActions(for: .appleTV).map(\.scope)
-                == ["feature_flag:write"]
-        )
+        let descriptors = APIKeyScopeGuidance.optionalWriteActions(for: .flagToggleOnly)
+
+        #expect(descriptors.count == 1)
+        #expect(descriptors.first?.action == "Toggle feature flags")
+        #expect(descriptors.first?.scope == "feature_flag:write")
+        #expect(descriptors.allSatisfy { !$0.action.localizedCaseInsensitiveContains("rollout") })
     }
 
     @Test("locked resource recovery falls back to the same core read scopes")
