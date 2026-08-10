@@ -7,6 +7,7 @@ import SwiftUI
 /// them; only retryable failures offer another five-request attempt.
 struct WatchSectionFailureView: View {
     let failure: WatchSectionFailure
+    let isRefreshing: Bool
     let retry: () -> Void
 
     var body: some View {
@@ -15,12 +16,24 @@ struct WatchSectionFailureView: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.accentWarm)
             if failure.canRetry {
-                Button {
-                    retry()
-                } label: {
-                    Label("Retry", systemImage: "arrow.clockwise")
+                if isRefreshing {
+                    Button {} label: {
+                        HStack(spacing: Theme.Space.xs) {
+                            ProgressView()
+                                .accessibilityHidden(true)
+                            Text("Refreshing…")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(true)
+                } else {
+                    Button {
+                        retry()
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
         }
     }
@@ -153,13 +166,26 @@ struct WatchMetricsView: View {
                     }
 
                     if model.canRetryRefresh {
-                        Button {
-                            Task { await model.retry() }
-                        } label: {
-                            Label("Retry", systemImage: "arrow.clockwise")
+                        if model.isExplicitRefreshInFlight {
+                            Button {} label: {
+                                HStack(spacing: Theme.Space.xs) {
+                                    ProgressView()
+                                        .accessibilityHidden(true)
+                                    Text("Refreshing…")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
+                            .accessibilityIdentifier("watch-refresh-retry")
+                        } else {
+                            Button {
+                                Task { await model.retry() }
+                            } label: {
+                                Label("Retry", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("watch-refresh-retry")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("watch-refresh-retry")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

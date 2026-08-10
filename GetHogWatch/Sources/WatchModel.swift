@@ -463,6 +463,7 @@ final class WatchModel {
     private(set) var flagsRefreshFailure: WatchSectionFailure?
     private(set) var healthRefreshFailure: WatchSectionFailure?
     private(set) var activityRefreshFailure: WatchSectionFailure?
+    private(set) var explicitRefreshInFlightCount = 0
     private(set) var snapshot: SharedSnapshot?
     private var flagsReceipt: WatchFlagsReceipt?
     private(set) var health: WatchHealth = .empty
@@ -544,6 +545,10 @@ final class WatchModel {
 
     var canRetryRefresh: Bool {
         refreshGuidance != nil || refreshFailure?.permitsRetry == true
+    }
+
+    var isExplicitRefreshInFlight: Bool {
+        explicitRefreshInFlightCount > 0
     }
 
     init(
@@ -682,6 +687,7 @@ final class WatchModel {
         WatchDemoMode.reconcileSeededWatches(in: .shared)
         #if DEBUG
         if let scenario = WatchDemoMode.syntheticScenario {
+            WatchDemoMode.prepareSyntheticScenario(scenario, in: .shared)
             return WatchModel(
                 credential: scenario.credential,
                 projectName: "Synthetic rejected project",
@@ -1089,16 +1095,13 @@ final class WatchModel {
             refreshGuidance = nil
             refreshFailure = nil
             refreshFailureMessage = nil
+            flagsRefreshFailure = nil
+            healthRefreshFailure = nil
+            activityRefreshFailure = nil
             phase = .needsKey
             return
         }
         if snapshot == nil { phase = .loading }
-        refreshGuidance = nil
-        refreshFailure = nil
-        refreshFailureMessage = nil
-        flagsRefreshFailure = nil
-        healthRefreshFailure = nil
-        activityRefreshFailure = nil
 
         let failures = WatchRequestFailures()
 
@@ -1125,14 +1128,21 @@ final class WatchModel {
             refreshFailureMessage = refreshGuidance?.message
                 ?? failures.userMessage
                 ?? "Couldn't resolve a project for this key."
+            flagsRefreshFailure = nil
+            healthRefreshFailure = nil
+            activityRefreshFailure = nil
             phase = .failed(
                 refreshFailureMessage ?? "Couldn't resolve a project for this key."
             )
             return
         }
         guard let projectRegion else {
+            refreshGuidance = nil
             refreshFailure = .other
             refreshFailureMessage = "Couldn't resolve the PostHog endpoint for this key."
+            flagsRefreshFailure = nil
+            healthRefreshFailure = nil
+            activityRefreshFailure = nil
             phase = .failed(refreshFailureMessage!)
             return
         }
@@ -1374,6 +1384,8 @@ final class WatchModel {
     /// Forced so a cached snapshot inside the ordinary 15-minute tolerance can
     /// never swallow the user's retry tap.
     func retry() async {
+        explicitRefreshInFlightCount += 1
+        defer { explicitRefreshInFlightCount -= 1 }
         await refresh(force: true)
     }
 

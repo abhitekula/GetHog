@@ -205,6 +205,59 @@ actor HeldFirstWatchRequestTransport: HTTPTransport {
     }
 }
 
+/// Fails the first refresh's Flags request, then suspends request one of the
+/// retry generation. The test can inspect published carried state while both
+/// retry callers await the same five-request operation.
+actor HeldRetryWatchRequestTransport: HTTPTransport {
+    private let backing = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
+    private var heldRetry: CheckedContinuation<Void, Never>?
+    private var isHoldingRetry = false
+    private var retryReleased = false
+    private var hasFailedInitialFlags = false
+    private(set) var requestCount = 0
+
+    /// Bounded so a regression that never starts retry request one reports a
+    /// failed expectation instead of suspending the entire test target.
+    func waitUntilRetryIsHeld() async -> Bool {
+        for _ in 0..<500 {
+            if isHoldingRetry { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return isHoldingRetry
+    }
+
+    func releaseRetry() {
+        retryReleased = true
+        heldRetry?.resume()
+        heldRetry = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 6, !retryReleased {
+            isHoldingRetry = true
+            await withCheckedContinuation { continuation in
+                heldRetry = continuation
+            }
+        }
+
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        if !hasFailedInitialFlags, path.contains("/feature_flags/") {
+            hasFailedInitialFlags = true
+            return (
+                Data(#"{"detail":"Synthetic retryable failure."}"#.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 503,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+            )
+        }
+        return try await backing.send(request)
+    }
+}
+
 /// A lock-backed clock because `WatchModel`'s injected clock is `@Sendable`
 /// and the tolerance test must advance it without weakening strict concurrency.
 final class LockedWatchTestClock: @unchecked Sendable {

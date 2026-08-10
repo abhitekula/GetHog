@@ -449,6 +449,63 @@ struct WatchModelTests {
         #expect(model.shortlistFlags.count == 2)
     }
 
+    @Test("explicit retry keeps failure and rows visible while one generation runs")
+    func explicitRetryKeepsFailureAndRowsVisibleWhileOneGenerationRuns() async throws {
+        let store = WatchFixtures.tempStore()
+        let capturedAt = WatchFixtures.now.addingTimeInterval(-600)
+        let carriedFlag = SharedSnapshot.Flag(
+            id: 77, key: "carried-flag", active: true, quickToggleAllowed: false
+        )
+        try store.write(WatchFixtures.snapshot(
+            flags: [carriedFlag], capturedAt: capturedAt
+        ))
+        try WatchFlagsReceipt(
+            projectID: 1001,
+            projectRegion: .usCloud,
+            capturedAt: capturedAt
+        ).write(to: store)
+
+        let transport = HeldRetryWatchRequestTransport()
+        let model = WatchFixtures.model(transport: transport, store: store)
+
+        await model.refresh(force: true)
+
+        let initialFailure = try #require(model.flagsRefreshFailure)
+        #expect(await transport.requestCount == 5)
+        #expect(model.flagsContentState == .carried(
+            [carriedFlag],
+            failure: initialFailure,
+            capturedAt: capturedAt
+        ))
+
+        let first = Task { @MainActor in await model.retry() }
+        let second = Task { @MainActor in await model.retry() }
+        let retryIsHeld = await transport.waitUntilRetryIsHeld()
+        #expect(retryIsHeld)
+        guard retryIsHeld else {
+            await transport.releaseRetry()
+            await first.value
+            await second.value
+            return
+        }
+
+        #expect(model.flagsRefreshFailure == initialFailure)
+        #expect(model.shortlistFlags == [carriedFlag])
+        #expect(model.flagsContentState == .carried(
+            [carriedFlag],
+            failure: initialFailure,
+            capturedAt: capturedAt
+        ))
+
+        await transport.releaseRetry()
+        await first.value
+        await second.value
+
+        #expect(await transport.requestCount == 10)
+        #expect(model.flagsRefreshFailure == nil)
+        #expect(model.shortlistFlags.map(\.key) == ["example-a", "example-b"])
+    }
+
     @Test("concurrent refresh calls coalesce within one configuration generation")
     func concurrentRefreshesCoalesceWithinOneGeneration() async {
         let transport = HeldFirstWatchRequestTransport()
@@ -589,7 +646,7 @@ struct WatchModelTests {
         await projectSeed.refresh(force: true)
         let differentProject = WatchModel(
             credential: StoredCredential(
-                key: "test-key-0002", region: .usCloud, projectID: 2001
+                key: "test-key-0002", region: .usCloud, projectID: 1002
             ),
             projectName: "Different synthetic project",
             headlineMetricID: nil,
@@ -2206,7 +2263,7 @@ struct WatchModelTests {
     @Test("a rejected credential keeps the replacement form available")
     func failedPhaseOffersCredentialReplacement() {
         let message = "The synthetic key was rejected."
-        let selfHostedURL = URL(string: "https://synthetic.example.test")!
+        let selfHostedURL = URL(string: "https://watch.example.invalid")!
 
         #expect(WatchCredentialEntryState(phase: .needsKey) == .missing)
         #expect(WatchCredentialEntryState(phase: .failed(message)) == nil)
@@ -2238,7 +2295,7 @@ struct WatchModelTests {
 
     @Test("replacement draft preselects the existing endpoint")
     func replacementDraftPreselectsExistingEndpoint() {
-        let selfHostedURL = URL(string: "https://synthetic.example.test")!
+        let selfHostedURL = URL(string: "https://watch.example.invalid")!
 
         #expect(
             WatchManualCredentialDraft(state: .missing)
@@ -2257,7 +2314,7 @@ struct WatchModelTests {
                 )
             ) == WatchManualCredentialDraft(
                 region: .selfHosted,
-                selfHostedURL: "https://synthetic.example.test"
+                selfHostedURL: "https://watch.example.invalid"
             )
         )
     }

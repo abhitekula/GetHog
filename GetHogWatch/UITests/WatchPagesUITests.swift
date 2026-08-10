@@ -136,6 +136,95 @@ final class WatchPagesUITests: XCTestCase {
         XCTAssertFalse(loading.exists)
     }
 
+    /// A retry is one stable operation, not a blanking transition. The
+    /// synthetic first attempt leaves one carried row and a retryable failure;
+    /// request one of the retry generation then pauses long enough to inspect
+    /// the rendered order and progress treatment. A rapid second activation is
+    /// aimed at the same control coordinate, and the sentinel row proves it did
+    /// not start a second five-request generation after the first completed.
+    func testRetryShowsDisabledProgressBeforeCarriedRows() {
+        guard ExclusiveRun.claim() else { return }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-GetHogDemo"]
+        app.launchEnvironment["GETHOG_DEMO"] = "1"
+        app.launchEnvironment["GETHOG_WATCH_PAGE"] = "flags"
+        app.launchEnvironment["GETHOG_WATCH_SCENARIO"] = "flags-carried-failure"
+        app.launch()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["Flags"], timeout: 30),
+            "The synthetic carried-failure Flags page did not render."
+        )
+
+        let failure = app.staticTexts["PostHog couldn't be reached."]
+        let carriedRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "carried-navigation,")
+        ).firstMatch
+        let retry = app.buttons["Retry"]
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: failure, timeout: 30),
+            "The initial synthetic flag failure was not published."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: carriedRow, timeout: 5),
+            "The failed first attempt hid its same-project carried row."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: retry, timeout: 5),
+            "The retryable section failure offered no Retry control."
+        )
+        XCTAssertTrue(retry.isHittable, "Retry was present but not focusable on the wrist.")
+        XCTAssertLessThan(
+            failure.frame.minY,
+            carriedRow.frame.minY,
+            "Recovery must be encountered before stale flag rows."
+        )
+
+        let retryFrame = retry.frame
+        let appFrame = app.frame
+        let retryCoordinate = app.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: (retryFrame.midX - appFrame.minX) / appFrame.width,
+                dy: (retryFrame.midY - appFrame.minY) / appFrame.height
+            )
+        )
+        retryCoordinate.tap()
+        retryCoordinate.tap()
+
+        let refreshing = app.buttons["Refreshing…"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: refreshing, timeout: 2),
+            "Retry did not become stable progress while its generation was held."
+        )
+        XCTAssertFalse(refreshing.isEnabled, "Held retry progress remained activatable.")
+        XCTAssertTrue(failure.exists, "Retry cleared the published failure before completion.")
+        XCTAssertTrue(carriedRow.exists, "Retry cleared carried rows before completion.")
+        XCTAssertFalse(retry.exists, "An enabled Retry remained beside held progress.")
+
+        let terminalRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "example-navigation,")
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: terminalRow, timeout: 30),
+            "The held synthetic retry never released its terminal flag rows."
+        )
+        XCTAssertFalse(refreshing.exists, "Terminal success left retry progress visible.")
+        XCTAssertFalse(failure.exists, "Terminal success did not replace the old failure.")
+
+        let unexpectedGeneration = app.buttons.matching(
+            NSPredicate(
+                format: "label BEGINSWITH %@",
+                "unexpected-second-retry-generation,"
+            )
+        ).firstMatch
+        XCTAssertFalse(
+            DemoLaunch.wait(timeout: 3, until: { unexpectedGeneration.exists }),
+            "Rapid retry activation started a second five-request generation."
+        )
+    }
+
     func testActivityPageShowsRecentEvents() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "activity"])
 

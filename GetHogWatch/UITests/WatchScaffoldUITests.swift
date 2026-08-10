@@ -124,7 +124,7 @@ final class WatchScaffoldUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["US Cloud"].exists)
 
         let serverURL = app.textFields.matching(
-            NSPredicate(format: "value == %@", "https://synthetic.example.test")
+            NSPredicate(format: "value == %@", "https://watch.example.invalid")
         ).firstMatch
         reveal(serverURL)
         XCTAssertTrue(

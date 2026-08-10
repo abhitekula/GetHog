@@ -30,6 +30,7 @@ enum WatchDemoMode {
         case noCredential = "no-credential"
         case flagsLoading = "flags-loading"
         case flagsEmpty = "flags-empty"
+        case flagsCarriedFailure = "flags-carried-failure"
 
         var credential: StoredCredential? {
             switch self {
@@ -42,7 +43,7 @@ enum WatchDemoMode {
             case .rejectedSelfHosted:
                 StoredCredential(
                     key: "synthetic-rejected-key",
-                    region: .selfHosted(URL(string: "https://synthetic.example.test")!),
+                    region: .selfHosted(URL(string: "https://watch.example.invalid")!),
                     projectID: 1001
                 )
             case .noCredential:
@@ -51,13 +52,19 @@ enum WatchDemoMode {
                 StoredCredential(
                     key: "synthetic-flags-key",
                     region: .usCloud,
-                    projectID: 2002
+                    projectID: 1002
                 )
             case .flagsEmpty:
                 StoredCredential(
                     key: "synthetic-flags-key",
                     region: .usCloud,
-                    projectID: 2003
+                    projectID: 42
+                )
+            case .flagsCarriedFailure:
+                StoredCredential(
+                    key: "synthetic-flags-key",
+                    region: .usCloud,
+                    projectID: 77
                 )
             }
         }
@@ -83,6 +90,42 @@ enum WatchDemoMode {
         for scenario: SyntheticScenario
     ) -> any HTTPTransport {
         WatchSyntheticScenarioTransport(scenario: scenario)
+    }
+
+    /// Seeds the same-scope fallback required by the carried-failure render
+    /// scenario before `WatchModel` reads the shared container. The fixed
+    /// identity and timestamp are fictional and DEBUG-only.
+    static func prepareSyntheticScenario(
+        _ scenario: SyntheticScenario,
+        in store: SharedSnapshotStore
+    ) {
+        guard scenario == .flagsCarriedFailure,
+              let credential = scenario.credential,
+              let projectID = credential.projectID
+        else { return }
+
+        let capturedAt = Date(timeIntervalSince1970: 1_767_225_600)
+        let snapshot = SharedSnapshot(
+            projectID: projectID,
+            projectName: "Synthetic retry project",
+            metrics: [],
+            flags: [
+                SharedSnapshot.Flag(
+                    id: 720_004,
+                    key: "carried-navigation",
+                    active: true,
+                    quickToggleAllowed: false
+                ),
+            ],
+            projectRegion: credential.region,
+            capturedAt: capturedAt
+        )
+        try? store.write(snapshot)
+        try? WatchFlagsReceipt(
+            projectID: projectID,
+            projectRegion: credential.region,
+            capturedAt: capturedAt
+        ).write(to: store)
     }
     #endif
 
@@ -224,10 +267,17 @@ enum WatchDemoMode {
 /// A complete transport boundary for otherwise unreachable render states.
 /// Every branch is fixture-only and delegates ordinary routes to the authored
 /// demo transport; no scenario can open a socket or consume a live budget.
-private struct WatchSyntheticScenarioTransport: HTTPTransport {
+private actor WatchSyntheticScenarioTransport: HTTPTransport {
     let scenario: WatchDemoMode.SyntheticScenario
+    private var requestCount = 0
+    private var flagsRequestCount = 0
+
+    init(scenario: WatchDemoMode.SyntheticScenario) {
+        self.scenario = scenario
+    }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
         let path = request.url?.path(percentEncoded: false) ?? ""
         switch scenario {
         case .rejectedEU, .rejectedSelfHosted:
@@ -249,6 +299,32 @@ private struct WatchSyntheticScenarioTransport: HTTPTransport {
                 status: 200,
                 request: request
             )
+        case .flagsCarriedFailure:
+            if path.contains("/feature_flags/") {
+                flagsRequestCount += 1
+                if flagsRequestCount == 1 {
+                    return reply(
+                        Data(#"{"detail":"Synthetic retryable failure."}"#.utf8),
+                        status: 503,
+                        request: request
+                    )
+                }
+                if flagsRequestCount > 2 {
+                    return reply(
+                        Data(
+                            #"{"count":1,"next":null,"previous":null,"results":[{"id":720099,"key":"unexpected-second-retry-generation","active":true,"archived":false,"deleted":false}]}"#.utf8
+                        ),
+                        status: 200,
+                        request: request
+                    )
+                }
+            }
+            if requestCount == 6 {
+                // Hold request one of the first retry generation long enough
+                // for XCUITest to inspect stable failure, rows, and progress.
+                try? await Task.sleep(for: .seconds(4))
+            }
+            return try await WatchDemoTransport().send(request)
         case .noCredential, .flagsLoading, .flagsEmpty:
             return try await WatchDemoTransport().send(request)
         }
@@ -260,7 +336,7 @@ private struct WatchSyntheticScenarioTransport: HTTPTransport {
         (
             data,
             HTTPURLResponse(
-                url: request.url ?? URL(string: "https://synthetic.example.test")!,
+                url: request.url ?? URL(string: "https://watch.example.invalid")!,
                 statusCode: status,
                 httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]

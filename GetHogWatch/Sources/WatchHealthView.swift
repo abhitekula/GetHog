@@ -76,7 +76,10 @@ struct WatchHealthView: View {
 
     @ViewBuilder private var errorPulse: some View {
         if let failure = model.healthRefreshFailure {
-            WatchSectionFailureView(failure: failure) {
+            WatchSectionFailureView(
+                failure: failure,
+                isRefreshing: model.isExplicitRefreshInFlight
+            ) {
                 Task { await model.retry() }
             }
         } else if let pulse = model.health.errorPulse {

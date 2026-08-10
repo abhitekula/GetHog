@@ -152,14 +152,18 @@ struct WatchFlagsView: View {
                     flagRows(flags)
                     rowsFooter
                 case .carried(let flags, let failure, _):
-                    // Task 3 deliberately owns retry ordering. Preserve the
-                    // current rows-first order in this provenance-only cycle.
-                    flagRows(flags)
-                    WatchSectionFailureView(failure: failure) {
+                    WatchSectionFailureView(
+                        failure: failure,
+                        isRefreshing: model.isExplicitRefreshInFlight
+                    ) {
                         Task { await model.retry() }
                     }
+                    flagRows(flags)
                 case .failure(let failure):
-                    WatchSectionFailureView(failure: failure) {
+                    WatchSectionFailureView(
+                        failure: failure,
+                        isRefreshing: model.isExplicitRefreshInFlight
+                    ) {
                         Task { await model.retry() }
                     }
                 }

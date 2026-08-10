@@ -14,6 +14,14 @@ struct WatchActivityView: View {
     var body: some View {
         NavigationStack {
             List {
+                if let failure = model.activityRefreshFailure {
+                    WatchSectionFailureView(
+                        failure: failure,
+                        isRefreshing: model.isExplicitRefreshInFlight
+                    ) {
+                        Task { await model.retry() }
+                    }
+                }
                 ForEach(model.activity) { line in
                     VStack(alignment: .leading) {
                         Text(line.event)
@@ -26,11 +34,6 @@ struct WatchActivityView: View {
                         }
                     }
                     .accessibilityElement(children: .combine)
-                }
-                if let failure = model.activityRefreshFailure {
-                    WatchSectionFailureView(failure: failure) {
-                        Task { await model.retry() }
-                    }
                 }
                 footer
             }
