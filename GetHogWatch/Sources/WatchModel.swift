@@ -169,14 +169,11 @@ struct WatchHandoff: Sendable, Equatable {
             #if DEBUG
             if let key = environment["GETHOG_API_KEY"],
                !key.isEmpty {
-                let region: PostHogRegion = switch environment["GETHOG_REGION"]?.lowercased() {
-                case "eu": .euCloud
-                case let host? where host.hasPrefix("http"):
-                    URL(string: host).map { PostHogRegion.selfHosted($0) } ?? .usCloud
-                default: .usCloud
-                }
                 // No projectID: `refresh` resolves it through `/users/@me/` once.
-                credential = StoredCredential(key: key, region: region)
+                credential = processCredential(
+                    key: key,
+                    regionValue: environment["GETHOG_REGION"]
+                )
                 credentialSource = .processOnly
             }
             #endif
@@ -193,6 +190,39 @@ struct WatchHandoff: Sendable, Equatable {
             )
         }
     }
+
+    #if DEBUG
+    private static func processCredential(
+        key: String,
+        regionValue: String?
+    ) -> StoredCredential? {
+        let region: PostHogRegion
+        guard let regionValue, !regionValue.isEmpty else {
+            return StoredCredential(key: key, region: .usCloud)
+        }
+
+        switch regionValue.lowercased() {
+        case "us":
+            region = .usCloud
+        case "eu":
+            region = .euCloud
+        default:
+            guard let url = URL(
+                      string: regionValue,
+                      encodingInvalidCharacters: false
+                  ),
+                  url.absoluteString == regionValue,
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let host = url.host,
+                  !host.isEmpty else {
+                return nil
+            }
+            region = .selfHosted(url)
+        }
+        return StoredCredential(key: key, region: region)
+    }
+    #endif
 }
 
 // MARK: - Refresh failures

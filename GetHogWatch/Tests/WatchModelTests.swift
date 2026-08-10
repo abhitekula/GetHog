@@ -38,15 +38,52 @@ struct WatchModelTests {
         #expect(try credentials.load() == stored)
     }
 
+    @Test("an absent or empty process key retains stored credential provenance")
+    func absentOrEmptyProcessKeyRetainsStoredCredentialProvenance() throws {
+        let stored = StoredCredential(
+            key: "synthetic-stored-key",
+            region: .euCloud,
+            projectID: 1_001
+        )
+        let credentials = InMemoryTokenStore(credential: stored)
+        let environments: [[String: String]] = [
+            [:],
+            [
+                "GETHOG_API_KEY": "",
+                "GETHOG_REGION": "malformed-explicit-region",
+            ],
+        ]
+
+        for environment in environments {
+            let defaults = try #require(
+                UserDefaults(suiteName: "GetHogWatchTests-\(UUID().uuidString)")
+            )
+            let handoff = WatchHandoff.current(
+                credentials: credentials,
+                defaults: defaults,
+                snapshots: WatchFixtures.tempStore(),
+                mutationCoordinator: WatchCredentialMutationCoordinator(),
+                environment: environment
+            )
+
+            #expect(handoff.credential == stored)
+            #expect(handoff.credentialSource == .stored)
+        }
+    }
+
     @Test("a process credential resolves cloud and self-hosted regions")
     func processCredentialResolvesRegions() throws {
-        let selfHostedURL = try #require(URL(string: "https://example.invalid/posthog"))
+        let httpURL = try #require(URL(string: "http://example.invalid/PostHog"))
+        let httpsURL = try #require(URL(string: "https://example.invalid/PostHog"))
         let cases: [(String?, PostHogRegion)] = [
             (nil, .usCloud),
+            ("", .usCloud),
             ("us", .usCloud),
-            ("unexpected", .usCloud),
+            ("US", .usCloud),
             ("eu", .euCloud),
-            (selfHostedURL.absoluteString, .selfHosted(selfHostedURL)),
+            ("EU", .euCloud),
+            (httpURL.absoluteString, .selfHosted(httpURL)),
+            (httpsURL.absoluteString, .selfHosted(httpsURL)),
         ]
 
         for (region, expected) in cases {
@@ -66,6 +103,69 @@ struct WatchModelTests {
 
             #expect(handoff.credential?.region == expected)
             #expect(handoff.credentialSource == .processOnly)
+        }
+    }
+
+    @Test("a self-hosted process region preserves the URL path byte for byte")
+    func processCredentialPreservesSelfHostedURLPath() throws {
+        let rawURL = "https://Example.Invalid/PostHog/CaseSensitive/%2FPath?Signature=AbC%2F123"
+        let expectedURL = try #require(URL(string: rawURL))
+        let defaults = try #require(
+            UserDefaults(suiteName: "GetHogWatchTests-\(UUID().uuidString)")
+        )
+
+        let handoff = WatchHandoff.current(
+            credentials: InMemoryTokenStore(),
+            defaults: defaults,
+            snapshots: WatchFixtures.tempStore(),
+            mutationCoordinator: WatchCredentialMutationCoordinator(),
+            environment: [
+                "GETHOG_API_KEY": "synthetic-process-key",
+                "GETHOG_REGION": rawURL,
+            ]
+        )
+
+        #expect(handoff.credential?.region == .selfHosted(expectedURL))
+        guard case .selfHosted(let resolvedURL) = handoff.credential?.region else {
+            Issue.record("Expected a self-hosted process credential")
+            return
+        }
+        #expect(resolvedURL.absoluteString == rawURL)
+    }
+
+    @Test("a malformed explicit process region blocks every credential fallback")
+    func malformedProcessRegionBlocksEveryCredentialFallback() throws {
+        let stored = StoredCredential(
+            key: "synthetic-stored-key",
+            region: .euCloud,
+            projectID: 1_001
+        )
+        let credentials = InMemoryTokenStore(credential: stored)
+        let malformedRegions = [
+            "unexpected",
+            "ftp://example.invalid/PostHog",
+            "https:///missing-host",
+            "https://example.invalid/has space",
+        ]
+
+        for region in malformedRegions {
+            let defaults = try #require(
+                UserDefaults(suiteName: "GetHogWatchTests-\(UUID().uuidString)")
+            )
+            let handoff = WatchHandoff.current(
+                credentials: credentials,
+                defaults: defaults,
+                snapshots: WatchFixtures.tempStore(),
+                mutationCoordinator: WatchCredentialMutationCoordinator(),
+                environment: [
+                    "GETHOG_API_KEY": "synthetic-process-key",
+                    "GETHOG_REGION": region,
+                ]
+            )
+
+            #expect(handoff.credential == nil)
+            #expect(handoff.credentialSource == .processOnly)
+            #expect(try credentials.load() == stored)
         }
     }
 

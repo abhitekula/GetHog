@@ -19,6 +19,12 @@ import XCTest
 /// is certain to be read aloud in a log.
 enum LiveCredentials {
 
+    private struct MissingSweepCredential: LocalizedError {
+        var errorDescription: String? {
+            "Live sweep opted in, but .env.local has no nonempty GETHOG_API_KEY."
+        }
+    }
+
     private static let allowlistedKeys = ["GETHOG_API_KEY", "GETHOG_REGION"]
 
     private static var controlFile: URL {
@@ -80,15 +86,6 @@ enum LiveCredentials {
 
     static var isAvailable: Bool { !(values["GETHOG_API_KEY"] ?? "").isEmpty }
 
-    static func sweepIsAvailable(
-        controlFileURL: URL,
-        values: [String: String]
-    ) -> Bool {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: controlFileURL.path)
-        return attributes?[.type] as? FileAttributeType == .typeRegular
-            && !(values["GETHOG_API_KEY"] ?? "").isEmpty
-    }
-
     /// Skips rather than fails when there is no credential.
     ///
     /// A missing `.env.local` is the normal state of this repository for everyone
@@ -103,10 +100,21 @@ enum LiveCredentials {
 
     /// Requires the host wrapper's explicit per-run opt-in as well as a key.
     static func requireSweep() throws {
+        try requireSweep(controlFileURL: controlFile, values: values)
+    }
+
+    static func requireSweep(
+        controlFileURL: URL,
+        values: [String: String]
+    ) throws {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: controlFileURL.path)
         try XCTSkipUnless(
-            sweepIsAvailable(controlFileURL: controlFile, values: values),
-            "Live sweep requires the wrapper opt-in and a nonempty .env.local key."
+            attributes?[.type] as? FileAttributeType == .typeRegular,
+            "Live sweep requires the wrapper opt-in."
         )
+        guard !(values["GETHOG_API_KEY"] ?? "").isEmpty else {
+            throw MissingSweepCredential()
+        }
     }
 
     /// The launch environment for a normal live run.

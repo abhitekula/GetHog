@@ -2,7 +2,65 @@ import XCTest
 
 final class LiveCredentialsTests: XCTestCase {
 
-    func testSweepRequiresControlFileAndNonemptyKey() throws {
+    func testSweepSkipsWithoutARegularControlFile() throws {
+        let controlFile = try makeControlFileURL()
+
+        XCTAssertThrowsError(
+            try LiveCredentials.requireSweep(
+                controlFileURL: controlFile,
+                values: ["GETHOG_API_KEY": "nonempty-test-value"]
+            )
+        ) { error in
+            XCTAssertTrue(error is XCTSkip)
+        }
+
+        try FileManager.default.createDirectory(
+            at: controlFile,
+            withIntermediateDirectories: false
+        )
+        XCTAssertThrowsError(
+            try LiveCredentials.requireSweep(
+                controlFileURL: controlFile,
+                values: ["GETHOG_API_KEY": "nonempty-test-value"]
+            )
+        ) { error in
+            XCTAssertTrue(error is XCTSkip)
+        }
+    }
+
+    func testSweepFailsClosedWhenControlFileExistsWithoutAKey() throws {
+        let controlFile = try makeControlFileURL()
+        XCTAssertTrue(FileManager.default.createFile(atPath: controlFile.path, contents: Data()))
+
+        for values in [[:], ["GETHOG_API_KEY": ""]] {
+            XCTAssertThrowsError(
+                try LiveCredentials.requireSweep(
+                    controlFileURL: controlFile,
+                    values: values
+                )
+            ) { error in
+                XCTAssertFalse(error is XCTSkip)
+                XCTAssertEqual(
+                    error.localizedDescription,
+                    "Live sweep opted in, but .env.local has no nonempty GETHOG_API_KEY."
+                )
+            }
+        }
+    }
+
+    func testSweepProceedsWithControlFileAndNonemptyKey() throws {
+        let controlFile = try makeControlFileURL()
+        XCTAssertTrue(FileManager.default.createFile(atPath: controlFile.path, contents: Data()))
+
+        XCTAssertNoThrow(
+            try LiveCredentials.requireSweep(
+                controlFileURL: controlFile,
+                values: ["GETHOG_API_KEY": "nonempty-test-value"]
+            )
+        )
+    }
+
+    private func makeControlFileURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let controlFile = directory.appendingPathComponent(".live-pat-sweep")
@@ -13,39 +71,7 @@ final class LiveCredentialsTests: XCTestCase {
         addTeardownBlock {
             try? FileManager.default.removeItem(at: directory)
         }
-
-        XCTAssertFalse(
-            LiveCredentials.sweepIsAvailable(
-                controlFileURL: controlFile,
-                values: ["GETHOG_API_KEY": "nonempty-test-value"]
-            )
-        )
-
-        try FileManager.default.createDirectory(
-            at: controlFile,
-            withIntermediateDirectories: false
-        )
-        XCTAssertFalse(
-            LiveCredentials.sweepIsAvailable(
-                controlFileURL: controlFile,
-                values: ["GETHOG_API_KEY": "nonempty-test-value"]
-            )
-        )
-        try FileManager.default.removeItem(at: controlFile)
-
-        XCTAssertTrue(FileManager.default.createFile(atPath: controlFile.path, contents: Data()))
-        XCTAssertFalse(
-            LiveCredentials.sweepIsAvailable(
-                controlFileURL: controlFile,
-                values: ["GETHOG_API_KEY": ""]
-            )
-        )
-        XCTAssertTrue(
-            LiveCredentials.sweepIsAvailable(
-                controlFileURL: controlFile,
-                values: ["GETHOG_API_KEY": "nonempty-test-value"]
-            )
-        )
+        return controlFile
     }
 
     func testParserAcceptsBareAndExportedAssignments() {
