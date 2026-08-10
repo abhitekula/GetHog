@@ -5,9 +5,8 @@ import SwiftUI
 // The Mac twin of every iOS-only API this codebase names from *shared* files.
 // One rule decides what belongs here: the iOS call sites stay byte-identical,
 // and the Mac meaning is either the honest equivalent (pasteboard, placements)
-// or an honest no-op (spacing tweaks a Mac list doesn't have). Anything that
-// needs real Mac behavior later (Task 4+) replaces its shim, not its call
-// sites.
+// or an honest no-op (iOS-only chrome with no Mac equivalent). Anything that
+// needs real Mac behavior later replaces its shim, not its call sites.
 
 // MARK: - Size classes
 
@@ -49,8 +48,9 @@ extension ToolbarItemPlacement {
 // MARK: - List conveniences
 
 extension View {
-    /// Row spacing is an iOS inset-grouped affordance; the Mac list spaces
-    /// itself.
+    /// SwiftUI explicitly marks `listRowSpacing` unavailable on macOS, so
+    /// shared list call sites need this compile twin. Mac rows that require a
+    /// measured gap use native `listRowInsets` at the row owner.
     func listRowSpacing(_ spacing: CGFloat?) -> some View { self }
 }
 

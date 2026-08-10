@@ -174,8 +174,10 @@ struct SessionDetailView: View {
 
                 FreshnessLabel(date: timeline.loadedAt)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, Theme.Space.l)
         }
+        .accessibilityIdentifier("gethog.session-detail-primary")
         .pageSurface()
         .navigationTitle(recording.personDisplayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -471,12 +473,14 @@ private struct ReplayDiagnosticsPanePresentation<Pane: View>: ViewModifier {
     func body(content: Content) -> some View {
         HStack(spacing: 0) {
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             if isPresented {
                 Divider()
                 pane
-                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(
             reduceMotion ? nil : .snappy(duration: 0.25),
             value: isPresented
@@ -544,6 +548,7 @@ struct SessionHeaderCard: View {
                 }
             }
         }
+        .accessibilityIdentifier("gethog.session-header")
     }
 
     /// Beside the avatar normally, stacked without it at accessibility sizes.

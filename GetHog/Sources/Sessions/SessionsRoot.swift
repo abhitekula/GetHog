@@ -425,11 +425,28 @@ struct SessionsRoot: View {
                 NavigationLink(value: recording.id) {
                     SessionRowView(recording: recording)
                 }
+                .accessibilityIdentifier("gethog.session-card.\(recording.id)")
+                #if os(macOS)
+                .listRowInsets(EdgeInsets(
+                    top: Theme.Space.xs / 2,
+                    leading: Theme.Space.s,
+                    bottom: Theme.Space.xs / 2,
+                    trailing: Theme.Space.s
+                ))
+                #endif
+                #if os(macOS)
+                .listRowBackground(
+                    Theme.cardBackground
+                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                        .padding(.vertical, Theme.Space.xs / 2)
+                )
+                #else
                 .listRowBackground(
                     Theme.cardBackground
                         .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
                         .padding(.vertical, 1)
                 )
+                #endif
                 .listRowSeparator(.hidden)
                 // A recording row offered nothing on right-click at all, while
                 // the dashboard beside it offered two items and the replay
