@@ -305,7 +305,15 @@ struct QueryTruncationTests {
                     columns: ["uuid", "body", "severity_text", "timestamp"], rows: rows
                 )
             ),
-            projectID: 1
+            request: LogsRequestDescriptor(
+                authority: ResourceRequestAuthority(
+                    projectID: 1,
+                    region: .usCloud,
+                    authSessionID: UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
+                ),
+                window: .day,
+                search: ""
+            )
         )
         #expect(store.rowsReturned == full)
         #expect(store.isTruncated)
@@ -330,7 +338,15 @@ struct QueryTruncationTests {
                     columns: ["uuid", "body", "severity_text", "timestamp"], rows: rows
                 )
             ),
-            projectID: 1
+            request: LogsRequestDescriptor(
+                authority: ResourceRequestAuthority(
+                    projectID: 1,
+                    region: .usCloud,
+                    authSessionID: UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
+                ),
+                window: .day,
+                search: ""
+            )
         )
         #expect(store.rows.count == full - 1)
         #expect(store.rowsReturned == full)
@@ -350,7 +366,15 @@ struct QueryTruncationTests {
                     columns: ["uuid", "body", "severity_text", "timestamp"], rows: rows
                 )
             ),
-            projectID: 1
+            request: LogsRequestDescriptor(
+                authority: ResourceRequestAuthority(
+                    projectID: 1,
+                    region: .usCloud,
+                    authSessionID: UUID(uuidString: "10000000-0000-0000-0000-000000000003")!
+                ),
+                window: .day,
+                search: ""
+            )
         )
         #expect(!store.isTruncated)
     }
@@ -639,6 +663,13 @@ private actor DelayedResourceStoreTransport: HTTPTransport {
     func release(_ index: Int) {
         releases.removeValue(forKey: index)?.resume()
     }
+
+    /// Lets every already-scheduled caller reach the transport before reading
+    /// the count, without adding a wall-clock sleep to an ownership test.
+    func requestCountAfterSchedulingSettles() async -> Int {
+        for _ in 0..<100 { await Task.yield() }
+        return requestCount
+    }
 }
 
 @Suite("Async resource request ownership")
@@ -655,7 +686,7 @@ struct AsyncResourceRequestOwnershipTests {
         )
         let currentDescriptor = LogsRequestDescriptor(
             authority: Self.authority(projectID: 41),
-            window: .lastHour,
+            window: .day,
             search: "current"
         )
         let transport = DelayedResourceStoreTransport([
@@ -670,7 +701,6 @@ struct AsyncResourceRequestOwnershipTests {
         let superseded = Task { await store.load(client: client, request: previousDescriptor) }
         await transport.waitForRequest(0)
 
-        store.window = currentDescriptor.window
         store.search = currentDescriptor.search
         superseded.cancel()
         await store.load(client: client, request: currentDescriptor)
@@ -679,6 +709,69 @@ struct AsyncResourceRequestOwnershipTests {
         await transport.release(0)
         await superseded.value
         #expect(store.rows.map(\.id) == ["new-log"])
+    }
+
+    /// Production mutation caught: moving filter invalidation back into the
+    /// asynchronously scheduled replacement load lets an old reply publish in
+    /// the gap after the visible Logs filter has already changed.
+    @Test(
+        "logs reject old work before a replacement task starts",
+        arguments: [LogsFilterDimension.window, .search]
+    )
+    func logsRejectTheFilterSchedulingGap(_ dimension: LogsFilterDimension) async {
+        let descriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 44),
+            window: .day,
+            search: "original"
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.logsReply(id: "gap-log", body: "Must not publish")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+        store.window = descriptor.window
+        store.search = descriptor.search
+
+        let oldWork = Task { await store.load(client: client, request: descriptor) }
+        await transport.waitForRequest(0)
+        switch dimension {
+        case .window: store.window = .lastHour
+        case .search: store.search = "replacement"
+        }
+
+        // No replacement load has started. Releasing here is the root's
+        // `onChange { Task { ... } }` scheduling gap from the review finding.
+        await transport.release(0)
+        await oldWork.value
+
+        #expect(store.rows.isEmpty)
+        #expect(store.loadedAt == nil)
+    }
+
+    /// Production mutation caught: removing the equal-descriptor in-flight
+    /// handle sends two identical Logs queries instead of sharing one result.
+    @Test("logs coalesce concurrent requests for one descriptor")
+    func logsCoalesceTheSameDescriptor() async {
+        let descriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 45), window: .day, search: ""
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.logsReply(id: "coalesced-log", body: "One request")),
+            .held(Self.logsReply(id: "duplicate-log", body: "Must not be requested")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+
+        let first = Task { await store.load(client: client, request: descriptor) }
+        await transport.waitForRequest(0)
+        let second = Task { await store.load(client: client, request: descriptor) }
+        let requestCount = await transport.requestCountAfterSchedulingSettles()
+        for index in 0..<requestCount { await transport.release(index) }
+        await first.value
+        await second.value
+
+        #expect(requestCount == 1)
+        #expect(store.rows.map(\.id) == ["coalesced-log"])
     }
 
     /// Production mutation caught: clearing Logs rows in the same-descriptor
@@ -718,7 +811,7 @@ struct AsyncResourceRequestOwnershipTests {
             authority: Self.authority(projectID: 43), window: .day, search: "old"
         )
         let replacement = LogsRequestDescriptor(
-            authority: Self.authority(projectID: 43), window: .lastHour, search: "new"
+            authority: Self.authority(projectID: 43), window: .lastHour, search: "old"
         )
         let transport = DelayedResourceStoreTransport([
             .immediate(Self.logsReply(id: "old-filter-log", body: "Old filter")),
@@ -750,7 +843,7 @@ struct AsyncResourceRequestOwnershipTests {
         )
         let currentDescriptor = TracingRequestDescriptor(
             authority: Self.authority(projectID: 51),
-            window: .lastHour,
+            window: .day,
             service: "checkout",
             spanName: "",
             errorsOnly: false
@@ -767,7 +860,6 @@ struct AsyncResourceRequestOwnershipTests {
         let superseded = Task { await store.load(client: client, request: previousDescriptor) }
         await transport.waitForRequest(0)
 
-        store.window = currentDescriptor.window
         store.service = currentDescriptor.service
         superseded.cancel()
         await store.load(client: client, request: currentDescriptor)
@@ -776,6 +868,82 @@ struct AsyncResourceRequestOwnershipTests {
         await transport.release(0)
         await superseded.value
         #expect(store.traces.map(\.id) == ["new-trace"])
+    }
+
+    /// Production mutation caught: deferring Tracing filter invalidation to a
+    /// scheduled replacement task lets the old descriptor publish after any
+    /// one of its four server-side filter dimensions has changed.
+    @Test(
+        "tracing rejects old work before a replacement task starts",
+        arguments: [
+            TracingFilterDimension.window,
+            .service,
+            .spanName,
+            .errorsOnly,
+        ]
+    )
+    func tracingRejectsTheFilterSchedulingGap(_ dimension: TracingFilterDimension) async {
+        let descriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 54),
+            window: .day,
+            service: nil,
+            spanName: "original",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.tracingReply(traceID: "gap-trace", service: "worker")),
+        ])
+        let store = TracingStore()
+        let client = Self.client(transport)
+        store.window = descriptor.window
+        store.service = descriptor.service
+        store.spanName = descriptor.spanName
+        store.errorsOnly = descriptor.errorsOnly
+
+        let oldWork = Task { await store.load(client: client, request: descriptor) }
+        await transport.waitForRequest(0)
+        switch dimension {
+        case .window: store.window = .lastHour
+        case .service: store.service = "replacement"
+        case .spanName: store.spanName = "replacement"
+        case .errorsOnly: store.errorsOnly = true
+        }
+
+        await transport.release(0)
+        await oldWork.value
+
+        #expect(store.traces.isEmpty)
+        #expect(store.loadedAt == nil)
+    }
+
+    /// Production mutation caught: removing the equal-descriptor in-flight
+    /// handle sends duplicate Tracing queries and double-spends query budget.
+    @Test("tracing coalesces concurrent requests for one descriptor")
+    func tracingCoalescesTheSameDescriptor() async {
+        let descriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 55),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.tracingReply(traceID: "coalesced-trace", service: "worker")),
+            .held(Self.tracingReply(traceID: "duplicate-trace", service: "worker")),
+        ])
+        let store = TracingStore()
+        let client = Self.client(transport)
+
+        let first = Task { await store.load(client: client, request: descriptor) }
+        await transport.waitForRequest(0)
+        let second = Task { await store.load(client: client, request: descriptor) }
+        let requestCount = await transport.requestCountAfterSchedulingSettles()
+        for index in 0..<requestCount { await transport.release(index) }
+        await first.value
+        await second.value
+
+        #expect(requestCount == 1)
+        #expect(store.traces.map(\.id) == ["coalesced-trace"])
     }
 
     /// Production mutation caught: clearing Tracing rows in the
@@ -880,6 +1048,16 @@ struct AsyncResourceRequestOwnershipTests {
         }
         await transport.waitForRequest(1)
         superseded.cancel()
+        store.invalidate()
+
+        // The authority observer has run, but SwiftUI has not scheduled the
+        // replacement `.task(id:)` body yet. The old transport must already be
+        // unable to publish in this root scheduling gap.
+        await transport.release(1)
+        await superseded.value
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+
         let replacement = Task {
             await store.load(client: client, request: currentDescriptor)
         }
@@ -889,10 +1067,6 @@ struct AsyncResourceRequestOwnershipTests {
 
         await transport.release(2)
         await replacement.value
-        #expect(store.exports.map(\.id) == [6_201])
-
-        await transport.release(1)
-        await superseded.value
         #expect(store.exports.map(\.id) == [6_201])
     }
 
@@ -952,6 +1126,32 @@ struct AsyncResourceRequestOwnershipTests {
         await pending.value
     }
 
+    /// Production mutation caught: removing the equal-descriptor in-flight
+    /// handle issues two identical Renders list requests instead of one.
+    @Test("renders coalesce concurrent requests for one descriptor")
+    func rendersCoalesceTheSameDescriptor() async {
+        let descriptor = RendersRequestDescriptor(
+            authority: Self.authority(projectID: 73)
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.rendersReply(id: 7_301, filename: "Coalesced.mp4")),
+            .held(Self.rendersReply(id: 7_302, filename: "Duplicate.mp4")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+
+        let first = Task { await store.load(client: client, request: descriptor) }
+        await transport.waitForRequest(0)
+        let second = Task { await store.load(client: client, request: descriptor) }
+        let requestCount = await transport.requestCountAfterSchedulingSettles()
+        for index in 0..<requestCount { await transport.release(index) }
+        await first.value
+        await second.value
+
+        #expect(requestCount == 1)
+        #expect(store.exports.map(\.id) == [7_301])
+    }
+
     private static func client(
         _ transport: some HTTPTransport,
         region: PostHogRegion = .usCloud
@@ -1007,4 +1207,16 @@ struct AsyncResourceRequestOwnershipTests {
             """
         )
     }
+}
+
+enum LogsFilterDimension: Sendable {
+    case window
+    case search
+}
+
+enum TracingFilterDimension: Sendable {
+    case window
+    case service
+    case spanName
+    case errorsOnly
 }

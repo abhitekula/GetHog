@@ -79,7 +79,7 @@ extension LogSeverity {
 struct ResourceRequestAuthority: Hashable, Sendable {
     let projectID: Int
     let region: PostHogRegion
-    let authSessionID: UUID?
+    let authSessionID: UUID
 }
 
 /// Every value that changes the meaning of one Logs response.
@@ -123,11 +123,27 @@ final class LogsStore {
 
     private var requestGeneration: UInt64 = 0
     private var currentRequest: LogsRequestDescriptor?
+    private var inFlight: InFlight?
+
+    private struct InFlight {
+        let id: UUID
+        let generation: UInt64
+        let request: LogsRequestDescriptor
+        var waiters: [CheckedContinuation<Void, Never>] = []
+    }
 
     // Held here rather than in the view so a project switch or a pull-to-refresh
     // reuses whatever the reader last chose.
-    var window: LogsWindow = .day
-    var search = ""
+    var window: LogsWindow = .day {
+        didSet {
+            if window != oldValue { invalidateFilterAuthority() }
+        }
+    }
+    var search = "" {
+        didSet {
+            if search != oldValue { invalidateFilterAuthority() }
+        }
+    }
     var problemsOnly = false
 
     var isEmpty: Bool { rows.isEmpty }
@@ -155,24 +171,10 @@ final class LogsStore {
         }
     }
 
-    func load(client: PostHogClient, projectID: Int) async {
-        await load(
-            client: client,
-            request: LogsRequestDescriptor(
-                authority: ResourceRequestAuthority(
-                    projectID: projectID,
-                    region: client.region,
-                    authSessionID: nil
-                ),
-                window: window,
-                search: search
-            )
-        )
-    }
-
     func invalidate() {
         requestGeneration &+= 1
         currentRequest = nil
+        releaseInFlightWaiters()
         state = .loading
         rows = []
         rowsReturned = 0
@@ -182,22 +184,24 @@ final class LogsStore {
     }
 
     func load(client: PostHogClient, request: LogsRequestDescriptor) async {
-        requestGeneration &+= 1
-        let generation = requestGeneration
-        if currentRequest != request {
-            currentRequest = request
-            state = .loading
-            rows = []
-            rowsReturned = 0
-            isTruncated = false
-            loadedAt = nil
-        }
-        isLoading = true
-        defer {
-            if generation == requestGeneration, currentRequest == request {
-                isLoading = false
+        prepare(for: request)
+        if inFlight?.request == request {
+            await withCheckedContinuation { continuation in
+                guard var active = inFlight, active.request == request else {
+                    continuation.resume()
+                    return
+                }
+                active.waiters.append(continuation)
+                inFlight = active
             }
+            return
         }
+
+        let id = UUID()
+        let generation = requestGeneration
+        inFlight = InFlight(id: id, generation: generation, request: request)
+        isLoading = true
+        defer { completeInFlight(id: id) }
         do {
             let response: QueryResponse = try await client.send(
                 PostHogAPI.logs(
@@ -207,16 +211,63 @@ final class LogsStore {
                     limit: Self.limit
                 )
             )
-            guard generation == requestGeneration, currentRequest == request else { return }
+            guard owns(id: id, generation: generation, request: request) else { return }
             rows = LogRow.rows(from: response)
             rowsReturned = response.rows.count
             isTruncated = response.isTruncated || rowsReturned >= Self.limit
             state = .resolved(rowCount: rows.count)
             loadedAt = Date()
         } catch {
-            guard generation == requestGeneration, currentRequest == request else { return }
+            guard owns(id: id, generation: generation, request: request) else { return }
             state = ResourceAccessState(failure: error, resource: "logs", defaultScope: "logs:read")
         }
+    }
+
+    private func prepare(for request: LogsRequestDescriptor) {
+        guard currentRequest != request else { return }
+        requestGeneration &+= 1
+        currentRequest = request
+        releaseInFlightWaiters()
+        state = .loading
+        rows = []
+        rowsReturned = 0
+        isTruncated = false
+        loadedAt = nil
+    }
+
+    private func invalidateFilterAuthority() {
+        guard currentRequest != nil || inFlight != nil else { return }
+        requestGeneration &+= 1
+        currentRequest = nil
+        releaseInFlightWaiters()
+        state = .loading
+        rows = []
+        rowsReturned = 0
+        isTruncated = false
+        loadedAt = nil
+        isLoading = false
+    }
+
+    private func owns(
+        id: UUID,
+        generation: UInt64,
+        request: LogsRequestDescriptor
+    ) -> Bool {
+        inFlight?.id == id
+            && generation == requestGeneration
+            && currentRequest == request
+    }
+
+    private func completeInFlight(id: UUID) {
+        guard inFlight?.id == id else { return }
+        releaseInFlightWaiters()
+        isLoading = false
+    }
+
+    private func releaseInFlightWaiters() {
+        let waiters = inFlight?.waiters ?? []
+        inFlight = nil
+        for waiter in waiters { waiter.resume() }
     }
 }
 
@@ -264,6 +315,7 @@ struct LogsRoot: View {
             .searchable(text: $store.search, prompt: "Search log messages")
             .onSubmit(of: .search) { Task { await load() } }
             .screenRefreshable { await load() }
+            .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
     }
 

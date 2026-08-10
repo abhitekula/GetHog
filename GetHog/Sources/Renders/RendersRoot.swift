@@ -112,6 +112,14 @@ final class RendersStore {
     private(set) var isLoading = false
     private var requestGeneration: UInt64 = 0
     private var currentRequest: RendersRequestDescriptor?
+    private var inFlight: InFlight?
+
+    private struct InFlight {
+        let id: UUID
+        let generation: UInt64
+        let request: RendersRequestDescriptor
+        var waiters: [CheckedContinuation<Void, Never>] = []
+    }
 
     /// The instant the whole screen is rendered against.
     ///
@@ -126,51 +134,43 @@ final class RendersStore {
 
     var isEmpty: Bool { exports.isEmpty }
 
-    /// One request. The list endpoint returns everything the screen needs —
-    /// duration, size, failure text and the source recording all ride in
-    /// `export_context` — so no row costs a follow-up.
-    func load(client: PostHogClient, projectID: Int) async {
-        await load(
-            client: client,
-            request: RendersRequestDescriptor(
-                authority: ResourceRequestAuthority(
-                    projectID: projectID,
-                    region: client.region,
-                    authSessionID: nil
-                )
-            )
-        )
-    }
-
     func invalidate() {
         requestGeneration &+= 1
         currentRequest = nil
+        releaseInFlightWaiters()
         state = .loading
         exports = []
         loadedAt = nil
         isLoading = false
     }
 
+    /// One request. The list endpoint returns everything the screen needs —
+    /// duration, size, failure text and the source recording all ride in
+    /// `export_context` — so no row costs a follow-up.
     func load(client: PostHogClient, request: RendersRequestDescriptor) async {
-        requestGeneration &+= 1
-        let generation = requestGeneration
-        if currentRequest != request {
-            currentRequest = request
-            state = .loading
-            exports = []
-            loadedAt = nil
-        }
-        isLoading = true
-        defer {
-            if generation == requestGeneration, currentRequest == request {
-                isLoading = false
+        prepare(for: request)
+        if inFlight?.request == request {
+            await withCheckedContinuation { continuation in
+                guard var active = inFlight, active.request == request else {
+                    continuation.resume()
+                    return
+                }
+                active.waiters.append(continuation)
+                inFlight = active
             }
+            return
         }
+
+        let id = UUID()
+        let generation = requestGeneration
+        inFlight = InFlight(id: id, generation: generation, request: request)
+        isLoading = true
+        defer { completeInFlight(id: id) }
         do {
             let page: Page<RecordingExport> = try await client.send(
                 PostHogAPI.exports(projectID: request.authority.projectID)
             )
-            guard generation == requestGeneration, currentRequest == request else { return }
+            guard owns(id: id, generation: generation, request: request) else { return }
             exports = page.results
             asOf = Date()
             loadedAt = asOf
@@ -179,9 +179,41 @@ final class RendersStore {
             // There is no `Capability` case for exports, so the wall is
             // classified from the failure rather than probed for in advance —
             // the same treatment Logs and Tracing give their ungated endpoints.
-            guard generation == requestGeneration, currentRequest == request else { return }
+            guard owns(id: id, generation: generation, request: request) else { return }
             state = ResourceAccessState(failure: error, resource: "export", defaultScope: "export:read")
         }
+    }
+
+    private func prepare(for request: RendersRequestDescriptor) {
+        guard currentRequest != request else { return }
+        requestGeneration &+= 1
+        currentRequest = request
+        releaseInFlightWaiters()
+        state = .loading
+        exports = []
+        loadedAt = nil
+    }
+
+    private func owns(
+        id: UUID,
+        generation: UInt64,
+        request: RendersRequestDescriptor
+    ) -> Bool {
+        inFlight?.id == id
+            && generation == requestGeneration
+            && currentRequest == request
+    }
+
+    private func completeInFlight(id: UUID) {
+        guard inFlight?.id == id else { return }
+        releaseInFlightWaiters()
+        isLoading = false
+    }
+
+    private func releaseInFlightWaiters() {
+        let waiters = inFlight?.waiters ?? []
+        inFlight = nil
+        for waiter in waiters { waiter.resume() }
     }
 
     var visibleExports: [RecordingExport] {
@@ -256,6 +288,7 @@ struct RendersRoot: View {
             .projectSubtitle()
             .searchable(text: $store.search, prompt: "Search filename or session")
             .screenRefreshable { await load() }
+            .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
     }
 

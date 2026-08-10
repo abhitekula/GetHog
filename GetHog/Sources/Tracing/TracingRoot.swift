@@ -80,36 +80,44 @@ final class TracingStore {
     private(set) var isLoading = false
     private var requestGeneration: UInt64 = 0
     private var currentRequest: TracingRequestDescriptor?
+    private var inFlight: InFlight?
+
+    private struct InFlight {
+        let id: UUID
+        let generation: UInt64
+        let request: TracingRequestDescriptor
+        var waiters: [CheckedContinuation<Void, Never>] = []
+    }
 
     // Filters. Held here rather than in the view so a project switch or a
     // pull-to-refresh reuses whatever the user last chose.
-    var window: TracingWindow = .day
-    var service: String?
-    var spanName = ""
-    var errorsOnly = false
+    var window: TracingWindow = .day {
+        didSet {
+            if window != oldValue { invalidateFilterAuthority() }
+        }
+    }
+    var service: String? {
+        didSet {
+            if service != oldValue { invalidateFilterAuthority() }
+        }
+    }
+    var spanName = "" {
+        didSet {
+            if spanName != oldValue { invalidateFilterAuthority() }
+        }
+    }
+    var errorsOnly = false {
+        didSet {
+            if errorsOnly != oldValue { invalidateFilterAuthority() }
+        }
+    }
 
     var isEmpty: Bool { traces.isEmpty }
-
-    func load(client: PostHogClient, projectID: Int) async {
-        await load(
-            client: client,
-            request: TracingRequestDescriptor(
-                authority: ResourceRequestAuthority(
-                    projectID: projectID,
-                    region: client.region,
-                    authSessionID: nil
-                ),
-                window: window,
-                service: service,
-                spanName: spanName,
-                errorsOnly: errorsOnly
-            )
-        )
-    }
 
     func invalidate() {
         requestGeneration &+= 1
         currentRequest = nil
+        releaseInFlightWaiters()
         state = .loading
         traces = []
         services = []
@@ -118,24 +126,24 @@ final class TracingStore {
     }
 
     func load(client: PostHogClient, request: TracingRequestDescriptor) async {
-        requestGeneration &+= 1
+        prepare(for: request)
+        if inFlight?.request == request {
+            await withCheckedContinuation { continuation in
+                guard var active = inFlight, active.request == request else {
+                    continuation.resume()
+                    return
+                }
+                active.waiters.append(continuation)
+                inFlight = active
+            }
+            return
+        }
+
+        let id = UUID()
         let generation = requestGeneration
-        let previousAuthority = currentRequest?.authority
-        if currentRequest != request {
-            currentRequest = request
-            state = .loading
-            traces = []
-            loadedAt = nil
-            if previousAuthority != request.authority {
-                services = []
-            }
-        }
+        inFlight = InFlight(id: id, generation: generation, request: request)
         isLoading = true
-        defer {
-            if generation == requestGeneration, currentRequest == request {
-                isLoading = false
-            }
-        }
+        defer { completeInFlight(id: id) }
 
         do {
             let data = try await client.data(
@@ -148,13 +156,13 @@ final class TracingStore {
                 )
             )
             let spans = TraceSpan.rows(from: try QueryResponse.decode(from: data))
-            guard generation == requestGeneration, currentRequest == request else { return }
+            guard owns(id: id, generation: generation, request: request) else { return }
             traces = TraceSpan.traces(from: spans)
             state = .resolved(rowCount: traces.count)
             loadedAt = Date()
             updateServiceFacet(from: spans, filteredService: request.service)
         } catch {
-            guard generation == requestGeneration, currentRequest == request else { return }
+            guard owns(id: id, generation: generation, request: request) else { return }
             state = ResourceAccessState(
                 failure: error,
                 resource: "tracing",
@@ -165,6 +173,53 @@ final class TracingStore {
             // filtered to one service — the filter bar is not drawn in the
             // failed state, so they could not pick their way back out.
         }
+    }
+
+    private func prepare(for request: TracingRequestDescriptor) {
+        guard currentRequest != request else { return }
+        requestGeneration &+= 1
+        let previousAuthority = currentRequest?.authority
+        currentRequest = request
+        releaseInFlightWaiters()
+        state = .loading
+        traces = []
+        loadedAt = nil
+        if previousAuthority != nil, previousAuthority != request.authority {
+            services = []
+        }
+    }
+
+    private func invalidateFilterAuthority() {
+        guard currentRequest != nil || inFlight != nil else { return }
+        requestGeneration &+= 1
+        currentRequest = nil
+        releaseInFlightWaiters()
+        state = .loading
+        traces = []
+        loadedAt = nil
+        isLoading = false
+    }
+
+    private func owns(
+        id: UUID,
+        generation: UInt64,
+        request: TracingRequestDescriptor
+    ) -> Bool {
+        inFlight?.id == id
+            && generation == requestGeneration
+            && currentRequest == request
+    }
+
+    private func completeInFlight(id: UUID) {
+        guard inFlight?.id == id else { return }
+        releaseInFlightWaiters()
+        isLoading = false
+    }
+
+    private func releaseInFlightWaiters() {
+        let waiters = inFlight?.waiters ?? []
+        inFlight = nil
+        for waiter in waiters { waiter.resume() }
     }
 
     /// Rebuilds the service filter from the spans just fetched.
@@ -231,6 +286,7 @@ struct TracingRoot: View {
             .searchable(text: $store.spanName, prompt: "Filter by span name")
             .onSubmit(of: .search) { Task { await load() } }
             .screenRefreshable { await load() }
+            .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
             .navigationDestination(item: selection) { trace in
                 TraceDetailView(trace: trace)
