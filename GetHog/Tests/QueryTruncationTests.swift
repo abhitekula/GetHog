@@ -619,12 +619,18 @@ private actor DelayedResourceStoreTransport: HTTPTransport {
     enum Step: Sendable {
         case immediate(ResourceStoreReply)
         case held(ResourceStoreReply)
+        case cancellationAwareHeld(ResourceStoreReply)
+    }
+
+    private enum Release {
+        case cancellationIgnoring(CheckedContinuation<Void, Never>)
+        case cancellationAware(CheckedContinuation<Void, any Error>)
     }
 
     private var steps: [Step]
     private var requestCount = 0
     private var started: Set<Int> = []
-    private var releases: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var releases: [Int: Release] = [:]
 
     init(_ steps: [Step]) {
         self.steps = steps
@@ -641,7 +647,22 @@ private actor DelayedResourceStoreTransport: HTTPTransport {
         case .held(let value):
             started.insert(index)
             await withCheckedContinuation { continuation in
-                releases[index] = continuation
+                releases[index] = .cancellationIgnoring(continuation)
+            }
+            reply = value
+        case .cancellationAwareHeld(let value):
+            started.insert(index)
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, any Error>) in
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        releases[index] = .cancellationAware(continuation)
+                    }
+                }
+            } onCancel: {
+                Task { await self.cancel(index) }
             }
             reply = value
         }
@@ -656,19 +677,123 @@ private actor DelayedResourceStoreTransport: HTTPTransport {
         )
     }
 
-    func waitForRequest(_ index: Int) async {
-        while !started.contains(index) { await Task.yield() }
+    func waitForRequest(
+        _ index: Int,
+        timeout: Duration = .seconds(1)
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !started.contains(index) {
+            guard clock.now < deadline else {
+                throw ResourceStoreTestTimeout("request \(index) did not start")
+            }
+            await Task.yield()
+        }
     }
 
     func release(_ index: Int) {
-        releases.removeValue(forKey: index)?.resume()
+        guard let release = releases.removeValue(forKey: index) else { return }
+        switch release {
+        case .cancellationIgnoring(let continuation): continuation.resume()
+        case .cancellationAware(let continuation): continuation.resume()
+        }
     }
 
-    /// Lets every already-scheduled caller reach the transport before reading
-    /// the count, without adding a wall-clock sleep to an ownership test.
-    func requestCountAfterSchedulingSettles() async -> Int {
-        for _ in 0..<100 { await Task.yield() }
-        return requestCount
+    func observedRequestCount() -> Int {
+        requestCount
+    }
+
+    private func cancel(_ index: Int) {
+        guard case .cancellationAware(let continuation) = releases.removeValue(forKey: index)
+        else { return }
+        continuation.resume(throwing: CancellationError())
+    }
+}
+
+private struct ResourceStoreTestTimeout: Error, CustomStringConvertible {
+    let description: String
+
+    init(_ description: String) {
+        self.description = description
+    }
+}
+
+/// A deterministic MainActor rendezvous. `markStarted()` and the following
+/// store call run without an actor hop, so a resumed test cannot race ahead of
+/// the caller reaching its first suspension inside `load`.
+@MainActor
+private final class StoreLoadStartProbe {
+    private var started = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func markStarted() {
+        started = true
+        waiter?.resume()
+        waiter = nil
+    }
+
+    func wait() async {
+        guard !started else { return }
+        await withCheckedContinuation { waiter = $0 }
+    }
+}
+
+private actor StoreLoadCompletionProbe {
+    private var completed = false
+
+    func markCompleted() {
+        completed = true
+    }
+
+    func completes(within timeout: Duration = .seconds(1)) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !completed, clock.now < deadline {
+            await Task.yield()
+        }
+        return completed
+    }
+}
+
+/// Focused tests that exercise descriptor ownership without an AppModel keep a
+/// hand-derived, immutable authority current for the duration of the request.
+/// Production roots do not have these overloads: they pass a live model witness.
+private extension LogsStore {
+    func load(
+        client: PostHogClient,
+        request: LogsRequestDescriptor
+    ) async {
+        await load(
+            client: client,
+            request: request,
+            currentAuthority: { request.authority }
+        )
+    }
+}
+
+private extension TracingStore {
+    func load(
+        client: PostHogClient,
+        request: TracingRequestDescriptor
+    ) async {
+        await load(
+            client: client,
+            request: request,
+            currentAuthority: { request.authority }
+        )
+    }
+}
+
+private extension RendersStore {
+    func load(
+        client: PostHogClient,
+        request: RendersRequestDescriptor
+    ) async {
+        await load(
+            client: client,
+            request: request,
+            currentAuthority: { request.authority }
+        )
     }
 }
 
@@ -678,7 +803,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: removing descriptor-generation ownership
     /// lets a cancelled request for the old Logs filter overwrite the new one.
     @Test("logs reject a cancellation-ignoring response from the superseded filter")
-    func logsRejectSupersededFilterResponse() async {
+    func logsRejectSupersededFilterResponse() async throws {
         let previousDescriptor = LogsRequestDescriptor(
             authority: Self.authority(projectID: 41),
             window: .day,
@@ -699,7 +824,7 @@ struct AsyncResourceRequestOwnershipTests {
         store.window = previousDescriptor.window
         store.search = previousDescriptor.search
         let superseded = Task { await store.load(client: client, request: previousDescriptor) }
-        await transport.waitForRequest(0)
+        try await transport.waitForRequest(0)
 
         store.search = currentDescriptor.search
         superseded.cancel()
@@ -718,7 +843,7 @@ struct AsyncResourceRequestOwnershipTests {
         "logs reject old work before a replacement task starts",
         arguments: [LogsFilterDimension.window, .search]
     )
-    func logsRejectTheFilterSchedulingGap(_ dimension: LogsFilterDimension) async {
+    func logsRejectTheFilterSchedulingGap(_ dimension: LogsFilterDimension) async throws {
         let descriptor = LogsRequestDescriptor(
             authority: Self.authority(projectID: 44),
             window: .day,
@@ -733,7 +858,7 @@ struct AsyncResourceRequestOwnershipTests {
         store.search = descriptor.search
 
         let oldWork = Task { await store.load(client: client, request: descriptor) }
-        await transport.waitForRequest(0)
+        try await transport.waitForRequest(0)
         switch dimension {
         case .window: store.window = .lastHour
         case .search: store.search = "replacement"
@@ -751,7 +876,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: removing the equal-descriptor in-flight
     /// handle sends two identical Logs queries instead of sharing one result.
     @Test("logs coalesce concurrent requests for one descriptor")
-    func logsCoalesceTheSameDescriptor() async {
+    func logsCoalesceTheSameDescriptor() async throws {
         let descriptor = LogsRequestDescriptor(
             authority: Self.authority(projectID: 45), window: .day, search: ""
         )
@@ -763,15 +888,92 @@ struct AsyncResourceRequestOwnershipTests {
         let client = Self.client(transport)
 
         let first = Task { await store.load(client: client, request: descriptor) }
-        await transport.waitForRequest(0)
-        let second = Task { await store.load(client: client, request: descriptor) }
-        let requestCount = await transport.requestCountAfterSchedulingSettles()
+        try await transport.waitForRequest(0)
+        let started = StoreLoadStartProbe()
+        let second = Task {
+            started.markStarted()
+            await store.load(client: client, request: descriptor)
+        }
+        await started.wait()
+        let requestCount = await transport.observedRequestCount()
         for index in 0..<requestCount { await transport.release(index) }
         await first.value
         await second.value
 
         #expect(requestCount == 1)
         #expect(store.rows.map(\.id) == ["coalesced-log"])
+    }
+
+    /// Production mutation caught: making the first caller's task own the
+    /// transport lets cancelling that caller throw `CancellationError` through
+    /// the shared request and replace a remaining valid caller's result with a
+    /// visible failure.
+    @Test("logs keep a shared flight alive when its first caller cancels")
+    func logsKeepSharedFlightForRemainingCaller() async throws {
+        let descriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 46), window: .day, search: ""
+        )
+        let transport = DelayedResourceStoreTransport([
+            .cancellationAwareHeld(Self.logsReply(id: "shared-log", body: "Shared result")),
+            .immediate(Self.logsReply(id: "duplicate-log", body: "Must not be requested")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+        let firstCompletion = StoreLoadCompletionProbe()
+
+        let first = Task {
+            await store.load(client: client, request: descriptor)
+            await firstCompletion.markCompleted()
+        }
+        try await transport.waitForRequest(0)
+        let secondStarted = StoreLoadStartProbe()
+        let second = Task {
+            secondStarted.markStarted()
+            await store.load(client: client, request: descriptor)
+        }
+        await secondStarted.wait()
+
+        first.cancel()
+        let cancelledCallerReturned = await firstCompletion.completes()
+        await transport.release(0)
+        await first.value
+        await second.value
+
+        #expect(cancelledCallerReturned)
+        #expect(await transport.observedRequestCount() == 1)
+        #expect(store.rows.map(\.id) == ["shared-log"])
+        #expect(store.state == .loaded)
+    }
+
+    /// Production mutation caught: awaiting the transport directly from a
+    /// caller leaves a cancelled Logs load suspended forever when the real
+    /// transport ignores cancellation.
+    @Test("a cancelled logs waiter returns while its transport is still held")
+    func cancelledLogsWaiterReturnsPromptly() async throws {
+        let descriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 47), window: .day, search: ""
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.logsReply(id: "cancelled-log", body: "Must not publish")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+        let completion = StoreLoadCompletionProbe()
+        let pending = Task {
+            await store.load(client: client, request: descriptor)
+            await completion.markCompleted()
+        }
+        try await transport.waitForRequest(0)
+
+        pending.cancel()
+        let returnedBeforeTransport = await completion.completes()
+        await transport.release(0)
+        await pending.value
+
+        #expect(returnedBeforeTransport)
+        #expect(store.rows.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
     }
 
     /// Production mutation caught: clearing Logs rows in the same-descriptor
@@ -806,7 +1008,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: deferring a filter-boundary clear until
     /// after suspension leaves rows answering the old Logs question on screen.
     @Test("logs clear synchronously when filter authority changes")
-    func logsClearAtFilterBoundary() async {
+    func logsClearAtFilterBoundary() async throws {
         let old = LogsRequestDescriptor(
             authority: Self.authority(projectID: 43), window: .day, search: "old"
         )
@@ -822,7 +1024,7 @@ struct AsyncResourceRequestOwnershipTests {
 
         await store.load(client: client, request: old)
         let pending = Task { await store.load(client: client, request: replacement) }
-        await transport.waitForRequest(1)
+        try await transport.waitForRequest(1)
         #expect(store.rows.isEmpty)
         #expect(store.loadedAt == nil)
 
@@ -833,7 +1035,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: removing descriptor-generation ownership
     /// lets a cancelled request for the old Tracing filter overwrite the new one.
     @Test("tracing rejects a cancellation-ignoring response from the superseded filter")
-    func tracingRejectsSupersededFilterResponse() async {
+    func tracingRejectsSupersededFilterResponse() async throws {
         let previousDescriptor = TracingRequestDescriptor(
             authority: Self.authority(projectID: 51),
             window: .day,
@@ -858,7 +1060,7 @@ struct AsyncResourceRequestOwnershipTests {
         store.window = previousDescriptor.window
         store.service = previousDescriptor.service
         let superseded = Task { await store.load(client: client, request: previousDescriptor) }
-        await transport.waitForRequest(0)
+        try await transport.waitForRequest(0)
 
         store.service = currentDescriptor.service
         superseded.cancel()
@@ -882,7 +1084,7 @@ struct AsyncResourceRequestOwnershipTests {
             .errorsOnly,
         ]
     )
-    func tracingRejectsTheFilterSchedulingGap(_ dimension: TracingFilterDimension) async {
+    func tracingRejectsTheFilterSchedulingGap(_ dimension: TracingFilterDimension) async throws {
         let descriptor = TracingRequestDescriptor(
             authority: Self.authority(projectID: 54),
             window: .day,
@@ -901,7 +1103,7 @@ struct AsyncResourceRequestOwnershipTests {
         store.errorsOnly = descriptor.errorsOnly
 
         let oldWork = Task { await store.load(client: client, request: descriptor) }
-        await transport.waitForRequest(0)
+        try await transport.waitForRequest(0)
         switch dimension {
         case .window: store.window = .lastHour
         case .service: store.service = "replacement"
@@ -919,7 +1121,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: removing the equal-descriptor in-flight
     /// handle sends duplicate Tracing queries and double-spends query budget.
     @Test("tracing coalesces concurrent requests for one descriptor")
-    func tracingCoalescesTheSameDescriptor() async {
+    func tracingCoalescesTheSameDescriptor() async throws {
         let descriptor = TracingRequestDescriptor(
             authority: Self.authority(projectID: 55),
             window: .day,
@@ -935,15 +1137,98 @@ struct AsyncResourceRequestOwnershipTests {
         let client = Self.client(transport)
 
         let first = Task { await store.load(client: client, request: descriptor) }
-        await transport.waitForRequest(0)
-        let second = Task { await store.load(client: client, request: descriptor) }
-        let requestCount = await transport.requestCountAfterSchedulingSettles()
+        try await transport.waitForRequest(0)
+        let started = StoreLoadStartProbe()
+        let second = Task {
+            started.markStarted()
+            await store.load(client: client, request: descriptor)
+        }
+        await started.wait()
+        let requestCount = await transport.observedRequestCount()
         for index in 0..<requestCount { await transport.release(index) }
         await first.value
         await second.value
 
         #expect(requestCount == 1)
         #expect(store.traces.map(\.id) == ["coalesced-trace"])
+    }
+
+    /// Production mutation caught: tying the Tracing transport to its first
+    /// caller lets that caller's cancellation fail the coalesced request for a
+    /// second caller that still owns the same descriptor.
+    @Test("tracing keeps a shared flight alive when its first caller cancels")
+    func tracingKeepsSharedFlightForRemainingCaller() async throws {
+        let descriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 56),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .cancellationAwareHeld(Self.tracingReply(traceID: "shared-trace", service: "worker")),
+            .immediate(Self.tracingReply(traceID: "duplicate-trace", service: "worker")),
+        ])
+        let store = TracingStore()
+        let client = Self.client(transport)
+        let firstCompletion = StoreLoadCompletionProbe()
+
+        let first = Task {
+            await store.load(client: client, request: descriptor)
+            await firstCompletion.markCompleted()
+        }
+        try await transport.waitForRequest(0)
+        let secondStarted = StoreLoadStartProbe()
+        let second = Task {
+            secondStarted.markStarted()
+            await store.load(client: client, request: descriptor)
+        }
+        await secondStarted.wait()
+
+        first.cancel()
+        let cancelledCallerReturned = await firstCompletion.completes()
+        await transport.release(0)
+        await first.value
+        await second.value
+
+        #expect(cancelledCallerReturned)
+        #expect(await transport.observedRequestCount() == 1)
+        #expect(store.traces.map(\.id) == ["shared-trace"])
+        #expect(store.state == .loaded)
+    }
+
+    /// Production mutation caught: a cancelled Tracing caller must unregister
+    /// and return even when cancellation-ignoring network work never finishes.
+    @Test("a cancelled tracing waiter returns while its transport is still held")
+    func cancelledTracingWaiterReturnsPromptly() async throws {
+        let descriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 57),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.tracingReply(traceID: "cancelled-trace", service: "worker")),
+        ])
+        let store = TracingStore()
+        let client = Self.client(transport)
+        let completion = StoreLoadCompletionProbe()
+        let pending = Task {
+            await store.load(client: client, request: descriptor)
+            await completion.markCompleted()
+        }
+        try await transport.waitForRequest(0)
+
+        pending.cancel()
+        let returnedBeforeTransport = await completion.completes()
+        await transport.release(0)
+        await pending.value
+
+        #expect(returnedBeforeTransport)
+        #expect(store.traces.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
     }
 
     /// Production mutation caught: clearing Tracing rows in the
@@ -980,7 +1265,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: comparing only numeric project ids carries
     /// US tracing rows into the same-numbered EU project while replacement loads.
     @Test("tracing clears synchronously when region authority changes")
-    func tracingClearsAtRegionBoundary() async {
+    func tracingClearsAtRegionBoundary() async throws {
         let old = TracingRequestDescriptor(
             authority: Self.authority(projectID: 53),
             window: .day,
@@ -1012,7 +1297,7 @@ struct AsyncResourceRequestOwnershipTests {
                 request: replacement
             )
         }
-        await transport.waitForRequest(1)
+        try await transport.waitForRequest(1)
         #expect(store.traces.isEmpty)
         #expect(store.services.isEmpty)
         #expect(store.loadedAt == nil)
@@ -1025,7 +1310,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// old rows visible while the replacement suspends, and keying publication
     /// only on task cancellation lets the old response replace the new project.
     @Test("renders clear at a project boundary and reject the superseded response")
-    func rendersRejectSupersededProjectResponse() async {
+    func rendersRejectSupersededProjectResponse() async throws {
         let previousProjectID = 61
         let currentProjectID = 62
         let transport = DelayedResourceStoreTransport([
@@ -1046,7 +1331,7 @@ struct AsyncResourceRequestOwnershipTests {
         let superseded = Task {
             await store.load(client: client, request: previousDescriptor)
         }
-        await transport.waitForRequest(1)
+        try await transport.waitForRequest(1)
         superseded.cancel()
         store.invalidate()
 
@@ -1061,13 +1346,47 @@ struct AsyncResourceRequestOwnershipTests {
         let replacement = Task {
             await store.load(client: client, request: currentDescriptor)
         }
-        await transport.waitForRequest(2)
+        try await transport.waitForRequest(2)
         #expect(store.exports.isEmpty)
         #expect(store.loadedAt == nil)
 
         await transport.release(2)
         await replacement.value
         #expect(store.exports.map(\.id) == [6_201])
+    }
+
+    /// Production mutation caught: relying on SwiftUI's authority observer
+    /// lets an old render request publish after the real AppModel has signed
+    /// out but before the observer or replacement task receives that mutation.
+    @Test("renders revalidate the real model authority before publication")
+    func rendersRevalidateRealModelAuthority() async throws {
+        let model = AppModel(store: InMemoryTokenStore(), transport: DemoTransport())
+        await model.enterDemo()
+        let authority = try #require(Self.authority(from: model))
+        let descriptor = RendersRequestDescriptor(authority: authority)
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.rendersReply(id: 6_301, filename: "Signed out.mp4")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+        let pending = Task {
+            await store.load(
+                client: client,
+                request: descriptor,
+                currentAuthority: { Self.authority(from: model) }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        // No store invalidation and no replacement load: this is the gap
+        // between the real authority mutation and SwiftUI's next update pass.
+        model.signOut()
+        await transport.release(0)
+        await pending.value
+
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
     }
 
     /// Production mutation caught: clearing Renders rows in the
@@ -1100,7 +1419,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: omitting the authentication epoch carries
     /// one credential's render library into its same-project replacement.
     @Test("renders clear synchronously when authentication authority changes")
-    func rendersClearAtAuthenticationBoundary() async {
+    func rendersClearAtAuthenticationBoundary() async throws {
         let old = RendersRequestDescriptor(authority: Self.authority(projectID: 72))
         let replacement = RendersRequestDescriptor(
             authority: ResourceRequestAuthority(
@@ -1118,7 +1437,7 @@ struct AsyncResourceRequestOwnershipTests {
 
         await store.load(client: client, request: old)
         let pending = Task { await store.load(client: client, request: replacement) }
-        await transport.waitForRequest(1)
+        try await transport.waitForRequest(1)
         #expect(store.exports.isEmpty)
         #expect(store.loadedAt == nil)
 
@@ -1129,7 +1448,7 @@ struct AsyncResourceRequestOwnershipTests {
     /// Production mutation caught: removing the equal-descriptor in-flight
     /// handle issues two identical Renders list requests instead of one.
     @Test("renders coalesce concurrent requests for one descriptor")
-    func rendersCoalesceTheSameDescriptor() async {
+    func rendersCoalesceTheSameDescriptor() async throws {
         let descriptor = RendersRequestDescriptor(
             authority: Self.authority(projectID: 73)
         )
@@ -1141,15 +1460,90 @@ struct AsyncResourceRequestOwnershipTests {
         let client = Self.client(transport)
 
         let first = Task { await store.load(client: client, request: descriptor) }
-        await transport.waitForRequest(0)
-        let second = Task { await store.load(client: client, request: descriptor) }
-        let requestCount = await transport.requestCountAfterSchedulingSettles()
+        try await transport.waitForRequest(0)
+        let started = StoreLoadStartProbe()
+        let second = Task {
+            started.markStarted()
+            await store.load(client: client, request: descriptor)
+        }
+        await started.wait()
+        let requestCount = await transport.observedRequestCount()
         for index in 0..<requestCount { await transport.release(index) }
         await first.value
         await second.value
 
         #expect(requestCount == 1)
         #expect(store.exports.map(\.id) == [7_301])
+    }
+
+    /// Production mutation caught: a shared Renders flight belongs to the
+    /// store and all registered callers, not to whichever caller arrived first.
+    @Test("renders keep a shared flight alive when its first caller cancels")
+    func rendersKeepSharedFlightForRemainingCaller() async throws {
+        let descriptor = RendersRequestDescriptor(
+            authority: Self.authority(projectID: 74)
+        )
+        let transport = DelayedResourceStoreTransport([
+            .cancellationAwareHeld(Self.rendersReply(id: 7_401, filename: "Shared.mp4")),
+            .immediate(Self.rendersReply(id: 7_402, filename: "Duplicate.mp4")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+        let firstCompletion = StoreLoadCompletionProbe()
+
+        let first = Task {
+            await store.load(client: client, request: descriptor)
+            await firstCompletion.markCompleted()
+        }
+        try await transport.waitForRequest(0)
+        let secondStarted = StoreLoadStartProbe()
+        let second = Task {
+            secondStarted.markStarted()
+            await store.load(client: client, request: descriptor)
+        }
+        await secondStarted.wait()
+
+        first.cancel()
+        let cancelledCallerReturned = await firstCompletion.completes()
+        await transport.release(0)
+        await first.value
+        await second.value
+
+        #expect(cancelledCallerReturned)
+        #expect(await transport.observedRequestCount() == 1)
+        #expect(store.exports.map(\.id) == [7_401])
+        #expect(store.state == .loaded)
+    }
+
+    /// Production mutation caught: cancelling the only Renders waiter must
+    /// return promptly and withdraw publication ownership even if the transport
+    /// ignores cancellation forever.
+    @Test("a cancelled renders waiter returns while its transport is still held")
+    func cancelledRendersWaiterReturnsPromptly() async throws {
+        let descriptor = RendersRequestDescriptor(
+            authority: Self.authority(projectID: 75)
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.rendersReply(id: 7_501, filename: "Must not publish.mp4")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+        let completion = StoreLoadCompletionProbe()
+        let pending = Task {
+            await store.load(client: client, request: descriptor)
+            await completion.markCompleted()
+        }
+        try await transport.waitForRequest(0)
+
+        pending.cancel()
+        let returnedBeforeTransport = await completion.completes()
+        await transport.release(0)
+        await pending.value
+
+        #expect(returnedBeforeTransport)
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
     }
 
     private static func client(
@@ -1167,6 +1561,19 @@ struct AsyncResourceRequestOwnershipTests {
             projectID: projectID,
             region: .usCloud,
             authSessionID: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        )
+    }
+
+    private static func authority(from model: AppModel) -> ResourceRequestAuthority? {
+        guard
+            let projectID = model.projectID,
+            let region = model.client?.region,
+            let authSessionID = model.authSessionID
+        else { return nil }
+        return ResourceRequestAuthority(
+            projectID: projectID,
+            region: region,
+            authSessionID: authSessionID
         )
     }
 

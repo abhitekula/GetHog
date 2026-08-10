@@ -86,7 +86,9 @@ final class TracingStore {
         let id: UUID
         let generation: UInt64
         let request: TracingRequestDescriptor
-        var waiters: [CheckedContinuation<Void, Never>] = []
+        let currentAuthority: @MainActor () -> ResourceRequestAuthority?
+        var task: Task<Void, Never>?
+        var waiters: [UUID: CheckedContinuation<Void, Never>]
     }
 
     // Filters. Held here rather than in the view so a project switch or a
@@ -117,7 +119,7 @@ final class TracingStore {
     func invalidate() {
         requestGeneration &+= 1
         currentRequest = nil
-        releaseInFlightWaiters()
+        cancelInFlight()
         state = .loading
         traces = []
         services = []
@@ -125,54 +127,88 @@ final class TracingStore {
         isLoading = false
     }
 
-    func load(client: PostHogClient, request: TracingRequestDescriptor) async {
-        prepare(for: request)
-        if inFlight?.request == request {
+    func load(
+        client: PostHogClient,
+        request: TracingRequestDescriptor,
+        currentAuthority: @escaping @MainActor () -> ResourceRequestAuthority?
+    ) async {
+        let waiterID = UUID()
+        await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                guard var active = inFlight, active.request == request else {
+                guard !Task.isCancelled else {
                     continuation.resume()
                     return
                 }
-                active.waiters.append(continuation)
-                inFlight = active
+                register(
+                    waiterID: waiterID,
+                    continuation: continuation,
+                    client: client,
+                    request: request,
+                    currentAuthority: currentAuthority
+                )
             }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelWaiter(id: waiterID)
+            }
+        }
+    }
+
+    private func register(
+        waiterID: UUID,
+        continuation: CheckedContinuation<Void, Never>,
+        client: PostHogClient,
+        request: TracingRequestDescriptor,
+        currentAuthority: @escaping @MainActor () -> ResourceRequestAuthority?
+    ) {
+        prepare(for: request)
+        if var active = inFlight, active.request == request {
+            active.waiters[waiterID] = continuation
+            inFlight = active
             return
         }
 
         let id = UUID()
         let generation = requestGeneration
-        inFlight = InFlight(id: id, generation: generation, request: request)
+        inFlight = InFlight(
+            id: id,
+            generation: generation,
+            request: request,
+            currentAuthority: currentAuthority,
+            task: nil,
+            waiters: [waiterID: continuation]
+        )
         isLoading = true
-        defer { completeInFlight(id: id) }
-
-        do {
-            let data = try await client.data(
-                for: PostHogAPI.traceSpans(
-                    projectID: request.authority.projectID,
-                    dateFrom: request.window.rawValue,
-                    serviceNames: request.service.map { [$0] } ?? [],
-                    spanNameContains: request.spanName,
-                    errorsOnly: request.errorsOnly
+        let task = Task { @MainActor [weak self] in
+            do {
+                let data = try await client.data(
+                    for: PostHogAPI.traceSpans(
+                        projectID: request.authority.projectID,
+                        dateFrom: request.window.rawValue,
+                        serviceNames: request.service.map { [$0] } ?? [],
+                        spanNameContains: request.spanName,
+                        errorsOnly: request.errorsOnly
+                    )
                 )
-            )
-            let spans = TraceSpan.rows(from: try QueryResponse.decode(from: data))
-            guard owns(id: id, generation: generation, request: request) else { return }
-            traces = TraceSpan.traces(from: spans)
-            state = .resolved(rowCount: traces.count)
-            loadedAt = Date()
-            updateServiceFacet(from: spans, filteredService: request.service)
-        } catch {
-            guard owns(id: id, generation: generation, request: request) else { return }
-            state = ResourceAccessState(
-                failure: error,
-                resource: "tracing",
-                defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
-            )
-            // The facet is left alone. A request that failed says nothing about
-            // which services exist, and clearing it would strand a user who had
-            // filtered to one service — the filter bar is not drawn in the
-            // failed state, so they could not pick their way back out.
+                let spans = TraceSpan.rows(from: try QueryResponse.decode(from: data))
+                self?.finish(
+                    spans: spans,
+                    id: id,
+                    generation: generation,
+                    request: request
+                )
+            } catch is CancellationError {
+                self?.finishCancellation(id: id, generation: generation, request: request)
+            } catch {
+                self?.finish(
+                    error: error,
+                    id: id,
+                    generation: generation,
+                    request: request
+                )
+            }
         }
+        inFlight?.task = task
     }
 
     private func prepare(for request: TracingRequestDescriptor) {
@@ -180,7 +216,7 @@ final class TracingStore {
         requestGeneration &+= 1
         let previousAuthority = currentRequest?.authority
         currentRequest = request
-        releaseInFlightWaiters()
+        cancelInFlight()
         state = .loading
         traces = []
         loadedAt = nil
@@ -193,33 +229,114 @@ final class TracingStore {
         guard currentRequest != nil || inFlight != nil else { return }
         requestGeneration &+= 1
         currentRequest = nil
-        releaseInFlightWaiters()
+        cancelInFlight()
         state = .loading
         traces = []
         loadedAt = nil
         isLoading = false
     }
 
-    private func owns(
+    private func ownedFlight(
         id: UUID,
         generation: UInt64,
         request: TracingRequestDescriptor
-    ) -> Bool {
-        inFlight?.id == id
-            && generation == requestGeneration
-            && currentRequest == request
+    ) -> InFlight? {
+        guard
+            let active = inFlight,
+            active.id == id,
+            active.generation == generation,
+            generation == requestGeneration,
+            currentRequest == request
+        else { return nil }
+        return active
+    }
+
+    private func finish(
+        spans: [TraceSpan],
+        id: UUID,
+        generation: UInt64,
+        request: TracingRequestDescriptor
+    ) {
+        guard let active = ownedFlight(id: id, generation: generation, request: request) else {
+            return
+        }
+        guard active.currentAuthority() == request.authority else {
+            invalidate()
+            return
+        }
+        traces = TraceSpan.traces(from: spans)
+        state = .resolved(rowCount: traces.count)
+        loadedAt = Date()
+        updateServiceFacet(from: spans, filteredService: request.service)
+        completeInFlight(id: id)
+    }
+
+    private func finish(
+        error: any Error,
+        id: UUID,
+        generation: UInt64,
+        request: TracingRequestDescriptor
+    ) {
+        guard let active = ownedFlight(id: id, generation: generation, request: request) else {
+            return
+        }
+        guard active.currentAuthority() == request.authority else {
+            invalidate()
+            return
+        }
+        state = ResourceAccessState(
+            failure: error,
+            resource: "tracing",
+            defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
+        )
+        // The facet is left alone. A request that failed says nothing about
+        // which services exist, and clearing it would strand a user who had
+        // filtered to one service — the filter bar is not drawn in the failed
+        // state, so they could not pick their way back out.
+        completeInFlight(id: id)
+    }
+
+    private func finishCancellation(
+        id: UUID,
+        generation: UInt64,
+        request: TracingRequestDescriptor
+    ) {
+        guard let active = ownedFlight(id: id, generation: generation, request: request) else {
+            return
+        }
+        guard active.currentAuthority() == request.authority else {
+            invalidate()
+            return
+        }
+        completeInFlight(id: id)
+    }
+
+    private func cancelWaiter(id: UUID) {
+        guard var active = inFlight, let waiter = active.waiters.removeValue(forKey: id) else {
+            return
+        }
+        if active.waiters.isEmpty {
+            inFlight = nil
+            active.task?.cancel()
+            isLoading = false
+        } else {
+            inFlight = active
+        }
+        waiter.resume()
     }
 
     private func completeInFlight(id: UUID) {
-        guard inFlight?.id == id else { return }
-        releaseInFlightWaiters()
+        guard let active = inFlight, active.id == id else { return }
+        inFlight = nil
         isLoading = false
+        for waiter in active.waiters.values { waiter.resume() }
     }
 
-    private func releaseInFlightWaiters() {
-        let waiters = inFlight?.waiters ?? []
+    private func cancelInFlight() {
+        guard let active = inFlight else { return }
         inFlight = nil
-        for waiter in waiters { waiter.resume() }
+        active.task?.cancel()
+        for waiter in active.waiters.values { waiter.resume() }
     }
 
     /// Rebuilds the service filter from the spans just fetched.
@@ -506,7 +623,8 @@ struct TracingRoot: View {
                 service: store.service,
                 spanName: store.spanName,
                 errorsOnly: store.errorsOnly
-            )
+            ),
+            currentAuthority: { requestAuthority }
         )
     }
 }

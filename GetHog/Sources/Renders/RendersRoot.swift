@@ -118,7 +118,9 @@ final class RendersStore {
         let id: UUID
         let generation: UInt64
         let request: RendersRequestDescriptor
-        var waiters: [CheckedContinuation<Void, Never>] = []
+        let currentAuthority: @MainActor () -> ResourceRequestAuthority?
+        var task: Task<Void, Never>?
+        var waiters: [UUID: CheckedContinuation<Void, Never>]
     }
 
     /// The instant the whole screen is rendered against.
@@ -137,7 +139,7 @@ final class RendersStore {
     func invalidate() {
         requestGeneration &+= 1
         currentRequest = nil
-        releaseInFlightWaiters()
+        cancelInFlight()
         state = .loading
         exports = []
         loadedAt = nil
@@ -147,73 +149,189 @@ final class RendersStore {
     /// One request. The list endpoint returns everything the screen needs —
     /// duration, size, failure text and the source recording all ride in
     /// `export_context` — so no row costs a follow-up.
-    func load(client: PostHogClient, request: RendersRequestDescriptor) async {
-        prepare(for: request)
-        if inFlight?.request == request {
+    func load(
+        client: PostHogClient,
+        request: RendersRequestDescriptor,
+        currentAuthority: @escaping @MainActor () -> ResourceRequestAuthority?
+    ) async {
+        let waiterID = UUID()
+        await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                guard var active = inFlight, active.request == request else {
+                guard !Task.isCancelled else {
                     continuation.resume()
                     return
                 }
-                active.waiters.append(continuation)
-                inFlight = active
+                register(
+                    waiterID: waiterID,
+                    continuation: continuation,
+                    client: client,
+                    request: request,
+                    currentAuthority: currentAuthority
+                )
             }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelWaiter(id: waiterID)
+            }
+        }
+    }
+
+    private func register(
+        waiterID: UUID,
+        continuation: CheckedContinuation<Void, Never>,
+        client: PostHogClient,
+        request: RendersRequestDescriptor,
+        currentAuthority: @escaping @MainActor () -> ResourceRequestAuthority?
+    ) {
+        prepare(for: request)
+        if var active = inFlight, active.request == request {
+            active.waiters[waiterID] = continuation
+            inFlight = active
             return
         }
 
         let id = UUID()
         let generation = requestGeneration
-        inFlight = InFlight(id: id, generation: generation, request: request)
+        inFlight = InFlight(
+            id: id,
+            generation: generation,
+            request: request,
+            currentAuthority: currentAuthority,
+            task: nil,
+            waiters: [waiterID: continuation]
+        )
         isLoading = true
-        defer { completeInFlight(id: id) }
-        do {
-            let page: Page<RecordingExport> = try await client.send(
-                PostHogAPI.exports(projectID: request.authority.projectID)
-            )
-            guard owns(id: id, generation: generation, request: request) else { return }
-            exports = page.results
-            asOf = Date()
-            loadedAt = asOf
-            state = .resolved(rowCount: exports.count)
-        } catch {
-            // There is no `Capability` case for exports, so the wall is
-            // classified from the failure rather than probed for in advance —
-            // the same treatment Logs and Tracing give their ungated endpoints.
-            guard owns(id: id, generation: generation, request: request) else { return }
-            state = ResourceAccessState(failure: error, resource: "export", defaultScope: "export:read")
+        let task = Task { @MainActor [weak self] in
+            do {
+                let page: Page<RecordingExport> = try await client.send(
+                    PostHogAPI.exports(projectID: request.authority.projectID)
+                )
+                self?.finish(
+                    page: page,
+                    id: id,
+                    generation: generation,
+                    request: request
+                )
+            } catch is CancellationError {
+                self?.finishCancellation(id: id, generation: generation, request: request)
+            } catch {
+                self?.finish(
+                    error: error,
+                    id: id,
+                    generation: generation,
+                    request: request
+                )
+            }
         }
+        inFlight?.task = task
     }
 
     private func prepare(for request: RendersRequestDescriptor) {
         guard currentRequest != request else { return }
         requestGeneration &+= 1
         currentRequest = request
-        releaseInFlightWaiters()
+        cancelInFlight()
         state = .loading
         exports = []
         loadedAt = nil
     }
 
-    private func owns(
+    private func ownedFlight(
         id: UUID,
         generation: UInt64,
         request: RendersRequestDescriptor
-    ) -> Bool {
-        inFlight?.id == id
-            && generation == requestGeneration
-            && currentRequest == request
+    ) -> InFlight? {
+        guard
+            let active = inFlight,
+            active.id == id,
+            active.generation == generation,
+            generation == requestGeneration,
+            currentRequest == request
+        else { return nil }
+        return active
+    }
+
+    private func finish(
+        page: Page<RecordingExport>,
+        id: UUID,
+        generation: UInt64,
+        request: RendersRequestDescriptor
+    ) {
+        guard let active = ownedFlight(id: id, generation: generation, request: request) else {
+            return
+        }
+        guard active.currentAuthority() == request.authority else {
+            invalidate()
+            return
+        }
+        exports = page.results
+        asOf = Date()
+        loadedAt = asOf
+        state = .resolved(rowCount: exports.count)
+        completeInFlight(id: id)
+    }
+
+    private func finish(
+        error: any Error,
+        id: UUID,
+        generation: UInt64,
+        request: RendersRequestDescriptor
+    ) {
+        guard let active = ownedFlight(id: id, generation: generation, request: request) else {
+            return
+        }
+        guard active.currentAuthority() == request.authority else {
+            invalidate()
+            return
+        }
+        // There is no `Capability` case for exports, so the wall is classified
+        // from the failure rather than probed for in advance — the same
+        // treatment Logs and Tracing give their ungated endpoints.
+        state = ResourceAccessState(failure: error, resource: "export", defaultScope: "export:read")
+        completeInFlight(id: id)
+    }
+
+    private func finishCancellation(
+        id: UUID,
+        generation: UInt64,
+        request: RendersRequestDescriptor
+    ) {
+        guard let active = ownedFlight(id: id, generation: generation, request: request) else {
+            return
+        }
+        guard active.currentAuthority() == request.authority else {
+            invalidate()
+            return
+        }
+        completeInFlight(id: id)
+    }
+
+    private func cancelWaiter(id: UUID) {
+        guard var active = inFlight, let waiter = active.waiters.removeValue(forKey: id) else {
+            return
+        }
+        if active.waiters.isEmpty {
+            inFlight = nil
+            active.task?.cancel()
+            isLoading = false
+        } else {
+            inFlight = active
+        }
+        waiter.resume()
     }
 
     private func completeInFlight(id: UUID) {
-        guard inFlight?.id == id else { return }
-        releaseInFlightWaiters()
+        guard let active = inFlight, active.id == id else { return }
+        inFlight = nil
         isLoading = false
+        for waiter in active.waiters.values { waiter.resume() }
     }
 
-    private func releaseInFlightWaiters() {
-        let waiters = inFlight?.waiters ?? []
+    private func cancelInFlight() {
+        guard let active = inFlight else { return }
         inFlight = nil
-        for waiter in waiters { waiter.resume() }
+        active.task?.cancel()
+        for waiter in active.waiters.values { waiter.resume() }
     }
 
     var visibleExports: [RecordingExport] {
@@ -442,7 +560,8 @@ struct RendersRoot: View {
         }
         await store.load(
             client: client,
-            request: RendersRequestDescriptor(authority: authority)
+            request: RendersRequestDescriptor(authority: authority),
+            currentAuthority: { requestAuthority }
         )
     }
 }
