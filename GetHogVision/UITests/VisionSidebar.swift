@@ -32,6 +32,36 @@ enum VisionSidebar {
         app.buttons["gethog.vision.section-destination.\(title)"].firstMatch
     }
 
+    /// Returns the destination control the user can actually operate at the
+    /// current window width. The compact strip is authoritative when it is
+    /// rendered; otherwise the persistent wide roster owns navigation.
+    static func visibleDestinationControl(
+        _ title: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement? {
+        let compactControl = destinationControl(title, in: app)
+        if DemoLaunch.wait(timeout: 2, until: {
+            compactControl.exists && compactControl.isHittable
+        }) {
+            return compactControl
+        }
+
+        let sidebarItem = item(title, in: app)
+        guard DemoLaunch.wait(until: {
+            sidebarItem.exists && sidebarItem.isHittable
+        }) else {
+            XCTFail(
+                "The Vision section exposed no visible \(title) destination control.",
+                file: file,
+                line: line
+            )
+            return nil
+        }
+        return sidebarItem
+    }
+
     static func section(_ title: String, in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(NSPredicate(
             format: "identifier == %@ AND label == %@", "section.\(title)", title
@@ -72,18 +102,15 @@ enum VisionSidebar {
         // the foreground screen. Prefer the compact route control whenever it
         // is actually rendered. At wide widths that strip is intentionally
         // absent, so the visible roster becomes the single authority.
-        let destinationControl = destinationControl(title, in: app)
-        if DemoLaunch.wait(timeout: 2, until: {
-            destinationControl.exists && destinationControl.isHittable
-        }) {
-            destinationControl.tap()
-            return true
-        }
-
-        guard let sidebarItem = reveal(title, in: app, file: file, line: line) else {
+        guard let destinationControl = visibleDestinationControl(
+            title,
+            in: app,
+            file: file,
+            line: line
+        ) else {
             return false
         }
-        sidebarItem.tap()
+        destinationControl.tap()
         return true
     }
 }

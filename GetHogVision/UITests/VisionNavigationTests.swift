@@ -19,15 +19,12 @@ final class VisionNavigationTests: XCTestCase {
         let analyzeSection = VisionSidebar.section("Analyze", in: app)
         analyzeSection.tap()
 
-        // The native split can keep a collapsed roster in the accessibility
-        // hierarchy and incorrectly report its descendants as hittable. The
-        // persistent route bar is the truthful user-visible contract at every
-        // width, so prove each destination there.
+        // The native split chooses one truthful navigation surface at each
+        // width: the compact route strip or the persistent wide roster.
         for title in ["Dashboards", "Events", "Sessions"] {
-            let option = VisionSidebar.destinationControl(title, in: app)
-            XCTAssertTrue(
-                DemoLaunch.wait(until: { option.exists && option.isHittable }),
-                "The Analyze section did not offer its \(title) route control."
+            XCTAssertNotNil(
+                VisionSidebar.visibleDestinationControl(title, in: app),
+                "The Analyze section did not offer a visible \(title) destination control."
             )
         }
 
@@ -133,14 +130,20 @@ final class VisionNavigationTests: XCTestCase {
             DemoLaunch.wait(for: restored.navigationBars["Experiment"]),
             "Relaunch did not restore the Experiment section; mounted \(restoredNavigationBars)."
         )
-        let restoredControl = VisionSidebar.destinationControl("Experiments", in: restored)
+        guard let restoredControl = VisionSidebar.visibleDestinationControl(
+            "Experiments",
+            in: restored
+        ) else { return }
+        if restoredControl.identifier == "gethog.vision.section-destination.Experiments" {
+            XCTAssertEqual(
+                restoredControl.value as? String,
+                "Selected",
+                "The restored compact route did not expose its selected state."
+            )
+        }
         XCTAssertTrue(
-            DemoLaunch.wait(until: {
-                restoredControl.exists
-                    && restoredControl.isHittable
-                    && (restoredControl.value as? String) == "Selected"
-            }),
-            "Relaunch restored the section but not its selected Experiments destination."
+            DemoLaunch.wait(for: restored.navigationBars["Experiments"]),
+            "Relaunch restored the section but not the Experiments destination."
         )
         XCTAssertTrue(
             DemoLaunch.wait(for: restored.staticTexts.matching(

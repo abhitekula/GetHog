@@ -74,50 +74,45 @@ final class VisionSurfaceSweepTests: XCTestCase {
     }
 
     private enum Preparation {
-        case selectMenu(control: String, option: String)
+        case selectMenu(pickerLabel: String, option: String)
         case revealText(String)
         case confirmThenReveal(initial: String, target: String)
 
         func perform(in app: XCUIApplication) -> Bool {
             switch self {
-            case .selectMenu(let control, let option):
-                // A menu-styled SwiftUI Picker is not consistently exposed as
-                // one XCUI element type on visionOS. Resolve its exact visible
-                // label across the hierarchy and prefer the hittable control
-                // over a non-interactive section header carrying the same text.
-                func firstHittable(
-                    named label: String,
-                    intersecting frame: CGRect? = nil
-                ) -> XCUIElement? {
-                    app.descendants(matching: .any)
-                        .matching(NSPredicate(format: "label == %@", label))
-                        .allElementsBoundByIndex
-                        .first { element in
-                            guard element.isHittable else { return false }
-                            guard let frame else { return true }
-                            return element.frame.intersects(frame)
-                        }
-                }
-
-                guard DemoLaunch.wait(until: { firstHittable(named: control) != nil }),
-                      let menu = firstHittable(named: control) else {
+            case .selectMenu(let pickerLabel, let option):
+                // Query the Picker through its stable accessibility label, not
+                // the selected resource's text: that text is also rendered by
+                // the section header and by the transient menu option. Vision
+                // composes the Picker title with this custom label, so match
+                // the stable label component on the button itself.
+                let picker = app.buttons.matching(NSPredicate(
+                    format: "label CONTAINS %@", pickerLabel
+                )).firstMatch
+                guard DemoLaunch.wait(until: {
+                    picker.exists && picker.isHittable
+                }) else {
                     return false
                 }
-                let collapsedFrame = menu.frame
-                menu.tap()
+                picker.tap()
 
-                guard DemoLaunch.wait(until: { firstHittable(named: option) != nil }),
-                      let choice = firstHittable(named: option) else {
+                func exactHittableOption() -> XCUIElement? {
+                    app.buttons.matching(NSPredicate(
+                        format: "label == %@", option
+                    )).allElementsBoundByIndex.first(where: { $0.isHittable })
+                }
+                guard DemoLaunch.wait(until: { exactHittableOption() != nil }),
+                      let exactOption = exactHittableOption() else {
                     return false
                 }
-                choice.tap()
+                exactOption.tap()
 
-                // Prove the collapsed Picker changed selection before checking
-                // any Endpoints content. The menu row itself has the same label,
-                // so require the new hittable element at the original control's
-                // location rather than accepting that transient row.
+                // The captured Picker is the selection authority. A transient
+                // Endpoints option or static heading cannot satisfy its value.
                 return DemoLaunch.wait(until: {
-                    firstHittable(named: option, intersecting: collapsedFrame) != nil
+                    picker.exists
+                        && picker.isHittable
+                        && (picker.value as? String) == option
                 })
 
             case .revealText(let value):
@@ -172,8 +167,8 @@ final class VisionSurfaceSweepTests: XCTestCase {
 
         var expectation: String {
             switch self {
-            case .selectMenu(let control, let option):
-                "select \(String(reflecting: option)) from \(String(reflecting: control))"
+            case .selectMenu(let pickerLabel, let option):
+                "select \(String(reflecting: option)) from \(String(reflecting: pickerLabel))"
             case .revealText(let value):
                 "reveal exact text \(String(reflecting: value))"
             case .confirmThenReveal(let initial, let target):
@@ -331,8 +326,13 @@ final class VisionSurfaceSweepTests: XCTestCase {
         Screen(
             "automation",
             "Automation",
-            preparation: .selectMenu(control: "Workflows", option: "Endpoints"),
-            witness: .allOf([.text("Usage"), .text("No query endpoints")])
+            preparation: .selectMenu(pickerLabel: "Automation resource", option: "Endpoints"),
+            witness: .allOf([
+                .text("Usage"),
+                .text(
+                    "This project has no query endpoints, so there is nothing to have been called."
+                ),
+            ])
         ),
         Screen("actions", "Actions", witness: .text("No actions")),
         Screen("annotations", "Annotations", witness: .text("No annotations")),

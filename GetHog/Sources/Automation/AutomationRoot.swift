@@ -304,6 +304,7 @@ struct AutomationRoot: View {
             // Stays on the picker rather than on the glass bar around it: a
             // label on the container would not reach the control.
             .accessibilityLabel("Automation resource")
+            .accessibilityValue(section.title)
             // The bar hugs its content, and a menu is narrow. Without this the
             // whole bar collapses to a pill centred in the screen, where every
             // neighbouring filter bar starts at the leading margin.
