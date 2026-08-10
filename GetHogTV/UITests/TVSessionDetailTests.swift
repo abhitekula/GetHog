@@ -66,6 +66,29 @@ final class TVSessionDetailTests: XCTestCase {
         )
     }
 
+    func testReplayFailureOffersRetryAndRecovers() {
+        let app = openCanonicalSession(environment: [
+            "GETHOG_DEMO_REPLAY_SOURCE_FAILURES": "1"
+        ])
+        let failed = app.staticTexts["Couldn't load the replay"]
+        let retry = app.buttons["Try again"]
+
+        XCTAssertTrue(DemoLaunch.wait(for: failed, timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(for: retry, timeout: 10))
+        XCTAssertTrue(TVRemote.focus(on: retry, by: .up, limit: 24))
+
+        // Two Select events in one delivery window pressure the coalescing boundary.
+        TVRemote.press(.select, times: 2)
+
+        let readyMetric = app.staticTexts.matching(NSPredicate(
+            format: "label == %@ OR value == %@",
+            "Requests",
+            "Requests"
+        )).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: readyMetric, timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(until: { !retry.exists && !failed.exists }))
+    }
+
     private func openCanonicalSession(
         environment: [String: String] = [:]
     ) -> XCUIApplication {

@@ -80,7 +80,11 @@ struct SessionDetailView: View {
                 // events, drawn as activity over the recording's duration with
                 // the console and network incidents marked on it. Nothing is
                 // played, so nothing pretends to be.
-                TVReplayTimelineView(recording: recording, loader: loader)
+                TVReplayTimelineView(
+                    recording: recording,
+                    loader: loader,
+                    onRetry: { retryTVReplay() }
+                )
                     .padding(.horizontal, Theme.Space.l)
                 #else
                 ReplayPlayerView(
@@ -373,6 +377,19 @@ struct SessionDetailView: View {
         guard let client = model.client, let projectID = model.projectID else { return }
         await loader.start(client: client, projectID: projectID, recording: recording)
     }
+
+    #if os(tvOS)
+    private func retryTVReplay() {
+        guard let client = model.client, let projectID = model.projectID else { return }
+        Task {
+            await loader.retryUnavailable(
+                client: client,
+                projectID: projectID,
+                recording: recording
+            )
+        }
+    }
+    #endif
 
     private func retryReplay() {
         loader.reset()

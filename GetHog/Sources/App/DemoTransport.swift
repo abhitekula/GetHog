@@ -23,6 +23,20 @@ private actor DemoSummaryGenerationState {
     }
 }
 
+private actor DemoReplaySourceState {
+    private var remainingFailures: Int
+
+    init(remainingFailures: Int) {
+        self.remainingFailures = max(0, remainingFailures)
+    }
+
+    func consumeFailure() -> Bool {
+        guard remainingFailures > 0 else { return false }
+        remainingFailures -= 1
+        return true
+    }
+}
+
 struct DemoTransport: HTTPTransport {
 
     static let launchArgument = "-GetHogDemo"
@@ -31,6 +45,7 @@ struct DemoTransport: HTTPTransport {
     static let emptyDashboardID = 725_103
     static let emptyCollectionEnvironment = "GETHOG_DEMO_EMPTY_COLLECTION"
     static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
+    static let replaySourceFailuresEnvironment = "GETHOG_DEMO_REPLAY_SOURCE_FAILURES"
     static let dashboardDetailDelayEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_DELAY_MS"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
     #if DEBUG
@@ -59,6 +74,7 @@ struct DemoTransport: HTTPTransport {
 
     private let emptyCollection: EmptyCollection?
     private let summaryGeneration: DemoSummaryGenerationState
+    private let replaySources: DemoReplaySourceState
     private let dashboardDetailDelayMilliseconds: Int
     private let dashboardRecomputeFailure: Bool
     private let dashboardListDelayMilliseconds: Int
@@ -68,7 +84,8 @@ struct DemoTransport: HTTPTransport {
         emptyCollection: EmptyCollection? = nil,
         summaryInitiallyAbsent: Bool? = nil,
         dashboardDetailDelayMilliseconds: Int? = nil,
-        dashboardRecomputeFailure: Bool? = nil
+        dashboardRecomputeFailure: Bool? = nil,
+        replaySourceFailures: Int? = nil
     ) {
         self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
             Self.emptyCollectionEnvironment
@@ -76,6 +93,12 @@ struct DemoTransport: HTTPTransport {
         let startsAbsent = summaryInitiallyAbsent
             ?? (ProcessInfo.processInfo.environment[Self.summaryGenerationEnvironment] == "1")
         summaryGeneration = DemoSummaryGenerationState(startsAbsent: startsAbsent)
+        let environmentReplayFailures = ProcessInfo.processInfo.environment[
+            Self.replaySourceFailuresEnvironment
+        ].flatMap(Int.init)
+        replaySources = DemoReplaySourceState(
+            remainingFailures: replaySourceFailures ?? environmentReplayFailures ?? 0
+        )
         let environmentDelay = ProcessInfo.processInfo.environment[
             Self.dashboardDetailDelayEnvironment
         ].flatMap(Int.init)
@@ -121,6 +144,17 @@ struct DemoTransport: HTTPTransport {
         let path = request.url?.path(percentEncoded: false) ?? ""
         let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
         let query = request.url?.query ?? ""
+
+        if path.contains("/snapshots"),
+           !query.contains("blob_v2"),
+           await replaySources.consumeFailure() {
+            return Self.jsonReply(
+                url: request.url!,
+                data: Data(#"{"detail":"Synthetic replay source failed"}"#.utf8),
+                status: 503
+            )
+        }
+
         let isDashboardList = (request.httpMethod ?? "GET") == "GET"
             && path.hasSuffix("/dashboards/")
         let isDashboardDetail = path.contains("/dashboards/")

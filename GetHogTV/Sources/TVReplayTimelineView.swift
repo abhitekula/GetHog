@@ -166,6 +166,7 @@ struct TVReplayTimelineModel: Equatable {
 struct TVReplayTimelineView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
+    let onRetry: () -> Void
 
     /// Held rather than recomputed in `body`.
     ///
@@ -223,6 +224,8 @@ struct TVReplayTimelineView: View {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 notice("Couldn't load the replay", detail: "The recording is on PostHog; only this device's copy failed.")
                 FailureDetail(text: reason)
+                Button("Try again", action: onRetry)
+                    .buttonStyle(.borderedProminent)
             }
 
         case .ready:

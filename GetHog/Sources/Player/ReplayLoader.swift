@@ -248,6 +248,16 @@ final class ReplayLoader {
         }
     }
 
+    func retryUnavailable(
+        client: PostHogClient,
+        projectID: Int,
+        recording: SessionRecording
+    ) async {
+        guard case .unavailable = availability else { return }
+        reset()
+        await start(client: client, projectID: projectID, recording: recording)
+    }
+
     /// Requests that the buffer reach `seconds` of session time. Cheap to call
     /// often — it collapses into the in-flight fetch when one is running.
     func ensureCoverage(upTo seconds: TimeInterval) {
