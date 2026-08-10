@@ -702,6 +702,7 @@ targets:
       # reason GetHogMacUITests records: its wait/settle/pause helpers encode
       # measured facts about this app, and two copies would drift.
       - path: GetHogUITests/DemoLaunch.swift
+      - path: GetHogUITests/Screenshots/LiveCredentials.swift
     dependencies:
       - target: GetHogVision
     settings:
@@ -737,6 +738,7 @@ targets:
       # most here: referencing a failing XCTest wait long enough has already
       # taken this platform's test host down once (task-4 report §9.3).
       - path: GetHogUITests/DemoLaunch.swift
+      - path: GetHogUITests/Screenshots/LiveCredentials.swift
     dependencies:
       - target: GetHogWatch
     settings:
@@ -772,6 +774,7 @@ targets:
       # takes a tvOS arm of its own, because a tvOS shell draws no navigation
       # bar for the iOS arm to wait on.
       - path: GetHogUITests/DemoLaunch.swift
+      - path: GetHogUITests/Screenshots/LiveCredentials.swift
     dependencies:
       - target: GetHogTV
     settings:

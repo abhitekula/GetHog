@@ -26,6 +26,28 @@ final class AlertAndNarrowingTests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testRegularWidthInsightDetailPublishesCanonicalDataFreeIdentifier() throws {
+        let app = DemoLaunch.launch(tab: "insights")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "The split-detail identifier contract is measured on a regular-width window."
+        )
+        let row = app.buttons["gethog.insight-card.710101"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: row, timeout: 15),
+            "The demo insight did not publish its data-free row identifier."
+        )
+        row.tap()
+
+        let detail = app.descendants(matching: .any)["gethog.insight-detail.710101"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: detail, timeout: 15),
+            "Regular width used a route spelling instead of the canonical numeric insight ID."
+        )
+    }
+
     /// Opening an insight's alerts, and finding the workflow's controls on it.
     func testInsightAlertsSheet() {
         let app = openInsight()
@@ -126,16 +148,21 @@ final class AlertAndNarrowingTests: XCTestCase {
         )
         DemoLaunch.settle(app)
 
-        let row = app.staticTexts[Self.insightTitle].firstMatch
+        let row = app.buttons["gethog.insight-card.710101"].firstMatch
         XCTAssertTrue(
             DemoLaunch.wait(for: row, timeout: 15),
-            "The demo insight was not in the library. \(app.debugDescription.prefix(2000))"
+            "The demo insight did not publish its data-free row identifier. "
+                + "\(app.debugDescription.prefix(2000))"
         )
         row.tap()
 
+        let detail = app.descendants(matching: .any)["gethog.insight-detail.710101"]
         XCTAssertTrue(
-            DemoLaunch.wait(for: app.navigationBars[Self.insightTitle], timeout: 15),
-            "The insight detail screen never came up."
+            DemoLaunch.wait(for: detail, timeout: 15),
+            "The insight detail anchor never appeared."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars[Self.insightTitle], timeout: 15)
         )
         DemoLaunch.settle(app)
         return app

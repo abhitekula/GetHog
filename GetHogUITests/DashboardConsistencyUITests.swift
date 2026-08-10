@@ -4,6 +4,21 @@ import XCTest
 final class DashboardConsistencyUITests: XCTestCase {
     private static let emptyDashboardID = 725_103
 
+    func testCompactDashboardCardPublishesADataFreeIdentifier() throws {
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width <= 700,
+            "The compact dashboard row contract is measured on a compact window."
+        )
+        let card = app.buttons["gethog.dashboard-card.725101"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: card, timeout: 60),
+            "The compact dashboard collection did not publish its data-free card identifier."
+        )
+    }
+
     func testPinnedDashboardPreviewFailureIsVisibleAndRetryable() throws {
         let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
         try XCTSkipUnless(

@@ -496,6 +496,7 @@ struct InsightsRoot: View {
                 .padding(.vertical, 1)
         )
         .listRowSeparator(.hidden)
+        .accessibilityIdentifier("gethog.insight-card.\(insight.id)")
         // The page after this one is fetched when its last row appears rather
         // than from a button, because 140 insights is three pages and a reader
         // scrolling a list should not have to ask for the rest of it. Guarded

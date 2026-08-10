@@ -5,6 +5,47 @@ import XCTest
 /// interaction with a gesture aimed at the pager's trailing edge.
 @MainActor
 final class WatchPagesUITests: XCTestCase {
+    /// One authenticated launch traverses the four read-only pages through the
+    /// real pager. Flags is observed only by its page title; no flag row is
+    /// ever focused or tapped.
+    func testLivePATAllPagesRender() throws {
+        try LiveCredentials.requireSweep()
+
+        guard ExclusiveRun.claim() else { return }
+        let app = XCUIApplication()
+        app.launchEnvironment = LiveCredentials.environment
+        app.launchEnvironment["GETHOG_WATCH_PAGE"] = "metrics"
+        app.launch()
+
+        assertLivePage("Metrics", in: app)
+        guard swipePager(in: app, until: app.navigationBars["Health"], page: "Health") else {
+            return XCTFail("The live pager did not move Metrics to Health.")
+        }
+        assertLivePage("Health", in: app)
+        guard swipePager(in: app, until: app.navigationBars["Flags"], page: "Flags") else {
+            return XCTFail("The live pager did not move Health to Flags.")
+        }
+        assertLivePage("Flags", in: app)
+        guard swipePager(in: app, until: app.navigationBars["Activity"], page: "Activity") else {
+            return XCTFail("The live pager did not move Flags to Activity.")
+        }
+        assertLivePage("Activity", in: app)
+    }
+
+    private func assertLivePage(_ title: String, in app: XCUIApplication) {
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars[title], timeout: 60),
+            "The live Watch \(title) page never rendered its stable title."
+        )
+        DemoLaunch.pause(0.75)
+        DemoLaunch.settle(app, timeout: 20)
+        XCTAssertEqual(
+            app.state,
+            .runningForeground,
+            "The app left the foreground while rendering live Watch \(title)."
+        )
+    }
+
     func testRightEdgeSwipesTraverseEveryVerticalPage() {
         let app = DemoLaunch.launch()
 

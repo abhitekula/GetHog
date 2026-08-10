@@ -103,7 +103,7 @@ struct WatchHealth: Equatable, Sendable {
 /// Provenance of the credential held by a running Watch model.
 ///
 /// A missing value in a real credential store is not equivalent to the DEBUG
-/// environment fallback. Keeping that distinction explicit prevents a keychain
+/// environment override. Keeping that distinction explicit prevents a keychain
 /// record that vanished during `/me` from inheriting the process-only path's
 /// permission to resolve without persistence and restore quarantined files.
 enum WatchCredentialSource: Sendable, Equatable {
@@ -152,7 +152,7 @@ struct WatchHandoff: Sendable, Equatable {
 
     /// What the three stores say right now.
     ///
-    /// The DEBUG `GETHOG_API_KEY` fallback lives here rather than in `live()`
+    /// The DEBUG `GETHOG_API_KEY` override lives here rather than in `live()`
     /// so a re-read after a transfer cannot silently lose it — it is in
     /// memory, dies with the process, and is never written to the keychain,
     /// which is the whole point of the channel AGENTS.md documents.
@@ -160,17 +160,23 @@ struct WatchHandoff: Sendable, Equatable {
         credentials: any CredentialStoring = KeychainTokenStore(),
         defaults: UserDefaults = .standard,
         snapshots: SharedSnapshotStore = .shared,
-        mutationCoordinator: WatchCredentialMutationCoordinator = .shared
+        mutationCoordinator: WatchCredentialMutationCoordinator = .shared,
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> WatchHandoff {
         mutationCoordinator.withSerializationLock {
             var credential = try? credentials.load()
             var credentialSource = WatchCredentialSource.stored
             #if DEBUG
-            if credential == nil,
-               let key = ProcessInfo.processInfo.environment["GETHOG_API_KEY"],
+            if let key = environment["GETHOG_API_KEY"],
                !key.isEmpty {
+                let region: PostHogRegion = switch environment["GETHOG_REGION"]?.lowercased() {
+                case "eu": .euCloud
+                case let host? where host.hasPrefix("http"):
+                    URL(string: host).map { PostHogRegion.selfHosted($0) } ?? .usCloud
+                default: .usCloud
+                }
                 // No projectID: `refresh` resolves it through `/users/@me/` once.
-                credential = StoredCredential(key: key, region: .usCloud)
+                credential = StoredCredential(key: key, region: region)
                 credentialSource = .processOnly
             }
             #endif
@@ -673,11 +679,11 @@ final class WatchModel {
 
     /// The production assembly.
     ///
-    /// Demo wins first, so a demo launch can never touch a stored credential;
-    /// then the keychain the phone hand-off writes; then, in DEBUG only, the
-    /// same `GETHOG_API_KEY` channel the other platforms honor for authorized
-    /// manual live testing — in memory, dying with the process, never written
-    /// to the keychain.
+    /// Demo wins first, so a demo launch can never touch a stored credential.
+    /// In DEBUG an explicit `GETHOG_API_KEY` then overrides the keychain value
+    /// the phone hand-off wrote, using the same channel as the other platforms
+    /// for authorized manual live testing — in memory, dying with the process,
+    /// never written to the keychain. Without that override, keychain wins.
     static func live() -> WatchModel {
         // First, before anything reads the watch list — including
         // `WatchHandoff.current()` two branches down. A demo launch puts its

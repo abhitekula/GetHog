@@ -53,6 +53,8 @@ enum TVDestination: String, CaseIterable, Hashable {
         }
     }
 
+    var rootIdentifier: String { "gethog.tv.root.\(rawValue)" }
+
     init(topShelfDestination: TopShelfRoute.Destination) {
         switch topShelfDestination {
         case .dashboards: self = .dashboards
@@ -158,6 +160,7 @@ struct TVRootView: View {
             ForEach(TVDestination.allCases, id: \.self) { destination in
                 Tab(destination.title, systemImage: destination.systemImage, value: destination) {
                     content(for: destination)
+                        .accessibilityIdentifier(destination.rootIdentifier)
                 }
             }
         }

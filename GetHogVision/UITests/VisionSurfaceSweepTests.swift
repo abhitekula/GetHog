@@ -426,6 +426,43 @@ final class VisionSurfaceSweepTests: XCTestCase {
         )
     }
 
+    /// Authenticated, read-only counterpart to the deterministic roster sweep.
+    ///
+    /// Search is the launch root, Settings is reached through its ornament
+    /// control, and the 33 product roots are reached through the same section
+    /// and row helpers as the interaction suite. No customer-authored title is
+    /// used as an oracle and no detail or write control is activated.
+    func testLivePATAllRootScreensRender() throws {
+        try LiveCredentials.requireSweep()
+
+        guard ExclusiveRun.claim() else { return }
+        let utilityApp = launchLive(tab: "search")
+
+        assertLiveRoot("Search", in: utilityApp)
+
+        guard VisionSidebar.tap("Settings", in: utilityApp) else { return }
+        assertLiveRoot("Settings", in: utilityApp)
+        utilityApp.terminate()
+
+        sweepLive(Self.analyze.dropFirst(), section: "Analyze")
+        sweepLive(Self.monitor, section: "Monitor")
+        sweepLive(Self.data, section: "Data")
+        sweepLive(Self.experiment, section: "Experiment")
+        sweepLive(
+            Self.workspaceAndUtility.dropLast(),
+            section: "Workspace",
+            leavesAppForeground: true
+        )
+    }
+
+    private func launchLive(tab: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment = LiveCredentials.environment
+        app.launchEnvironment["GETHOG_TAB"] = tab
+        app.launch()
+        return app
+    }
+
     private func sweep(_ screens: [Screen]) {
         for screen in screens {
             let app = DemoLaunch.launch(tab: screen.rawValue)
@@ -455,5 +492,48 @@ final class VisionSurfaceSweepTests: XCTestCase {
 
             app.terminate()
         }
+    }
+
+    private func sweepLive<S: Sequence>(
+        _ screens: S,
+        section sectionTitle: String,
+        leavesAppForeground: Bool = false
+    ) where S.Element == Screen {
+        let screens = Array(screens)
+        guard let first = screens.first else {
+            return XCTFail("The live Vision \(sectionTitle) roster was empty.")
+        }
+
+        let app = launchLive(tab: first.rawValue)
+        assertLiveRoot(first.title, in: app)
+
+        let section = VisionSidebar.section(sectionTitle, in: app)
+        guard DemoLaunch.wait(until: { section.exists && section.isHittable }) else {
+            return XCTFail("The live Vision shell never offered \(sectionTitle).")
+        }
+        section.tap()
+
+        for screen in screens.dropFirst() {
+            guard VisionSidebar.tap(screen.title, in: app) else { continue }
+            assertLiveRoot(screen.title, in: app)
+        }
+
+        if !leavesAppForeground {
+            app.terminate()
+        }
+    }
+
+    private func assertLiveRoot(_ title: String, in app: XCUIApplication) {
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars[title].firstMatch, timeout: 60),
+            "The live Vision \(title) root never rendered its stable title."
+        )
+        DemoLaunch.pause(0.75)
+        DemoLaunch.settle(app, timeout: 20)
+        XCTAssertEqual(
+            app.state,
+            .runningForeground,
+            "The app left the foreground while rendering live \(title)."
+        )
     }
 }

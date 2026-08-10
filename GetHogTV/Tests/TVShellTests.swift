@@ -81,6 +81,13 @@ struct TVDestinationTests {
         #expect(Set(tabs).count == tabs.count)
     }
 
+    @Test("every destination publishes a data-free root identifier")
+    func destinationRootIdentifiers() {
+        for destination in TVDestination.allCases {
+            #expect(destination.rootIdentifier == "gethog.tv.root.\(destination.rawValue)")
+        }
+    }
+
     @Test("losing the authenticated scope invalidates open details")
     func scopeLossInvalidatesOpenDetails() throws {
         let epoch = try #require(

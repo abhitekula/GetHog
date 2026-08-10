@@ -21,10 +21,14 @@ struct SavedInsightDetailView: View {
     /// never briefly labelled "Insight" for something the app already knew the
     /// name of.
     private let seeded: Insight?
+    /// The route may prefer an insight's short handle, but accessibility needs
+    /// one presentation-independent identity for compact and split layouts.
+    private let rootIdentifierSuffix: String
 
     init(identifier: String, seed: Insight? = nil) {
         self.identifier = identifier
         self.seeded = seed
+        self.rootIdentifierSuffix = seed.map { String($0.id) } ?? identifier
     }
 
     init(_ insight: Insight) {
@@ -105,6 +109,7 @@ struct SavedInsightDetailView: View {
                 KeyboardAction(key: "r", title: "Recompute results") { recompute() }
             ])
             .refreshable { await load() }
+            .accessibilityIdentifier("gethog.insight-detail.\(rootIdentifierSuffix)")
             // Keyed on the project rather than bare: a window restored at cold
             // launch appears before `bootstrap()` has produced a client, and a
             // plain `.task` would run once against nothing and leave the screen

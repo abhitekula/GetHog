@@ -7,6 +7,68 @@ import Testing
 @MainActor
 struct WatchModelTests {
 
+    @Test("a process credential overrides a stored credential without persisting")
+    func processCredentialOverridesStoredCredentialWithoutPersisting() throws {
+        let stored = StoredCredential(
+            key: "synthetic-stored-key",
+            region: .euCloud,
+            projectID: 1_001
+        )
+        let credentials = InMemoryTokenStore(credential: stored)
+        let defaults = try #require(
+            UserDefaults(suiteName: "GetHogWatchTests-\(UUID().uuidString)")
+        )
+
+        let handoff = WatchHandoff.current(
+            credentials: credentials,
+            defaults: defaults,
+            snapshots: WatchFixtures.tempStore(),
+            mutationCoordinator: WatchCredentialMutationCoordinator(),
+            environment: [
+                "GETHOG_API_KEY": "synthetic-process-key",
+                "GETHOG_REGION": "us",
+            ]
+        )
+
+        #expect(handoff.credential == StoredCredential(
+            key: "synthetic-process-key",
+            region: .usCloud
+        ))
+        #expect(handoff.credentialSource == .processOnly)
+        #expect(try credentials.load() == stored)
+    }
+
+    @Test("a process credential resolves cloud and self-hosted regions")
+    func processCredentialResolvesRegions() throws {
+        let selfHostedURL = try #require(URL(string: "https://example.invalid/posthog"))
+        let cases: [(String?, PostHogRegion)] = [
+            (nil, .usCloud),
+            ("us", .usCloud),
+            ("unexpected", .usCloud),
+            ("eu", .euCloud),
+            (selfHostedURL.absoluteString, .selfHosted(selfHostedURL)),
+        ]
+
+        for (region, expected) in cases {
+            let defaults = try #require(
+                UserDefaults(suiteName: "GetHogWatchTests-\(UUID().uuidString)")
+            )
+            var environment = ["GETHOG_API_KEY": "synthetic-process-key"]
+            environment["GETHOG_REGION"] = region
+
+            let handoff = WatchHandoff.current(
+                credentials: InMemoryTokenStore(),
+                defaults: defaults,
+                snapshots: WatchFixtures.tempStore(),
+                mutationCoordinator: WatchCredentialMutationCoordinator(),
+                environment: environment
+            )
+
+            #expect(handoff.credential?.region == expected)
+            #expect(handoff.credentialSource == .processOnly)
+        }
+    }
+
     @Test("a refresh reduces the pinned dashboard's tiles to metrics")
     func refreshReducesDashboardTiles() async {
         let store = WatchFixtures.tempStore()

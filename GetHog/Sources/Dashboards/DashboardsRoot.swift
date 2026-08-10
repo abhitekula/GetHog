@@ -423,6 +423,7 @@ struct DashboardsRoot: View {
         .dashboardRowSurface()
         .listRowSeparator(.hidden)
         .contextMenu { dashboardContextMenu(dashboard) }
+        .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
     }
 
     private func dashboardHubRow(_ dashboard: DashboardSummary) -> some View {
