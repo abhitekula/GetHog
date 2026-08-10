@@ -656,22 +656,29 @@ struct TracingLockedView: View {
     var body: some View {
         ContentUnavailableView {
             Label(state.headline(tracingCopy), systemImage: "lock")
+                .font(.title2.weight(.semibold))
         } description: {
             VStack(spacing: Theme.Space.s) {
                 Text(state.detail(tracingCopy))
                 if case .denied(let resource) = state {
                     Text(resource)
-                        .font(.footnote.monospaced())
+                        .font(.body.monospaced())
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, Theme.Space.s)
                         .padding(.vertical, Theme.Space.xs)
                         .background(.quaternary, in: .rect(cornerRadius: 6))
                         .accessibilityLabel("Denied resource: \(resource)")
                 }
             }
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Ink.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: Theme.Measure.prose)
         } actions: {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     // White on `Theme.accent` measures 2.08:1 in dark. This was
                     // `Theme.pageBackground`, one of four sites that had each
                     // arrived at that answer separately; see
@@ -680,6 +687,10 @@ struct TracingLockedView: View {
                     .foregroundStyle(Theme.inkOnAccent)
             }
         }
+        // This is a whole-screen/detail replacement, not an inline row. The
+        // spatial host supplies glass rather than an opaque fallback, so the
+        // state itself has to claim and paint the complete canvas.
+        .appGround()
     }
 }
 

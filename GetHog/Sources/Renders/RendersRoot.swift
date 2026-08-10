@@ -581,12 +581,14 @@ struct RendersLockedView: View {
     var body: some View {
         ContentUnavailableView {
             Label(state.headline(rendersCopy), systemImage: "lock")
+                .font(.title2.weight(.semibold))
         } description: {
             VStack(spacing: Theme.Space.s) {
                 Text(state.detail(rendersCopy))
                 if case .denied(let resource) = state {
                     Text(resource)
-                        .font(.footnote.monospaced())
+                        .font(.body.monospaced())
+                        .foregroundStyle(.primary)
                         // The scope PostHog named, not prose — same idiom and
                         // same measurement as the identical chip on Logs.
                         .typesettingLanguage(Locale.Language(identifier: "zxx"))
@@ -596,19 +598,26 @@ struct RendersLockedView: View {
                         .accessibilityLabel("Denied resource: \(resource)")
                 }
             }
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Ink.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: Theme.Measure.prose)
         } actions: {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     // See `Theme.inkOnAccent`: a prominent button's default
-                    // white label is 2.09:1 on the dark accent. **Not
-                    // photographed** — the demo Renders screen lists exports
-                    // rather than reaching its denied state. The "Play" button
-                    // on `RenderDetailView`, which is where the 2.09:1 was
-                    // sampled, is the same construction one screen along.
+                    // white label is 2.09:1 on the dark accent. The explicit
+                    // ink is shared with the photographed Vision denial state
+                    // and the Play button one screen along.
                     .foregroundStyle(Theme.inkOnAccent)
             }
         }
+        // Same full-canvas contract as the Logs and Tracing resource walls.
+        // Relying on an opaque host works accidentally on iOS and becomes a
+        // floating strip in a transparent Vision detail column.
+        .appGround()
     }
 }
 

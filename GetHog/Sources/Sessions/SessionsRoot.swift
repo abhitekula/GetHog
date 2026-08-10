@@ -349,10 +349,21 @@ struct SessionsRoot: View {
         Button {
             showsFilters = true
         } label: {
+            #if os(tvOS)
+            Label(
+                store.filter.isNarrowed ? "Filter (\(store.filter.activeCount))" : "Filter",
+                systemImage: store.filter.isNarrowed
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle"
+            )
+            .labelStyle(.titleAndIcon)
+            #else
             Image(systemName: store.filter.isNarrowed
                 ? "line.3.horizontal.decrease.circle.fill"
                 : "line.3.horizontal.decrease.circle")
+            #endif
         }
+        .televisionAccentControlInk()
         .accessibilityLabel(
             store.filter.isNarrowed
                 ? "Filter sessions, \(store.filter.activeCount) active"
@@ -370,8 +381,14 @@ struct SessionsRoot: View {
         NavigationLink {
             PlaylistsView { store.filter = $0 }
         } label: {
+            #if os(tvOS)
+            Label("Playlists", systemImage: "list.star")
+                .labelStyle(.titleAndIcon)
+            #else
             Image(systemName: "list.star")
+            #endif
         }
+        .televisionAccentControlInk()
         .accessibilityLabel("Playlists")
     }
 

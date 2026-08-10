@@ -62,6 +62,26 @@ struct PageGroundTests {
         }
     }
 
+    /// Resource-role walls replace the same whole screen or detail column as a
+    /// capability wall. They used to rely on the host for their ground, which
+    /// happened to work under an opaque iOS navigation stack and became a short
+    /// dark band inside Vision's transparent spatial detail canvas.
+    @Test("resource-locked states paint the whole app ground")
+    func resourceLockedStatesAreOnTheGround() throws {
+        let states: [(name: String, view: AnyView)] = [
+            ("logs", AnyView(LogsLockedView(state: .denied(resource: "logs")))),
+            ("tracing", AnyView(TracingLockedView(state: .denied(resource: "tracing")))),
+            ("renders", AnyView(RendersLockedView(state: .denied(resource: "session_recording")))),
+        ]
+
+        for state in states {
+            for (appearance, scheme, style) in Self.appearances {
+                let corners = try corners(of: state.view, scheme)
+                expectGround(corners, style, "\(state.name) resource wall in \(appearance)")
+            }
+        }
+    }
+
     /// This one stacks the authored fault *below* the empty state, so the ground
     /// has to be claimed by the stack rather than by the state view inside it.
     @Test("a load failure state is painted on the app ground under its detail too")

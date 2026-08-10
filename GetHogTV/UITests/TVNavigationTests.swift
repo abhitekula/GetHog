@@ -134,6 +134,239 @@ final class TVNavigationTests: XCTestCase {
 }
 
 @MainActor
+final class TVFocusChromeTests: XCTestCase {
+    func testProjectAndInsightFiltersExposeReadableFocusControls() throws {
+        let app = DemoLaunch.launch()
+        TVSidebar.select("Insights", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.staticTexts["Example meteor report"], timeout: 60),
+            "Insights never rendered its deterministic first row."
+        )
+
+        let firstInsight = app.staticTexts["Example meteor report"]
+        let focusedInsightRow = XCUIScreen.main.screenshot()
+        try expectReadableText(
+            firstInsight,
+            named: "Focused insight title",
+            in: focusedInsightRow.image,
+            app: app
+        )
+        let focusedInsightAttachment = XCTAttachment(screenshot: focusedInsightRow)
+        focusedInsightAttachment.name = "TV focused insight row"
+        focusedInsightAttachment.lifetime = .keepAlways
+        add(focusedInsightAttachment)
+
+        let project = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Current project:")
+        ).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: project, timeout: 10))
+        XCTAssertTrue(project.isHittable, "The TV project switcher is not reachable by the remote.")
+        XCTAssertGreaterThan(
+            project.frame.width,
+            project.frame.height * 2.2,
+            "The TV project switcher remained an icon-only circle instead of one readable address control."
+        )
+
+        let kind = exactElement("Insight kind: All kinds", in: app)
+        let favorites = exactElement("Favorites: Off", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10) { kind.exists && favorites.exists },
+            "Insights did not expose explicit kind and favorites controls with their current values."
+        )
+        guard kind.exists, favorites.exists else { return }
+
+        // The wide first row's geometric centre is under Favorites, so Up
+        // enters that control and Left reaches the kind chooser.
+        TVRemote.press(.up)
+        TVRemote.press(.left)
+        try expectFocusedReadableControl(kind, named: "Insight kind", app: app)
+        TVRemote.press(.select)
+        let selectedAllKinds = app.buttons["All kinds, selected"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: selectedAllKinds), "The insight-kind choices did not expose the current value.")
+        let funnels = app.buttons["Funnels"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: funnels), "The Funnels insight kind was absent.")
+        XCTAssertTrue(
+            TVRemote.focus(on: funnels, by: .down, limit: 8),
+            "The remote could not focus the Funnels choice."
+        )
+        TVRemote.press(.select)
+        let funnelsTrigger = exactElement("Insight kind: Funnels", in: app)
+        XCTAssertTrue(DemoLaunch.wait(for: funnelsTrigger), "Choosing Funnels did not update the filter label.")
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.staticTexts["Example constellation journey"], timeout: 10),
+            "Choosing Funnels did not render the deterministic funnel insight."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10) { !app.staticTexts["Example meteor report"].exists },
+            "Choosing Funnels left a Trends insight in the filtered list."
+        )
+        DemoLaunch.settle(app)
+
+        // Applying a kind filter correctly transfers focus to the refreshed
+        // first result. Return through the control row before reopening the
+        // chooser; selecting in place would activate that insight instead.
+        TVRemote.press(.up)
+        TVRemote.press(.left)
+        try expectFocusedReadableControl(funnelsTrigger, named: "Selected insight kind", app: app)
+        TVRemote.press(.select)
+        let selectedFunnels = app.buttons["Funnels, selected"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: selectedFunnels), "Reopening the choices did not expose Funnels.")
+        XCTAssertTrue(
+            TVRemote.focus(on: app.buttons["All kinds"].firstMatch, by: .up, limit: 8),
+            "The remote could not return to All kinds."
+        )
+        TVRemote.press(.select)
+
+        // Choosing All kinds returns focus to the refreshed first result.
+        // Wait for the dialog dismissal and reload to settle before walking
+        // vertically through the trailing filter and project controls.
+        let allKindsTrigger = exactElement("Insight kind: All kinds", in: app)
+        XCTAssertTrue(DemoLaunch.wait(for: allKindsTrigger), "Restoring All kinds did not update the filter label.")
+        DemoLaunch.settle(app)
+        TVRemote.press(.up)
+        try expectFocusedReadableControl(favorites, named: "Favorites", app: app)
+        TVRemote.press(.up)
+        try expectFocusedReadableControl(project, named: "Current project", app: app)
+    }
+
+    func testSessionToolbarActionsRemainLegible() throws {
+        let app = DemoLaunch.launch()
+        TVSidebar.select("Sessions", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Alex Example,")
+            ).firstMatch, timeout: 60),
+            "Sessions never rendered its deterministic first row."
+        )
+
+        let filter = exactElement("Filter sessions", in: app)
+        let playlists = exactElement("Playlists", in: app)
+        let project = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Current project:")
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10) { filter.exists && playlists.exists && project.exists },
+            "Sessions did not expose its project context and both toolbar actions."
+        )
+        guard filter.exists, playlists.exists, project.exists else { return }
+
+        try expectFocusedReadableControl(project, named: "Current project", app: app)
+        TVRemote.press(.right)
+        try expectFocusedReadableControl(filter, named: "Filter sessions", app: app)
+        TVRemote.press(.right)
+        try expectFocusedReadableControl(playlists, named: "Playlists", app: app)
+    }
+
+    private func exactElement(_ label: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@ OR value == %@", label, label)
+        ).firstMatch
+    }
+
+    private func expectFocusedReadableControl(
+        _ control: XCUIElement,
+        named name: String,
+        app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertTrue(
+            control.exists && control.isHittable,
+            "\(name) is not a reachable remote target.",
+            file: file,
+            line: line
+        )
+        DemoLaunch.settle(app)
+        let rendered = XCUIScreen.main.screenshot()
+        let labelFrame = control.frame.insetBy(
+            dx: control.frame.height * 0.18,
+            dy: control.frame.height * 0.18
+        )
+        XCTAssertLessThan(
+            control.frame.height,
+            120,
+            "\(name) expanded beyond a bounded television control.",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            control.frame.width,
+            control.frame.height * 1.8,
+            "\(name) remained an icon-only shape instead of a horizontal labeled control.",
+            file: file,
+            line: line
+        )
+        let span = try XCTUnwrap(
+            TVRenderedPixelOracle.luminanceSpan(
+                in: rendered.image,
+                frame: labelFrame,
+                appFrame: app.frame
+            ),
+            "\(name) could not be sampled from the rendered television frame.",
+            file: file,
+            line: line
+        )
+        let focusFill = try XCTUnwrap(
+            TVRenderedPixelOracle.medianLuminance(
+                in: rendered.image,
+                frame: labelFrame,
+                appFrame: app.frame
+            ),
+            "\(name) focus fill could not be sampled.",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            focusFill,
+            0.78,
+            "\(name) did not render the bright focus slab after the remote move.",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            span,
+            0.25,
+            "\(name) has no legible foreground against its focus fill.",
+            file: file,
+            line: line
+        )
+
+        let attachment = XCTAttachment(screenshot: rendered)
+        attachment.name = "TV focused \(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func expectReadableText(
+        _ text: XCUIElement,
+        named name: String,
+        in image: UIImage,
+        app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertTrue(text.exists && text.isHittable, "\(name) is not rendered.", file: file, line: line)
+        let span = try XCTUnwrap(
+            TVRenderedPixelOracle.luminanceSpan(
+                in: image,
+                frame: text.frame,
+                appFrame: app.frame
+            ),
+            "\(name) could not be sampled from the television frame.",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            span,
+            0.25,
+            "\(name) has no legible foreground against its focused row.",
+            file: file,
+            line: line
+        )
+    }
+}
+
+@MainActor
 final class TVScopeGuidanceUITests: XCTestCase {
     func testSettingsRendersOnlyTheWriteScopeTVCanUse() {
         let app = DemoLaunch.launch()

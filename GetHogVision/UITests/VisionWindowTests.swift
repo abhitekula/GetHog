@@ -2,6 +2,43 @@ import XCTest
 
 @MainActor
 final class VisionWindowTests: XCTestCase {
+    func testDeniedRendersResourceOwnsTheSpatialCanvas() {
+        let app = DemoLaunch.launch(
+            tab: "renders",
+            environment: ["GETHOG_DEMO_DENIED_RESOURCE": "export"]
+        )
+
+        let lockedTitle = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Renders is locked")
+        ).firstMatch
+        let deniedResource = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Denied resource: export")
+        ).firstMatch
+        let recheck = app.buttons["Re-check access"].firstMatch
+
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 15) {
+                lockedTitle.exists && deniedResource.exists && recheck.exists
+            },
+            "The denied exports response did not render the Renders resource wall."
+        )
+        guard lockedTitle.exists, recheck.exists else { return }
+
+        guard let window = app.windows.allElementsBoundByIndex.max(by: {
+            $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height
+        })?.frame else {
+            return XCTFail("The Vision app exposed no window around the Renders resource wall.")
+        }
+        XCTAssertTrue(recheck.isHittable, "The resource wall's recovery action is not reachable.")
+        XCTAssertEqual(lockedTitle.frame.midX, recheck.frame.midX, accuracy: 80)
+        XCTAssertGreaterThan(lockedTitle.frame.minY, window.minY + 40)
+        XCTAssertLessThan(recheck.frame.maxY, window.maxY - 40)
+        XCTAssertFalse(
+            app.staticTexts["Example filename 0312"].exists,
+            "The denied resource wall left a stale render row visible."
+        )
+    }
+
     /// Catches a Dashboard landing change that restores separate signal and
     /// collection scroll containers instead of one regular-width dashboard hub.
     func testDashboardLandingUsesOneRegularWidthHub() throws {

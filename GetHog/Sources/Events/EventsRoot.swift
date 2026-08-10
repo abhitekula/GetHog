@@ -662,6 +662,7 @@ struct EventsRoot: View {
                 Label("Live", systemImage: "dot.radiowaves.left.and.right")
             }
         }
+        .televisionAccentControlInk()
         .accessibilityLabel(liveTail.isRunning ? "Stop live tail" : "Start live tail for five minutes")
     }
 

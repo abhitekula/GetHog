@@ -25,6 +25,9 @@ struct InsightsRoot: View {
     @State private var search = ""
     @State private var kind: InsightKind?
     @State private var favoritesOnly = false
+    #if os(tvOS)
+    @State private var isChoosingKind = false
+    #endif
 
     /// The open insight, and deliberately **not** `@State`.
     ///
@@ -340,7 +343,11 @@ struct InsightsRoot: View {
     /// A menu rather than a segmented control at every size: there are seven
     /// kinds plus "All", and eight segments on a phone is eight illegible
     /// slivers before Dynamic Type is even considered.
+    @ViewBuilder
     private var filterBar: some View {
+        #if os(tvOS)
+        televisionFilterBar
+        #else
         GlassFilterBar {
             Picker("Insight kind", selection: $kind) {
                 Text("All kinds").tag(InsightKind?.none)
@@ -369,7 +376,82 @@ struct InsightsRoot: View {
             .accessibilityLabel("Show only favorites")
         }
         .padding(.vertical, Theme.Space.xs)
+        #endif
     }
+
+    #if os(tvOS)
+    /// Explicit value-bearing controls for a focus engine.
+    ///
+    /// A menu-style `Picker` plus the platform `Toggle` is compact on touch but
+    /// renders on television as two accent blobs, one with a clipped "Off" and
+    /// neither with enough text to identify it. These keep the exact same state
+    /// and choices while giving each focus surface one stable, readable label.
+    private var televisionFilterBar: some View {
+        HStack(spacing: Theme.Space.l) {
+            Button {
+                isChoosingKind = true
+            } label: {
+                Label(kind?.title ?? "All kinds", systemImage: "line.3.horizontal.decrease.circle")
+                    .lineLimit(1)
+                    .frame(minWidth: 300, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .televisionAccentControlInk()
+            .accessibilityLabel("Insight kind: \(kind?.title ?? "All kinds")")
+            .confirmationDialog(
+                "Insight kind",
+                isPresented: $isChoosingKind,
+                titleVisibility: .visible
+            ) {
+                Button {
+                    kind = nil
+                } label: {
+                    if kind == nil {
+                        Label("All kinds", systemImage: "checkmark")
+                    } else {
+                        Text("All kinds")
+                    }
+                }
+                .accessibilityLabel(kind == nil ? "All kinds, selected" : "All kinds")
+                ForEach(InsightKind.allCases) { option in
+                    Button {
+                        kind = option
+                    } label: {
+                        if kind == option {
+                            Label(option.title, systemImage: "checkmark")
+                        } else {
+                            Text(option.title)
+                        }
+                    }
+                    .accessibilityLabel(kind == option ? "\(option.title), selected" : option.title)
+                }
+            }
+
+            Button {
+                favoritesOnly.toggle()
+            } label: {
+                Label(
+                    "Favorites: \(favoritesOnly ? "On" : "Off")",
+                    systemImage: favoritesOnly ? "star.fill" : "star"
+                )
+                .lineLimit(1)
+                .frame(minWidth: 260, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .televisionAccentControlInk()
+            .accessibilityLabel("Favorites: \(favoritesOnly ? "On" : "Off")")
+        }
+        .padding(.horizontal, Theme.Space.m)
+        .padding(.vertical, Theme.Space.s)
+        .warmGlass(in: .rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+        .frame(maxWidth: 900, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Space.l)
+        .padding(.vertical, Theme.Space.xs)
+    }
+    #endif
 
     /// The word joins the glyph at accessibility sizes.
     ///

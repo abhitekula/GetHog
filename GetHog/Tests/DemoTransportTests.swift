@@ -2236,6 +2236,25 @@ extension DemoTransportTests {
         #expect(library.results.count == 4)
     }
 
+    @Test("an insight kind filter returns only that kind")
+    func insightKindIsFiltered() async throws {
+        let funnels = try Page<Insight>.decode(
+            from: try await fixture(
+                for: PostHogAPI.insights(projectID: Self.projectID, kind: .funnels)
+            )
+        )
+
+        #expect(funnels.count == 1)
+        #expect(funnels.results.map(\.id) == [710104])
+        #expect(funnels.results.allSatisfy { $0.sourceKind == InsightKind.funnels.sourceKind })
+
+        let library = try Page<Insight>.decode(
+            from: try await fixture(for: PostHogAPI.insights(projectID: Self.projectID))
+        )
+        #expect(library.count == 4)
+        #expect(library.results.count == 4)
+    }
+
     @Test("graph metadata is exact, fictional, and independent of earlier fixtures")
     func graphMetadataIsExact() async throws {
         let insightData = try await fixture(for: PostHogAPI.insights(projectID: Self.projectID))

@@ -154,6 +154,16 @@ public enum Theme {
         dark: Color(hex: 0x151413)
     )
 
+    /// Stable ink for tvOS controls that move between cyan and white focus
+    /// surfaces.
+    ///
+    /// The focus engine changes the effective appearance of a focused control,
+    /// so `inkOnAccent` can resolve to its light-appearance white at the exact
+    /// moment the control's focus slab also turns white. tvOS itself is a dark
+    /// presentation and both of its actual surfaces here are light; one fixed
+    /// near-black ink keeps the label readable through that transition.
+    public static let televisionControlInk = Color(hex: 0x151413)
+
     /// A second accent for chrome that needs warmth without competing with the
     /// data — badges, small-caps section headers, selected pills.
     public static let accentWarm = Color(

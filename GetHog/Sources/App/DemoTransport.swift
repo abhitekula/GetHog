@@ -46,6 +46,7 @@ struct DemoTransport: HTTPTransport {
     static let emptyCollectionEnvironment = "GETHOG_DEMO_EMPTY_COLLECTION"
     static let summaryGenerationEnvironment = "GETHOG_DEMO_SUMMARY_GENERATION"
     static let replaySourceFailuresEnvironment = "GETHOG_DEMO_REPLAY_SOURCE_FAILURES"
+    static let deniedResourceEnvironment = "GETHOG_DEMO_DENIED_RESOURCE"
     static let dashboardDetailDelayEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_DELAY_MS"
     static let dashboardDetailFailureEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
@@ -76,6 +77,7 @@ struct DemoTransport: HTTPTransport {
     private let emptyCollection: EmptyCollection?
     private let summaryGeneration: DemoSummaryGenerationState
     private let replaySources: DemoReplaySourceState
+    private let deniedResource: String?
     private let dashboardDetailDelayMilliseconds: Int
     private let dashboardDetailFailure: Bool
     private let dashboardRecomputeFailure: Bool
@@ -88,7 +90,8 @@ struct DemoTransport: HTTPTransport {
         dashboardDetailDelayMilliseconds: Int? = nil,
         dashboardDetailFailure: Bool? = nil,
         dashboardRecomputeFailure: Bool? = nil,
-        replaySourceFailures: Int? = nil
+        replaySourceFailures: Int? = nil,
+        deniedResource: String? = nil
     ) {
         self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
             Self.emptyCollectionEnvironment
@@ -102,6 +105,9 @@ struct DemoTransport: HTTPTransport {
         replaySources = DemoReplaySourceState(
             remainingFailures: replaySourceFailures ?? environmentReplayFailures ?? 0
         )
+        self.deniedResource = deniedResource ?? ProcessInfo.processInfo.environment[
+            Self.deniedResourceEnvironment
+        ]
         let environmentDelay = ProcessInfo.processInfo.environment[
             Self.dashboardDetailDelayEnvironment
         ].flatMap(Int.init)
@@ -151,6 +157,16 @@ struct DemoTransport: HTTPTransport {
         let path = request.url?.path(percentEncoded: false) ?? ""
         let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
         let query = request.url?.query ?? ""
+
+        if path.hasSuffix("/exports/"), deniedResource == "export" {
+            return Self.jsonReply(
+                url: request.url!,
+                data: Data(
+                    #"{"type":"validation_error","code":"invalid_input","detail":"Access control failure. You don't have `viewer` access to the `export` resource."}"#.utf8
+                ),
+                status: 400
+            )
+        }
 
         if path.contains("/snapshots"),
            !query.contains("blob_v2"),
@@ -1405,12 +1421,29 @@ struct DemoTransport: HTTPTransport {
     // Deterministic fixture routing preserves the response shape and status for this case.
     private static func insightPage(query: String) -> Reply {
         let page = load("insights_list")
-        guard let shortID = queryValue("short_id", in: query),
+        let shortID = queryValue("short_id", in: query)
+        let rawKind = queryValue("insight", in: query)
+        guard shortID != nil || rawKind != nil,
               var object = try? JSONSerialization.jsonObject(with: page.data) as? [String: Any],
               let rows = object["results"] as? [[String: Any]]
         else { return page }
 
-        let matched = rows.filter { ($0["short_id"] as? String) == shortID }
+        let sourceKind = rawKind.flatMap { value in
+            InsightKind.allCases.first { $0.apiValue == value.uppercased() }?.sourceKind
+        }
+        let matched = rows.filter { row in
+            if let shortID, row["short_id"] as? String != shortID {
+                return false
+            }
+            if rawKind != nil {
+                guard let sourceKind,
+                      let insightQuery = row["query"] as? [String: Any],
+                      let source = insightQuery["source"] as? [String: Any]
+                else { return false }
+                return source["kind"] as? String == sourceKind
+            }
+            return true
+        }
         object["results"] = matched
         // Deterministic fixture routing preserves the response shape and status for this case.
         object["count"] = matched.count

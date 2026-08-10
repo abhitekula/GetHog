@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 /// Always-visible project context.
@@ -51,6 +52,23 @@ struct ProjectSwitcherMenu: View {
         Menu {
             projectList
         } label: {
+            #if os(tvOS)
+            // One focus target and one visual address. The prior composition
+            // put the project name in a separate toolbar item above this
+            // icon-only menu, so the remote saw a cyan circle disconnected from
+            // the text that explained it.
+            HStack(spacing: Theme.Space.s) {
+                BrandProductMarkView(
+                    mark: .projectStamp,
+                    size: 24,
+                    tint: Theme.televisionControlInk
+                )
+                Text(visibleProjectAddress)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+            .frame(minWidth: 260, alignment: .leading)
+            #else
             // A glyph, not the project name. The name is permanently
             // visible elsewhere, and repeating it here made the item wide
             // enough that it could not share the bar with a back button —
@@ -63,7 +81,9 @@ struct ProjectSwitcherMenu: View {
             // beside this glyph instead — which is why the two read as one
             // address there rather than as a label and a control.
             BrandProductMarkView(mark: .projectStamp, size: 18)
+            #endif
         }
+        .televisionAccentControlInk()
         // The label names the thing; the hint says what happens to it.
         //
         // It used to end "Double tap to switch." — which VoiceOver already
@@ -89,6 +109,17 @@ struct ProjectSwitcherMenu: View {
             return "Current project: \(project)"
         }
         return "Current project: \(project), in organization \(organization.name)"
+    }
+
+    /// The visible tvOS address. A project name alone is enough for the common
+    /// single-organization case; two organizations can each contain a
+    /// "Default project", so the organization joins it when it disambiguates.
+    private var visibleProjectAddress: String {
+        let project = model.selectedProject?.name ?? "No project"
+        guard model.isMultiOrganization, let organization = model.selectedOrganization else {
+            return project
+        }
+        return "\(organization.name) · \(project)"
     }
 
     /// Every project the key can reach, under the organisation that owns them.

@@ -77,7 +77,7 @@ struct VisionRootView: View {
     /// The roster needs its 180pt minimum plus a product pane that remains
     /// meaningfully wider than a phone. Below this, one full-width product pane
     /// and the horizontal destination strip are the honest layout.
-    static let compactSectionNavigationWidth: CGFloat = 800
+    nonisolated static let compactSectionNavigationWidth: CGFloat = 800
 
     static func shouldResetOpenDetails(
         from previousScope: FlagWriteScope?,

@@ -732,12 +732,14 @@ struct LogsLockedView: View {
     var body: some View {
         ContentUnavailableView {
             Label(state.headline(logsCopy), systemImage: "lock")
+                .font(.title2.weight(.semibold))
         } description: {
             VStack(spacing: Theme.Space.s) {
                 Text(state.detail(logsCopy))
                 if case .denied(let resource) = state {
                     Text(resource)
-                        .font(.footnote.monospaced())
+                        .font(.body.monospaced())
+                        .foregroundStyle(.primary)
                         // A scope string PostHog named, not prose: measured at
                         // AX5 in a narrow chip, `zxx`-less text acquires a real
                         // hyphen at a case boundary — `UnhandledRejection` set as
@@ -751,18 +753,25 @@ struct LogsLockedView: View {
                         .accessibilityLabel("Denied resource: \(resource)")
                 }
             }
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Ink.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: Theme.Measure.prose)
         } actions: {
             if let onRecheck {
                 Button("Re-check access", action: onRecheck)
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     // See `Theme.inkOnAccent`: a prominent button's default
-                    // white label is 2.09:1 on the dark accent. **Not
-                    // photographed** — the demo Logs screen renders its
-                    // no-lines state, never the denied one, so this branch has
-                    // no capture. Same construction as SQL's "Run", which does.
+                    // white label is 2.09:1 on the dark accent. The explicit
+                    // ink is shared with the photographed Vision denial state.
                     .foregroundStyle(Theme.inkOnAccent)
             }
         }
+        // A resource wall replaces the entire screen or split-view detail.
+        // Owning that canvas matters on Vision, whose host is intentionally
+        // transparent; without it this view shrinks to a dark content band.
+        .appGround()
     }
 }
 
