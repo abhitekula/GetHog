@@ -39,8 +39,9 @@ struct ProjectSearchView: View {
     @State private var recents = RecentSearchStore()
     @State private var query = ""
     @Namespace private var screenRotor
-    /// A survey opens as a sheet, because that is how `SurveyDetailSheet` is
-    /// presented from the Surveys screen and it carries its own navigation stack.
+    /// A survey needs its own request because the project index carries only an
+    /// id. The presentation boundary below pushes it on Vision and preserves the
+    /// existing sheet on iOS and Mac without duplicating the loader state.
     @State private var surveyRequest: SurveySearchRequest?
 
     init(compactLooseTabs: [AppTab]? = nil) {
@@ -137,9 +138,23 @@ struct ProjectSearchView: View {
         }
         .screenRefreshable { await load(force: true) }
         .task(id: model.projectID) { await load(force: false) }
-        .sheet(item: $surveyRequest) { request in
-            SurveySearchSheet(surveyID: request.id, name: request.name)
+        #if os(visionOS)
+        .navigationDestination(item: $surveyRequest) { request in
+            SurveySearchDestination(
+                surveyID: request.id,
+                name: request.name,
+                presentation: .inline
+            )
         }
+        #else
+        .sheet(item: $surveyRequest) { request in
+            SurveySearchDestination(
+                surveyID: request.id,
+                name: request.name,
+                presentation: .sheet
+            )
+        }
+        #endif
         .navigationDestination(for: ProjectSearchPush.self) { push in
             switch push {
             case .dashboard(let id, let name):
@@ -724,30 +739,25 @@ struct FlagSearchDestination: View {
 
 // MARK: - Survey destination
 
-/// What the sheet was asked to show. Carries the name so the sheet has a title
-/// while the survey is still loading.
+/// What Search was asked to show. Carries the name so the destination has a
+/// title while the survey is still loading.
 struct SurveySearchRequest: Identifiable, Hashable {
     let id: String
     let name: String
 }
 
-/// The survey screen, reached from an id.
-///
-/// A sheet rather than a push because on iOS `SurveyDetailSheet` is a sheet: it
-/// brings its own `NavigationStack` and its own Done button, and pushing it
-/// would draw a second navigation bar above the first — the exact cost
-/// `ScreenIndexSections` documents paying on 24 screens.
-///
-/// **On the Mac it brings neither**, and that is the whole of the difference
-/// below. `MacRootView` *pushes* that view into a stack that already has a bar,
-/// so `DetailSheetContainer` gives it none — while this presentation is a real
-/// sheet either way, with nothing above it to inherit chrome from. So the Mac
-/// supplies the stack and the Done button here, around **both** states. Around
-/// only the loaded one and the sheet would arrive with a title bar and lose it
-/// the moment the survey landed; around neither and there is no way to close it.
-struct SurveySearchSheet: View {
+/// Resolves the project-index id through the Surveys store, then renders the
+/// same loaded, loading, failure, and not-found states in either presentation.
+/// The mounted destination owns exactly one store and one lifecycle task.
+struct SurveySearchDestination: View {
+    enum Presentation {
+        case inline
+        case sheet
+    }
+
     let surveyID: String
     let name: String
+    let presentation: Presentation
 
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -758,35 +768,65 @@ struct SurveySearchSheet: View {
     var body: some View {
         Group {
             if let survey {
-                sheetChrome {
-                    SurveyDetailSheet(
-                        survey: survey,
-                        webURL: model.webURL(path: "surveys/\(survey.id)")
-                    )
-                }
+                loaded(survey)
             } else {
-                // One bar in this state too: on iOS the loaded state has a
-                // navigation stack of its own, so this branch supplies the only
-                // other one. On the Mac neither state brings one and both get
-                // theirs from `sheetChrome`, which is why this stack is the
-                // iOS spelling of the same job rather than a second one.
-                NavigationStack {
-                    placeholder
-                        .pageSurface()
-                        .navigationTitle(name)
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { dismiss() }
-                            }
-                        }
-                }
+                unresolved
             }
         }
         .task(id: model.projectID) { await load() }
     }
 
-    /// The chrome a *sheet* needs when the view inside it supplies none.
+    @ViewBuilder
+    private func loaded(_ survey: Survey) -> some View {
+        switch presentation {
+        case .inline:
+            surveyDetail(survey)
+        case .sheet:
+            sheetChrome {
+                surveyDetail(survey)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func surveyDetail(_ survey: Survey) -> some View {
+        SurveyDetailSheet(
+            survey: survey,
+            webURL: model.webURL(path: "surveys/\(survey.id)")
+        )
+    }
+
+    @ViewBuilder
+    private var unresolved: some View {
+        switch presentation {
+        case .inline:
+            placeholderSurface
+        case .sheet:
+            // On iOS the loaded detail carries its own stack; this unresolved
+            // branch supplies the matching sheet chrome until it arrives. Mac
+            // supplies the same chrome around both states via `sheetChrome`.
+            NavigationStack {
+                placeholderSurface
+                    .toolbar { doneToolbar }
+            }
+        }
+    }
+
+    private var placeholderSurface: some View {
+        placeholder
+            .pageSurface()
+            .navigationTitle(name)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ToolbarContentBuilder
+    private var doneToolbar: some ToolbarContent {
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { dismiss() }
+        }
+    }
+
+    /// The chrome a loaded *sheet* needs when the view inside supplies none.
     ///
     /// Nothing on iOS, where `SurveyDetailSheet` still carries its own stack and
     /// Done button; the stack and the button on macOS and visionOS, where it
@@ -799,11 +839,7 @@ struct SurveySearchSheet: View {
         #if os(macOS) || os(visionOS)
         NavigationStack {
             content()
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
-                    }
-                }
+                .toolbar { doneToolbar }
         }
         #else
         content()
@@ -835,5 +871,20 @@ struct SurveySearchSheet: View {
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID)
+    }
+}
+
+/// Source-compatible entry point for callers that explicitly host Search's
+/// Survey result as a sheet.
+struct SurveySearchSheet: View {
+    let surveyID: String
+    let name: String
+
+    var body: some View {
+        SurveySearchDestination(
+            surveyID: surveyID,
+            name: name,
+            presentation: .sheet
+        )
     }
 }

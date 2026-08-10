@@ -154,6 +154,62 @@ final class VisionNavigationTests: XCTestCase {
         )
     }
 
+    func testSearchPushesSurveyDetailWithBackInsteadOfModalDone() {
+        let query = "Telescope feedback"
+        let app = DemoLaunch.launch(tab: "search")
+
+        let field = app.searchFields.firstMatch
+        guard DemoLaunch.wait(for: field) else {
+            return XCTFail("Vision Search exposed no field to type in.")
+        }
+        field.tap()
+        field.typeText(query)
+
+        let result = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", query, query)
+        ).firstMatch
+        guard DemoLaunch.wait(for: result) else {
+            return XCTFail("Search never offered the synthetic Telescope feedback survey.")
+        }
+        result.tap()
+
+        let loadedTitle = app.navigationBars["Example App metric 829"].firstMatch
+        let loadedDetail = app.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@",
+                "PostHog doesn't store a status for a survey",
+                "PostHog doesn't store a status for a survey"
+            )
+        ).firstMatch
+        guard DemoLaunch.wait(for: loadedTitle), DemoLaunch.wait(for: loadedDetail) else {
+            return XCTFail("Search did not render the loaded synthetic survey detail.")
+        }
+
+        let done = app.buttons.matching(NSPredicate(format: "label == %@", "Done"))
+        XCTAssertEqual(done.count, 0, "Vision Search presented Survey detail as a modal sheet.")
+
+        // visionOS renders the stack-owned control as a bare chevron and does
+        // not expose the iOS `Back` label to XCUITest. It is the sole button in
+        // this destination bar; returning to the preserved query below proves
+        // its navigation behavior rather than relying on that platform label.
+        let back = loadedTitle.buttons.firstMatch
+        guard DemoLaunch.wait(until: { back.exists && back.isHittable }) else {
+            return XCTFail("The pushed Survey detail exposed no Back control.")
+        }
+        back.tap()
+
+        let restoredField = app.searchFields.firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: restoredField),
+            "Back did not restore the Search field."
+        )
+        XCTAssertEqual(
+            restoredField.value as? String,
+            query,
+            "Back discarded the user's Search query."
+        )
+    }
+
     func testSettingsIsReachableFromItsSidebarRow() {
         let app = DemoLaunch.launch()
         guard VisionSidebar.tap("Settings", in: app) else { return }
