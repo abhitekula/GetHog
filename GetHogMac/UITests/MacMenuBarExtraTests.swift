@@ -36,6 +36,12 @@ final class MacMenuBarExtraTests: XCTestCase {
         // a snapshot exists, and the bare app name before the first sync. Read
         // off `title` rather than `label`: the item carries it there, the same
         // Mac value-versus-label split `DemoLaunch.macTextPredicate` exists for.
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 15) {
+                item.title.hasPrefix("GetHog") && item.title.contains(",")
+            },
+            "The status item never adopted the freshly published headline snapshot."
+        )
         let title = item.title
         print("PHASEB-STATUSITEM frame=\(item.frame) title=\(title)")
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

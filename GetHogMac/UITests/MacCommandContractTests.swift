@@ -197,49 +197,65 @@ final class MacCommandContractTests: XCTestCase {
         let app = DemoLaunch.launch()
         DemoLaunch.settle(app)
 
-        func sidebarWidth() -> CGFloat {
-            app.windows.firstMatch.outlines.firstMatch.frame.width
+        let window = app.windows.firstMatch
+        func dashboardSidebarRow() -> XCUIElement {
+            window.outlines.firstMatch.descendants(matching: .any)
+                .matching(DemoLaunch.macTextPredicate("Dashboards")).firstMatch
         }
-        let before = sidebarWidth()
-        XCTAssertGreaterThan(before, 0, "The sidebar was not on screen to begin with.")
+        func sidebarIsVisible() -> Bool {
+            let outline = window.outlines.firstMatch
+            return outline.exists && outline.frame.width > 100 && dashboardSidebarRow().exists
+        }
 
-        // `SidebarCommands()` titles its item for what the click will *do*, so
-        // the item to look for is "Hide Sidebar" while the sidebar is showing.
-        // A test written against the modifier's name finds nothing.
-        let toggle = app.menuBars.menuItems.matching(
-            NSPredicate(format: "title == 'Hide Sidebar' OR title == 'Show Sidebar'")
-        ).firstMatch
+        // Sidebar visibility is persisted by AppKit. Normalize a prior hidden
+        // state from live outline geometry before exercising hide/restore; the
+        // menu element itself can retain an old AX title across revalidation.
+        func sidebarToggle() -> XCUIElement {
+            app.menuBars.menuItems.matching(
+                NSPredicate(format: "title == 'Hide Sidebar' OR title == 'Show Sidebar'")
+            ).firstMatch
+        }
+        let wasVisible = sidebarIsVisible()
         app.menuBars.menuBarItems["View"].click()
-        XCTAssertTrue(DemoLaunch.wait(for: toggle, timeout: 5), "View has no sidebar toggle.")
-        print("PHASEB-SIDEBAR-ITEM \(toggle.title)")
-        toggle.click()
-        DemoLaunch.pause(1.5)
+        let initialToggle = sidebarToggle()
+        guard DemoLaunch.wait(for: initialToggle, timeout: 5) else {
+            return XCTFail("View has no sidebar toggle.")
+        }
+        print("PHASEB-SIDEBAR-INITIAL-ITEM \(initialToggle.title)")
+        if !wasVisible {
+            initialToggle.click()
+            guard DemoLaunch.wait(timeout: 10, until: sidebarIsVisible) else {
+                return XCTFail("The sidebar toggle did not restore persisted-hidden state.")
+            }
+        } else {
+            app.typeKey(.escape, modifierFlags: [])
+        }
+
+        app.menuBars.menuBarItems["View"].click()
+        let hideSidebar = sidebarToggle()
+        guard DemoLaunch.wait(for: hideSidebar, timeout: 5) else {
+            return XCTFail("View lost its sidebar toggle after state normalization.")
+        }
+        hideSidebar.click()
+        let wentAway = DemoLaunch.wait(timeout: 10) {
+            !sidebarIsVisible()
+        }
         capture("c6-sidebar-hidden")
-        let hidden = app.windows.firstMatch.descendants(matching: .any)
-            .matching(DemoLaunch.macTextPredicate("Dashboards")).firstMatch
-        let wentAway = !hidden.exists || !hidden.isHittable
-        print("PHASEB-SIDEBAR after-toggle hittableDashboards=\(!wentAway)")
+        print("PHASEB-SIDEBAR after-toggle visible=\(!wentAway)")
 
         // The menu item again, not the raw shortcut: ⌃⌘S is delivered to the
         // key window and the sidebar's own collapse animation can still own it,
         // which showed up as a restore that never happened.
         app.menuBars.menuBarItems["View"].click()
-        let back = app.menuBars.menuItems.matching(
-            NSPredicate(format: "title == 'Show Sidebar' OR title == 'Hide Sidebar'")
-        ).firstMatch
-        if DemoLaunch.wait(for: back, timeout: 5) {
-            back.click()
-        } else {
+        let showSidebar = sidebarToggle()
+        guard DemoLaunch.wait(for: showSidebar, timeout: 5) else {
             app.typeKey(.escape, modifierFlags: [])
+            return XCTFail("View lost its sidebar toggle after hiding it.")
         }
-        DemoLaunch.pause(2)
+        showSidebar.click()
         capture("c7-sidebar-restored")
         XCTAssertTrue(
-            DemoLaunch.wait(timeout: 10) {
-                let row = app.windows.firstMatch.descendants(matching: .any)
-                    .matching(DemoLaunch.macTextPredicate("Dashboards")).firstMatch
-                return row.exists && row.isHittable
-            },
+            DemoLaunch.wait(timeout: 10, until: sidebarIsVisible),
             "⌃⌘S never brought the sidebar back."
         )
         XCTAssertTrue(wentAway, "Toggle Sidebar left the sidebar on screen.")

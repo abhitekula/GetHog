@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import GetHogKit
 import GetHogUI
 import Observation
@@ -126,7 +127,9 @@ enum MenuBarHeadline {
 /// every popover action that rewrites the file.
 ///
 /// Deliberately not wired into `AppModel`: the file is the contract, and reading
-/// it keeps this surface honest about what a widget would also see.
+/// it keeps this surface honest about what a widget would also see. Same-process
+/// writes announce the changed file so the label reloads immediately; the
+/// minute tick remains the fallback for extension or external-process writes.
 @MainActor
 @Observable
 final class MacMenuBarController {
@@ -156,6 +159,8 @@ final class MacMenuBarController {
     /// of whatever ran next in the same process.
     @ObservationIgnored private let defaults: UserDefaults
 
+    @ObservationIgnored private var snapshotChanges: AnyCancellable?
+
     @ObservationIgnored private var ticker: Task<Void, Never>?
 
     init(
@@ -168,6 +173,14 @@ final class MacMenuBarController {
         self.authSessionID = authSessionID
         headlineMetricID = defaults.string(forKey: MacMenuBar.headlineMetricKey)
         reload()
+        snapshotChanges = NotificationCenter.default.publisher(
+            for: SharedSnapshotStore.snapshotDidChangeNotification
+        ).sink { [weak self] notification in
+            guard let changedURL = notification.object as? URL else { return }
+            Task { @MainActor [weak self] in
+                self?.reload(afterSnapshotChangeAt: changedURL)
+            }
+        }
     }
 
     var headline: SharedSnapshot.Metric? {
@@ -182,6 +195,14 @@ final class MacMenuBarController {
             snapshot = nil
         }
         watches = store.metricWatches()
+    }
+
+    /// Handles the store's in-process publication signal. File identity is
+    /// load-bearing: previews and tests can host multiple injected stores in
+    /// one process, and one must never refresh another controller's authority.
+    func reload(afterSnapshotChangeAt changedURL: URL) {
+        guard changedURL.standardizedFileURL == store.fileURL.standardizedFileURL else { return }
+        reload()
     }
 
     /// Disconnecting clears the in-memory copy immediately. Reconnecting to a

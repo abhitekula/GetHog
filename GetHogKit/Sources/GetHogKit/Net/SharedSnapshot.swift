@@ -409,6 +409,18 @@ public struct PendingOpen: Codable, Sendable, Equatable {
 /// app, and the tests each construct their own and point it at a directory.
 public struct SharedSnapshotStore: Sendable {
 
+    /// Posted in-process after the snapshot file is replaced or cleared.
+    ///
+    /// Widgets and other processes still discover changes on their own
+    /// timelines. This signal closes the smaller same-process gap: ambient
+    /// surfaces such as the Mac menu bar can reload the file immediately after
+    /// `AppModel` publishes it instead of waiting for their periodic freshness
+    /// tick. The changed file URL is the notification object so independently
+    /// injected stores remain isolated in tests.
+    public static let snapshotDidChangeNotification = Notification.Name(
+        "app.gethog.sharedSnapshot.didChange"
+    )
+
     /// The unprefixed App Group identifier — exactly what iOS declares.
     /// Prefer `appGroupIdentifier(teamIDPrefix:)` when resolving a container:
     /// it spells the identifier the way the running platform requires.
@@ -668,6 +680,10 @@ public struct SharedSnapshotStore: Sendable {
 
     public func write(_ snapshot: SharedSnapshot) throws {
         try writeJSON(snapshot, to: fileURL)
+        NotificationCenter.default.post(
+            name: Self.snapshotDidChangeNotification,
+            object: fileURL
+        )
     }
 
     /// `nil` when nothing has been written yet — the ordinary state of a widget
@@ -688,6 +704,10 @@ public struct SharedSnapshotStore: Sendable {
     /// it is data from a scope the current credential did not select.
     public func clearSnapshot() {
         try? FileManager.default.removeItem(at: fileURL)
+        NotificationCenter.default.post(
+            name: Self.snapshotDidChangeNotification,
+            object: fileURL
+        )
     }
 
     // MARK: Pending flag write

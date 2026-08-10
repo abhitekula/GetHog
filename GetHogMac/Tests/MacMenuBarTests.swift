@@ -150,6 +150,41 @@ struct MenuBarHeadlineTests {
         #expect(controller.headline?.id == "42")
     }
 
+    @Test("an adopted controller follows only later writes to its own snapshot file")
+    func controllerObservesOwnedWrites() async throws {
+        let owned = try snapshotStore(holding: snapshot(metrics: [metric("old")]))
+        let other = try snapshotStore(holding: snapshot(metrics: [metric("other")]))
+        let controller = MacMenuBarController(
+            store: owned.store,
+            defaults: defaults(),
+            authSessionID: Self.authSessionID
+        )
+        #expect(controller.headline?.id == "old")
+
+        // Stage a newer owned file without posting the store notification.
+        // A notification for another injected store must not make the
+        // controller discover it.
+        let staged = snapshot(metrics: [metric("staged")])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(staged).write(to: owned.store.fileURL, options: .atomic)
+        controller.reload(afterSnapshotChangeAt: other.store.fileURL)
+        #expect(controller.headline?.id == "old")
+
+        // The real write path posts synchronously, while the controller hops
+        // publication back to the main actor. Bound the wait well below the
+        // 60-second fallback tick so deleting the subscription fails here.
+        let replacement = snapshot(metrics: [metric("replacement")])
+        try owned.store.write(replacement)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(1))
+        while controller.headline?.id != "replacement", clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(controller.snapshot == replacement)
+        #expect(controller.headline?.id == "replacement")
+    }
+
     @Test("a chosen metric survives the process it was chosen in")
     func chosenMetricIsPersisted() throws {
         let store = try snapshotStore(holding: snapshot(metrics: [metric("1"), metric("2")]))
