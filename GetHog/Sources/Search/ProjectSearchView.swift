@@ -279,19 +279,20 @@ struct ProjectSearchView: View {
             // the 200 rows this index returns, insights and dashboards are 154 of
             // them, so a key without `insight:read` has almost nothing to search.
             stateRow {
-                LockedCapabilityView(
-                    capability: .dashboards,
-                    scope: model.lockedScope(for: .dashboards)
+                SectionEmptyState(
+                    text: lockedObjectsMessage,
+                    systemImage: "lock",
+                    actionTitle: "Re-check permissions"
                 ) {
                     Task { await model.refreshCapabilities() }
                 }
             }
         } else if let error = store.error, store.entries.isEmpty {
             stateRow {
-                EmptyStateView(
-                    title: "Couldn't load the project index",
+                SectionEmptyState(
+                    text: "Couldn't load the project index.",
                     systemImage: "exclamationmark.triangle",
-                    message: error,
+                    detail: error,
                     actionTitle: "Try again"
                 ) {
                     Task { await load(force: true) }
@@ -303,10 +304,10 @@ struct ProjectSearchView: View {
             }
         } else if store.entries.isEmpty {
             stateRow {
-                EmptyStateView(
-                    title: "Nothing in this project",
+                SectionEmptyState(
+                    text: "Nothing in this project. PostHog's index of this project came back empty — "
+                        + "there are no insights, dashboards, flags or anything else in it yet.",
                     systemImage: "tray",
-                    message: "PostHog's index of this project came back empty — there are no insights, dashboards, flags or anything else in it yet."
                 )
             }
         } else if query.isEmpty {
@@ -314,6 +315,19 @@ struct ProjectSearchView: View {
         } else {
             resultSections
         }
+    }
+
+    /// `LockedCapabilityView` is deliberately a whole-screen replacement and
+    /// claims the app ground. Search cannot use it here: the screen index above
+    /// this row must remain the primary surface even when project objects are
+    /// unavailable.
+    private var lockedObjectsMessage: String {
+        if let scope = model.lockedScope(for: .dashboards) {
+            return "Dashboards & insights is locked. Your PostHog API key is missing a scope. "
+                + "Add \(scope) to your key in PostHog, then re-check."
+        }
+        return "Dashboards & insights is locked. This API key couldn't open dashboards & insights. "
+            + "Re-check to see whether that has changed."
     }
 
     // MARK: - No query: recently viewed
@@ -334,19 +348,11 @@ struct ProjectSearchView: View {
             // somewhere to go, so an empty state here would be noise.
             if !showsScreens {
                 stateRow {
-                    EmptyStateView(
-                        title: "Nothing opened yet",
+                    SectionEmptyState(
+                        text: "Nothing opened yet. PostHog records when you last opened an object; "
+                            + "nothing in this project has been opened. Search above to find anything in it.",
                         systemImage: "clock",
-                        illustration: .workspace,
-                        message: "PostHog records when you last opened an object; nothing in this project has been opened. Search above to find anything in it."
                     )
-                    // Regular width hands this state most of a 13-inch pane.
-                    // Without a claimed height it sat top-anchored over ~85%
-                    // bare ground with the object-count footer stranded at the
-                    // bottom left — measured in two sweeps as the emptiest
-                    // screen in the app. Centring in a generous band makes the
-                    // pane read as composed rather than abandoned.
-                    .frame(maxWidth: .infinity, minHeight: 420)
                 }
             }
         } else {
@@ -393,10 +399,9 @@ struct ProjectSearchView: View {
                 // Says what was actually searched. "No results" alone leaves a
                 // reader unable to tell a typo from something that isn't here.
                 stateRow {
-                    EmptyStateView(
-                        title: "No matches",
+                    SectionEmptyState(
+                        text: "No matches. \(noMatchesMessage)",
                         systemImage: "magnifyingglass",
-                        message: noMatchesMessage
                     )
                 }
             }

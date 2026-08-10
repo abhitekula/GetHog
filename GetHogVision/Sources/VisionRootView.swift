@@ -20,6 +20,7 @@ struct VisionRootView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Per-window selection. `selectionInitialized` distinguishes an actual
     /// restored scene (whose value wins) from a new scene created after a hard
@@ -36,6 +37,16 @@ struct VisionRootView: View {
     /// therefore a value-bearing outer tab, while `selectedTab` owns the row in
     /// that section's native sidebar.
     @State private var selectedDestinationID = "section.Analyze"
+    /// The native split is the single destination authority while its roster
+    /// is visible. When visionOS collapses that column, the detail pane exposes
+    /// the compact route strip instead; binding the system-owned visibility is
+    /// what keeps those two representations mutually exclusive while a window
+    /// resizes.
+    @State private var sectionColumnVisibility: NavigationSplitViewVisibility = .all
+    /// Geometry, rather than the size-class environment, owns this distinction:
+    /// visionOS keeps a regular size class even when a spatial window is too
+    /// narrow to show a useful roster beside the product screen.
+    @State private var usesCompactSectionNavigation = false
     /// The search tab's stack — heterogeneous for the reason the other two
     /// shells' are: screen results push `AppTab`, links push `PostHogLink`.
     @State private var searchPath = NavigationPath()
@@ -63,6 +74,10 @@ struct VisionRootView: View {
     static let shellEmbeddedSplitTabs: Set<AppTab> = [
         .events, .sessions, .flags, .people, .errorTracking, .insights,
     ]
+    /// The roster needs its 180pt minimum plus a product pane that remains
+    /// meaningfully wider than a phone. Below this, one full-width product pane
+    /// and the horizontal destination strip are the honest layout.
+    static let compactSectionNavigationWidth: CGFloat = 800
 
     static func shouldResetOpenDetails(
         from previousScope: FlagWriteScope?,
@@ -317,7 +332,7 @@ struct VisionRootView: View {
     }
 
     private func sectionContainer(for section: AppTabSection) -> some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $sectionColumnVisibility) {
             sectionList(for: section)
                 // A fixed 280pt column consumed almost half of a narrow spatial
                 // window and left the product screen squeezed beside it. Let
@@ -328,10 +343,18 @@ struct VisionRootView: View {
             // as the window narrows without recreating screen-owned stores,
             // filters, typed input, or request flights.
             VStack(spacing: 0) {
-                sectionDestinationControls(for: section)
-                Divider()
+                if usesCompactSectionNavigation || sectionColumnVisibility != .all {
+                    sectionDestinationControls(for: section)
+                    Divider()
+                }
                 sectionDetail(for: section)
             }
+        }
+        .onGeometryChange(for: Bool.self) { proxy in
+            proxy.size.width < Self.compactSectionNavigationWidth
+        } action: { isCompact in
+            usesCompactSectionNavigation = isCompact
+            sectionColumnVisibility = isCompact ? .detailOnly : .all
         }
     }
 
@@ -394,7 +417,7 @@ struct VisionRootView: View {
                 proxy.scrollTo(current, anchor: .center)
             }
             .onChange(of: current) { _, selection in
-                withAnimation(.snappy) {
+                withAnimation(reduceMotion ? nil : .snappy) {
                     proxy.scrollTo(selection, anchor: .center)
                 }
             }

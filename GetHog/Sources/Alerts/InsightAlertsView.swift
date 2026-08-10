@@ -184,18 +184,18 @@ struct InsightAlertsView: View {
     @ViewBuilder
     private var emptyState: some View {
         if let reason = AlertableInsight.unavailableReason(sourceKind: insight.sourceKind) {
-            EmptyStateView(
-                title: "Not alertable from here",
+            SectionEmptyState(
+                text: "Not alertable from here. \(reason)",
                 systemImage: "bell.slash",
-                message: reason
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         } else {
-            EmptyStateView(
-                title: "No alerts on this insight",
+            SectionEmptyState(
+                text: "No alerts on this insight. PostHog can watch this insight's value "
+                    + "and e-mail you when it crosses a line you set. It checks on its own "
+                    + "schedule, whether or not this phone is on.",
                 systemImage: "bell",
-                message: "PostHog can watch this insight's value and e-mail you when it crosses a line you set. It checks on its own schedule, whether or not this phone is on.",
                 actionTitle: "New alert",
                 action: { isComposing = true }
             )

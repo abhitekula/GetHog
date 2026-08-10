@@ -145,7 +145,12 @@ struct FlagsRoot: View {
     }
 
     private var usesHostNavigation: Bool {
-        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+        #if os(iOS)
+        if dynamicTypeSize.isAccessibilitySize {
+            return true
+        }
+        #endif
+        return sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
     var body: some View {

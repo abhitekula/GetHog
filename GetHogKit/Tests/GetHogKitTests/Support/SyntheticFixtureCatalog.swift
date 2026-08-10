@@ -243,11 +243,13 @@ enum SyntheticFixtureCatalog {
         "snapshot_sources.json",
         "warehouse_tables.json",
         "web_overview.json",
-    ].map { ($0, $0) })
+    ].map { ($0, $0) } + [
+        ("conversations_ticket_messages.json", "support_ticket_messages_synthetic.json"),
+        ("conversations_tickets.json", "support_tickets_synthetic.json"),
+    ])
 
     static let demoOnlyFixtureNames: Set<String> = [
         "actors_property_taxonomy.json", "alerts.json", "cohorts.json",
-        "conversations_ticket_messages.json", "conversations_tickets.json",
         "data_modeling_jobs.json", "data_modeling_jobs_healthy.json",
         "endpoints_usage_overview.json", "endpoints_usage_table.json",
         "event_definitions.json", "event_taxonomy.json", "exception_resolved_frame.json",

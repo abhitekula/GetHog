@@ -56,6 +56,8 @@ struct ExceptionEntryView: View {
     let position: Position
     let isChained: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     /// Framework frames are hidden until asked for, per exception rather than
     /// per screen: in a chain, the entry worth expanding is rarely the same one
     /// twice.
@@ -177,7 +179,9 @@ struct ExceptionEntryView: View {
                 Spacer(minLength: 8)
                 if !inApp.isEmpty, inApp.count < frames.count {
                     Button(showsAllFrames ? "In-app only" : "Show all \(frames.count)") {
-                        withAnimation(.snappy) { showsAllFrames.toggle() }
+                        withAnimation(reduceMotion ? nil : .snappy) {
+                            showsAllFrames.toggle()
+                        }
                     }
                     .font(.footnote.weight(.medium))
                     .buttonStyle(.plain)

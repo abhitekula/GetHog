@@ -26,9 +26,10 @@ struct TVActivityBucket: Identifiable, Equatable {
 
 /// What the TV draws where the other platforms draw a player.
 ///
-/// A plain value rather than an `@Observable`: everything here is derived from
-/// inputs the loader already has, so there is no state to own, and a struct is
-/// what lets the bucketing be tested against a synthetic event list.
+/// A plain value rather than an `@Observable`: the view owns the value while it
+/// incrementally tracks archive authority and delivery cursors. Keeping that
+/// state in a struct makes each delivery transition testable with synthetic
+/// event lists.
 struct TVReplayTimelineModel: Equatable {
 
     /// How many segments the strip is divided into.
@@ -39,13 +40,25 @@ struct TVReplayTimelineModel: Equatable {
     /// does not become a bar nobody can see.
     static let bucketCount = 48
 
-    let buckets: [TVActivityBucket]
-    let totalEvents: Int
-    let consoleErrors: Int
-    let consoleWarnings: Int
-    let failedRequests: Int
-    let requests: Int
-    let bufferedSeconds: TimeInterval
+    private(set) var buckets: [TVActivityBucket]
+    private(set) var totalEvents: Int
+    private(set) var consoleErrors: Int
+    private(set) var consoleWarnings: Int
+    private(set) var failedRequests: Int
+    private(set) var requests: Int
+    private(set) var bufferedSeconds: TimeInterval
+
+    private var networkIDs: Set<String>
+    private var origin: Date?
+    private var archiveCursor: ReplayArchiveDeliveryCursor?
+    private var authority: Authority?
+
+    private struct Authority: Equatable {
+        let loaderID: ObjectIdentifier
+        let recordingID: String
+        let origin: Date?
+        let duration: TimeInterval
+    }
 
     /// - Parameters:
     ///   - origin: when the recording's clock starts. `nil` means the loader has
@@ -59,11 +72,20 @@ struct TVReplayTimelineModel: Equatable {
         origin: Date?,
         duration: TimeInterval
     ) {
+        var uniqueNetwork: [ReplayNetworkEntry] = []
+        var networkIDs: Set<String> = []
+        for entry in diagnostics.network where networkIDs.insert(entry.id).inserted {
+            uniqueNetwork.append(entry)
+        }
+        self.networkIDs = networkIDs
+        self.origin = origin
+        archiveCursor = nil
+        authority = nil
         totalEvents = events.count
         consoleErrors = diagnostics.consoleCount(.error)
         consoleWarnings = diagnostics.consoleCount(.warn)
-        failedRequests = diagnostics.failureCount
-        requests = diagnostics.network.count
+        failedRequests = uniqueNetwork.count(where: \.isFailure)
+        requests = uniqueNetwork.count
         bufferedSeconds = duration
 
         guard let origin, duration > 0 else {
@@ -74,31 +96,31 @@ struct TVReplayTimelineModel: Equatable {
             return
         }
 
-        let width = duration / Double(Self.bucketCount)
+        let width = Self.bucketWidth(duration: duration)
         var weights = [Int](repeating: 0, count: Self.bucketCount)
         var errors = [Bool](repeating: false, count: Self.bucketCount)
         var failures = [Bool](repeating: false, count: Self.bucketCount)
 
-        func slot(for offset: TimeInterval) -> Int? {
-            guard offset >= 0 else { return nil }
-            let raw = Int(offset / width)
-            // The final instant belongs to the final bucket rather than to one
-            // past the end — an event exactly on the duration is in the
-            // recording, not after it.
-            return min(raw, Self.bucketCount - 1)
-        }
-
         let originMillis = origin.timeIntervalSince1970 * 1_000
         for event in events where event.type == 3 {
-            guard let index = slot(for: (event.timestamp - originMillis) / 1_000) else { continue }
+            guard let index = Self.slot(
+                for: (event.timestamp - originMillis) / 1_000,
+                duration: duration
+            ) else { continue }
             weights[index] += 1
         }
         for entry in diagnostics.console where entry.level == .error {
-            guard let index = slot(for: entry.timestamp.timeIntervalSince(origin)) else { continue }
+            guard let index = Self.slot(
+                for: entry.timestamp.timeIntervalSince(origin),
+                duration: duration
+            ) else { continue }
             errors[index] = true
         }
-        for entry in diagnostics.network where entry.isFailure {
-            guard let index = slot(for: entry.start.timeIntervalSince(origin)) else { continue }
+        for entry in uniqueNetwork where entry.isFailure {
+            guard let index = Self.slot(
+                for: entry.start.timeIntervalSince(origin),
+                duration: duration
+            ) else { continue }
             failures[index] = true
         }
 
@@ -121,33 +143,143 @@ struct TVReplayTimelineModel: Equatable {
         duration: 0
     )
 
-    /// Reads the loader the way the screen reads it.
-    ///
-    /// **This composition is the thing that needed testing, and its absence is
-    /// how a doubling bug got past nine passing tests.** Every test in
-    /// `TVReplayTimelineModelTests` hands the initialiser above an explicit
-    /// array, so not one of them could see that the *caller* was assembling
-    /// that array wrongly.
-    ///
-    /// `archivedEvents` alone, never `archivedEvents + pending`. `pending` is
-    /// not the remainder of the archive — it is a second copy of the events
-    /// queued for the web player, which `ingest` fills alongside the archive
-    /// (`ReplayLoader:396` assigns it the whole archive on a restart; `:405`
-    /// appends the same batch just merged at `:389`). Its only drain,
-    /// `drainPendingDelivery()`, is called from `ReplayPlayerView` — a file
-    /// **not compiled into this target** — so on tvOS `pending` is never
-    /// emptied and stays permanently equal to `archivedEvents`. Adding the two
-    /// reported exactly twice the events that existed, and doubled every
-    /// bucket weight against its own documented contract.
-    /// `@MainActor` because `ReplayLoader` is: the reads below cross no
-    /// isolation boundary, they happen where the loader already lives.
+    /// Consumes the loader's delivery ledger rather than its accumulated
+    /// archive. A stable authority receives only the batches after
+    /// `archiveCursor`, so each event and diagnostic is reduced once. A retry,
+    /// backfill that moves the origin, replacement loader, recording change, or
+    /// provisional-duration change invalidates the cursor and asks the ledger
+    /// for one complete `.restart` delivery instead.
     @MainActor
-    init(loader: ReplayLoader, recording: SessionRecording) {
-        self.init(
-            events: loader.archivedEvents,
-            diagnostics: loader.diagnostics,
-            origin: loader.replayStart ?? recording.startTime,
-            duration: recording.recordingDuration ?? loader.bufferedSeconds
+    mutating func ingest(loader: ReplayLoader, recording: SessionRecording) {
+        let nextOrigin = loader.replayStart ?? recording.startTime
+        let nextDuration = recording.recordingDuration ?? loader.bufferedSeconds
+        let nextAuthority = Authority(
+            loaderID: ObjectIdentifier(loader),
+            recordingID: recording.id,
+            origin: nextOrigin,
+            duration: nextDuration
+        )
+
+        if authority != nextAuthority {
+            archiveCursor = nil
+        }
+
+        let delivery = loader.archiveDelivery(after: archiveCursor)
+        apply(delivery, origin: nextOrigin, duration: nextDuration)
+        archiveCursor = delivery.cursor
+        authority = nextAuthority
+    }
+
+    /// Applies an exactly-once delivery. `.append` touches only the delivered
+    /// events; `.restart` is a complete archive and replaces every aggregate.
+    mutating func apply(
+        _ delivery: ReplayArchiveDelivery,
+        origin: Date?,
+        duration: TimeInterval
+    ) {
+        let deliveredDiagnostics = ReplayDiagnostics.extract(from: delivery.events)
+        guard delivery.mode == .append else {
+            self = TVReplayTimelineModel(
+                events: delivery.events,
+                diagnostics: deliveredDiagnostics,
+                origin: origin,
+                duration: duration
+            )
+            return
+        }
+
+        // `ingest` invalidates the cursor before asking for a delivery when the
+        // axis changes, so an append always belongs to the buckets already on
+        // screen. Keeping this check local prevents a future caller from
+        // silently folding a delta into a differently based timeline.
+        guard self.origin == origin, bufferedSeconds == duration else {
+            assertionFailure("A replay timeline append requires a stable authority")
+            return
+        }
+
+        totalEvents += delivery.events.count
+        consoleErrors += deliveredDiagnostics.consoleCount(.error)
+        consoleWarnings += deliveredDiagnostics.consoleCount(.warn)
+
+        var newFailedRequests: [ReplayNetworkEntry] = []
+        for entry in deliveredDiagnostics.network where networkIDs.insert(entry.id).inserted {
+            requests += 1
+            if entry.isFailure {
+                failedRequests += 1
+                newFailedRequests.append(entry)
+            }
+        }
+
+        guard let origin, duration > 0 else { return }
+        let originMillis = origin.timeIntervalSince1970 * 1_000
+        var updated = buckets
+
+        for event in delivery.events where event.type == 3 {
+            guard let index = Self.slot(
+                for: (event.timestamp - originMillis) / 1_000,
+                duration: duration
+            ) else { continue }
+            updated[index] = updated[index].addingActivity()
+        }
+        for entry in deliveredDiagnostics.console where entry.level == .error {
+            guard let index = Self.slot(
+                for: entry.timestamp.timeIntervalSince(origin),
+                duration: duration
+            ) else { continue }
+            updated[index] = updated[index].markingConsoleError()
+        }
+        for entry in newFailedRequests {
+            guard let index = Self.slot(
+                for: entry.start.timeIntervalSince(origin),
+                duration: duration
+            ) else { continue }
+            updated[index] = updated[index].markingFailedRequest()
+        }
+        buckets = updated
+    }
+
+    private static func bucketWidth(duration: TimeInterval) -> TimeInterval {
+        duration / Double(bucketCount)
+    }
+
+    private static func slot(for offset: TimeInterval, duration: TimeInterval) -> Int? {
+        guard offset >= 0, duration > 0 else { return nil }
+        let raw = Int(offset / bucketWidth(duration: duration))
+        // The final instant belongs to the final bucket rather than to one
+        // past the end — an event exactly on the duration is in the recording,
+        // not after it.
+        return min(raw, bucketCount - 1)
+    }
+}
+
+private extension TVActivityBucket {
+    func addingActivity() -> Self {
+        Self(
+            index: index,
+            start: start,
+            weight: weight + 1,
+            hasConsoleError: hasConsoleError,
+            hasFailedRequest: hasFailedRequest
+        )
+    }
+
+    func markingConsoleError() -> Self {
+        Self(
+            index: index,
+            start: start,
+            weight: weight,
+            hasConsoleError: true,
+            hasFailedRequest: hasFailedRequest
+        )
+    }
+
+    func markingFailedRequest() -> Self {
+        Self(
+            index: index,
+            start: start,
+            weight: weight,
+            hasConsoleError: hasConsoleError,
+            hasFailedRequest: true
         )
     }
 }
@@ -186,15 +318,27 @@ struct TVReplayTimelineView: View {
                 availability
             }
         }
-        // `archiveDeliveryRevision` is the loader's own "the archive changed"
-        // counter: `ingest` bumps it after every merge and `reset()` bumps it
-        // too, so a retry recomputes rather than showing the old shape. Every
-        // other input this model reads — `replayStart`, `bufferedSeconds`,
-        // `diagnostics` — is written by the same two methods, so one key
-        // covers all of them.
-        .task(id: loader.archiveDeliveryRevision) {
-            model = TVReplayTimelineModel(loader: loader, recording: recording)
+        // The revision says a delivery is available; `model` owns the cursor
+        // that turns it into either an exactly-once delta or a full restart.
+        // Loader identity and recording identity cover SwiftUI reusing this
+        // view for a different archive whose revision happens to be equal.
+        .task(id: updateID) {
+            model.ingest(loader: loader, recording: recording)
         }
+    }
+
+    private var updateID: UpdateID {
+        UpdateID(
+            loaderID: ObjectIdentifier(loader),
+            recordingID: recording.id,
+            archiveRevision: loader.archiveDeliveryRevision
+        )
+    }
+
+    private struct UpdateID: Equatable {
+        let loaderID: ObjectIdentifier
+        let recordingID: String
+        let archiveRevision: Int
     }
 
     @ViewBuilder

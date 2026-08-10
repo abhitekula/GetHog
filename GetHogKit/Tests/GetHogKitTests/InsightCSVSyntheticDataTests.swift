@@ -69,11 +69,72 @@ struct InsightCSVSyntheticDataTests {
         let rows = try #require(InsightCSV.rows(tile.renderModel))
         #expect(rows.count - 1 == groups.reduce(0) { $0 + $1.steps.count })
 
-        // Counts must not increase down a funnel; if they do, breakdown groups
-        // have been interleaved and the export is describing a funnel nobody ran.
-        let firstGroupSteps = groups[0].steps.count
-        let counts = rows.dropFirst().prefix(firstGroupSteps).compactMap { Double($0[3]) }
-        #expect(counts == counts.sorted(by: >))
+        // Counts must not increase down any funnel; checking only the first
+        // breakdown lets a coherent lead cohort hide contradictory later ones.
+        var nextRow = 1
+        for group in groups {
+            let endRow = nextRow + group.steps.count
+            let counts = rows[nextRow..<endRow].compactMap { Double($0[3]) }
+            #expect(counts == group.steps.map(\.count))
+            #expect(counts == counts.sorted(by: >))
+            nextRow = endRow
+        }
+    }
+
+    @Test("the browser funnel fixture names and measures every fictional cohort coherently")
+    func funnelFixtureUsesCoherentBrowserBreakdowns() throws {
+        let tile = try #require(try tiles().first {
+            if case .funnel = $0.renderModel { return true }
+            return false
+        })
+        guard case .funnel(let groups) = tile.renderModel else { return }
+
+        let expectedLabels: [String?] = [
+            "Safari",
+            "Chrome",
+            "Firefox",
+            "Edge",
+            "Mobile Safari",
+            "Chrome Mobile",
+            "Firefox Focus",
+            "Other",
+        ]
+        let expectedCounts: [[Double]] = [
+            [281, 97, 53],
+            [155, 68, 41],
+            [89, 34, 18],
+            [63, 26, 14],
+            [52, 19, 11],
+            [37, 14, 8],
+            [21, 7, 3],
+            [13, 5, 2],
+        ]
+
+        #expect(groups.map(\.breakdownValue) == expectedLabels)
+        #expect(groups.map { $0.steps.map(\.count) } == expectedCounts)
+    }
+
+    @Test("the raw browser funnel query and result use the same fictional dimension")
+    func rawFunnelBreakdownMatchesItsTitle() throws {
+        let dashboard = try #require(
+            try JSONSerialization.jsonObject(
+                with: Fixture.data("dashboard_detail_raw.json")
+            ) as? [String: Any]
+        )
+        let tiles = try #require(dashboard["tiles"] as? [[String: Any]])
+        let insight = try #require(
+            tiles.compactMap { $0["insight"] as? [String: Any] }
+                .first { $0["name"] as? String == "Example signup funnel by browser" }
+        )
+        let query = try #require(insight["query"] as? [String: Any])
+        let source = try #require(query["source"] as? [String: Any])
+        let breakdownFilter = try #require(source["breakdownFilter"] as? [String: Any])
+        let result = try #require(insight["result"] as? [[[String: Any]]])
+
+        #expect(breakdownFilter["breakdown"] as? String == "$browser")
+        #expect(result.allSatisfy { group in
+            group.allSatisfy { $0["breakdown"] as? [String] == ["$browser"] }
+        })
     }
 
     @Test("lifecycle dormant counts stay negative in the export")

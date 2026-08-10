@@ -273,19 +273,18 @@ struct ConversationDetailView: View {
                     .font(.callout)
                     .skeleton(true)
             } else if let error = store.error {
-                EmptyStateView(
-                    title: "Couldn't load this conversation",
+                SectionEmptyState(
+                    text: "Couldn't load this conversation.",
                     systemImage: "exclamationmark.triangle",
-                    message: error,
+                    detail: error,
                     actionTitle: "Try again",
                     action: { Task { await load() } }
                 )
             } else if let thread = store.thread {
                 if thread.messages.isEmpty {
-                    EmptyStateView(
-                        title: "No messages stored",
+                    SectionEmptyState(
+                        text: "No messages stored. PostHog kept the conversation's title but not its transcript.",
                         systemImage: "bubble.left",
-                        message: "PostHog kept the conversation's title but not its transcript."
                     )
                 } else {
                     ForEach(thread.messages) { message in

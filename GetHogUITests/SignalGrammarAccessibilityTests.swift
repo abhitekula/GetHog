@@ -14,6 +14,13 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         }
     }
 
+    private func requireIPhone(file: StaticString = #filePath, line: UInt = #line) throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        guard deviceName.localizedCaseInsensitiveContains("iPhone") else {
+            throw XCTSkip("Compact AX5 project identity is measured on iPhone.")
+        }
+    }
+
     private func requireRegularWidth(_ app: XCUIApplication) throws {
         let window = app.windows.firstMatch.frame
         guard window.width > 700 else {
@@ -50,6 +57,23 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             lower.minY,
             upper.maxY,
+            message,
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertSharesRow(
+        _ first: CGRect,
+        _ second: CGRect,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            first.midY,
+            second.midY,
+            accuracy: 16,
             message,
             file: file,
             line: line
@@ -145,7 +169,7 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         )
     }
 
-    func testDashboardOverviewUsesLinearAX5TopologyOnIPad() throws {
+    func testDashboardOverviewUsesCompactMetricsAndLinearChartsAtAX5OnIPad() throws {
         try requireIPad()
         let app = DemoLaunch.launch(tab: "dashboards", extraArguments: ax5Arguments)
         defer { app.terminate() }
@@ -169,8 +193,13 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
             DemoLaunch.elements(labelled: "Generated, 6", in: app).firstMatch,
             named: "Generated metric"
         )
+        let pinnedPreview = app.descendants(matching: .any)[
+            "gethog.dashboard-pinned-preview"
+        ].firstMatch
         let pinned = renderedFrame(
-            DemoLaunch.elements(labelled: "Pinned", in: app).firstMatch,
+            pinnedPreview.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", "Pinned"))
+                .firstMatch,
             named: "Pinned section"
         )
         let firstTile = renderedFrame(
@@ -183,9 +212,21 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         )
 
         assertFollows(dashboards, projectSignal, "Dashboard metrics must follow the identity at AX5.")
-        assertFollows(computed, dashboards, "Computed must follow Dashboards in a linear AX5 order.")
-        assertFollows(generated, computed, "Generated must follow Computed in a linear AX5 order.")
-        assertFollows(pinned, generated, "The pinned preview must follow project metrics at AX5.")
+        assertSharesRow(
+            computed,
+            dashboards,
+            "Regular-width AX5 must keep the short dashboard metrics on one readable row."
+        )
+        assertSharesRow(
+            generated,
+            dashboards,
+            "Generated must share the regular-width AX5 metric row."
+        )
+        assertFollows(
+            pinned,
+            dashboards.union(computed).union(generated),
+            "The pinned preview must follow the complete project metric row at AX5."
+        )
         assertFollows(firstTile, pinned, "Pinned content must follow its heading at AX5.")
         assertFollows(
             secondTile,
@@ -194,7 +235,7 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
         )
     }
 
-    func testEventsOverviewUsesLinearAX5TopologyOnIPad() throws {
+    func testEventsAX5UsesFullWidthListAndPushNavigationOnIPad() throws {
         try requireIPad()
         let app = DemoLaunch.launch(tab: "events", extraArguments: ax5Arguments)
         defer { app.terminate() }
@@ -202,47 +243,28 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
 
         try requireRegularWidth(app)
 
-        let eventSignal = renderedFrame(
-            DemoLaunch.elements(labelled: "Event signal", in: app).firstMatch,
-            named: "Event signal"
+        XCTAssertFalse(
+            DemoLaunch.elements(labelled: "Event signal", in: app).firstMatch.exists,
+            "AX5 retained the regular split-view overview beside the feed."
         )
-        let scope = renderedFrame(
-            DemoLaunch.elements(
-                labelled: "The 4 most recent events, not the project's history.",
-                in: app
-            ).firstMatch,
-            named: "event feed scope"
-        )
-        let events = renderedFrame(
-            DemoLaunch.elements(labelled: "Events, 4", in: app).firstMatch,
-            named: "Events metric"
-        )
-        let kinds = renderedFrame(
-            DemoLaunch.elements(labelled: "Kinds, 4", in: app).firstMatch,
-            named: "Kinds metric"
-        )
-        let people = renderedFrame(
-            DemoLaunch.elements(labelled: "People, 3", in: app).firstMatch,
-            named: "People metric"
-        )
-        let reach = renderedFrame(
-            DemoLaunch.elements(labelled: "Reaching back, 3m", in: app).firstMatch,
-            named: "Reaching back metric"
-        )
-        let frequency = renderedFrame(
-            DemoLaunch.elements(labelled: "Most frequent", in: app).firstMatch,
-            named: "Most frequent section"
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "meteor_report_opened")
+        ).firstMatch
+        let rowFrame = renderedFrame(row, named: "first event row")
+        XCTAssertGreaterThan(
+            rowFrame.width,
+            app.windows.firstMatch.frame.width * 0.7,
+            "The AX5 event feed remained squeezed into a split-view sidebar."
         )
 
-        assertFollows(scope, eventSignal, "The feed scope must follow the Events identity at AX5.")
-        assertFollows(events, scope, "Events metrics must follow their scope at AX5.")
-        assertFollows(kinds, events, "Kinds must follow Events in a linear AX5 order.")
-        assertFollows(people, kinds, "People must follow Kinds in a linear AX5 order.")
-        assertFollows(reach, people, "Reach must follow People in a linear AX5 order.")
-        assertFollows(frequency, reach, "Event rankings must follow the summary at AX5.")
+        row.tap()
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["meteor_report_opened"]),
+            "The full-width AX5 event row did not push its detail."
+        )
     }
 
-    func testFlagsOverviewUsesLinearAX5TopologyOnIPad() throws {
+    func testFlagsAX5UsesFullWidthListAndPushNavigationOnIPad() throws {
         try requireIPad()
         let app = DemoLaunch.launch(tab: "flags", extraArguments: ax5Arguments)
         defer { app.terminate() }
@@ -250,36 +272,46 @@ final class SignalGrammarAccessibilityTests: XCTestCase {
 
         try requireRegularWidth(app)
 
-        let rolloutSignal = renderedFrame(
-            DemoLaunch.elements(labelled: "Rollout signal", in: app).firstMatch,
-            named: "Rollout signal"
+        XCTAssertFalse(
+            DemoLaunch.elements(labelled: "Rollout signal", in: app).firstMatch.exists,
+            "AX5 retained the regular split-view overview beside the flag list."
         )
-        let flags = renderedFrame(
-            DemoLaunch.elements(labelled: "Flags, 9", in: app).firstMatch,
-            named: "Flags metric"
-        )
-        let enabledMetric = renderedFrame(
-            DemoLaunch.elements(labelled: "Enabled, 9", in: app).firstMatch,
-            named: "Enabled metric"
-        )
-        let enabled = renderedFrame(
-            DemoLaunch.elements(labelled: "9 enabled", in: app).firstMatch,
-            named: "Enabled status"
-        )
-        let disabled = renderedFrame(
-            DemoLaunch.elements(labelled: "0 disabled", in: app).firstMatch,
-            named: "Disabled status"
-        )
-        let archived = renderedFrame(
-            DemoLaunch.elements(labelled: "0 archived", in: app).firstMatch,
-            named: "Archived status"
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "example-chart-density")
+        ).firstMatch
+        let rowFrame = renderedFrame(row, named: "first flag row")
+        XCTAssertGreaterThan(
+            rowFrame.width,
+            app.windows.firstMatch.frame.width * 0.7,
+            "The AX5 flag list remained squeezed into a split-view sidebar."
         )
 
-        assertFollows(flags, rolloutSignal, "Flag metrics must follow the identity at AX5.")
-        assertFollows(enabledMetric, flags, "Enabled must follow Flags in a linear AX5 order.")
-        assertFollows(enabled, enabledMetric, "Flag state totals must follow the metrics at AX5.")
-        assertFollows(disabled, enabled, "Disabled must follow Enabled in a linear AX5 order.")
-        assertFollows(archived, disabled, "Archived must follow Disabled in a linear AX5 order.")
+        row.tap()
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.navigationBars["example-chart-density"]),
+            "The full-width AX5 flag row did not push its detail."
+        )
+    }
+
+    func testProjectIdentityRemainsCompleteAtAX5OnIPhone() throws {
+        try requireIPhone()
+        let app = DemoLaunch.launch(tab: "dashboards", extraArguments: ax5Arguments)
+        defer { app.terminate() }
+        DemoLaunch.settle(app)
+
+        let organization = app.staticTexts["Northstar Sandbox"].firstMatch
+        let project = app.staticTexts["Starling Metrics Lab"].firstMatch
+        let organizationFrame = renderedFrame(organization, named: "organization identity")
+        let projectFrame = renderedFrame(project, named: "project identity")
+        let window = app.windows.firstMatch.frame
+
+        XCTAssertTrue(window.contains(organizationFrame), "The AX5 organization identity is clipped.")
+        XCTAssertTrue(window.contains(projectFrame), "The AX5 project identity is clipped.")
+        assertFollows(
+            projectFrame,
+            organizationFrame,
+            "AX5 must give the complete project its own line below the organization."
+        )
     }
 
     func testProjectStampPreservesProjectSwitcherSemantics() {

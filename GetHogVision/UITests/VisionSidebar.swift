@@ -67,19 +67,23 @@ enum VisionSidebar {
             return true
         }
 
-        // visionOS may retain the native split roster in the accessibility
-        // hierarchy after collapsing it behind the product pane. Its child
-        // buttons can still report `isHittable`, even though synthesized taps
-        // land on the foreground screen. Drive the persistent, user-visible
-        // toolbar control for the requested destination instead.
+        // When the native roster collapses, visionOS can retain its children
+        // in the accessibility hierarchy and even report them hittable behind
+        // the foreground screen. Prefer the compact route control whenever it
+        // is actually rendered. At wide widths that strip is intentionally
+        // absent, so the visible roster becomes the single authority.
         let destinationControl = destinationControl(title, in: app)
-        guard DemoLaunch.wait(until: {
+        if DemoLaunch.wait(timeout: 2, until: {
             destinationControl.exists && destinationControl.isHittable
-        }) else {
-            XCTFail("The Vision destination controls did not offer \(title).", file: file, line: line)
+        }) {
+            destinationControl.tap()
+            return true
+        }
+
+        guard let sidebarItem = reveal(title, in: app, file: file, line: line) else {
             return false
         }
-        destinationControl.tap()
+        sidebarItem.tap()
         return true
     }
 }

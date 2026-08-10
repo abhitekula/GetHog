@@ -121,35 +121,39 @@ final class NestedGestureTapTests: XCTestCase {
 
     // MARK: - The inverse shape: a plain `TapGesture` wrapping a real `Button`
 
-    // Four rows in the replay screen are built the other way round from the tile:
-    // the row itself is not a control at all — `.contentShape(.rect)` plus
-    // `.onTapGesture(perform: onToggle)` — and it *contains* a real `Button` that
-    // seeks the player. `TimelineRowView`, `SessionChapterRow`, `ReplayConsoleRow`
-    // and `ReplayNetworkRow`.
+    // Five rows in the replay screen are built the other way round from the tile:
+    // `.contentShape(.rect)` plus `.onTapGesture(perform: onToggle)` around a row
+    // that can also contain a real seek `Button`. The row therefore has to publish
+    // its own explicit button trait and default accessibility action without
+    // flattening that nested control: `TimelineRowView`, `TimelineRunRowView`,
+    // `SessionChapterRow`, `ReplayConsoleRow` and `ReplayNetworkRow`.
     //
     // A sweep set these aside by argument: a `TapGesture` has no press-state
     // machine, so there is nothing for a child to latch. That argument is
     // plausible and is exactly the epistemic state that produced the eight-
-    // investigation tile defect, so the three that can be reached in demo mode are
-    // measured here instead. Each probe launches its own app and the tap that
+    // investigation tile defect, so the four authored by the replay demo are
+    // measured here instead. `TimelineRunRowView` remains a declared fixture gap:
+    // `session_events.json` has no three consecutive lookalike non-custom events,
+    // and this target must not manufacture a second production data path merely
+    // to make a row appear. Each probe launches its own app and the tap that
     // matters is the first tap that control receives.
     //
-    // **The argument held, and that is now observed rather than reasoned.** On
-    // iPhone 17, demo build: all three rows expand on the first touch they get,
-    // all three nested buttons move the playhead on the first touch *they* get,
-    // and all three rows still toggle afterwards — so nothing latches in either
-    // direction. Both assertions were checked for sensitivity by breaking the
+    // The contract measured below is stronger than that argument: every reachable
+    // row must export as a button and expand on its first activation; its nested
+    // button must move the playhead on its first touch, and the row must still
+    // toggle afterwards. The growth and seek assertions were checked for
+    // sensitivity by breaking the
     // thing they measure and watching them fail: `.onTapGesture(perform: {})` on
     // `ReplayNetworkRow` fails the growth assertion at 75.0pt unchanged, and
     // `Button(action: {})` fails the playhead assertion at "0 seconds" unchanged.
     // A probe that cannot fail is the failure mode this whole file guards.
     //
-    // The measurement did find a different defect: two of the four seek buttons
-    // were 16 × 16pt. See `HitTargetTests.testSessionRowSeekButtons`.
+    // The earlier measurement found a different defect: two measured seek
+    // buttons were 16 × 16pt. See `HitTargetTests.testSessionRowSeekButtons`.
     //
     /// The replay screen, waited on until the player reports itself ready.
     ///
-    /// `canSeek` on all four of these rows is `controller.isReady`, so the nested
+    /// `canSeek` on all five row types is `controller.isReady`, so the nested
     /// button does not exist at all until rrweb has booted in the web view and
     /// been fed snapshots. The scrubber is `.disabled(!controller.isReady)`, which
     /// makes `isEnabled` on it the one signal that says so directly — the stage's
@@ -200,11 +204,11 @@ final class NestedGestureTapTests: XCTestCase {
 
     /// The row container around a labelled descendant.
     ///
-    /// `TimelineRowView` and `SessionChapterRow` publish the row itself as an
-    /// unlabelled `.contain` container whose *child* carries the combined label,
-    /// so the row cannot be addressed by label directly. Every ancestor of that
-    /// child matches `containing`, and the row is the shortest of them — which is
-    /// a more honest way to pick it than trusting the order the query returns.
+    /// `TimelineRowView` publishes the row itself as an unlabelled `.contain`
+    /// container whose *child* carries the combined label, so the row cannot be
+    /// addressed by label directly. Every ancestor of that child matches
+    /// `containing`, and the row is the shortest of them — which is a more honest
+    /// way to pick it than trusting the order the query returns.
     private func rowContainer(
         around descendantLabelPrefix: String,
         in app: XCUIApplication
@@ -339,21 +343,18 @@ final class NestedGestureTapTests: XCTestCase {
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,"))
             .firstMatch
         XCTAssertTrue(reveal(row, in: app), "Chapter 1 never came into reach.")
-        guard let container = rowContainer(around: "Chapter 1,", in: app) else {
-            return XCTFail("No container was found around the Chapter 1 row.")
-        }
-        let before = container.frame.height
-        print("CHAPTER-ROW-PROBE row=\(row.frame) container=\(container.frame)")
+        let before = row.frame.height
+        print("CHAPTER-ROW-PROBE button=\(row.frame)")
 
         row.tap()
 
-        let after = waitForGrowth(of: container, beyond: before)
+        let after = waitForGrowth(of: row, beyond: before)
         XCTAssertGreaterThan(
             after, before + 8,
             """
             Tapping chapter 1 at its centre did not expand it: \(before)pt before \
-            the tap, \(after)pt after. Same shape as the timeline row — a bare \
-            `.onTapGesture` around a seek `Button`.
+            the tap, \(after)pt after. The labelled element is the row's exported \
+            button, so this measures its default toggle action directly.
             """
         )
     }
@@ -364,10 +365,20 @@ final class NestedGestureTapTests: XCTestCase {
         let slider = app.sliders["Playback position"]
         let start = slider.value as? String ?? ""
 
-        guard let chapterRow = rowContainer(around: "Chapter 1,", in: app) else {
-            return XCTFail("No container was found around the Chapter 1 row.")
-        }
-        let seek = chapterRow.descendants(matching: .button)["Play the replay from 1 second"]
+        let chapterRows = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,")
+        )
+        XCTAssertEqual(chapterRows.count, 1, "Chapter 1 should expose one semantic row button.")
+        let chapterRow = chapterRows.firstMatch
+        let chapterSeekButtons = chapterRow.descendants(matching: .button).matching(
+            NSPredicate(format: "label == %@", "Play the replay from 1 second")
+        )
+        XCTAssertEqual(
+            chapterSeekButtons.count,
+            1,
+            "Chapter 1 should contain one seek button at its own offset."
+        )
+        let seek = chapterSeekButtons.firstMatch
         XCTAssertTrue(reveal(seek, in: app), "Chapter 1's seek button never came into reach.")
         print("CHAPTER-SEEK-PROBE frame=\(seek.frame) start=\(start)")
 
@@ -382,14 +393,45 @@ final class NestedGestureTapTests: XCTestCase {
             """
         )
 
-        guard let container = rowContainer(around: "Chapter 1,", in: app) else { return }
-        let before = container.frame.height
-        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,"))
-            .firstMatch.tap()
-        let after = waitForGrowth(of: container, beyond: before)
+        let before = chapterRow.frame.height
+        chapterRow.tap()
+        let after = waitForGrowth(of: chapterRow, beyond: before)
         XCTAssertGreaterThan(
             after, before + 8,
             "The chapter row stopped toggling after its seek button had been used once."
+        )
+    }
+
+    // MARK: Replay console pane
+
+    /// `ReplayConsoleRow` — exported as a button and expanded by its own action.
+    ///
+    /// The prefix comes from the authored rrweb console event rather than from
+    /// an index: one log at +1s whose first argument is "Dashboard widgets
+    /// loaded". The second argument is deliberately left out of the selector so
+    /// the test measures the row contract rather than JSON rendering details.
+    func testConsoleRowExpandsOnFirstTap() {
+        let app = launchReplay()
+        let row = app.buttons.matching(
+            NSPredicate(
+                format: "label BEGINSWITH %@",
+                "Log. at 1 second. Dashboard widgets loaded"
+            )
+        ).firstMatch
+        XCTAssertTrue(reveal(row, in: app), "The authored console row never came into reach as a button.")
+        let before = row.frame.height
+        print("CONSOLE-ROW-PROBE button=\(row.frame)")
+
+        row.tap()
+
+        let after = waitForGrowth(of: row, beyond: before)
+        XCTAssertGreaterThan(
+            after, before + 8,
+            """
+            Activating the console row did not expand it: \(before)pt before the \
+            activation and \(after)pt after. Check both the exported button \
+            semantics and the row's default toggle action.
+            """
         )
     }
 
@@ -408,8 +450,8 @@ final class NestedGestureTapTests: XCTestCase {
         chip.tap()
         DemoLaunch.pause(0.8)
 
-        let row = app.otherElements["GET, /api/widgets, status 200, at 1 second, took 120 ms"]
-        XCTAssertTrue(reveal(row, in: app), "The /api/widgets network row never came into reach.")
+        let row = app.buttons["GET, /api/widgets, status 200, at 1 second, took 120 ms"]
+        XCTAssertTrue(reveal(row, in: app), "The /api/widgets network row never came into reach as a button.")
         let before = row.frame.height
         print("NETWORK-ROW-PROBE container=\(row.frame)")
 
@@ -436,7 +478,7 @@ final class NestedGestureTapTests: XCTestCase {
         chip.tap()
         DemoLaunch.pause(0.8)
 
-        let row = app.otherElements["GET, /api/widgets, status 200, at 1 second, took 120 ms"]
+        let row = app.buttons["GET, /api/widgets, status 200, at 1 second, took 120 ms"]
         let seek = row.descendants(matching: .button)["Play the replay from 1 second"]
         XCTAssertTrue(reveal(seek, in: app), "The /api/widgets row's seek button never came into reach.")
         print("NETWORK-SEEK-PROBE frame=\(seek.frame) start=\(start)")

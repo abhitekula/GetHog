@@ -38,6 +38,24 @@ struct TVReplayTimelineModelTests {
         )
     }
 
+    private static func delivery(
+        _ mode: ReplayArchiveDeliveryMode,
+        events: [SnapshotEvent],
+        generation: Int = 0,
+        batchIndex: Int = 1
+    ) -> ReplayArchiveDelivery {
+        ReplayArchiveDelivery(
+            mode: mode,
+            events: events,
+            cursor: ReplayArchiveDeliveryCursor(
+                generation: generation,
+                batchIndex: batchIndex,
+                originTimestampMS: origin.timeIntervalSince1970 * 1_000
+            ),
+            playheadAdjustment: 0
+        )
+    }
+
     @Test("activity lands in the segment it happened in")
     func weightsLandInTheRightBuckets() {
         // 480 seconds over 48 buckets is 10 seconds each, so these three are
@@ -191,7 +209,8 @@ struct TVReplayTimelineModelTests {
         #expect(!loader.archivedEvents.isEmpty)
         #expect(loader.pending.count == loader.archivedEvents.count)
 
-        let model = TVReplayTimelineModel(loader: loader, recording: recording)
+        var model = TVReplayTimelineModel.empty
+        model.ingest(loader: loader, recording: recording)
         #expect(model.totalEvents == loader.archivedEvents.count)
         // Said twice on purpose: the first line pins the identity, this one
         // rejects the specific wrong answer the defect produced.
@@ -199,6 +218,96 @@ struct TVReplayTimelineModelTests {
 
         let incremental = loader.archivedEvents.count { $0.type == 3 }
         #expect(model.buckets.map(\.weight).reduce(0, +) == incremental)
+    }
+
+    @Test("an append delivery preserves prior buckets and processes only its delta")
+    func appendPreservesPriorBuckets() {
+        var model = TVReplayTimelineModel.empty
+        model.apply(
+            Self.delivery(.restart, events: [Self.event(at: 5)]),
+            origin: Self.origin,
+            duration: 480
+        )
+
+        model.apply(
+            Self.delivery(.append, events: [Self.event(at: 105)], batchIndex: 2),
+            origin: Self.origin,
+            duration: 480
+        )
+
+        #expect(model.totalEvents == 2)
+        #expect(model.buckets[0].weight == 1)
+        #expect(model.buckets[10].weight == 1)
+        #expect(model.buckets.map(\.weight).reduce(0, +) == 2)
+    }
+
+    @Test("a restart delivery replaces every value from the prior archive authority")
+    func restartReplacesPriorArchive() {
+        var model = TVReplayTimelineModel.empty
+        model.apply(
+            Self.delivery(
+                .restart,
+                events: [
+                    Self.event(at: 5),
+                    Self.consoleEvent(at: 5, level: "error"),
+                ]
+            ),
+            origin: Self.origin,
+            duration: 480
+        )
+
+        model.apply(
+            Self.delivery(
+                .restart,
+                events: [
+                    Self.event(at: 205),
+                    Self.consoleEvent(at: 205, level: "warn"),
+                ],
+                generation: 1
+            ),
+            origin: Self.origin,
+            duration: 480
+        )
+
+        #expect(model.totalEvents == 2)
+        #expect(model.buckets[0].weight == 0)
+        #expect(model.buckets[20].weight == 1)
+        #expect(model.consoleErrors == 0)
+        #expect(model.consoleWarnings == 1)
+    }
+
+    @Test("append diagnostics merge the delta without recounting the prior prefix")
+    func appendDoesNotDuplicateDiagnostics() {
+        var model = TVReplayTimelineModel.empty
+        model.apply(
+            Self.delivery(
+                .restart,
+                events: [
+                    Self.consoleEvent(at: 5, level: "error"),
+                    Self.networkEvent(at: 5),
+                ]
+            ),
+            origin: Self.origin,
+            duration: 480
+        )
+
+        model.apply(
+            Self.delivery(
+                .append,
+                events: [
+                    Self.consoleEvent(at: 105, level: "warn"),
+                    Self.networkEvent(at: 5),
+                ],
+                batchIndex: 2
+            ),
+            origin: Self.origin,
+            duration: 480
+        )
+
+        #expect(model.consoleErrors == 1)
+        #expect(model.consoleWarnings == 1)
+        #expect(model.requests == 1)
+        #expect(model.failedRequests == 1)
     }
 
     /// An rrweb plugin event carrying one console line, in the shape
@@ -225,6 +334,38 @@ struct TVReplayTimelineModelTests {
                         "trace": .array([])
                     ])
                 ])
+            ])
+        )
+    }
+
+    /// A failed request with a stable rrweb identity. Passing the same event in
+    /// two deliveries exercises the network de-duplication contract without a
+    /// mock or an assertion on implementation state.
+    private static func networkEvent(at offset: TimeInterval) -> SnapshotEvent {
+        let originMillis = origin.timeIntervalSince1970 * 1_000
+        let millis = originMillis + offset * 1_000
+        return SnapshotEvent(
+            windowID: "w",
+            type: 6,
+            timestamp: millis,
+            event: .object([
+                "type": .number(6),
+                "timestamp": .number(millis),
+                "data": .object([
+                    "plugin": .string("rrweb/network@1"),
+                    "payload": .object([
+                        "requests": .array([
+                            .object([
+                                "name": .string("https://app.example.com/api/replay"),
+                                "method": .string("GET"),
+                                "status": .number(503),
+                                "timeOrigin": .number(originMillis),
+                                "startTime": .number(offset * 1_000),
+                                "duration": .number(120),
+                            ]),
+                        ]),
+                    ]),
+                ]),
             ])
         )
     }

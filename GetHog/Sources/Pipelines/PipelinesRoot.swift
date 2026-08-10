@@ -91,7 +91,8 @@ struct PipelinesRoot: View {
             EmptyStateView(
                 title: "No pipelines",
                 systemImage: "arrow.triangle.branch",
-                message: "A pipeline is either a transformation that rewrites events as they arrive or a destination that forwards them somewhere else. This project has neither, so events land in PostHog and stay there — which is all most projects ever ask of it."
+                message: "Pipelines transform events as they arrive or forward them to another "
+                    + "destination. This project has none."
             )
         } else {
             list

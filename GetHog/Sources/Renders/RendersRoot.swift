@@ -499,10 +499,9 @@ struct RendersRoot: View {
                     // Reached only by the client-side filter: the renders exist,
                     // none of them are in the state being asked for. Saying so
                     // beats an empty list that reads as a failed load.
-                    EmptyStateView(
-                        title: noMatchesTitle,
+                    SectionEmptyState(
+                        text: "\(noMatchesTitle). \(noMatchesMessage)",
                         systemImage: "line.3.horizontal.decrease.circle",
-                        message: noMatchesMessage
                     )
                     .listRowBackground(Color.clear)
                 } else {

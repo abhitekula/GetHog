@@ -439,6 +439,7 @@ extension EventRow {
 struct EventsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.screenNavigationPlacement) private var navigationPlacement
     @Environment(OpenDetails.self) private var openDetails
     @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
@@ -497,7 +498,12 @@ struct EventsRoot: View {
     }
 
     private var usesHostNavigation: Bool {
-        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+        #if os(iOS)
+        if dynamicTypeSize.isAccessibilitySize {
+            return true
+        }
+        #endif
+        return sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
     var body: some View {

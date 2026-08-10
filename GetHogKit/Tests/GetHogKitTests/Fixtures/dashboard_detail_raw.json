@@ -2068,7 +2068,7 @@
               "funnelWindowIntervalUnit": "day"
             },
             "breakdownFilter": {
-              "breakdown": "synthetic_dimension_24",
+              "breakdown": "$browser",
               "breakdown_type": "event"
             },
             "filterTestAccounts": false
@@ -2108,7 +2108,7 @@
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0110"
+                "$browser"
               ],
               "breakdown_value": [
                 "Safari"
@@ -2125,7 +2125,7 @@
               "average_conversion_time": 69923.09706665674,
               "median_conversion_time": 27.336000156402587,
               "breakdown": [
-                "Example breakdown 0110"
+                "$browser"
               ],
               "breakdown_value": [
                 "Safari"
@@ -2142,7 +2142,7 @@
               "average_conversion_time": 3710.2720000059708,
               "median_conversion_time": 31.107999992370605,
               "breakdown": [
-                "Example breakdown 0110"
+                "$browser"
               ],
               "breakdown_value": [
                 "Safari"
@@ -2156,15 +2156,15 @@
               "custom_name": "Example custom name 0106",
               "order": 195,
               "people": [],
-              "count": 55,
+              "count": 155,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0112"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0113"
+                "Chrome"
               ]
             },
             {
@@ -2173,15 +2173,15 @@
               "custom_name": "Example custom name 0107",
               "order": 197,
               "people": [],
-              "count": 21,
+              "count": 68,
               "type": "events",
               "average_conversion_time": 97.3742856843131,
               "median_conversion_time": 33.015999984741214,
               "breakdown": [
-                "Example breakdown 0112"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0113"
+                "Chrome"
               ]
             },
             {
@@ -2190,15 +2190,15 @@
               "custom_name": "Example custom name 0108",
               "order": 199,
               "people": [],
-              "count": 19,
+              "count": 41,
               "type": "events",
               "average_conversion_time": 21114.340666723252,
               "median_conversion_time": 46.814000082015994,
               "breakdown": [
-                "Example breakdown 0112"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0113"
+                "Chrome"
               ]
             }
           ],
@@ -2209,15 +2209,15 @@
               "custom_name": "Example custom name 0106",
               "order": 198,
               "people": [],
-              "count": 21,
+              "count": 89,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0114"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0115"
+                "Firefox"
               ]
             },
             {
@@ -2226,15 +2226,15 @@
               "custom_name": "Example custom name 0107",
               "order": 200,
               "people": [],
-              "count": 700001,
+              "count": 34,
               "type": "events",
               "average_conversion_time": 0.04299996948242188,
               "median_conversion_time": 0.04299996948242188,
               "breakdown": [
-                "Example breakdown 0114"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0115"
+                "Firefox"
               ]
             },
             {
@@ -2243,15 +2243,15 @@
               "custom_name": "Example custom name 0108",
               "order": 202,
               "people": [],
-              "count": 700001,
+              "count": 18,
               "type": "events",
               "average_conversion_time": 332170.09999961854,
               "median_conversion_time": 332170.09999961854,
               "breakdown": [
-                "Example breakdown 0114"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0115"
+                "Firefox"
               ]
             }
           ],
@@ -2262,15 +2262,15 @@
               "custom_name": "Example custom name 0106",
               "order": 201,
               "people": [],
-              "count": 13,
+              "count": 63,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0116"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0117"
+                "Edge"
               ]
             },
             {
@@ -2279,15 +2279,15 @@
               "custom_name": "Example custom name 0107",
               "order": 203,
               "people": [],
-              "count": 700001,
+              "count": 26,
               "type": "events",
               "average_conversion_time": 16.80799980163574,
               "median_conversion_time": 16.80799980163574,
               "breakdown": [
-                "Example breakdown 0116"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0117"
+                "Edge"
               ]
             },
             {
@@ -2296,15 +2296,15 @@
               "custom_name": "Example custom name 0108",
               "order": 205,
               "people": [],
-              "count": 700001,
+              "count": 14,
               "type": "events",
               "average_conversion_time": 5.825999927520752,
               "median_conversion_time": 5.825999927520752,
               "breakdown": [
-                "Example breakdown 0116"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0117"
+                "Edge"
               ]
             }
           ],
@@ -2315,15 +2315,15 @@
               "custom_name": "Example custom name 0106",
               "order": 204,
               "people": [],
-              "count": 700001,
+              "count": 52,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0118"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0119"
+                "Mobile Safari"
               ]
             },
             {
@@ -2332,15 +2332,15 @@
               "custom_name": "Example custom name 0107",
               "order": 206,
               "people": [],
-              "count": 700001,
+              "count": 19,
               "type": "events",
               "average_conversion_time": 1011.9260003089905,
               "median_conversion_time": 1011.9260003089905,
               "breakdown": [
-                "Example breakdown 0118"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0119"
+                "Mobile Safari"
               ]
             },
             {
@@ -2349,15 +2349,15 @@
               "custom_name": "Example custom name 0108",
               "order": 208,
               "people": [],
-              "count": 700001,
+              "count": 11,
               "type": "events",
               "average_conversion_time": 57.783999633789065,
               "median_conversion_time": 57.783999633789065,
               "breakdown": [
-                "Example breakdown 0118"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0119"
+                "Mobile Safari"
               ]
             }
           ],
@@ -2368,15 +2368,15 @@
               "custom_name": "Example custom name 0106",
               "order": 207,
               "people": [],
-              "count": 11,
+              "count": 37,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0120"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0121"
+                "Chrome Mobile"
               ]
             },
             {
@@ -2385,15 +2385,15 @@
               "custom_name": "Example custom name 0107",
               "order": 209,
               "people": [],
-              "count": 250,
+              "count": 14,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0120"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0121"
+                "Chrome Mobile"
               ]
             },
             {
@@ -2402,15 +2402,15 @@
               "custom_name": "Example custom name 0108",
               "order": 211,
               "people": [],
-              "count": 251,
+              "count": 8,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0120"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0121"
+                "Chrome Mobile"
               ]
             }
           ],
@@ -2421,15 +2421,15 @@
               "custom_name": "Example custom name 0106",
               "order": 210,
               "people": [],
-              "count": 700001,
+              "count": 21,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                ""
+                "$browser"
               ],
               "breakdown_value": [
-                ""
+                "Firefox Focus"
               ]
             },
             {
@@ -2438,15 +2438,15 @@
               "custom_name": "Example custom name 0107",
               "order": 212,
               "people": [],
-              "count": 253,
+              "count": 7,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                ""
+                "$browser"
               ],
               "breakdown_value": [
-                ""
+                "Firefox Focus"
               ]
             },
             {
@@ -2455,15 +2455,15 @@
               "custom_name": "Example custom name 0108",
               "order": 214,
               "people": [],
-              "count": 254,
+              "count": 3,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                ""
+                "$browser"
               ],
               "breakdown_value": [
-                ""
+                "Firefox Focus"
               ]
             }
           ],
@@ -2474,15 +2474,15 @@
               "custom_name": "Example custom name 0106",
               "order": 213,
               "people": [],
-              "count": 700001,
+              "count": 13,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0122"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0123"
+                "Other"
               ]
             },
             {
@@ -2491,15 +2491,15 @@
               "custom_name": "Example custom name 0107",
               "order": 215,
               "people": [],
-              "count": 256,
+              "count": 5,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0122"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0123"
+                "Other"
               ]
             },
             {
@@ -2508,15 +2508,15 @@
               "custom_name": "Example custom name 0108",
               "order": 217,
               "people": [],
-              "count": 257,
+              "count": 2,
               "type": "events",
               "average_conversion_time": null,
               "median_conversion_time": null,
               "breakdown": [
-                "Example breakdown 0122"
+                "$browser"
               ],
               "breakdown_value": [
-                "Example breakdown value 0123"
+                "Other"
               ]
             }
           ]

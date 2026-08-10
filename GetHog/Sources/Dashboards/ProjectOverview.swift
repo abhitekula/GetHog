@@ -247,7 +247,11 @@ struct ProjectOverviewContent: View {
     }
 
     private var projectMetrics: some View {
-        StatStrip(stacksAtAccessibilitySizes: true) {
+        // These are three short labels and values. Keeping them in the strip at
+        // AX5 preserves enough of the initial viewport to show one complete
+        // pinned signal; the charts still collapse to their measured one-column
+        // layout, while standard type keeps its accepted two-column preview.
+        StatStrip {
             MetricTile(
                 label: "Dashboards",
                 value: "\(facts.dashboardCount)",

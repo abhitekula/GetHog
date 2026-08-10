@@ -581,12 +581,11 @@ struct LogsRoot: View {
                     // answer rather than a partial one, which is the whole point
                     // of the distinction: the sentence now scopes itself to what
                     // was actually read.
-                    EmptyStateView(
-                        title: "No problems in what was read",
-                        systemImage: "checkmark.circle",
-                        message: store.isTruncated
+                    SectionEmptyState(
+                        text: "No problems in what was read. " + (store.isTruncated
                             ? "None of the \(store.rowsReturned.formatted()) newest lines in the last \(store.window.title.lowercased()) are errors or fatals. This screen reads at most \(LogsStore.limit) lines and reached that ceiling, so older ones in the window went unread."
-                            : "No error or fatal lines among the \(store.rowsReturned.formatted()) this window holds."
+                            : "No error or fatal lines among the \(store.rowsReturned.formatted()) this window holds."),
+                        systemImage: "checkmark.circle",
                     )
                     .listRowBackground(Color.clear)
                 } else {

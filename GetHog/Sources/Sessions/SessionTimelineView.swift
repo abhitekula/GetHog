@@ -364,6 +364,7 @@ struct SessionTimelineView: View {
                         // The active tint is the app accent, which is what makes
                         // the selected chip read as "on" and not merely filled.
                         .warmGlass(active: filter == option)
+                        .minimumHitTarget()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(option.rawValue), \(count) events")
@@ -517,6 +518,8 @@ struct TimelineRunRowView: View {
         .contentShape(.rect)
         .onTapGesture(perform: onToggle)
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, onToggle)
     }
 
     private var offsetLabel: some View {
@@ -657,6 +660,8 @@ struct TimelineRowView: View {
         .contentShape(.rect)
         .onTapGesture(perform: onToggle)
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, onToggle)
     }
 
     private var offsetLabel: some View {

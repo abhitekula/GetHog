@@ -69,6 +69,23 @@ struct DemoTransportTests {
     private static let healthySavedQueryID = "018f9000-0000-7000-8000-000000000243"
     private static let plainSavedQueryID = "018f9000-0000-7000-8000-000000000014"
 
+    private func expectTerminalPage(
+        _ data: Data,
+        named name: String,
+        expectedCount: Int
+    ) throws {
+        let envelope = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            "\(name) must be a JSON object"
+        )
+        let results = try #require(envelope["results"] as? [Any])
+
+        #expect(envelope["count"] as? Int == expectedCount, "\(name) advertises the wrong total")
+        #expect(results.count == expectedCount, "\(name) serves a different number of rows")
+        #expect(envelope["next"] is NSNull, "\(name) must remain a terminal page")
+        #expect(envelope["previous"] is NSNull, "\(name) must remain the first page")
+    }
+
     @Test("dashboard recompute failure leaves cached load and empty dashboard route intact")
     func dashboardConsistencyDemoRoutes() async throws {
         let transport = DemoTransport(dashboardRecomputeFailure: true)
@@ -220,6 +237,33 @@ struct DemoTransportTests {
             )
         )
         #expect(!flags.results.isEmpty)
+    }
+
+    @Test("terminal fictional collection envelopes report exactly the rows they serve")
+    func terminalCollectionEnvelopeTotalsAreTruthful() async throws {
+        let me = try JSONDecoder().decode(
+            MeResponse.self,
+            from: try await fixture(for: "/api/users/@me/")
+        )
+        let currentOrganizationID = try #require(me.currentOrganizationID)
+
+        try expectTerminalPage(
+            try await fixture(for: PostHogAPI.notebooks(projectID: Self.projectID)),
+            named: "notebooks",
+            expectedCount: 2
+        )
+        try expectTerminalPage(
+            try await fixture(
+                for: PostHogAPI.organizationProjects(organizationID: currentOrganizationID)
+            ),
+            named: "organization projects",
+            expectedCount: 2
+        )
+        try expectTerminalPage(
+            try await fixture(for: PostHogAPI.savedHeatmaps(projectID: Self.projectID)),
+            named: "saved heatmaps",
+            expectedCount: 2
+        )
     }
 
     /// The list/detail split is decided by the trailing slash, so it is the part
@@ -579,7 +623,7 @@ struct DemoTransportTests {
             )
         )
         #expect(!tickets.results.isEmpty)
-        #expect(tickets.results.contains { $0.ticketNumber == 209 })
+        #expect(tickets.results.contains { $0.ticketNumber == 7_407 })
 
         // Max's own collection is explicitly authored empty. It must not reach
         // the ticket fixture, and the exact collection route must not make an
@@ -601,7 +645,7 @@ struct DemoTransportTests {
         let thread = try Page<TicketMessage>.decode(
             from: try await fixture(
                 for: "/api/projects/1001/conversations/tickets/"
-                    + "018f9000-0000-7000-8000-000000000448/messages/"
+                    + "018f9000-0000-7000-8000-000000000001/messages/"
             )
         )
         #expect(!thread.results.isEmpty)
@@ -611,10 +655,64 @@ struct DemoTransportTests {
         // same list-versus-detail split dashboards and recordings have.
         let detail = try await fixture(
             for: "/api/projects/1001/conversations/tickets/"
-                + "018f9000-0000-7000-8000-000000000448/"
+                + "018f9000-0000-7000-8000-000000000001/"
         )
         let ticket = try JSONDecoder().decode(SupportTicket.self, from: detail)
         #expect(ticket.ticketNumber != nil)
+    }
+
+    /// A message collection belongs to one ticket, even though every endpoint
+    /// shares the same `/messages/` suffix. The authored five-message archive
+    /// is ticket #7407's thread; serving it for another id is valid JSON and is
+    /// therefore a particularly quiet demo-truth failure.
+    @Test("every support ticket resolves an identity-specific message page")
+    func ticketMessagePagesKeepTicketIdentity() async throws {
+        let tickets = try Page<SupportTicket>.decode(
+            from: try await fixture(for: PostHogAPI.supportTickets(projectID: Self.projectID))
+        )
+        let ticket7407 = try #require(tickets.results.first { $0.ticketNumber == 7_407 })
+        let authored = try Page<TicketMessage>.decode(
+            from: try await fixture(
+                for: PostHogAPI.supportTicketMessages(
+                    projectID: Self.projectID,
+                    ticketID: ticket7407.id
+                )
+            )
+        )
+        let authoredIDs = Set(authored.results.map(\.id))
+        #expect(authored.results.count == 5)
+
+        for ticket in tickets.results where ticket.id != ticket7407.id {
+            let page = try Page<TicketMessage>.decode(
+                from: try await fixture(
+                    for: PostHogAPI.supportTicketMessages(
+                        projectID: Self.projectID,
+                        ticketID: ticket.id
+                    )
+                )
+            )
+
+            #expect(page.count == ticket.messageCount)
+            #expect(!page.results.isEmpty, "\(ticket.reference) advertises a non-empty thread")
+            #expect(
+                authoredIDs.isDisjoint(with: page.results.map(\.id)),
+                "\(ticket.reference) must not receive ticket #7407's archive"
+            )
+            #expect(page.results.last?.text == ticket.snippet)
+        }
+
+        let ticket7413 = try #require(tickets.results.first { $0.ticketNumber == 7_413 })
+        let blankPreview = try Page<TicketMessage>.decode(
+            from: try await fixture(
+                for: PostHogAPI.supportTicketMessages(
+                    projectID: Self.projectID,
+                    ticketID: ticket7413.id
+                )
+            )
+        )
+        #expect(blankPreview.count == 723)
+        #expect(blankPreview.results.last?.text == nil)
+        #expect(blankPreview.results.last?.hasRichContent == false)
     }
 
     /// The counterpart: HogQL has a fixture and must keep resolving to it.

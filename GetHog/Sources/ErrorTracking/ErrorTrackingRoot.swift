@@ -348,10 +348,10 @@ struct ErrorTrackingRoot: View {
         ScrollViewReader { scroller in
             List(selection: selection) {
                 if visibleIssues.isEmpty {
-                    EmptyStateView(
-                        title: "No \(filter.title.lowercased()) issues",
+                    SectionEmptyState(
+                        text: "No \(filter.title.lowercased()) issues. "
+                            + "\(store.issues.count) issue\(store.issues.count == 1 ? "" : "s") are hidden by this filter.",
                         systemImage: "line.3.horizontal.decrease.circle",
-                        message: "\(store.issues.count) issue\(store.issues.count == 1 ? "" : "s") are hidden by this filter.",
                         actionTitle: "Show all",
                         action: { filter = .all }
                     )

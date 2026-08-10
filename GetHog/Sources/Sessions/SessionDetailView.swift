@@ -449,19 +449,38 @@ extension View {
     /// screen over, after `.inspector` presented as a dimming overlay there.
     /// Same conclusion, a different symptom: it is not a column on this
     /// platform's terms, and asking it to be one costs the window.
-    func replayDiagnosticsPane(
+    func replayDiagnosticsPane<Pane: View>(
         isPresented: Binding<Bool>,
-        @ViewBuilder pane: () -> some View
+        @ViewBuilder pane: () -> Pane
     ) -> some View {
+        modifier(
+            ReplayDiagnosticsPanePresentation(
+                isPresented: isPresented,
+                pane: pane()
+            )
+        )
+    }
+}
+
+private struct ReplayDiagnosticsPanePresentation<Pane: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let pane: Pane
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
         HStack(spacing: 0) {
-            self
-            if isPresented.wrappedValue {
+            content
+            if isPresented {
                 Divider()
-                pane()
-                    .transition(.move(edge: .trailing))
+                pane
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
             }
         }
-        .animation(.snappy(duration: 0.25), value: isPresented.wrappedValue)
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.25),
+            value: isPresented
+        )
     }
 }
 

@@ -102,6 +102,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(NavPreferences.self) private var nav
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
     /// The search tab's stack. Heterogeneous — a screen result pushes an
     /// `AppTab`, the root it lands on then pushes its own issues, logs and
@@ -452,7 +453,10 @@ struct RootView: View {
     /// its own stack would draw a redundant navigation bar when content pushed.
     @ViewBuilder
     private func container(for tab: AppTab) -> some View {
-        if tab.ownsNavigationContainer(compact: sizeClass == .compact) {
+        if tab.ownsNavigationContainer(
+            compact: sizeClass == .compact,
+            accessibilitySize: dynamicTypeSize.isAccessibilitySize
+        ) {
             TabRootView(tab: tab)
         } else {
             NavigationStack {

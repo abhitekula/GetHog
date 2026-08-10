@@ -170,10 +170,10 @@ struct TaxonomyEventDetailView: View {
     private var propertiesSection: some View {
         Section {
             if let error = store.error, store.isEmpty {
-                EmptyStateView(
-                    title: "Couldn't load properties",
+                SectionEmptyState(
+                    text: "Couldn't load properties.",
                     systemImage: "exclamationmark.triangle",
-                    message: error,
+                    detail: error,
                     actionTitle: "Try again",
                     action: { Task { await load() } }
                 )
@@ -192,10 +192,10 @@ struct TaxonomyEventDetailView: View {
                 }
                 .skeleton(true)
             } else if store.isEmpty {
-                EmptyStateView(
-                    title: "No properties",
+                SectionEmptyState(
+                    text: "No properties. No properties were found in the sampled events. "
+                        + "PostHog samples the 100 most recent, and omits internal keys such as $ip and $set.",
                     systemImage: "tag",
-                    message: "No properties were found in the sampled events. PostHog samples the 100 most recent, and omits internal keys such as $ip and $set."
                 )
             } else if filtered.isEmpty {
                 Text("No properties matched “\(search)”.")

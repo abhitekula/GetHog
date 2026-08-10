@@ -492,6 +492,10 @@ struct SessionChapterRow: View {
         .contentShape(.rect)
         .onTapGesture(perform: onToggle)
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(spoken)
+        .accessibilityHint(isExpanded ? "Collapses this chapter" : "Expands this chapter")
+        .accessibilityAction(.default, onToggle)
     }
 
     @ViewBuilder
@@ -563,9 +567,6 @@ struct SessionChapterRow: View {
                 }
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(spoken)
-        .accessibilityHint(isExpanded ? "Collapses this chapter" : "Expands this chapter")
     }
 
     private var titleBlock: some View {

@@ -4,22 +4,44 @@ import XCTest
 final class DashboardConsistencyUITests: XCTestCase {
     private static let emptyDashboardID = 725_103
 
-    func testPinnedDashboardPreviewFailureIsVisibleAndRetryable() {
+    func testPinnedDashboardPreviewFailureIsVisibleAndRetryable() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The pinned dashboard preview belongs to the regular-width dashboard hub."
+        )
+
         let app = DemoLaunch.launch(
             tab: "dashboards",
             environment: ["GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE": "1"]
         )
         defer { app.terminate() }
 
-        let failure = app.staticTexts["Couldn't load pinned dashboard preview"]
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "The app window is compact; compact Dashboards intentionally renders its collection."
+        )
+
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The regular dashboard landing did not expose its hub.")
+        }
+        let preview = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-preview"
+        ].firstMatch
+        guard DemoLaunch.wait(for: preview) else {
+            return XCTFail("The regular dashboard hub did not expose its pinned preview.")
+        }
+
+        let failure = preview.staticTexts["Couldn't load pinned dashboard preview"]
         XCTAssertTrue(
             DemoLaunch.wait(for: failure),
             "A failed pinned preview collapsed into a blank Pinned section."
         )
-        XCTAssertTrue(app.staticTexts["Pinned"].firstMatch.exists)
-        XCTAssertTrue(app.buttons["Try again"].firstMatch.exists)
+        XCTAssertTrue(preview.staticTexts["Pinned"].firstMatch.exists)
+        XCTAssertTrue(preview.buttons["Try again"].firstMatch.exists)
         XCTAssertFalse(
-            app.staticTexts[DemoLaunch.firstTileTitle].firstMatch.exists,
+            preview.staticTexts[DemoLaunch.firstTileTitle].firstMatch.exists,
             "A failed pinned preview left stale chart content under its retry state."
         )
         capture("Pinned dashboard preview failure")
@@ -252,7 +274,7 @@ final class DashboardConsistencyUITests: XCTestCase {
         ])
     }
 
-    func testRegularDashboardAX5UsesVerticalSummaryAndOneReadableChartColumn() throws {
+    func testRegularDashboardAX5KeepsFirstSignalInInitialViewport() throws {
         let app = DemoLaunch.launch(
             tab: "dashboards",
             extraArguments: [
@@ -316,6 +338,11 @@ final class DashboardConsistencyUITests: XCTestCase {
             secondCard.frame.minY,
             firstCard.frame.maxY - 12,
             "The AX5 preview did not collapse to one readable chart column."
+        )
+        XCTAssertLessThanOrEqual(
+            firstCard.frame.maxY,
+            hub.frame.maxY,
+            "The first pinned signal is not completely visible in the initial AX5 viewport."
         )
         try app.performAccessibilityAudit(for: [
             .sufficientElementDescription,

@@ -368,7 +368,7 @@ struct SupportTicketRow: View {
             DataRow(
                 glyph: ticket.channel.systemImage,
                 title: ticket.displayTitle,
-                subtitle: ticket.snippet ?? "No message text on this ticket",
+                subtitle: previewText,
                 footnote: metaLine,
                 subtitleLineLimit: 2,
                 accessory: unreadAccessory
@@ -412,6 +412,10 @@ struct SupportTicketRow: View {
         return parts.joined(separator: " · ")
     }
 
+    private var previewText: String {
+        ticket.snippet ?? "Latest message has no text preview"
+    }
+
     /// One sentence for VoiceOver, leading with the states a sighted reader gets
     /// from the badges.
     private var spoken: String {
@@ -421,7 +425,7 @@ struct SupportTicketRow: View {
         if ticket.isSnoozed() { parts.append("Snoozed") }
         if ticket.hasUnreadForTeam { parts.append("\(ticket.unreadTeamCount) unread") }
         parts.append(metaLine)
-        if let snippet = ticket.snippet { parts.append(snippet) }
+        parts.append(previewText)
         return parts.joined(separator: ", ")
     }
 }
@@ -547,6 +551,8 @@ enum SupportTint {
 @Observable
 final class SupportThreadStore {
     private(set) var messages: [TicketMessage] = []
+    private(set) var totalMessageCount: Int?
+    private(set) var isLatestMessagePreview = false
     private(set) var isLoading = false
     private(set) var error: String?
 
@@ -558,6 +564,11 @@ final class SupportThreadStore {
                 PostHogAPI.supportTicketMessages(projectID: projectID, ticketID: ticketID)
             )
             messages = page.results
+            totalMessageCount = page.count
+            isLatestMessagePreview = page.previous != nil
+                && page.next == nil
+                && page.results.count == 1
+                && (page.count ?? 0) > 1
             error = nil
         } catch {
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
@@ -788,6 +799,14 @@ struct SupportTicketDetailView: View {
         } header: {
             SectionLabel(text: "Thread", systemImage: "text.bubble")
         } footer: {
+            if store.isLatestMessagePreview, let total = store.totalMessageCount {
+                Text(
+                    "Showing the latest message preview. "
+                        + "\(total - store.messages.count) earlier messages aren't loaded."
+                )
+            } else if let total = store.totalMessageCount, total > store.messages.count {
+                Text("Showing \(store.messages.count) of \(total) messages.")
+            }
             if store.messages.contains(where: \.isPrivate) {
                 Text("Messages marked Internal note were never sent to the customer.")
             }

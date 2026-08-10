@@ -313,14 +313,15 @@ struct NotebookDetailView: View {
                     .font(.callout)
                     .skeleton(true)
             } else if let failure = store.failure, store.notebook == nil {
-                // `LoadFailureState`, not `EmptyStateView` with the error string
-                // in its `message` slot: that slot is where a `DecodingError`
-                // dump used to be printed at the reader. The sentence is the
-                // message; the verbatim fault is one disclosure away.
-                LoadFailureState(
-                    title: "Couldn't load this notebook",
-                    failure: failure,
-                    retry: { Task { await load() } }
+                // This is one row of the Contents section, so keep the failure
+                // compact while preserving the same summary, disclosed detail,
+                // and retry path as the whole-screen `LoadFailureState`.
+                SectionEmptyState(
+                    text: "Couldn't load this notebook. \(failure.summary)",
+                    systemImage: "exclamationmark.triangle",
+                    detail: failure.detail,
+                    actionTitle: "Try again",
+                    action: { Task { await load() } }
                 )
             } else {
                 documentBody(of: notebook)
@@ -368,10 +369,9 @@ struct NotebookDetailView: View {
             }
 
         case .empty:
-            EmptyStateView(
-                title: "This notebook is empty",
+            SectionEmptyState(
+                text: "This notebook is empty. It has been created but nothing has been written in it yet.",
                 systemImage: "doc",
-                message: "It has been created but nothing has been written in it yet."
             )
         }
     }

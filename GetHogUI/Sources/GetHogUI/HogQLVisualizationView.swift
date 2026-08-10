@@ -28,6 +28,7 @@ public struct HogQLVisualizationView: View {
     public var compact: Bool
     public var title: String
     public var timeZone: TimeZone
+    private let datedChartCache: HogQLDatedChartCache
 
     public init(
         visualization: HogQLVisualization,
@@ -39,6 +40,21 @@ public struct HogQLVisualizationView: View {
         self.compact = compact
         self.title = title
         self.timeZone = timeZone
+        self.datedChartCache = .shared
+    }
+
+    init(
+        visualization: HogQLVisualization,
+        compact: Bool,
+        title: String,
+        timeZone: TimeZone = ProjectChartTimeZone.fallback,
+        datedChartCache: HogQLDatedChartCache
+    ) {
+        self.visualization = visualization
+        self.compact = compact
+        self.title = title
+        self.timeZone = timeZone
+        self.datedChartCache = datedChartCache
     }
 
     public var body: some View {
@@ -87,7 +103,8 @@ public struct HogQLVisualizationView: View {
                     data: data,
                     display: display,
                     compact: compact,
-                    timeZone: timeZone
+                    timeZone: timeZone,
+                    datedChartCache: datedChartCache
                 )
             } else {
                 HogQLResultTable(table: visualization.displayedTable, compact: compact)
@@ -215,6 +232,24 @@ struct HogQLSeriesStyle: Equatable {
     let slot: Int
 }
 
+struct HogQLDatedChartPoint: Identifiable, Equatable {
+    let id: String
+    let seriesKey: String
+    let seriesLabel: String
+    let date: Date
+    let value: Double
+}
+
+struct HogQLDatedChartModel: Equatable {
+    let points: [HogQLDatedChartPoint]?
+    let axisConfiguration: HogQLDateAxisConfiguration
+
+    static let empty = HogQLDatedChartModel(
+        points: nil,
+        axisConfiguration: HogQLDateAxisConfiguration()
+    )
+}
+
 struct HogQLDateAxisConfiguration: Equatable {
     let includesTime: Bool
     let includesSeconds: Bool
@@ -302,31 +337,126 @@ enum HogQLCartesianLayout {
     }
 }
 
+/// Keeps date parsing out of SwiftUI body evaluation after the first pass for
+/// a chart identity. Multiple Y series share the same X values, so one build
+/// also parses each distinct raw date only once rather than once per series.
+@MainActor
+final class HogQLDatedChartCache {
+    typealias DateParser = (String, Calendar, TimeZone) -> Date?
+
+    private struct Input: Equatable {
+        let data: HogQLChartData
+        let calendar: Calendar
+        let timeZone: TimeZone
+    }
+
+    private let parseDate: DateParser
+    private let capacity: Int
+    private var entries: [(input: Input, model: HogQLDatedChartModel)] = []
+
+    static let shared = HogQLDatedChartCache()
+
+    init(capacity: Int = 16, parseDate: @escaping DateParser) {
+        self.capacity = max(1, capacity)
+        self.parseDate = parseDate
+    }
+
+    convenience init(capacity: Int = 16) {
+        let iso8601 = ISO8601DateFormatter()
+        let day = DateFormatter()
+        day.locale = Locale(identifier: "en_US_POSIX")
+        day.dateFormat = "yyyy-MM-dd"
+        self.init(capacity: capacity) { raw, calendar, timeZone in
+            day.calendar = calendar
+            day.timeZone = timeZone
+            return iso8601.date(from: raw) ?? day.date(from: raw)
+        }
+    }
+
+    func model(
+        for data: HogQLChartData,
+        calendar: Calendar,
+        timeZone: TimeZone
+    ) -> HogQLDatedChartModel {
+        let input = Input(data: data, calendar: calendar, timeZone: timeZone)
+        if let index = entries.firstIndex(where: { $0.input == input }) {
+            let hit = entries.remove(at: index)
+            entries.append(hit)
+            return hit.model
+        }
+
+        let styles = HogQLCartesianLayout.seriesStyles(for: data.series)
+        var datesByRawValue: [String: Date] = [:]
+        var points: [HogQLDatedChartPoint] = []
+        for (seriesIndex, series) in data.series.enumerated() {
+            for point in series.points {
+                guard case .date(let raw) = point.x else {
+                    insert(.empty, for: input)
+                    return .empty
+                }
+                let date: Date
+                if let parsed = datesByRawValue[raw] {
+                    date = parsed
+                } else if let parsed = parseDate(raw, calendar, timeZone) {
+                    datesByRawValue[raw] = parsed
+                    date = parsed
+                } else {
+                    insert(.empty, for: input)
+                    return .empty
+                }
+                points.append(HogQLDatedChartPoint(
+                    id: "\(series.id)-\(point.row)",
+                    seriesKey: styles[seriesIndex].key,
+                    seriesLabel: series.label,
+                    date: date,
+                    value: point.value
+                ))
+            }
+        }
+
+        let model: HogQLDatedChartModel
+        if points.isEmpty {
+            model = .empty
+        } else {
+            model = HogQLDatedChartModel(
+                points: points,
+                axisConfiguration: HogQLCartesianLayout.dateAxisConfiguration(
+                    dates: points.map(\.date),
+                    calendar: calendar
+                )
+            )
+        }
+        insert(model, for: input)
+        return model
+    }
+
+    private func insert(_ model: HogQLDatedChartModel, for input: Input) {
+        entries.append((input, model))
+        if entries.count > capacity { entries.removeFirst() }
+    }
+}
+
 private struct HogQLCartesianChart: View {
     let data: HogQLChartData
     let display: HogQLDisplay
     let compact: Bool
     let timeZone: TimeZone
+    let datedChartCache: HogQLDatedChartCache
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption2) private var textScale: CGFloat = 1
 
-    private struct DatedPoint: Identifiable {
-        let id: String
-        let seriesKey: String
-        let seriesLabel: String
-        let index: Int
-        let date: Date
-        let value: Double
-    }
-
     var body: some View {
         let seriesStyles = HogQLCartesianLayout.seriesStyles(for: data.series)
-        let datedPoints = parsedDatedPoints(seriesStyles: seriesStyles)
-        let dateAxisConfiguration = HogQLCartesianLayout.dateAxisConfiguration(
-            dates: datedPoints?.map(\.date) ?? [],
-            calendar: projectCalendar
-        )
+        let datedModel = data.xColumn.scalar.isDate
+            ? datedChartCache.model(
+                for: data,
+                calendar: projectCalendar,
+                timeZone: timeZone
+            )
+            : .empty
+        let datedPoints = datedModel.points
+        let dateAxisConfiguration = datedModel.axisConfiguration
 
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Group {
@@ -498,32 +628,6 @@ private struct HogQLCartesianChart: View {
         var calendar = Calendar.autoupdatingCurrent
         calendar.timeZone = timeZone
         return calendar
-    }
-
-    private func parsedDatedPoints(seriesStyles: [HogQLSeriesStyle]) -> [DatedPoint]? {
-        let parser = ISO8601DateFormatter()
-        let fallback = DateFormatter()
-        fallback.locale = Locale(identifier: "en_US_POSIX")
-        fallback.calendar = projectCalendar
-        fallback.timeZone = timeZone
-        fallback.dateFormat = "yyyy-MM-dd"
-        var values: [DatedPoint] = []
-        for (index, series) in data.series.enumerated() {
-            for point in series.points {
-                guard case .date(let raw) = point.x,
-                      let date = parser.date(from: raw) ?? fallback.date(from: raw)
-                else { return nil }
-                values.append(DatedPoint(
-                    id: "\(series.id)-\(point.row)",
-                    seriesKey: seriesStyles[index].key,
-                    seriesLabel: series.label,
-                    index: point.row,
-                    date: date,
-                    value: point.value
-                ))
-            }
-        }
-        return values.isEmpty ? nil : values
     }
 
     private var summary: String {

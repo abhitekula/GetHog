@@ -98,6 +98,7 @@ struct WriteOutcomeMessageView: View {
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
+                    .minimumHitTarget()
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tertiary)

@@ -36,20 +36,6 @@ enum AutomationSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Kept short deliberately: `ContentUnavailableView` gives its title a single
-    /// line and truncates rather than wrapping, so "No workflows in this project"
-    /// renders as "No workflows in this p…" on a phone. The qualifier belongs in
-    /// the description, which does wrap.
-    var emptyTitle: String {
-        switch self {
-        case .workflows: "No workflows"
-        case .endpoints: "No query endpoints"
-        case .alerts: "No alerts"
-        case .subscriptions: "No subscriptions"
-        case .exports: "No batch exports"
-        }
-    }
-
     /// Says what the resource *is* and why a project reasonably has none of it.
     ///
     /// Empty is the normal state on all five of these — a plain "nothing here"
@@ -58,7 +44,7 @@ enum AutomationSection: String, CaseIterable, Identifiable, Hashable {
     var emptyDescription: String {
         switch self {
         case .workflows:
-            "A workflow chains messaging and automation steps behind a trigger. None have been built in this project."
+            "Workflows chain messaging and automation steps behind a trigger. This project has none."
         case .endpoints:
             "An endpoint publishes a saved query over HTTP so another service can call it. None are defined here, which is what the zero counts above are reporting."
         case .alerts:
@@ -357,10 +343,10 @@ struct AutomationRoot: View {
     @ViewBuilder
     private var sectionBody: some View {
         if let error = store.errors[section] {
-            EmptyStateView(
-                title: "Couldn't load \(section.title.lowercased())",
+            SectionEmptyState(
+                text: "Couldn't load \(section.title.lowercased()).",
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                detail: error,
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
@@ -372,10 +358,9 @@ struct AutomationRoot: View {
             // zeros, so the two belong on screen together.
             endpointsBody
         } else if store.count(for: section) == 0 && !store.isLoading {
-            EmptyStateView(
-                title: section.emptyTitle,
-                systemImage: section.systemImage,
-                message: section.emptyDescription
+            SectionEmptyState(
+                text: section.emptyDescription,
+                systemImage: section.systemImage
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -408,10 +393,9 @@ struct AutomationRoot: View {
         EndpointUsagePanel(store: store) { Task { await reloadUsage() } }
 
         if store.endpoints.isEmpty && !store.isLoading {
-            EmptyStateView(
-                title: section.emptyTitle,
-                systemImage: section.systemImage,
-                message: section.emptyDescription
+            SectionEmptyState(
+                text: section.emptyDescription,
+                systemImage: section.systemImage
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)

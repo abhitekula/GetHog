@@ -427,11 +427,13 @@ struct DashboardDetailView: View {
             // Same URL the "Open in PostHog" item below opens, offered to the
             // *other* device instead of this one.
             .handoff(webURL: webURL, title: title)
+#if !os(iOS)
             .safeAreaInset(edge: .top, spacing: 0) {
                 regularReturnControl
             }
+#endif
             .toolbar { toolbarContent }
-#if !os(tvOS)
+#if !os(tvOS) && !os(iOS)
             .navigationBarBackButtonHidden(onReturnToDashboards != nil)
 #endif
             .keyboardActions([

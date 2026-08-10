@@ -197,19 +197,24 @@ enum AppTab: String, Hashable, CaseIterable {
     /// on iPad. Everything else is stack-less and gets its stack from whatever
     /// is showing it — a `Tab` in `RootView`, or the index behind "More".
     /// **All seven build a plain list in compact width**, so asking about the
-    /// width is required rather than incidental. Each renders
-    /// `list.navigationDestination(item:)` below the size-class boundary and
-    /// keeps the split view for regular — in compact they own nothing and need a
-    /// stack from whatever hosts them.
+    /// width is required rather than incidental. Events and Flags also choose
+    /// that full-width list at accessibility sizes: their split sidebars leave
+    /// too little measure for the row and its state. Each renders
+    /// `list.navigationDestination(item:)` below that topology boundary and
+    /// keeps the split view otherwise — in list topology they own nothing and
+    /// need a stack from whatever hosts them.
     ///
     /// Measured both ways on iPhone, and both failures are silent-looking:
     /// with this returning `true` unconditionally, a screen *promoted* into the
     /// bar got no stack from `container(for:)` and tapping a row left
     /// `navigationBars` empty; and a screen converted to the compact shape while
     /// this still claimed a container drew no navigation bar at all.
-    func ownsNavigationContainer(compact: Bool) -> Bool {
+    func ownsNavigationContainer(compact: Bool, accessibilitySize: Bool = false) -> Bool {
         switch self {
-        case .dashboards, .events, .sessions, .flags, .people, .errorTracking, .insights: !compact
+        case .events, .flags:
+            !compact && !accessibilitySize
+        case .dashboards, .sessions, .people, .errorTracking, .insights:
+            !compact
         default: false
         }
     }

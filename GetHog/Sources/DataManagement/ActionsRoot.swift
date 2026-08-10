@@ -94,7 +94,8 @@ struct ActionsRoot: View {
             EmptyStateView(
                 title: "No actions",
                 systemImage: "cursorarrow.click.badge.clock",
-                message: "An action groups several events or clicks under one name so an insight can use them as a single step. Nobody has defined one in this project — actions are optional, and a project that queries raw events directly never needs any.",
+                message: "Actions group events or clicks into reusable steps for insights. "
+                    + "This project has none; projects that query raw events may not need them.",
                 // GetHog reads actions and cannot create one, so the only
                 // thing on offer is the console that can.
                 actionTitle: consoleURL == nil ? nil : "Define one in PostHog",

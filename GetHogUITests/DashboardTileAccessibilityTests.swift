@@ -32,6 +32,106 @@ final class DashboardTileAccessibilityTests: XCTestCase {
         "questionmark.square.dashed",
     ]
 
+    /// Regular-width dashboard detail is still a push on the Dashboards
+    /// `NavigationStack`, so it must retain the system Back affordance. A
+    /// bespoke button in the scroll content is not equivalent: it drops the
+    /// edge-pop contract and is no longer present once the user scrolls it away.
+    ///
+    /// `XCUIElement.swipeRight()` begins near the centre of the window rather
+    /// than at its leading edge, so XCUI cannot reliably synthesize the system
+    /// interactive-pop gesture. The native control has the stable system
+    /// identifier `BackButton`; requiring and tapping that control measures the
+    /// same navigation contract without mistaking the in-content "All
+    /// dashboards" button for Back.
+    func testIPadRegularDashboardDetailUsesNativeBackAndRestoresHubPath() throws {
+        let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
+        try XCTSkipUnless(
+            deviceName.localizedCaseInsensitiveContains("iPad"),
+            "The regular dashboard Back contract is measured on iPad."
+        )
+
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width > 700,
+            "The app window is compact; this contract measures regular-width navigation."
+        )
+
+        let dashboardTitle = "Example App metric 33"
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("The regular dashboard landing did not expose its hub.")
+        }
+
+        let search = app.searchFields.firstMatch
+        if !search.exists {
+            let searchButton = app.navigationBars["Dashboards"].buttons["Search"].firstMatch
+            guard DemoLaunch.wait(for: searchButton) else {
+                return XCTFail("The dashboard landing did not expose dashboard search.")
+            }
+            searchButton.tap()
+        }
+        guard DemoLaunch.wait(for: search) else {
+            return XCTFail("The dashboard search field never appeared.")
+        }
+        search.tap()
+        search.typeText(dashboardTitle)
+
+        let cards = hub.buttons.matching(
+            NSPredicate(
+                format: "identifier == %@",
+                "gethog.dashboard-card.\(DemoLaunch.dashboardID)"
+            )
+        )
+        let card = cards.firstMatch
+        // The project signal and its pinned chart preview intentionally own the
+        // first viewport. The filtered dashboard card is below that preview,
+        // and `LazyVGrid` does not publish it to XCUI until the one hub scroll
+        // brings the collection close enough to render.
+        for _ in 0..<6 where !(card.exists && card.frame.intersects(hub.frame)) {
+            hub.swipeUp(velocity: .slow)
+            DemoLaunch.pause(0.25)
+        }
+        guard DemoLaunch.wait(until: { card.exists && card.frame.intersects(hub.frame) }) else {
+            return XCTFail("The searched synthetic dashboard card did not become visible.")
+        }
+        XCTAssertEqual(cards.count, 1, "The filtered hub exposed an ambiguous dashboard card.")
+        card.tap()
+
+        let detail = app.navigationBars[dashboardTitle]
+        guard DemoLaunch.wait(for: detail) else {
+            return XCTFail("Selecting the regular dashboard card did not open its detail.")
+        }
+
+        let nativeBack = app.buttons["BackButton"].firstMatch
+        guard DemoLaunch.wait(for: nativeBack, timeout: 5) else {
+            return XCTFail(
+                "The regular dashboard detail has no native Back control; "
+                    + "an in-content All dashboards button is not a system navigation affordance."
+            )
+        }
+        XCTAssertTrue(nativeBack.isHittable, "The native dashboard Back control is not tappable.")
+        nativeBack.tap()
+
+        guard DemoLaunch.wait(for: hub) else {
+            return XCTFail("Native Back did not restore the regular dashboard hub.")
+        }
+        XCTAssertFalse(
+            detail.exists,
+            "Native Back left the dashboard detail selected instead of clearing the navigation path."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: search),
+            "Returning through the navigation path did not restore dashboard search."
+        )
+        XCTAssertEqual(
+            search.value as? String,
+            dashboardTitle,
+            "Returning through the navigation path rebuilt the dashboard hub instead of restoring its state."
+        )
+    }
+
     func testTilesAreButtonsWithOneCombinedLabel() {
         let app = DemoLaunch.launch(openURL: "gethog://dashboard/\(DemoLaunch.dashboardID)")
         DemoLaunch.settle(app)

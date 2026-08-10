@@ -37,6 +37,7 @@ struct OnboardingRecoveryPresentation: Equatable {
 /// scope list, links directly to the key page, and verifies before letting the user in.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var step: Step = .welcome
     @State private var region: PostHogRegion = .usCloud
@@ -46,6 +47,10 @@ struct OnboardingView: View {
     @State private var error: String?
 
     private enum Step { case welcome, region, key }
+
+    private var stepAnimation: Animation? {
+        reduceMotion ? nil : .snappy
+    }
 
     private var recoveryPresentation: OnboardingRecoveryPresentation? {
         guard let recovery = model.storedCredentialRecovery else { return nil }
@@ -90,14 +95,16 @@ struct OnboardingView: View {
                 if step != .welcome {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
-                            withAnimation(.snappy) { step = step == .key ? .region : .welcome }
+                            withAnimation(stepAnimation) {
+                                step = step == .key ? .region : .welcome
+                            }
                         } label: {
                             Label("Back", systemImage: "chevron.left")
                         }
                     }
                 }
             }
-            .animation(.snappy, value: step)
+            .animation(stepAnimation, value: step)
         }
     }
 
@@ -280,7 +287,7 @@ struct OnboardingView: View {
 
             if presentation.primaryAction == .retryStoredCredential {
                 Button("Use another key") {
-                    withAnimation(.snappy) { step = .region }
+                    withAnimation(stepAnimation) { step = .region }
                 }
                 .buttonStyle(.borderless)
             }
@@ -301,7 +308,7 @@ struct OnboardingView: View {
             } else {
                 selfHostedURL = ""
             }
-            withAnimation(.snappy) { step = .key }
+            withAnimation(stepAnimation) { step = .key }
         }
     }
 

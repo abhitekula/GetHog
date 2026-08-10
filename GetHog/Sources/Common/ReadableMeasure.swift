@@ -44,6 +44,15 @@ extension Theme {
         /// devices rather than as two different designs.
         static let pair: CGFloat = 460
 
+        /// A paragraph meant to be read rather than scanned as data.
+        ///
+        /// The empty-state sweep measured one sentence at 756pt on an 11-inch
+        /// iPad: a line long enough that its two halves cannot be taken in
+        /// together. 560pt matches the app's onboarding reading column, leaves
+        /// phone layouts untouched, and still gives accessibility text enough
+        /// width to avoid turning every sentence into a vertical ribbon.
+        static let prose: CGFloat = 560
+
         /// A label and value read from across a television room.
         ///
         /// 900pt keeps the two facts inside one glance on a 1920pt canvas while

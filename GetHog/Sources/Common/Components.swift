@@ -168,9 +168,12 @@ struct SectionEmptyState: View {
     @ViewBuilder
     private var actionButton: some View {
         if let actionTitle, let action {
-            Button(actionTitle, action: action)
-                .font(.subheadline.weight(.medium))
-                .buttonStyle(.borderless)
+            Button(action: action) {
+                Text(actionTitle)
+                    .font(.subheadline.weight(.medium))
+                    .minimumHitTarget()
+            }
+            .buttonStyle(.borderless)
         }
     }
 }

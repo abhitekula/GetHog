@@ -159,10 +159,9 @@ struct LLMAnalyticsRoot: View {
                 }
 
                 if filtered.isEmpty {
-                    EmptyStateView(
-                        title: "No matching traces",
+                    SectionEmptyState(
+                        text: "No matching traces. No traces matched “\(search)”.",
                         systemImage: "magnifyingglass",
-                        message: "No traces matched “\(search)”."
                     )
                     .listRowBackground(Color.clear)
                 }

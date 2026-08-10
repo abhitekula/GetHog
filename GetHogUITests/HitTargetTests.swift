@@ -72,18 +72,53 @@ final class HitTargetTests: XCTestCase {
         // off-screen row is still its laid-out size, so this would measure
         // correctly without scrolling; it scrolls anyway, because a hit-target
         // assertion about something that cannot be hit is worth nothing.
-        let chapterRow = app.otherElements
-            .containing(NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,"))
-            .allElementsBoundByIndex
-            .min { $0.frame.height < $1.frame.height }
-        guard let chapterRow else { return XCTFail("No container was found around Chapter 1.") }
-        let chapter = chapterRow.descendants(matching: .button)["Play the replay from 1 second"]
+        let chapterRows = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,")
+        )
+        XCTAssertEqual(chapterRows.count, 1, "Chapter 1 should expose one semantic row button.")
+        let chapterRow = chapterRows.firstMatch
+        let chapterSeekButtons = chapterRow.descendants(matching: .button).matching(
+            NSPredicate(format: "label == %@", "Play the replay from 1 second")
+        )
+        XCTAssertEqual(
+            chapterSeekButtons.count,
+            1,
+            "Chapter 1 should contain one seek button at its own offset."
+        )
+        let chapter = chapterSeekButtons.firstMatch
         XCTAssertTrue(reveal(chapter, in: app), "Chapter 1's seek button never came into reach.")
         chapter.assertMeetsMinimumHitTarget("Session chapter row seek button")
 
         let event = app.buttons["Play the replay from 7 seconds"]
         XCTAssertTrue(reveal(event, in: app), "The timeline row's seek button never came into reach.")
         event.assertMeetsMinimumHitTarget("Session timeline row seek button")
+    }
+
+    /// The replay's three compact filter strips each draw four caption-sized
+    /// glass chips. The glass is intentionally compact; the tappable and
+    /// accessibility frames still owe the same 44pt floor as every other
+    /// button. Querying the rendered frames catches the borderless-button trap
+    /// where a roomy modifier outside the label changes layout but not the hit
+    /// region.
+    func testReplayFilterChips() {
+        let app = DemoLaunch.launch(openURL: "gethog://replay/\(DemoLaunch.replaySessionID)")
+        let chipPredicate = NSPredicate(
+            format: "label MATCHES %@",
+            "^(All|Errors|Warnings|Logs|Failed|Fetch & XHR|Documents|Pageviews|Custom), [0-9]+ (entries|requests|events)$"
+        )
+        let chips = app.buttons.matching(chipPredicate)
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, chips.count < 12 {
+            DemoLaunch.pause(0.5)
+        }
+
+        XCTAssertEqual(
+            chips.count, 12,
+            "The replay should expose four console, four network and four timeline filter chips."
+        )
+        for chip in chips.allElementsBoundByIndex {
+            chip.assertMeetsMinimumHitTarget("Replay filter chip '\(chip.label)'")
+        }
     }
 
     /// Was 84.3×14.3pt — wide enough, and a third of the height a fingertip

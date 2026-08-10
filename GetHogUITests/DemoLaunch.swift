@@ -14,6 +14,15 @@ import XCTest
 /// variables are `DebugLaunch`'s and are inert in a build that does not set them.
 enum DemoLaunch {
 
+    /// The authored phone bar ordinary demo assertions measure.
+    ///
+    /// `NavPreferences` correctly persists a reader's edited bar in standard
+    /// defaults, which also means a simulator can carry that edit into a later
+    /// test run. Pinning the default through the existing DEBUG launch seam
+    /// keeps unrelated tests independent; customization tests replace this
+    /// value through `environment` below.
+    private static let defaultTabBar = "dashboards,events,sessions,flags"
+
     /// The authored session the demo player actually plays.
     ///
     /// `DemoTransport` answers any session id with the first row of
@@ -57,6 +66,7 @@ enum DemoLaunch {
         // spelling for XCUITest and simctl launches.
         if let tab { app.launchEnvironment["GETHOG_TAB"] = tab }
         if let openURL { app.launchEnvironment["GETHOG_OPEN_URL"] = openURL }
+        app.launchEnvironment["GETHOG_TAB_BAR"] = defaultTabBar
         for (key, value) in environment {
             app.launchEnvironment[key] = value
         }

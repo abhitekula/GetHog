@@ -1012,6 +1012,21 @@ struct AppTabStructureTests {
     func primaryTabsUnchanged() {
         #expect(AppTab.primary == [.dashboards, .events, .sessions, .flags])
     }
+
+    @Test("accessibility list topology receives a host navigation stack only where required")
+    func accessibilityListTopologyUsesHostNavigation() {
+        for tab in [AppTab.events, .flags] {
+            #expect(tab.ownsNavigationContainer(compact: false, accessibilitySize: false))
+            #expect(!tab.ownsNavigationContainer(compact: false, accessibilitySize: true))
+        }
+
+        // The accepted regular-width split views remain self-hosting at the
+        // same type size; Search always owns its existing stack separately.
+        for tab in [AppTab.dashboards, .sessions, .people, .errorTracking, .insights] {
+            #expect(tab.ownsNavigationContainer(compact: false, accessibilitySize: true))
+        }
+        #expect(!AppTab.search.ownsNavigationContainer(compact: false, accessibilitySize: true))
+    }
 }
 
 /// The app's own screens, now searched by the same field as the project's

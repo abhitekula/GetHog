@@ -106,6 +106,7 @@ struct ReplayConsoleCard: View {
                     .padding(.vertical, 5)
                     .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
                     .warmGlass(active: filter == option)
+                    .minimumHitTarget()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(option.rawValue), \(count) entries")
@@ -241,8 +242,10 @@ struct ReplayConsoleRow: View {
         .contentShape(.rect)
         .onTapGesture(perform: onToggle)
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(spokenLabel)
         .accessibilityHint(isExpanded ? "Collapses this entry" : "Expands this entry")
+        .accessibilityAction(.default, onToggle)
     }
 
     @ViewBuilder

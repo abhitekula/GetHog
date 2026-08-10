@@ -248,6 +248,55 @@ final class VisionWindowTests: XCTestCase {
         )
     }
 
+    /// Catches a wide Vision section mounting both its persistent roster and a
+    /// second copy of every destination above the content. The narrow strip is
+    /// a collapse fallback; when the roster is visible, it must be the single
+    /// destination authority.
+    func testWideSectionUsesSidebarWithoutDuplicateDestinationStrip() {
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            environment: ["GETHOG_VISION_CONTENT_WIDTH": "1280"]
+        )
+
+        let roster = app.collectionViews["gethog.vision.section-sidebar"].firstMatch
+        guard DemoLaunch.wait(until: {
+            roster.exists
+                && roster.isHittable
+                && roster.frame.width > 0
+                && roster.frame.height > 0
+        }) else {
+            return XCTFail("The wide Vision section did not expose its persistent roster.")
+        }
+
+        let duplicateStrip = app.scrollViews[
+            "gethog.vision.section-destination-strip"
+        ].firstMatch
+        XCTAssertFalse(
+            duplicateStrip.exists && duplicateStrip.isHittable,
+            "The wide Vision section duplicated every roster destination in a toolbar strip."
+        )
+
+        let events = roster.buttons.matching(
+            NSPredicate(format: "label == %@", "Events")
+        ).firstMatch
+        guard DemoLaunch.wait(until: { events.exists && events.isHittable }) else {
+            return XCTFail("The wide section roster did not offer Events.")
+        }
+        events.tap()
+
+        let eventFixture = app.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@",
+                "meteor_report_opened",
+                "meteor_report_opened"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: eventFixture),
+            "The single wide roster did not navigate to Events."
+        )
+    }
+
     func testRestoredLateMonitorRouteIsFullyVisibleAtNarrowWidth() {
         let width = "640"
         let app = DemoLaunch.launch(

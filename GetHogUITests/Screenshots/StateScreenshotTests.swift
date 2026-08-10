@@ -694,11 +694,34 @@ final class StateScreenshotTests: ScreenshotCase {
     /// generic rule would pick it and wait out its timeout on a screen that is
     /// working correctly.
     func testSupportTicketDetail() {
-        capturePushedDetail(
-            tab: "support",
-            titled: "Support",
-            named: "support-ticket-detail",
-            row: "Double charge on the July invoice"
+        capture(
+            launching: { Screenshot.launch($0, tab: "support") },
+            steps: [
+                ScreenshotStep("support-latest-preview-fallback") { app in
+                    guard DemoLaunch.wait(for: app.navigationBars["Support"]) else {
+                        return false
+                    }
+                    let ticket = self.elements(startingWith: "Ticket #7413", in: app).firstMatch
+                    guard self.scrollIntoView(ticket) else { return false }
+                    return ticket.label.contains("Latest message has no text preview")
+                },
+                ScreenshotStep("support-ticket-detail") { app in
+                    guard self.tapFirstRow(in: app, startingWith: "Ticket #7413") else {
+                        return false
+                    }
+                    guard self.waitUntil({ app.navigationBars["Ticket #7413"].exists }) else {
+                        return false
+                    }
+                    let blankMessage = app.staticTexts["This message has no text."]
+                    guard self.scrollToHeadOfPage(blankMessage) else { return false }
+                    return self.waitUntil {
+                        app.staticTexts[
+                            "Showing the latest message preview. "
+                                + "722 earlier messages aren't loaded."
+                        ].exists
+                    }
+                },
+            ]
         )
     }
 

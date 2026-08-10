@@ -154,6 +154,7 @@ struct ReplayNetworkCard: View {
                     .padding(.vertical, 5)
                     .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
                     .warmGlass(active: filter == option)
+                    .minimumHitTarget()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(option.rawValue), \(count) requests")
@@ -286,8 +287,10 @@ struct ReplayNetworkRow: View {
         // `.contain`, not `.combine`: the seek button lives inside this row, and
         // combining the subtree would flatten it out of VoiceOver's reach.
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(spokenLabel)
         .accessibilityHint(isExpanded ? "Collapses this request" : "Expands this request")
+        .accessibilityAction(.default, onToggle)
     }
 
     /// `host/path` for a third-party request, bare path for the site's own.

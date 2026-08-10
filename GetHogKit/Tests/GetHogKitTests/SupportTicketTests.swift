@@ -27,6 +27,17 @@ struct SupportTicketTests {
         try #require(try tickets().first { $0.ticketNumber == number })
     }
 
+    private func demoFixture(_ name: String) throws -> Data {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try Data(
+            contentsOf: repositoryRoot.appending(path: "GetHog/Resources/DemoData/\(name)")
+        )
+    }
+
     // MARK: - Empty state
 
     @Test("an empty page decodes")
@@ -66,6 +77,48 @@ struct SupportTicketTests {
             tickets.compactMap(\.ticketNumber)
                 == [7_413, 7_407, 7_417, 7_401, 7_411, 7_415, 7_409, 7_405, 7_403]
         )
+    }
+
+    /// Demo mode is a product surface, so its Support payload must exercise the
+    /// same authored conversation as the package contract. Generated numeric
+    /// identifiers used as counts make the inbox render hundreds of thousands
+    /// of unread messages and hide the message-thread relationship this demo is
+    /// meant to prove.
+    @Test("the app demo preserves the curated Support inbox and matching thread")
+    func appDemoPreservesCuratedSupportConversation() throws {
+        let ticketPage = try Page<SupportTicket>.decode(
+            from: demoFixture("conversations_tickets.json")
+        )
+        let messagePage = try Page<TicketMessage>.decode(
+            from: demoFixture("conversations_ticket_messages.json")
+        )
+
+        #expect(ticketPage.count == 9)
+        #expect(ticketPage.results.count == 9)
+        #expect(ticketPage.results.allSatisfy { $0.messageCount < 1_000 })
+        #expect(ticketPage.results.allSatisfy { $0.unreadTeamCount < 100 })
+
+        let selected = try #require(ticketPage.results.first { $0.ticketNumber == 7_407 })
+        #expect(selected.id == "018f9000-0000-7000-8000-000000000001")
+        #expect(selected.messageCount == 5)
+        #expect(selected.unreadTeamCount == 4)
+
+        #expect(messagePage.count == 5)
+        #expect(
+            messagePage.results.map(\.id) == [
+                "018f9000-0000-7000-8000-000000000500",
+                "018f9000-0000-7000-8000-000000000501",
+                "018f9000-0000-7000-8000-000000000502",
+                "018f9000-0000-7000-8000-000000000503",
+                "018f9000-0000-7000-8000-000000000504",
+            ]
+        )
+        #expect(
+            messagePage.results.first?.text
+                == "The downloaded archive opens, but every chart image is blank."
+        )
+        #expect(messagePage.results[2].author == .ai)
+        #expect(messagePage.results[2].authorName == "Atlas")
     }
 
     /// `assignee` is an object even when nobody is assigned — the `TicketAssignment`

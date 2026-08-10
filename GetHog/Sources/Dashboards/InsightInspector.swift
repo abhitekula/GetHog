@@ -198,10 +198,13 @@ private struct InsightDetailPresentation: ViewModifier {
                     Divider()
                     InsightSidePanel(presentation: presentation) { self.presentation = nil }
                         .frame(minWidth: 320, idealWidth: 380, maxWidth: 460)
-                        .transition(.move(edge: .trailing))
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing))
                 }
             }
-            .animation(.snappy(duration: 0.25), value: presentation?.id)
+            .animation(
+                reduceMotion ? nil : .snappy(duration: 0.25),
+                value: presentation?.id
+            )
             // Lets the enclosing split view give up its sidebar while an
             // insight is open: on an 11-inch iPad the sidebar and the panel
             // cannot both be afforded, and the dashboard list is the one you do

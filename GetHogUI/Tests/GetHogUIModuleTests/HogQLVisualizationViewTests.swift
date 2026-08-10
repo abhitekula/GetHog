@@ -239,6 +239,91 @@ struct HogQLVisualizationViewTests {
         #endif
     }
 
+    @MainActor
+    @Test("dated chart preparation parses each unique axis value once per input identity")
+    func datedChartPreparationIsIdentityCached() throws {
+        let visualization = try Self.visualization(
+            display: "ActionsLineGraph",
+            chartSettings: """
+            "chartSettings": {
+              "xAxis": {"column": "timestamp"},
+              "yAxis": [{"column": "opened"}, {"column": "clicked"}]
+            },
+            """,
+            columns: #"["timestamp", "opened", "clicked"]"#,
+            types: #"[["timestamp", "DateTime64(6)"], ["opened", "UInt64"], ["clicked", "UInt64"]]"#,
+            rows: #"[["2026-02-01T00:00:00Z", 2, 1], ["2026-02-02T00:00:00Z", 4, 3]]"#
+        )
+        let data = try #require(visualization.chartData)
+        var parsedValues: [String] = []
+        let cache = HogQLDatedChartCache { raw, _, _ in
+            parsedValues.append(raw)
+            return Date(timeIntervalSinceReferenceDate: Double(parsedValues.count))
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        let utc = try #require(TimeZone(secondsFromGMT: 0))
+        calendar.timeZone = utc
+
+        let first = cache.model(for: data, calendar: calendar, timeZone: utc)
+        let repeated = cache.model(for: data, calendar: calendar, timeZone: utc)
+
+        #expect(first == repeated)
+        #expect(first.points?.count == 4)
+        #expect(parsedValues == [
+            "2026-02-01T00:00:00Z",
+            "2026-02-02T00:00:00Z",
+        ])
+
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        calendar.timeZone = newYork
+        _ = cache.model(for: data, calendar: calendar, timeZone: newYork)
+        #expect(parsedValues == [
+            "2026-02-01T00:00:00Z",
+            "2026-02-02T00:00:00Z",
+            "2026-02-01T00:00:00Z",
+            "2026-02-02T00:00:00Z",
+        ])
+    }
+
+    @MainActor
+    @Test("dated chart layout reuses its preparation cache across body revisions")
+    func datedChartLayoutReusesPreparationCache() throws {
+        let visualization = try Self.visualization(
+            display: "ActionsLineGraph",
+            columns: #"["timestamp", "value"]"#,
+            types: #"[["timestamp", "DateTime64(6)"], ["value", "UInt64"]]"#,
+            rows: #"[["2026-02-01T00:00:00Z", 2], ["2026-02-02T00:00:00Z", 4]]"#
+        )
+        var parsedValues: [String] = []
+        let cache = HogQLDatedChartCache { raw, _, _ in
+            parsedValues.append(raw)
+            return Date(timeIntervalSinceReferenceDate: Double(parsedValues.count))
+        }
+        let renderer = ImageRenderer(
+            content: HogQLVisualizationView(
+                visualization: visualization,
+                compact: false,
+                title: "Synthetic dated chart",
+                datedChartCache: cache
+            )
+        )
+        for iteration in 0..<5 {
+            renderer.proposedSize = ProposedViewSize(
+                width: 620 + Double(iteration % 2),
+                height: 360
+            )
+            #if canImport(AppKit)
+            _ = try #require(renderer.nsImage)
+            #elseif canImport(UIKit)
+            _ = try #require(renderer.uiImage)
+            #endif
+        }
+        #expect(parsedValues == [
+            "2026-02-01T00:00:00Z",
+            "2026-02-02T00:00:00Z",
+        ])
+    }
+
     private static func visualization(
         display: String,
         chartSettings: String = "",

@@ -146,6 +146,8 @@ extension View {
 /// and still has to, because a `List` draws over anything behind it.
 private struct ScreenChrome: ViewModifier {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     func body(content: Content) -> some View {
         #if os(visionOS) || os(tvOS)
@@ -170,12 +172,65 @@ private struct ScreenChrome: ViewModifier {
                         .accessibilityHidden(true)
                 }
             }
+        #elseif os(iOS)
+        content
+            .background(Theme.pageBackground)
+            // A navigation subtitle is deliberately compact, but at AX5 that
+            // compactness becomes truncation: the organization survives while
+            // the project — the part that scopes every number — disappears.
+            // Keep the native subtitle at ordinary sizes and spend one content
+            // row only where a compact-width user has explicitly asked for the
+            // larger reading measure.
+            .navigationSubtitle(usesAccessibilityIdentityStamp ? "" : subtitle)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if usesAccessibilityIdentityStamp {
+                    accessibilityIdentityStamp
+                }
+            }
         #else
         content
             .background(Theme.pageBackground)
             .navigationSubtitle(subtitle)
         #endif
     }
+
+    #if os(iOS)
+    private var usesAccessibilityIdentityStamp: Bool {
+        horizontalSizeClass == .compact && dynamicTypeSize.isAccessibilitySize
+    }
+
+    /// A correctness-critical address gets a reading measure of its own at
+    /// accessibility sizes instead of being compressed into navigation chrome.
+    /// The names remain separate accessibility elements because each half can
+    /// change independently when the user switches organization or project.
+    private var accessibilityIdentityStamp: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if model.isMultiOrganization,
+               let organization = model.selectedOrganization?.name,
+               !organization.isEmpty {
+                Text(organization)
+                    .font(Theme.Typography.caption.weight(.semibold))
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let project = model.selectedProject?.name, !project.isEmpty {
+                Text(project)
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Space.l)
+        .padding(.vertical, Theme.Space.s)
+        .background(Theme.pageBackground)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityElement(children: .contain)
+    }
+    #endif
 
     /// The project, and the organization too once there is more than one.
     ///
@@ -598,10 +653,11 @@ struct StatStrip<Content: View>: View {
 
 /// The app's empty state.
 ///
-/// Wraps `ContentUnavailableView` so the glyph, tone and action placement are
-/// decided once. Most of these screens are legitimately empty against a real
-/// project, so an empty state here is a normal outcome and should look
-/// deliberate rather than broken.
+/// Uses `ContentUnavailableView` wherever its native layout is stable, and a
+/// semantics-equivalent wide composition for ordinary iPad text, so the glyph,
+/// tone and action placement are decided once. Most of these screens are
+/// legitimately empty against a real project, so an empty state here is a
+/// normal outcome and should look deliberate rather than broken.
 ///
 /// Which is why it carries `appGround()` itself rather than trusting its host.
 /// `ScreenChrome` covers every root, but this view is also the *detail column* of
@@ -619,8 +675,31 @@ struct EmptyStateView: View {
     var action: (() -> Void)?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    @ViewBuilder
     var body: some View {
+        #if os(iOS)
+        if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
+            readableWideContent
+                .appGround()
+        } else {
+            systemContent
+                .appGround()
+        }
+        #else
+        systemContent
+            .appGround()
+        #endif
+    }
+
+    /// `ContentUnavailableView` remains the native compact-width, accessibility
+    /// type, and non-iOS presentation. At AX sizes it owns the scrolling that
+    /// keeps the action reachable. Constraining either it or its description to
+    /// a finite width on iPad causes the accessibility tree to stop responding
+    /// while SwiftUI resolves the empty-state layout, so the wide presentation
+    /// below owns only the ordinary-type adaptation explicitly.
+    private var systemContent: some View {
         ContentUnavailableView {
             Label {
                 // The headline states the only thing on the screen. It has to be
@@ -675,8 +754,57 @@ struct EmptyStateView: View {
                     .foregroundStyle(Theme.inkOnAccent)
             }
         }
-        .appGround()
     }
+
+    #if os(iOS)
+    /// The regular-width equivalent of `ContentUnavailableView`.
+    ///
+    /// It preserves the native content order and accessible elements, but the
+    /// prose lives in a layout we own and can therefore stop at a readable
+    /// measure without putting a finite frame inside `ContentUnavailableView`.
+    private var readableWideContent: some View {
+        VStack(spacing: Theme.Space.l) {
+            if let illustration {
+                BrandIllustrationView(
+                    illustration: illustration,
+                    size: dynamicTypeSize.isAccessibilitySize ? 112 : 152
+                )
+            } else {
+                Image(systemName: systemImage)
+                    .font(.system(size: 48, weight: .regular))
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(spacing: Theme.Space.s) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                if let message {
+                    Text(message)
+                        .font(.body)
+                        .foregroundStyle(Theme.Ink.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.glassProminent)
+                    .foregroundStyle(Theme.inkOnAccent)
+            }
+        }
+        .padding(.horizontal, Theme.Space.l)
+        .padding(.vertical, Theme.Space.xl)
+        .frame(maxWidth: Theme.Measure.prose)
+    }
+    #endif
 }
 
 // MARK: - Filter bar

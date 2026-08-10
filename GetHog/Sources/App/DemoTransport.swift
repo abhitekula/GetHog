@@ -1039,7 +1039,7 @@ struct DemoTransport: HTTPTransport {
         // Each route serves its separately declared synthetic fixture so their
         // distinct response shapes remain deterministic.
         if path.contains("/conversations/tickets/") {
-            if path.hasSuffix("/messages/") { return load("conversations_ticket_messages") }
+            if path.hasSuffix("/messages/") { return supportTicketMessages(for: path) }
             // Same list-versus-detail split as dashboards: the list ends in
             // `tickets/`, a detail request ends in an id.
             return path.hasSuffix("/tickets/")
@@ -1287,6 +1287,70 @@ struct DemoTransport: HTTPTransport {
                 envelope(
                     "demo_fixture_unreadable",
                     "\(name).json has no first row to serve as a detail response."
+                ),
+                status: 500
+            )
+        }
+        return Reply(data)
+    }
+
+    /// The five authored messages belong specifically to ticket #7407. Every
+    /// other known demo ticket gets a deterministic preview derived from its
+    /// own aggregate row, rather than silently inheriting that unrelated
+    /// archive merely because all message endpoints share the same suffix.
+    ///
+    /// A preview is represented as the terminal one-row page: `count` remains
+    /// the ticket's true total, while `previous` makes the omitted history
+    /// explicit. The detail screen reports that partial-page state instead of
+    /// making one loaded row look like the whole conversation.
+    private static func supportTicketMessages(for path: String) -> Reply {
+        let components = path.split(separator: "/")
+        guard let ticketsIndex = components.firstIndex(of: "tickets"),
+              components.indices.contains(ticketsIndex + 1)
+        else { return unrouted(path) }
+
+        let ticketID = String(components[ticketsIndex + 1])
+        if ticketID == "018f9000-0000-7000-8000-000000000001" {
+            return load("conversations_ticket_messages")
+        }
+
+        guard let page = loadData("conversations_tickets"),
+              let object = try? JSONSerialization.jsonObject(with: page) as? [String: Any],
+              let tickets = object["results"] as? [[String: Any]],
+              let ticket = tickets.first(where: { $0["id"] as? String == ticketID }),
+              let messageCount = ticket["message_count"] as? Int,
+              messageCount > 0
+        else { return unrouted(path) }
+
+        let messageID = ticketID.replacingOccurrences(of: "-8000-", with: "-9000-")
+        var message: [String: Any] = [
+            "id": messageID,
+            "content": ticket["last_message_text"] as? String ?? "",
+            "rich_content": NSNull(),
+            "author_type": "unknown",
+            "author_name": NSNull(),
+            "is_private": false,
+        ]
+        if let createdAt = ticket["last_message_at"] as? String {
+            message["created_at"] = createdAt
+        } else {
+            message["created_at"] = NSNull()
+        }
+
+        let previous: Any = messageCount > 1
+            ? "https://app.example.com\(path)?limit=1&offset=\(messageCount - 2)"
+            : NSNull()
+        let response: [String: Any] = [
+            "count": messageCount,
+            "next": NSNull(),
+            "previous": previous,
+            "results": [message],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: response) else {
+            return Reply(
+                envelope(
+                    "demo_fixture_unreadable",
+                    "conversations_tickets.json could not produce \(ticketID)'s message preview."
                 ),
                 status: 500
             )
