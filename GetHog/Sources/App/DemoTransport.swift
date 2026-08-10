@@ -1008,9 +1008,9 @@ struct DemoTransport: HTTPTransport {
         // matched on the *full* four-segment path and nothing here matches
         // `/conversations/` alone — a route that did would shadow whichever of
         // the two came second, and it would do it silently, because both answer
-        // a well-formed `Page`. Max has no fixture, so it falls through to the
-        // empty page below, which is the honest stand-in and must stay
-        // reachable. `DemoTransportTests` asserts both halves of that.
+        // a well-formed `Page`. Max's collection is an authored empty suffix at
+        // the bottom of this function; keeping the Support match above it makes
+        // both answers reachable. `DemoTransportTests` asserts both halves.
         //
         // Each route serves its separately declared synthetic fixture so their
         // distinct response shapes remain deterministic.
@@ -1034,6 +1034,14 @@ struct DemoTransport: HTTPTransport {
         // DecodingError.typeMismatch … Expected to decode Array<Any> but found a
         // dictionary instead" — a Swift type name shown to a user, for a project
         // that has two perfectly good group types.
+        // The current saved-heatmap collection lives at the project-root
+        // `/saved/` path. Match its full synthetic-project path: a generic
+        // `/saved/` suffix could silently claim another product's collection,
+        // and a detail below this collection must remain an explicit 501.
+        if path.hasSuffix("/api/projects/1001/saved/") {
+            return load("heatmap_screenshots_saved")
+        }
+
         // The one route here whose response is **not JSON**. `/content/` serves
         // the rendered page image, so it answers bytes the JSON fallback below
         // could never stand in for — handed `{"count":0,…}`, the image decoder
@@ -1462,6 +1470,17 @@ struct DemoTransport: HTTPTransport {
     private static let knownEmptyCollections = [
         "/actions/",
         "/annotations/",
+        "/tasks/",
+        "/signals/reports/",
+        "/heatmaps/",
+        "/elements/stats/",
+        "/hog_functions/",
+        "/hog_flows/",
+        "/endpoints/",
+        "/subscriptions/",
+        "/batch_exports/",
+        "/early_access_feature/",
+        "/conversations/",
     ]
 
     // Deterministic fixture routing preserves the response shape and status for this case.

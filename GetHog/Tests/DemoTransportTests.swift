@@ -581,21 +581,15 @@ struct DemoTransportTests {
         #expect(!tickets.results.isEmpty)
         #expect(tickets.results.contains { $0.ticketNumber == 209 })
 
-        // Max's own path must not reach the ticket fixture. It has no fixture
-        // of its own — and since the empty-page catch-all was replaced, that is
-        // no longer answered as an empty collection: Max is not in
-        // `authoredEmptyCollections`, because the demo does not define assistant
-        // threads. It answers 501 and says so, which the screen
-        // reports as a failure rather than as "you have no conversations".
-        //
-        // The assertion this test exists for is unchanged and is the first line:
-        // whatever Max gets, it must not be Support's tickets.
+        // Max's own collection is explicitly authored empty. It must not reach
+        // the ticket fixture, and the exact collection route must not make an
+        // unknown Max detail look like an empty list.
         let (maxBody, maxResponse) = try await reply(
-            for: "/api/projects/1001/conversations/",
-            query: [URLQueryItem(name: "limit", value: "50")]
+            for: PostHogAPI.conversations(projectID: Self.projectID)
         )
         #expect(!String(decoding: maxBody, as: UTF8.self).contains("ticket_number"))
-        #expect(maxResponse.statusCode == 501)
+        #expect(maxResponse.statusCode == 200)
+        #expect((try? Page<MaxConversation>.decode(from: maxBody))?.results.isEmpty == true)
     }
 
     /// The ticket thread is a sub-resource of a path that already matches, so it
@@ -1250,8 +1244,17 @@ extension DemoTransportTests {
     @Test("a path with no fixture fails loudly instead of answering an empty page")
     func unroutedPathsAreNotEmptyPages() async throws {
         let unrouted: [(String, Endpoint)] = [
-            ("hog flows", PostHogAPI.hogFlows(projectID: Self.projectID)),
-            ("batch exports", PostHogAPI.batchExports(projectID: Self.projectID)),
+            (
+                "unknown Max detail",
+                PostHogAPI.conversation(
+                    projectID: Self.projectID,
+                    conversationID: "not-authored"
+                )
+            ),
+            (
+                "unknown saved clickmap detail",
+                PostHogAPI.savedHeatmap(projectID: Self.projectID, shortID: "not-authored")
+            ),
         ]
 
         for (name, endpoint) in unrouted {
@@ -1293,6 +1296,97 @@ extension DemoTransportTests {
             #expect(response.statusCode == 200, "\(path) is an intentional empty fixture, not a gap")
             #expect(try Page<Annotation>.decode(from: data).results.isEmpty)
         }
+    }
+
+    /// These two routes are the terminal empty states rendered by the Vision
+    /// catalog sweep. Exercise the production endpoint builders so a path rename
+    /// cannot leave the test passing against a hand-written URL the app no
+    /// longer sends.
+    @Test("empty Inbox and Signals routes decode as authored empty pages")
+    func authoredEmptyMonitorCollectionsStayEmpty() async throws {
+        let (tasksData, tasksResponse) = try await reply(
+            for: PostHogAPI.tasks(projectID: Self.projectID)
+        )
+        #expect(tasksResponse.statusCode == 200)
+
+        let (reportsData, reportsResponse) = try await reply(
+            for: PostHogAPI.signalReports(projectID: Self.projectID)
+        )
+        #expect(reportsResponse.statusCode == 200)
+
+        // Decode independently after both requests. A 501 envelope is not a
+        // Page and must fail both expectations without its first decoding error
+        // preventing the Signals endpoint from being exercised.
+        #expect((try? Page<AgentTask>.decode(from: tasksData))?.results.isEmpty == true)
+        #expect((try? Page<SignalReport>.decode(from: reportsData))?.results.isEmpty == true)
+    }
+
+    /// Every collection this rendered Vision catalog sweep reaches must have an
+    /// authored demo answer. Drive the production builders independently so an
+    /// early 501 cannot prevent later routes from being exercised, and decode
+    /// each body using the concrete type its screen consumes.
+    @Test("rendered catalog collections have typed authored demo answers")
+    @MainActor
+    func renderedCatalogCollectionsResolve() async throws {
+        let (heatmapData, heatmapResponse) = try await reply(
+            for: PostHogAPI.heatmap(projectID: Self.projectID)
+        )
+        let (elementsData, elementsResponse) = try await reply(
+            for: PostHogAPI.elementStats(projectID: Self.projectID)
+        )
+        let (savedData, savedResponse) = try await reply(
+            for: PostHogAPI.savedHeatmaps(projectID: Self.projectID)
+        )
+        let (pipelinesData, pipelinesResponse) = try await reply(
+            for: PipelinesStore.hogFunctionsEndpoint(projectID: Self.projectID)
+        )
+        let (workflowsData, workflowsResponse) = try await reply(
+            for: PostHogAPI.hogFlows(projectID: Self.projectID)
+        )
+        let (endpointsData, endpointsResponse) = try await reply(
+            for: PostHogAPI.queryEndpoints(projectID: Self.projectID)
+        )
+        let (subscriptionsData, subscriptionsResponse) = try await reply(
+            for: PostHogAPI.subscriptions(projectID: Self.projectID)
+        )
+        let (exportsData, exportsResponse) = try await reply(
+            for: PostHogAPI.batchExports(projectID: Self.projectID)
+        )
+        let (earlyAccessData, earlyAccessResponse) = try await reply(
+            for: PostHogAPI.earlyAccessFeatures(projectID: Self.projectID)
+        )
+        let (maxData, maxResponse) = try await reply(
+            for: PostHogAPI.conversations(projectID: Self.projectID)
+        )
+
+        #expect(heatmapResponse.statusCode == 200, "heatmap coordinates need an authored answer")
+        #expect(elementsResponse.statusCode == 200, "element stats need an authored answer")
+        #expect(savedResponse.statusCode == 200, "saved clickmaps need their fixture")
+        #expect(pipelinesResponse.statusCode == 200, "pipelines need an authored empty page")
+        #expect(workflowsResponse.statusCode == 200, "workflows need an authored empty page")
+        #expect(endpointsResponse.statusCode == 200, "endpoints need an authored empty page")
+        #expect(subscriptionsResponse.statusCode == 200, "subscriptions need an authored empty page")
+        #expect(exportsResponse.statusCode == 200, "batch exports need an authored empty page")
+        #expect(earlyAccessResponse.statusCode == 200, "early access needs an authored empty page")
+        #expect(maxResponse.statusCode == 200, "Max needs an authored empty page")
+
+        #expect((try? HeatmapResponse.decode(from: heatmapData))?.results.isEmpty == true)
+        #expect((try? Page<ElementStat>.decode(from: elementsData))?.results.isEmpty == true)
+        let saved = try? Page<SavedHeatmap>.decode(from: savedData)
+        #expect(saved?.results.isEmpty == false)
+        #expect(saved?.results.contains(where: \.isRenderable) == true)
+        #expect((try? Page<HogFunction>.decode(from: pipelinesData))?.results.isEmpty == true)
+        #expect((try? Page<Workflow>.decode(from: workflowsData))?.results.isEmpty == true)
+        #expect((try? Page<QueryEndpoint>.decode(from: endpointsData))?.results.isEmpty == true)
+        #expect(
+            (try? Page<InsightSubscription>.decode(from: subscriptionsData))?.results.isEmpty
+                == true
+        )
+        #expect((try? Page<BatchExport>.decode(from: exportsData))?.results.isEmpty == true)
+        #expect(
+            (try? Page<EarlyAccessFeature>.decode(from: earlyAccessData))?.results.isEmpty == true
+        )
+        #expect((try? Page<MaxConversation>.decode(from: maxData))?.results.isEmpty == true)
     }
 
     /// Survey results, which are two HogQL queries and were therefore answered
