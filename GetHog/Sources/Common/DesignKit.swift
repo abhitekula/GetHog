@@ -406,9 +406,16 @@ struct DataRow: View {
     /// nothing.
     var titleTruncatesMiddle = false
     var accessory: RowAccessory = .chevron
+    /// True only when tvOS repaints the row behind this content as part of its
+    /// native focus treatment. Most `DataRow`s live inside authored dark cards,
+    /// so they keep the dark palette while focused. A native `NavigationLink`
+    /// row is the exception: its focus surface becomes bright and its semantic
+    /// foreground must be allowed to become dark with it.
+    var usesNativeTelevisionFocusSurface = false
 
+    @ViewBuilder
     var body: some View {
-        layout
+        let row = layout
             // Nothing a row renders is prose: titles are exception types, event
             // names and addresses, subtitles are keys and paths, footnotes are
             // counts and dates. Typesetting them as prose inserted soft hyphens
@@ -431,14 +438,20 @@ struct DataRow: View {
             // it was offered rather than asking for a different one, so reading
             // the width cannot change it.
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            #if os(tvOS)
+        #if os(tvOS)
+        if usesNativeTelevisionFocusSurface {
+            row
+        } else {
             // tvOS changes a focused control's effective appearance to light.
             // The row card itself remains on the dark television surface, so
             // allowing semantic text colours to follow that transient value
             // turns every label near-black without repainting the card. Keep
             // DataRow's authored dark-card palette stable through focus.
-            .environment(\.colorScheme, .dark)
-            #endif
+            row.environment(\.colorScheme, .dark)
+        }
+        #else
+        row
+        #endif
     }
 
     /// Whether the row gives up on fitting its parts side by side.

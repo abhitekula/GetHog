@@ -13,7 +13,11 @@ final class TVAmbientTests: XCTestCase {
     }
 
     private func wallboard(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)["tv-ambient-wallboard"]
+        // The tab applies its root identifier outside Ambient's combined
+        // accessibility element. tvOS correctly flattens that child into the
+        // reachable tab-content node, so the stable destination root is the
+        // user-observable wallboard contract.
+        app.descendants(matching: .any)["gethog.tv.root.ambient"]
     }
 
     func testAmbientShowsAPinnedMetricAndReturnsOnMenu() {

@@ -453,7 +453,12 @@ struct DashboardsRoot: View {
             footnote: dashboard.lastRefresh.map {
                 "Updated \($0.formatted(.relative(presentation: .named)))"
             },
-            accessory: .chevron
+            accessory: .chevron,
+            // The compact television list uses the native NavigationLink
+            // focus slab, which becomes bright and therefore needs semantic
+            // foregrounds to follow that effective appearance. Card-style TV
+            // rows keep DataRow's stable dark palette instead.
+            usesNativeTelevisionFocusSurface: true
         )
     }
 
