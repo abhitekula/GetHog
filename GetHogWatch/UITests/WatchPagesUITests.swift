@@ -229,11 +229,15 @@ final class WatchPagesUITests: XCTestCase {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "activity"])
 
         XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["meteor_report_opened"], timeout: 60))
-        let honestFooter = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Last 24 h", "No events in the last")
+        let returnedFooter = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "4 newest · last 24 h")
+        ).firstMatch
+        let cappedFooter = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "newest 10")
         ).firstMatch
         app.swipeUp()
-        XCTAssertTrue(DemoLaunch.wait(for: honestFooter, timeout: 30))
+        XCTAssertTrue(DemoLaunch.wait(for: returnedFooter, timeout: 30))
+        XCTAssertFalse(cappedFooter.exists)
         XCTAssertFalse(app.staticTexts["Not checked yet"].exists)
     }
 }

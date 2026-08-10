@@ -70,8 +70,14 @@ struct WatchActivityTests {
         #expect(
             WatchActivityFooter.text(
                 lineCount: 4, capturedAt: now.addingTimeInterval(-600), now: now
-            ) == "Last \(QueryBudget.wrist.hours) h · newest \(QueryBudget.wrist.pageSize) "
-                + "· updated 10 min ago"
+            ) == "4 newest · last 24 h · updated 10 min ago"
+        )
+        #expect(
+            WatchActivityFooter.text(
+                lineCount: WatchActivity.maxLines,
+                capturedAt: now.addingTimeInterval(-600),
+                now: now
+            ) == "Newest 10 shown · last 24 h · updated 10 min ago"
         )
     }
 

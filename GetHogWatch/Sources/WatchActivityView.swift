@@ -69,8 +69,12 @@ enum WatchActivityFooter {
         // page is describing a query it did not make.
         let hours = WatchModel.budget.hours
         let age = WatchAge.stamp(capturedAt: capturedAt, now: now).lowercasedStamp
-        if lineCount == 0 { return "No events in the last \(hours) h · \(age)" }
-        return "Last \(hours) h · newest \(WatchActivity.maxLines) · \(age)"
+        let boundedCount = min(max(lineCount, 0), WatchActivity.maxLines)
+        if boundedCount == 0 { return "No events in the last \(hours) h · \(age)" }
+        if boundedCount < WatchActivity.maxLines {
+            return "\(boundedCount) newest · last \(hours) h · \(age)"
+        }
+        return "Newest \(WatchActivity.maxLines) shown · last \(hours) h · \(age)"
     }
 }
 
