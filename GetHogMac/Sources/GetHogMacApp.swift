@@ -2,6 +2,55 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+#if DEBUG
+/// Builds launch-time models for deterministic DEBUG automation.
+///
+/// The force-keyless branch is first and uses both an empty, process-local
+/// credential store and the bundled synthetic transport. It therefore ignores
+/// credentials left in the Keychain and cannot make a network request.
+@MainActor
+enum MacAppModelFactory {
+    static func makeModel(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        demoModeEnabled: Bool = DemoTransport.isEnabled
+    ) -> AppModel {
+        if environment["GETHOG_FORCE_KEYLESS"] == "1" {
+            return AppModel(store: InMemoryTokenStore(), transport: DemoTransport())
+        }
+
+        // Demo mode drives the real UI from recorded API responses, so every
+        // screen can be exercised and screenshotted without a live credential.
+        if demoModeEnabled {
+            return AppModel(
+                store: InMemoryTokenStore(
+                    credential: StoredCredential(key: "demo", region: .usCloud)
+                ),
+                transport: DemoTransport()
+            )
+        }
+
+        // Live end-to-end runs against a real project without going through
+        // onboarding each launch; in-memory on purpose so the key dies with
+        // the process. See GetHogApp.makeModel.
+        if let key = environment["GETHOG_API_KEY"], !key.isEmpty {
+            let region: PostHogRegion = switch environment["GETHOG_REGION"]?.lowercased() {
+            case "eu": .euCloud
+            case let host? where host.hasPrefix("http"):
+                URL(string: host).map { PostHogRegion.selfHosted($0) } ?? .usCloud
+            default: .usCloud
+            }
+            return AppModel(
+                store: InMemoryTokenStore(
+                    credential: StoredCredential(key: key, region: region)
+                )
+            )
+        }
+
+        return AppModel()
+    }
+}
+#endif
+
 @main
 struct GetHogMacApp: App {
     @State private var model: AppModel
@@ -161,35 +210,10 @@ struct GetHogMacApp: App {
 
     private static func makeModel() -> AppModel {
         #if DEBUG
-        // Demo mode drives the real UI from recorded API responses, so every
-        // screen can be exercised and screenshotted without a live credential.
-        if DemoTransport.isEnabled {
-            return AppModel(
-                store: InMemoryTokenStore(
-                    credential: StoredCredential(key: "demo", region: .usCloud)
-                ),
-                transport: DemoTransport()
-            )
-        }
-
-        // Live end-to-end runs against a real project without going through
-        // onboarding each launch; in-memory on purpose so the key dies with
-        // the process. See GetHogApp.makeModel.
-        let env = ProcessInfo.processInfo.environment
-        if let key = env["GETHOG_API_KEY"], !key.isEmpty {
-            let region: PostHogRegion = switch env["GETHOG_REGION"]?.lowercased() {
-            case "eu": .euCloud
-            case let host? where host.hasPrefix("http"):
-                URL(string: host).map { PostHogRegion.selfHosted($0) } ?? .usCloud
-            default: .usCloud
-            }
-            return AppModel(
-                store: InMemoryTokenStore(
-                    credential: StoredCredential(key: key, region: region)
-                )
-            )
-        }
-        #endif
+        return MacAppModelFactory.makeModel()
+        #else
+        // DEBUG launch environment seams do not exist in the shipped binary.
         return AppModel()
+        #endif
     }
 }
