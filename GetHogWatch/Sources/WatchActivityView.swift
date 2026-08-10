@@ -2,7 +2,7 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
-/// Page 4: one trimmed line per event.
+/// Page 4: one bounded two-line identity per event.
 ///
 /// The caps live in `WatchActivity`, not here, so the view can only draw what
 /// the reducer let through. There is no detail screen behind a row on purpose:
@@ -23,10 +23,13 @@ struct WatchActivityView: View {
                     }
                 }
                 ForEach(model.activity) { line in
+                    let identity = WatchActivityIdentityPresentation(event: line.event)
                     VStack(alignment: .leading) {
-                        Text(line.event)
+                        Text(identity.displayText)
                             .font(Theme.Typography.body)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel(identity.accessibilityLabel)
                         if let timestamp = line.timestamp {
                             Text(timestamp, format: .relative(presentation: .named))
                                 .font(Theme.Typography.caption)
@@ -56,6 +59,24 @@ struct WatchActivityView: View {
         ))
         .font(Theme.Typography.caption)
         .foregroundStyle(Theme.Ink.tertiary)
+    }
+}
+
+/// Preserves the event identity while giving SwiftUI legal wrap points inside
+/// identifier-shaped names. An underscore remains visible; the following
+/// zero-width space is only a line-break opportunity.
+struct WatchActivityIdentityPresentation: Equatable {
+    static let breakOpportunity = "\u{200B}"
+
+    let displayText: String
+    let accessibilityLabel: String
+
+    init(event: String) {
+        displayText = event.replacingOccurrences(
+            of: "_",
+            with: "_\(Self.breakOpportunity)"
+        )
+        accessibilityLabel = event
     }
 }
 

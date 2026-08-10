@@ -53,15 +53,16 @@ struct WatchHealthView: View {
     }
 
     private func watchRow(_ row: WatchHealth.WatchRow) -> some View {
-        HStack(spacing: Theme.Space.s) {
-            Circle()
-                .fill(row.isFiring ? Theme.Status.critical : Theme.Status.good)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading) {
-                Text(row.title)
-                    .font(Theme.Typography.body)
-                    .lineLimit(1)
+        VStack(alignment: .leading) {
+            Text(row.title)
+                .font(Theme.Typography.body)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Theme.Space.xs) {
+                Circle()
+                    .fill(row.isFiring ? Theme.Status.critical : Theme.Status.good)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
                 Text(row.summary)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Ink.secondary)
@@ -96,7 +97,8 @@ struct WatchHealthView: View {
                         Text("\(name) · \(pulse.topOccurrences.compactFormatted)×")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Ink.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .accessibilityElement(children: .combine)

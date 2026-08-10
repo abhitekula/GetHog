@@ -136,6 +136,14 @@ struct WatchMetricsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    if let snapshot = model.snapshot {
+                        Text(snapshot.projectName)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Ink.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     switch WatchMetricsContentState(
                         phase: model.phase,
                         hasHeadline: model.headlineMetric != nil,
@@ -190,7 +198,7 @@ struct WatchMetricsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle(model.snapshot?.projectName ?? "Metrics")
+            .navigationTitle("Metrics")
         }
     }
 

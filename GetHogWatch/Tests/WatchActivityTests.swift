@@ -16,8 +16,8 @@ struct WatchActivityTests {
         #expect(lines.count == WatchActivity.maxLines)
     }
 
-    @Test("an event name longer than one wrist line is trimmed, not wrapped")
-    func trimsLongEventNames() throws {
+    @Test("a long event name survives for two-line rendering")
+    func preservesLongEventNamesForTwoLineRendering() throws {
         let long = String(repeating: "e", count: 70)
         let lines = WatchActivity.lines(from: try response("""
             {"columns":["uuid","event","timestamp","distinct_id"],
@@ -25,8 +25,18 @@ struct WatchActivityTests {
             """))
 
         #expect(lines.count == 1)
-        #expect(lines[0].event.count == WatchActivity.maxEventNameLength)
-        #expect(lines[0].event == String(repeating: "e", count: 60))
+        #expect(lines[0].event == long)
+
+        let event = "synthetic-observatory-event_authorized"
+        let presentation = WatchActivityIdentityPresentation(event: event)
+        #expect(
+            presentation.displayText.replacingOccurrences(
+                of: WatchActivityIdentityPresentation.breakOpportunity,
+                with: ""
+            ) == event
+        )
+        #expect(presentation.displayText.contains("_\u{200B}"))
+        #expect(presentation.accessibilityLabel == event)
     }
 
     @Test("the server's order is the order shown — newest first, no re-sorting")

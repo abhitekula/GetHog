@@ -3,7 +3,7 @@ import GetHogKit
 
 // MARK: - Activity
 
-/// One activity row, already trimmed to what the watch will draw.
+/// One activity row, preserving the event identity the watch will draw.
 ///
 /// `Codable` so the feed survives a launch. Nothing in `SharedSnapshot`
 /// carries events — it is the widgets' contract and widening it is not this
@@ -27,8 +27,6 @@ enum WatchActivity {
     /// carried file written by a build with a larger one, from reaching a
     /// screen that can scroll neither.
     static var maxLines: Int { QueryBudget.wrist.pageSize }
-    /// Characters of event name kept per line — one watch line, no wrapping.
-    static let maxEventNameLength = 60
 
     static func lines(from response: QueryResponse) -> [ActivityLine] {
         response.rows.prefix(maxLines).enumerated().map { index, row in
@@ -41,7 +39,7 @@ enum WatchActivity {
                 // index rather than a random component.
                 id: row.string("uuid")
                     ?? "\(name)|\(row.string("timestamp") ?? "")|\(index)",
-                event: String(name.prefix(maxEventNameLength)),
+                event: name,
                 timestamp: row.date("timestamp")
             )
         }

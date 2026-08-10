@@ -219,7 +219,8 @@ struct WatchFlagsView: View {
                         .accessibilityHidden(true)
                     Text(flag.key)
                         .font(Theme.Typography.body)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .accessibilityLabel("\(flag.key), \(flag.active ? "on" : "off")")

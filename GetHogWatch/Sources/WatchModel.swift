@@ -690,9 +690,9 @@ final class WatchModel {
             WatchDemoMode.prepareSyntheticScenario(scenario, in: .shared)
             return WatchModel(
                 credential: scenario.credential,
-                projectName: "Synthetic rejected project",
+                projectName: scenario.projectName,
                 headlineMetricID: nil,
-                watches: [],
+                watches: scenario.watches,
                 transport: WatchDemoMode.syntheticScenarioTransport(for: scenario),
                 store: .shared,
                 mutationCoordinator: .shared,

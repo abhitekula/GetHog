@@ -31,6 +31,7 @@ enum WatchDemoMode {
         case flagsLoading = "flags-loading"
         case flagsEmpty = "flags-empty"
         case flagsCarriedFailure = "flags-carried-failure"
+        case longIdentities = "long-identities"
 
         var credential: StoredCredential? {
             switch self {
@@ -66,7 +67,40 @@ enum WatchDemoMode {
                     region: .usCloud,
                     projectID: 77
                 )
+            case .longIdentities:
+                StoredCredential(
+                    key: "synthetic-long-identities-key",
+                    region: .usCloud,
+                    projectID: 1002
+                )
             }
+        }
+
+        var projectName: String {
+            switch self {
+            case .longIdentities:
+                "Synthetic observatory routing — Candidate scope"
+            default:
+                "Synthetic rejected project"
+            }
+        }
+
+        var watches: [MetricWatch] {
+            guard self == .longIdentities else { return [] }
+            return [
+                MetricWatch(
+                    id: "synthetic-long-watch-eu",
+                    metricID: "synthetic-missing-metric-eu",
+                    title: "Observatory release routing — EU",
+                    condition: .above(1)
+                ),
+                MetricWatch(
+                    id: "synthetic-long-watch-us",
+                    metricID: "synthetic-missing-metric-us",
+                    title: "Observatory release routing — US",
+                    condition: .above(1)
+                ),
+            ]
         }
     }
 
@@ -99,6 +133,16 @@ enum WatchDemoMode {
         _ scenario: SyntheticScenario,
         in store: SharedSnapshotStore
     ) {
+        if scenario == .longIdentities {
+            // Every page relaunch must consume this scenario's current
+            // authored identities rather than a still-fresh snapshot from a
+            // previous verification run.
+            store.clearSnapshot()
+            WatchActivity.clear(from: store)
+            WatchFlagsReceipt.clear(from: store)
+            return
+        }
+
         guard scenario == .flagsCarriedFailure,
               let credential = scenario.credential,
               let projectID = credential.projectID
@@ -325,10 +369,45 @@ private actor WatchSyntheticScenarioTransport: HTTPTransport {
                 try? await Task.sleep(for: .seconds(4))
             }
             return try await WatchDemoTransport().send(request)
+        case .longIdentities:
+            if request.httpMethod == "GET", path.contains("/feature_flags/") {
+                return reply(Self.longIdentityFlags, status: 200, request: request)
+            }
+            let body = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
+            if path.hasSuffix("/query/"), body.contains("HogQLQuery") {
+                return reply(Self.longIdentityActivity, status: 200, request: request)
+            }
+            return try await WatchDemoTransport().send(request)
         case .noCredential, .flagsLoading, .flagsEmpty:
             return try await WatchDemoTransport().send(request)
         }
     }
+
+    private static let longIdentityFlags = Data(
+        #"{"count":2,"next":null,"previous":null,"results":[{"id":720110,"key":"observatory-routing-control","active":true,"archived":false,"deleted":false},{"id":720111,"key":"observatory-routing-candidate","active":false,"archived":false,"deleted":false}]}"#.utf8
+    )
+
+    private static let longIdentityActivity: Data = {
+        let sharedPrefix = "observatory-event"
+        let object: [String: Any] = [
+            "columns": ["uuid", "event", "timestamp", "distinct_id"],
+            "results": [
+                [
+                    "synthetic-activity-001",
+                    "\(sharedPrefix)_authorized",
+                    "2026-01-18T12:03:00.000Z",
+                    "synthetic-person-001",
+                ],
+                [
+                    "synthetic-activity-002",
+                    "\(sharedPrefix)_declined",
+                    "2026-01-18T12:02:00.000Z",
+                    "synthetic-person-002",
+                ],
+            ],
+        ]
+        return (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+    }()
 
     private func reply(
         _ data: Data, status: Int, request: URLRequest

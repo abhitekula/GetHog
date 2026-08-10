@@ -63,6 +63,42 @@ final class WatchPagesUITests: XCTestCase {
         ).firstMatch, timeout: 30))
     }
 
+    func testMetricsKeepsStableTitleAndReadableProjectScope() {
+        guard ExclusiveRun.claim() else { return }
+
+        let project = "Synthetic observatory routing — Candidate scope"
+        let app = DemoLaunch.launch(environment: [
+            "GETHOG_WATCH_PAGE": "metrics",
+            "GETHOG_WATCH_SCENARIO": "long-identities",
+        ])
+        let headline = app.staticTexts["Example daily engagement"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: headline, timeout: 60),
+            "The long-identities Metrics scenario did not finish loading."
+        )
+        keepScreenshot(of: app, page: "Metrics")
+
+        let navigation = app.navigationBars["Metrics"]
+        XCTAssertTrue(navigation.exists, "The stable Metrics title was replaced by project scope.")
+
+        let scope = app.staticTexts[project]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: scope, timeout: 5),
+            "The complete synthetic project scope was not rendered in content."
+        )
+        let appFrame = app.frame
+        let scopeFrame = scope.frame
+        XCTAssertGreaterThanOrEqual(scopeFrame.minX, appFrame.minX)
+        XCTAssertLessThanOrEqual(scopeFrame.maxX, appFrame.maxX)
+        XCTAssertGreaterThanOrEqual(scopeFrame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertLessThanOrEqual(scopeFrame.maxY, appFrame.maxY)
+        XCTAssertGreaterThan(
+            scopeFrame.height,
+            headline.frame.height,
+            "Adaptive project scope did not allocate enough lines to remain readable."
+        )
+    }
+
     func testHealthPageShowsTheWatchesAndTheErrorPulse() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "health"])
 
@@ -225,6 +261,88 @@ final class WatchPagesUITests: XCTestCase {
         )
     }
 
+    func testSharedPrefixIdentitiesExposeSuffixesWithoutConfirmation() {
+        guard ExclusiveRun.claim() else { return }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-GetHogDemo"]
+        app.launchEnvironment["GETHOG_DEMO"] = "1"
+        app.launchEnvironment["GETHOG_WATCH_SCENARIO"] = "long-identities"
+
+        func relaunch(page: String) {
+            app.terminate()
+            app.launchEnvironment["GETHOG_WATCH_PAGE"] = page.lowercased()
+            app.launch()
+            XCTAssertTrue(
+                DemoLaunch.wait(for: app.navigationBars[page], timeout: 30),
+                "The long-identities \(page) page did not render."
+            )
+        }
+
+        let healthEU = "Observatory release routing — EU"
+        let healthUS = "Observatory release routing — US"
+        relaunch(page: "Health")
+        let euRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", healthEU)
+        ).firstMatch
+        let usRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", healthUS)
+        ).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: euRow, timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(for: usRow, timeout: 5))
+        keepScreenshot(of: app, page: "Health first row")
+        assertBoundedIdentity(euRow, contains: healthEU, in: app)
+        let healthNavigation = app.navigationBars["Health"]
+        scrollUntilFullyVisible(usRow, in: app, below: healthNavigation)
+        assertBoundedIdentity(
+            usRow,
+            contains: healthUS,
+            in: app,
+            minimumVisibleY: healthNavigation.frame.maxY
+        )
+        keepScreenshot(of: app, page: "Health second row")
+
+        let control = "observatory-routing-control"
+        let candidate = "observatory-routing-candidate"
+        relaunch(page: "Flags")
+        let controlRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", control)
+        ).firstMatch
+        let candidateRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", candidate)
+        ).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: controlRow, timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(for: candidateRow, timeout: 5))
+        keepScreenshot(of: app, page: "Flags")
+        assertBoundedIdentity(controlRow, contains: control, in: app)
+        assertBoundedIdentity(candidateRow, contains: candidate, in: app)
+        XCTAssertFalse(
+            app.staticTexts["This changes the flag for everyone in this project."].exists,
+            "Reading a complete flag identity opened its write confirmation."
+        )
+
+        let visibleEventPrefix = "observatory-event"
+        relaunch(page: "Activity")
+        let firstEvent = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", visibleEventPrefix)
+        ).firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: firstEvent, timeout: 60),
+            "The long-identities Activity scenario did not finish loading."
+        )
+        keepScreenshot(of: app, page: "Activity")
+        let authorizedRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "_authorized")
+        ).firstMatch
+        let declinedRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "_declined")
+        ).firstMatch
+        XCTAssertTrue(authorizedRow.exists, "The authorized event suffix was destroyed or hidden.")
+        XCTAssertTrue(declinedRow.exists, "The declined event suffix was destroyed or hidden.")
+        assertBoundedIdentity(authorizedRow, contains: "_authorized", in: app)
+        assertBoundedIdentity(declinedRow, contains: "_declined", in: app)
+    }
+
     func testActivityPageShowsRecentEvents() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "activity"])
 
@@ -239,5 +357,75 @@ final class WatchPagesUITests: XCTestCase {
         XCTAssertTrue(DemoLaunch.wait(for: returnedFooter, timeout: 30))
         XCTAssertFalse(cappedFooter.exists)
         XCTAssertFalse(app.staticTexts["Not checked yet"].exists)
+    }
+
+    private func keepScreenshot(of app: XCUIApplication, page: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let device = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? "Watch"
+        attachment.name = "\(page) long identities — \(device)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func assertBoundedIdentity(
+        _ element: XCUIElement,
+        contains identity: String,
+        in app: XCUIApplication,
+        minimumVisibleY: CGFloat? = nil
+    ) {
+        XCTAssertTrue(element.exists)
+        XCTAssertTrue(element.label.contains(identity))
+        let frame = element.frame
+        let appFrame = app.frame
+        print("LONG-IDENTITY label=\(identity) frame=\(frame)")
+        XCTAssertGreaterThan(
+            frame.height,
+            44,
+            "The shared-prefix identity did not receive bounded multiline row height."
+        )
+        XCTAssertLessThanOrEqual(
+            frame.height,
+            78,
+            "The identity exceeded its bounded row geometry."
+        )
+        XCTAssertGreaterThanOrEqual(frame.minX, appFrame.minX)
+        XCTAssertLessThanOrEqual(frame.maxX, appFrame.maxX)
+        XCTAssertGreaterThanOrEqual(frame.minY, minimumVisibleY ?? appFrame.minY)
+        XCTAssertLessThanOrEqual(
+            frame.maxY,
+            appFrame.maxY + 1,
+            "The one-point rounded-screen accessibility tolerance was exceeded."
+        )
+    }
+
+    private func scrollUntilFullyVisible(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        below navigationBar: XCUIElement,
+        maximumDrags: Int = 3
+    ) {
+        for _ in 0..<maximumDrags {
+            if isFullyVisible(element, in: app, below: navigationBar) { return }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            let end = start.withOffset(CGVector(dx: 0, dy: -14))
+            start.press(forDuration: 0.1, thenDragTo: end)
+            _ = DemoLaunch.wait(timeout: 2) {
+                isFullyVisible(element, in: app, below: navigationBar)
+            }
+        }
+    }
+
+    private func isFullyVisible(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        below navigationBar: XCUIElement
+    ) -> Bool {
+        guard element.exists else { return false }
+        let frame = element.frame
+        let appFrame = app.frame
+        return frame.minX >= appFrame.minX
+            && frame.maxX <= appFrame.maxX
+            && frame.minY >= navigationBar.frame.maxY
+            && frame.maxY <= appFrame.maxY + 1
     }
 }
