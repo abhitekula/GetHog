@@ -208,7 +208,7 @@ struct DashboardsRoot: View {
 
     private var regularLanding: some View {
         regularLandingContent
-            .navigationTitle("Dashboards")
+            .topLevelNavigationTitle("Dashboards")
 #if os(macOS)
             .toolbar(id: "dashboards") {
                 PinnedProjectSwitcher()
@@ -302,7 +302,7 @@ struct DashboardsRoot: View {
             // column, and the reopening path it assumed existed was
             // `.automatic`, which in iPad portrait resolves to detail-only.
             .toolbar(removing: .sidebarToggle)
-            .navigationTitle("Dashboards")
+            .topLevelNavigationTitle("Dashboards")
 #if os(macOS)
             // The whole bar in one declaration, and that is load-bearing rather
             // than tidy: a plain `.toolbar { }` beside a `.toolbar(id:)` leaves

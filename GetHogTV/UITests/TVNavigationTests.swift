@@ -56,20 +56,70 @@ final class TVNavigationTests: XCTestCase {
         // `FlagWidgetTip` lives on the list, so verify its TV compile-out
         // before navigating away from that hierarchy.
         XCTAssertEqual(DemoLaunch.elements(labelled: "Keep a flag to hand", in: app).count, 0)
-        // Right leaves the sidebar for the list; Down moves from the list
-        // container onto its first focusable row. The row's combined
-        // accessibility container does not report `hasFocus` reliably on
-        // tvOS, so the detail assertion is the navigation oracle.
+        // Right leaves the sidebar for the list. The combined row container
+        // does not report `hasFocus` reliably on tvOS, so walk the deterministic
+        // demo ordering: the fourth Down lands on `example-navigation`, and the
+        // detail title below is the navigation oracle.
         TVRemote.press(.right)
-        TVRemote.press(.down)
+        TVRemote.press(.down, times: 4)
         TVRemote.press(.select)
 
-        XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Live state"], timeout: 60))
+        let liveState = app.staticTexts["Live state"]
+        XCTAssertTrue(DemoLaunch.wait(for: liveState, timeout: 60))
+        let exactDetailTitles = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@ OR value == %@",
+                "example-navigation",
+                "example-navigation"
+            )
+        )
+        let flagsLabels = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "Flags")
+        )
+        let hasRenderedDetailTitle = {
+            for index in 0 ..< exactDetailTitles.count {
+                let title = exactDetailTitles.element(boundBy: index)
+                guard title.exists, title.isHittable else { continue }
+                let frame = title.frame
+                if frame.minY < 260, frame.width > 500, frame.height > 40 {
+                    return true
+                }
+            }
+            return false
+        }
+        let hasHittableBackCapsule = {
+            for index in 0 ..< flagsLabels.count {
+                let label = flagsLabels.element(boundBy: index)
+                guard label.exists, label.isHittable else { continue }
+                let frame = label.frame
+                if frame.minX < 360, frame.minY < 140 {
+                    return true
+                }
+            }
+            return false
+        }
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10) {
+                hasRenderedDetailTitle() && hasHittableBackCapsule()
+            },
+            "The pushed flag detail did not render its title and top-left Flags back capsule."
+        )
         XCTAssertEqual(DemoLaunch.elements(labelled: "Allow quick toggle", in: app).count, 0)
         XCTAssertFalse(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS %@", "Control Center")
             ).firstMatch.exists
+        )
+
+        TVRemote.press(.menu)
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10) {
+                !liveState.exists
+                    && !hasRenderedDetailTitle()
+                    && flag.exists
+                    && flag.isHittable
+            },
+            "Menu did not remove the detail title and restore the focusable Flags row."
         )
     }
 
@@ -196,6 +246,137 @@ final class TVScopeGuidanceUITests: XCTestCase {
         screenshot.name = "TV Settings feature flag write scope"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+    }
+}
+
+@MainActor
+final class TVSettingsPresentationTests: XCTestCase {
+    func testFocusedQuotaDisclosureKeepsTheCardReadableWithoutAFloatingTitle() throws {
+        let app = DemoLaunch.launch()
+        TVSidebar.select("Settings", in: app)
+        XCTAssertTrue(DemoLaunch.wait(for: app.buttons["Sign out"], timeout: 60))
+
+        let disclosure = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "more, none near a limit")
+        ).firstMatch
+        // The quota card is below the first realised List viewport. Enter the
+        // list and let focus scrolling mount it instead of treating a lazy row
+        // as absent before the remote has moved toward it.
+        TVRemote.press(.right)
+        XCTAssertTrue(
+            TVRemote.focus(on: disclosure, by: .down, limit: 32),
+            "The Siri Remote could not focus the quota disclosure."
+        )
+        DemoLaunch.settle(app)
+        XCTAssertEqual(
+            disclosure.value as? String,
+            "Collapsed",
+            "The quota disclosure did not expose its initial collapsed state."
+        )
+
+        let rendered = XCUIScreen.main.screenshot()
+        XCTAssertLessThan(
+            disclosure.frame.height,
+            100,
+            "The disclosure focus strip expanded back over the compound quota and spend card."
+        )
+        XCTAssertLessThan(
+            disclosure.frame.height,
+            app.frame.height * 0.12,
+            "The disclosure focus surface occupied too much of the television canvas."
+        )
+
+        let focusContrastSpan = try XCTUnwrap(
+            TVRenderedPixelOracle.luminanceSpan(
+                in: rendered.image,
+                frame: disclosure.frame,
+                appFrame: app.frame
+            ),
+            "The focused quota disclosure content could not be sampled."
+        )
+        XCTAssertGreaterThan(
+            focusContrastSpan,
+            0.25,
+            "The bounded focus strip did not leave its label and outline readable."
+        )
+
+        let surroundingCardFrame = CGRect(
+            x: disclosure.frame.midX - 100,
+            y: disclosure.frame.minY - 140,
+            width: 200,
+            height: 60
+        )
+        let surroundingCardLuminance = try XCTUnwrap(
+            TVRenderedPixelOracle.medianLuminance(
+                in: rendered.image,
+                frame: surroundingCardFrame,
+                appFrame: app.frame
+            ),
+            "The quota card around the focused disclosure could not be sampled."
+        )
+        XCTAssertLessThan(
+            surroundingCardLuminance,
+            0.40,
+            "Focusing the bounded disclosure repainted the surrounding quota card with the native bright slab."
+        )
+
+        let spend = app.staticTexts["$11.25"].firstMatch
+        XCTAssertTrue(spend.exists && spend.isHittable, "The quota card's spend metric was not rendered.")
+        let spendContrastSpan = try XCTUnwrap(
+            TVRenderedPixelOracle.luminanceSpan(
+                in: rendered.image,
+                frame: spend.frame,
+                appFrame: app.frame
+            ),
+            "The spend metric beside the focused disclosure could not be sampled."
+        )
+        XCTAssertGreaterThan(
+            spendContrastSpan,
+            0.30,
+            "The surrounding quota card's explicit light metric lost contrast while the disclosure was focused."
+        )
+
+        let settingsLabels = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "Settings")
+        )
+        var hasHittableSidebarCapsuleLabel = false
+        for index in 0 ..< settingsLabels.count {
+            let label = settingsLabels.element(boundBy: index)
+            guard label.isHittable else { continue }
+            let frame = label.frame
+            if frame.minX < 360, frame.minY < 140 {
+                hasHittableSidebarCapsuleLabel = true
+            }
+            XCTAssertFalse(
+                frame.minY > 120 && (frame.width > 250 || frame.height > 65),
+                "A large Settings title remained inside the scrolled content canvas at \(frame)."
+            )
+        }
+        XCTAssertTrue(
+            hasHittableSidebarCapsuleLabel,
+            "Hiding the duplicate root navigation bar also removed the selected Settings capsule."
+        )
+
+        let quietQuotaRow = app.staticTexts["AI credits"].firstMatch
+        TVRemote.press(.select)
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5) {
+                disclosure.value as? String == "Expanded" && quietQuotaRow.exists
+            },
+            "Selecting the focused quota disclosure did not reveal its deterministic quiet resources."
+        )
+        TVRemote.press(.select)
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5) {
+                disclosure.value as? String == "Collapsed" && !quietQuotaRow.exists
+            },
+            "Selecting the expanded quota disclosure did not collapse its quiet resources."
+        )
+
+        let attachment = XCTAttachment(screenshot: rendered)
+        attachment.name = "TV Settings focused quota disclosure"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }
 

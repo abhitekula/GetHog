@@ -174,7 +174,7 @@ struct InsightsRoot: View {
             // bar sits on, which would otherwise stay system grey and leave the
             // glass floating on the wrong surface.
             .background(Theme.pageBackground)
-            .navigationTitle("Insights")
+            .topLevelNavigationTitle("Insights")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             // Absent on tvOS for the reason `DashboardsRoot` records in

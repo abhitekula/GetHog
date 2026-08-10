@@ -1,4 +1,5 @@
 import GetHogKit
+import GetHogUI
 import SwiftUI
 
 // The tvOS twin of every API the *shared* screens name that this platform does
@@ -106,6 +107,7 @@ struct DisclosureGroup<Label: View, Content: View>: View {
     private let label: () -> Label
     private let external: Binding<Bool>?
     @State private var internalExpansion: Bool
+    @FocusState private var disclosureFocused: Bool
 
     init(
         isExpanded: Binding<Bool>,
@@ -148,7 +150,31 @@ struct DisclosureGroup<Label: View, Content: View>: View {
                     // The label beside it already says what this expands.
                     .accessibilityHidden(true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Space.m)
+            .padding(.vertical, Theme.Space.s)
+            .contentShape(.rect)
+            .background {
+                RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                    // A low accent wash keeps every explicit ink in the shared
+                    // card readable. The native TV button focus surface was
+                    // nearly white, so pale labels vanished across the entire
+                    // enclosing List row whenever this disclosure took focus.
+                    .fill(disclosureFocused ? Theme.accent.opacity(0.14) : .clear)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                    .stroke(disclosureFocused ? Theme.accent : .clear, lineWidth: 2)
+            }
         }
+        // `.plain` removes the native bright slab; the accent wash and outline
+        // above replace it with a bounded focus state on the control itself.
+        // The control remains a real Button, so Select and accessibility keep
+        // the same expand/collapse behaviour.
+        .buttonStyle(.plain)
+        .focused($disclosureFocused)
+        .focusEffectDisabled()
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
         if isExpanded {
             content()

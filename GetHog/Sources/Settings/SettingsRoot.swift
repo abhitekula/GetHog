@@ -63,7 +63,7 @@ struct SettingsRoot: View {
         // needs the wider, viewing-distance-aware measure so identifiers stay
         // intact instead of wrapping while most of the canvas sits unused.
         .measuredPairs(maxWidth: pairMeasure)
-        .navigationTitle("Settings")
+        .topLevelNavigationTitle("Settings")
         // No `ProjectSwitcher()` here: the Project section below already is
         // the switcher, and two controls for one piece of state on one
         // screen is a bug report waiting to happen.

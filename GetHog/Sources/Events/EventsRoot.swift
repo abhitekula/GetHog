@@ -523,7 +523,7 @@ struct EventsRoot: View {
     /// arrangements cannot drift in what they load or filter.
     private var listChrome: some View {
             content
-                .navigationTitle("Events")
+                .topLevelNavigationTitle("Events")
                 .toolbar {
                     ProjectSwitcher()
                     #if !os(tvOS)

@@ -182,7 +182,7 @@ struct SessionsRoot: View {
         @Bindable var store = store
 
         return content
-                .navigationTitle("Sessions")
+                .topLevelNavigationTitle("Sessions")
 #if os(macOS)
                 // The whole bar in one declaration — what "Customize Toolbar…"
                 // rearranges: the same two controls the iOS bar pins, made

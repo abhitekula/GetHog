@@ -180,7 +180,7 @@ struct FlagsRoot: View {
     /// arrangements cannot drift in what they load or how they search.
     private var listChrome: some View {
         content
-                .navigationTitle("Flags")
+                .topLevelNavigationTitle("Flags")
                 .toolbar { ProjectSwitcher() }
                 .projectSubtitle()
                 // Absent on tvOS for the reason `DashboardsRoot` records in

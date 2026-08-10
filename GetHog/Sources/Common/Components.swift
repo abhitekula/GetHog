@@ -642,6 +642,22 @@ struct StatusPill: View {
 }
 
 extension View {
+    /// Names a tab's root without duplicating tvOS's persistent selected-tab
+    /// capsule as a large title over focus-scrolled content.
+    ///
+    /// Detail screens deliberately keep using `navigationTitle` directly. On
+    /// television they need that title and the navigation bar's Menu/back
+    /// contract; only the six curated tab roots already have their name held in
+    /// the shell capsule for the whole time they are visible.
+    @ViewBuilder
+    func topLevelNavigationTitle(_ title: String) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        navigationTitle(title)
+        #endif
+    }
+
     /// Applies a redacted skeleton while loading, so layout never jumps.
     @ViewBuilder
     func skeleton(_ isLoading: Bool) -> some View {
