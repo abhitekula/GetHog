@@ -947,18 +947,19 @@ struct TileCard: View {
                 // readout, no rule mark, no pressed appearance; screenshots
                 // before and after the poisoning tap are identical.
                 //
-                // A non-table tile is one control by design, so its content is a
-                // picture: hit testing off here is the invariant rather than a
-                // patch for one chart. Compact HogQL tables are the sole exception
-                // because later columns are reachable only by horizontal scroll;
-                // `control` gives those tiles a scroll-aware tap boundary instead.
+                // A non-table tile is one control by design on direct-touch
+                // platforms, so its content is a picture there. Compact HogQL
+                // tables are the sole touch exception because later columns are
+                // reachable only by horizontal scroll; `control` gives those tiles
+                // a scroll-aware tap boundary instead. On Mac the pointer owns chart
+                // hover while the enclosing control still owns click activation.
                 // Accessibility is untouched by this modifier: it suppresses
                 // touches, not the tree, so chart descriptors and rotors still work.
                 //
                 // `ProjectOverview` switches hit testing off at its own call site
                 // too. That is not this — its tiles are not buttons at all, and
                 // the two are unrelated guards that happen to spell the same.
-                .allowsHitTesting(requiresDirectChartTouch)
+                .allowsHitTesting(chartAllowsHitTesting)
 
                 FreshnessLabel(date: tile.lastRefresh, isCached: tile.isCached)
             }
@@ -997,6 +998,14 @@ struct TileCard: View {
         false
         #else
         InsightChartInteraction.requiresDirectTouch(for: model, compact: true)
+        #endif
+    }
+
+    private var chartAllowsHitTesting: Bool {
+        #if os(macOS)
+        true
+        #else
+        requiresDirectChartTouch
         #endif
     }
 }
@@ -1130,9 +1139,10 @@ struct InsightDetailBody: View {
             }
             .padding()
         }
-        // The opened tile, not the grid: the charts inside a `TileCard` are
-        // deliberately left inert, because a tile is already one button. Here
-        // there is room for a step to be a step and a bar to be a bar.
+        // The opened tile, not the grid: charts inside a `TileCard` stay inert
+        // to direct touch because the tile is already one button. Mac pointer
+        // hover remains live there, but click activation still belongs to the
+        // tile. Here there is room for a step to be a step and a bar to be a bar.
         //
         // An ad-hoc tile with no saved insight has no query to drill and gets
         // nothing, which is the same answer as a kind that cannot be drilled.

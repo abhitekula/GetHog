@@ -437,6 +437,7 @@ struct DashboardsRoot: View {
             }
         }
         .buttonStyle(.plain)
+        .pointerHighlight(cornerRadius: Theme.Radius.medium)
         .contextMenu { dashboardContextMenu(dashboard) }
         .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
     }

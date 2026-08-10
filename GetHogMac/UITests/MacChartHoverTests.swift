@@ -71,6 +71,106 @@ final class MacChartHoverTests: XCTestCase {
         add(attachment)
     }
 
+    /// Counts visibly changed pixels inside a screen-space region.
+    ///
+    /// The compact scrub readout is folded into its tile's outer Button by
+    /// SwiftUI, so manufacturing a second accessibility child just for this
+    /// test would make the product tree worse. A bounded interior pixel delta
+    /// is the honest rendered signal instead: it excludes the card edge where
+    /// pointer feedback lives, and the click assertion below independently
+    /// proves the same hovered control still activates.
+    private func changedPixelCount(
+        from before: XCUIScreenshot,
+        to after: XCUIScreenshot,
+        in region: CGRect,
+        screenFrame: CGRect
+    ) throws -> Int {
+        var beforeRect = CGRect(origin: .zero, size: before.image.size)
+        var afterRect = CGRect(origin: .zero, size: after.image.size)
+        let beforeImage = try XCTUnwrap(
+            before.image.cgImage(forProposedRect: &beforeRect, context: nil, hints: nil)
+        )
+        let afterImage = try XCTUnwrap(
+            after.image.cgImage(forProposedRect: &afterRect, context: nil, hints: nil)
+        )
+        XCTAssertEqual(beforeImage.width, afterImage.width)
+        XCTAssertEqual(beforeImage.height, afterImage.height)
+
+        let scaleX = CGFloat(beforeImage.width) / screenFrame.width
+        let scaleY = CGFloat(beforeImage.height) / screenFrame.height
+        let pixelRegion = CGRect(
+            x: (region.minX - screenFrame.minX) * scaleX,
+            y: (region.minY - screenFrame.minY) * scaleY,
+            width: region.width * scaleX,
+            height: region.height * scaleY
+        ).integral
+        let beforeCrop = try XCTUnwrap(beforeImage.cropping(to: pixelRegion))
+        let afterCrop = try XCTUnwrap(afterImage.cropping(to: pixelRegion))
+        let width = beforeCrop.width
+        let height = beforeCrop.height
+        let bytesPerRow = width * 4
+        var beforeBytes = [UInt8](repeating: 0, count: bytesPerRow * height)
+        var afterBytes = [UInt8](repeating: 0, count: bytesPerRow * height)
+
+        func draw(_ image: CGImage, into bytes: inout [UInt8]) throws {
+            let context = try XCTUnwrap(
+                CGContext(
+                    data: &bytes,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                )
+            )
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+
+        try draw(beforeCrop, into: &beforeBytes)
+        try draw(afterCrop, into: &afterBytes)
+
+        return stride(from: 0, to: beforeBytes.count, by: 4).reduce(into: 0) { count, index in
+            let changed = (0..<3).contains { channel in
+                abs(Int(beforeBytes[index + channel]) - Int(afterBytes[index + channel])) >= 12
+            }
+            if changed { count += 1 }
+        }
+    }
+
+    private func openDemoDashboard() -> (app: XCUIApplication, tile: XCUIElement)? {
+        let app = DemoLaunch.launch(tab: "dashboards")
+        let hub = app.scrollViews["gethog.dashboard-hub"].firstMatch
+        guard DemoLaunch.wait(for: hub) else {
+            XCTFail("The dashboard landing did not expose its hub.")
+            return nil
+        }
+
+        let dashboard = app.buttons["gethog.dashboard-card.725101"].firstMatch
+        for _ in 0..<12 where !(dashboard.exists && dashboard.isHittable) {
+            hub.scroll(byDeltaX: 0, deltaY: -180)
+            DemoLaunch.pause(0.2)
+        }
+        guard DemoLaunch.wait(until: { dashboard.exists && dashboard.isHittable }) else {
+            XCTFail("The dashboard hub never exposed gethog.dashboard-card.725101.")
+            return nil
+        }
+        dashboard.click()
+
+        let detail = app.descendants(matching: .any)["gethog.dashboard-detail.725101"]
+        guard DemoLaunch.wait(for: detail) else {
+            XCTFail("The dashboard card did not open gethog.dashboard-detail.725101.")
+            return nil
+        }
+        let tile = app.buttons["gethog.dashboard-tile.77021"].firstMatch
+        guard DemoLaunch.wait(until: { tile.exists && tile.isHittable }) else {
+            XCTFail("The dashboard detail did not expose gethog.dashboard-tile.77021.")
+            return nil
+        }
+        DemoLaunch.settle(app)
+        return (app, tile)
+    }
+
     // MARK: - Tests
 
     /// The pointer over the plot: the readout appears, and it *tracks*.
@@ -103,6 +203,54 @@ final class MacChartHoverTests: XCTestCase {
             seen.count, 1,
             "The readout never changed as the pointer crossed the plot: \(seen)."
         )
+    }
+
+    /// A compact chart belongs to the Mac pointer while its outer tile remains
+    /// the activation owner.
+    func testCompactDashboardChartShowsReadoutAndStillOpensItsInsight() throws {
+        guard let (app, tile) = openDemoDashboard() else { return }
+        let window = app.windows.firstMatch
+        let before = window.screenshot()
+        let tileFrame = tile.frame
+        capture("b1-compact-chart-before-hover")
+
+        tile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)).hover()
+        DemoLaunch.pause(0.7)
+        let hovered = window.screenshot()
+        capture("b2-compact-chart-hover-centre")
+
+        // The chart's interior only: inset far enough to exclude the card's
+        // pointer outline, while retaining the readout row and plot rule mark.
+        let chartInterior = CGRect(
+            x: tileFrame.minX + tileFrame.width * 0.12,
+            y: tileFrame.minY + tileFrame.height * 0.16,
+            width: tileFrame.width * 0.76,
+            height: tileFrame.height * 0.66
+        )
+        let changed = try changedPixelCount(
+            from: before,
+            to: hovered,
+            in: chartInterior,
+            screenFrame: window.frame
+        )
+        XCTAssertGreaterThan(
+            changed,
+            80,
+            "Hovering the compact plot changed only \(changed) interior pixels; no scrub readout appeared."
+        )
+
+        let insightTitles = DemoLaunch.elements(labelled: DemoLaunch.firstTileTitle, in: app)
+        let titleCountBeforeOpening = insightTitles.count
+        tile.click()
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.buttons["Close insight"].firstMatch),
+            "The hovered compact tile no longer opened \(DemoLaunch.firstTileTitle)."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { insightTitles.count > titleCountBeforeOpening }),
+            "The opened inspector did not add the exact \(DemoLaunch.firstTileTitle) title."
+        )
+        capture("b3-compact-chart-post-click")
     }
 
     /// Task 7's M2: does the readout **blank** in the 12pt scale-padding band

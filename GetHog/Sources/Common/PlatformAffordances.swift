@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -29,6 +30,37 @@ struct KeyboardAction: Identifiable {
     var modifiers: EventModifiers = .command
     let title: String
     let action: () -> Void
+}
+
+private struct PointerHighlightModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
+    #if os(macOS)
+    @State private var isHovered = false
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content
+            .contentShape(.rect(cornerRadius: cornerRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        isHovered ? Theme.accent.opacity(0.55) : Color.clear,
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+            }
+            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .onHover { isHovered = $0 }
+        #elseif os(iOS) || os(visionOS)
+        content
+            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: cornerRadius))
+            .hoverEffect(.highlight)
+        #else
+        content
+        #endif
+    }
 }
 
 extension View {
@@ -74,14 +106,7 @@ extension View {
     /// hover effect *is* the gaze feedback primitive there, so a card that
     /// opts out of it is a card the eye cannot tell it has landed on.
     func pointerHighlight(cornerRadius: CGFloat = 14) -> some View {
-        #if os(iOS) || os(visionOS)
-        contentShape(.hoverEffect, RoundedRectangle(cornerRadius: cornerRadius))
-            .hoverEffect(.highlight)
-        #else
-        // AppKit draws its own pointer affordances; the shape is kept so hit
-        // testing still follows the card's corner radius.
-        contentShape(.rect(cornerRadius: cornerRadius))
-        #endif
+        modifier(PointerHighlightModifier(cornerRadius: cornerRadius))
     }
 
     /// Raises a control to the 44×44pt floor Apple's `hitRegion` audit checks.

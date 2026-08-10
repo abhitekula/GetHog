@@ -933,9 +933,10 @@ struct TimeSeriesChart: View {
             // The pointer's spelling of the same gesture: hover writes the
             // same `selectedDate` the touch drag writes, so the rule mark,
             // the readout and the drill are one path with two front doors.
-            // The control trap above applies unchanged — `TileCard` keeps
-            // this unreachable inside its button via hit testing, which
-            // blocks hover exactly as it blocks touch.
+            // A containing control decides whether this overlay is reachable:
+            // `TileCard` enables it for the Mac pointer, while direct-touch
+            // platforms keep non-table compact charts inert so the outer tile
+            // remains the only touch owner.
             .chartHoverSelection($selectedDate)
             #endif
             // Pan. Swift Charts arbitrates the drag between scrolling and
