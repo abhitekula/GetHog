@@ -30,6 +30,21 @@ Inspect every root and platform adaptation for the same objective failure class:
 
 Do not flatten intentional master-detail layouts, contextual inspectors, comparison views, or sidebars whose persistent context changes the primary content. Each correction must name the user task it improves and have a rendered geometry or semantic oracle that fails on the prior composition.
 
+## General layout-quality sweep
+
+The sweep also evaluates every deterministic page for broader layout defects, not only sparse columns:
+
+- Weak hierarchy where the primary answer competes with navigation, filters, or metadata.
+- Controls crowded into a toolbar or row when secondary actions belong in a labelled overflow.
+- Text clipped, ellipsized, or stretched beyond a readable measure at supported widths and Dynamic Type sizes.
+- Cards or rows using rigid dimensions where natural reflow would preserve identity and action labels.
+- Empty, loading, error, or locked states that are visually detached from the controls and context that produced them.
+- tvOS focus order that opens on navigation instead of the first meaningful reading or hides a valid action from the Siri Remote.
+- Repeated decorative containers or generic empty treatments that weaken the established quiet-craft hierarchy without adding information.
+- Large canvases that leave room unused when one adjacent, task-relevant question can be answered from already-loaded data.
+
+Every proposed change must be tied to a reproducible screenshot, geometry, focus, overflow, or content-state failure. Pure preference differences remain documented critique choices rather than automatic code changes. Accessibility is not a separate audit in this loop, but existing semantic labels and test selectors must not regress while visible layout changes.
+
 ## Responsive behavior
 
 - Prefer semantic size classes, container-relative fitting, `ViewThatFits`, and adaptive grids over device-name or platform-name branches.
@@ -40,14 +55,14 @@ Do not flatten intentional master-detail layouts, contextual inspectors, compari
 
 ## Verification
 
-Use strict TDD. Before changing production, add rendered tests that prove:
+Fresh rendered screenshots and measured geometry are the primary acceptance evidence for this visual work. Add focused rendered tests where they protect a load-bearing responsive rule, but do not manufacture a failing test for every visual adjustment. The verification set should prove:
 
 - Project signal spans the hub's content width above the pinned preview rather than occupying a peer column.
 - Two pinned chart cards share the first preview row at wide Vision, iPad, and Mac widths.
 - The chart grid collapses without clipping at the narrow regular-width boundary.
 - The hub remains exactly one scroll surface and its collection remains reachable.
 
-For every additional issue found by the composition sweep, add the smallest behavior or rendered geometry test that catches the old layout. Run focused platform tests first, then the complete affected UI targets during final integration.
+For every additional issue found by the composition sweep, capture the prior and corrected layout at the affected widths. Add the smallest behavior or rendered geometry test only when the rule is stable and regression-prone. Run focused platform checks first, then the complete affected UI targets during final integration.
 
 ## Boundaries
 
