@@ -61,6 +61,15 @@ enum TracingWindow: String, CaseIterable, Identifiable, Hashable {
 
 // MARK: - Store
 
+/// Every value that changes the meaning of one Tracing response.
+struct TracingRequestDescriptor: Hashable, Sendable {
+    let authority: ResourceRequestAuthority
+    let window: TracingWindow
+    let service: String?
+    let spanName: String
+    let errorsOnly: Bool
+}
+
 @MainActor
 @Observable
 final class TracingStore {
@@ -69,6 +78,8 @@ final class TracingStore {
     private(set) var services: [String] = []
     private(set) var loadedAt: Date?
     private(set) var isLoading = false
+    private var requestGeneration: UInt64 = 0
+    private var currentRequest: TracingRequestDescriptor?
 
     // Filters. Held here rather than in the view so a project switch or a
     // pull-to-refresh reuses whatever the user last chose.
@@ -80,31 +91,75 @@ final class TracingStore {
     var isEmpty: Bool { traces.isEmpty }
 
     func load(client: PostHogClient, projectID: Int) async {
+        await load(
+            client: client,
+            request: TracingRequestDescriptor(
+                authority: ResourceRequestAuthority(
+                    projectID: projectID,
+                    region: client.region,
+                    authSessionID: nil
+                ),
+                window: window,
+                service: service,
+                spanName: spanName,
+                errorsOnly: errorsOnly
+            )
+        )
+    }
+
+    func invalidate() {
+        requestGeneration &+= 1
+        currentRequest = nil
+        state = .loading
+        traces = []
+        services = []
+        loadedAt = nil
+        isLoading = false
+    }
+
+    func load(client: PostHogClient, request: TracingRequestDescriptor) async {
+        requestGeneration &+= 1
+        let generation = requestGeneration
+        let previousAuthority = currentRequest?.authority
+        if currentRequest != request {
+            currentRequest = request
+            state = .loading
+            traces = []
+            loadedAt = nil
+            if previousAuthority != request.authority {
+                services = []
+            }
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if generation == requestGeneration, currentRequest == request {
+                isLoading = false
+            }
+        }
 
         do {
             let data = try await client.data(
                 for: PostHogAPI.traceSpans(
-                    projectID: projectID,
-                    dateFrom: window.rawValue,
-                    serviceNames: service.map { [$0] } ?? [],
-                    spanNameContains: spanName,
-                    errorsOnly: errorsOnly
+                    projectID: request.authority.projectID,
+                    dateFrom: request.window.rawValue,
+                    serviceNames: request.service.map { [$0] } ?? [],
+                    spanNameContains: request.spanName,
+                    errorsOnly: request.errorsOnly
                 )
             )
             let spans = TraceSpan.rows(from: try QueryResponse.decode(from: data))
+            guard generation == requestGeneration, currentRequest == request else { return }
             traces = TraceSpan.traces(from: spans)
             state = .resolved(rowCount: traces.count)
             loadedAt = Date()
-            updateServiceFacet(from: spans)
+            updateServiceFacet(from: spans, filteredService: request.service)
         } catch {
+            guard generation == requestGeneration, currentRequest == request else { return }
             state = ResourceAccessState(
                 failure: error,
                 resource: "tracing",
                 defaultScope: Capability.events.requiredScopes.joined(separator: ", ")
             )
-            traces = []
             // The facet is left alone. A request that failed says nothing about
             // which services exist, and clearing it would strand a user who had
             // filtered to one service — the filter bar is not drawn in the
@@ -124,9 +179,9 @@ final class TracingStore {
     /// filter the page is one service by construction, so recomputing from it
     /// would collapse the menu to the user's own choice and trap them there.
     /// Filtered loads may only widen the facet, never replace it.
-    private func updateServiceFacet(from spans: [TraceSpan]) {
+    private func updateServiceFacet(from spans: [TraceSpan], filteredService: String?) {
         let found = TraceSpan.serviceNames(from: spans)
-        services = service == nil ? found : Set(services).union(found).sorted()
+        services = filteredService == nil ? found : Set(services).union(found).sorted()
     }
 }
 
@@ -153,6 +208,19 @@ struct TracingRoot: View {
         )
     }
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard
+            let client = model.client,
+            let projectID = model.projectID,
+            let authSessionID = model.authSessionID
+        else { return nil }
+        return ResourceRequestAuthority(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
+    }
+
     var body: some View {
         @Bindable var store = store
 
@@ -163,7 +231,7 @@ struct TracingRoot: View {
             .searchable(text: $store.spanName, prompt: "Filter by span name")
             .onSubmit(of: .search) { Task { await load() } }
             .screenRefreshable { await load() }
-            .task(id: model.projectID) { await load() }
+            .task(id: requestAuthority) { await load() }
             .navigationDestination(item: selection) { trace in
                 TraceDetailView(trace: trace)
             }
@@ -190,6 +258,19 @@ struct TracingRoot: View {
                 TracingLockedView(state: store.state) {
                     Task { await model.refreshCapabilities(); await load() }
                 }
+
+            case .failed(let message) where !store.traces.isEmpty:
+                VStack(spacing: 0) {
+                    filterBar
+                    SectionEmptyState(
+                        text: "Couldn't refresh spans. \(message)",
+                        systemImage: "exclamationmark.triangle",
+                        actionTitle: "Try again"
+                    ) { Task { await load() } }
+                    .padding(.horizontal, Theme.Space.l)
+                    list
+                }
+                .background(Theme.pageBackground)
 
             case .failed(let message):
                 EmptyStateView(
@@ -357,8 +438,20 @@ struct TracingRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else {
+            store.invalidate()
+            return
+        }
+        await store.load(
+            client: client,
+            request: TracingRequestDescriptor(
+                authority: authority,
+                window: store.window,
+                service: store.service,
+                spanName: store.spanName,
+                errorsOnly: store.errorsOnly
+            )
+        )
     }
 }
 

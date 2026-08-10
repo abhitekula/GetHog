@@ -98,6 +98,11 @@ enum RenderFilter: String, CaseIterable, Identifiable, Hashable {
 
 // MARK: - Store
 
+/// Every value that changes which render library a response belongs to.
+struct RendersRequestDescriptor: Hashable, Sendable {
+    let authority: ResourceRequestAuthority
+}
+
 @MainActor
 @Observable
 final class RendersStore {
@@ -105,6 +110,8 @@ final class RendersStore {
     private(set) var exports: [RecordingExport] = []
     private(set) var loadedAt: Date?
     private(set) var isLoading = false
+    private var requestGeneration: UInt64 = 0
+    private var currentRequest: RendersRequestDescriptor?
 
     /// The instant the whole screen is rendered against.
     ///
@@ -123,12 +130,47 @@ final class RendersStore {
     /// duration, size, failure text and the source recording all ride in
     /// `export_context` — so no row costs a follow-up.
     func load(client: PostHogClient, projectID: Int) async {
+        await load(
+            client: client,
+            request: RendersRequestDescriptor(
+                authority: ResourceRequestAuthority(
+                    projectID: projectID,
+                    region: client.region,
+                    authSessionID: nil
+                )
+            )
+        )
+    }
+
+    func invalidate() {
+        requestGeneration &+= 1
+        currentRequest = nil
+        state = .loading
+        exports = []
+        loadedAt = nil
+        isLoading = false
+    }
+
+    func load(client: PostHogClient, request: RendersRequestDescriptor) async {
+        requestGeneration &+= 1
+        let generation = requestGeneration
+        if currentRequest != request {
+            currentRequest = request
+            state = .loading
+            exports = []
+            loadedAt = nil
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if generation == requestGeneration, currentRequest == request {
+                isLoading = false
+            }
+        }
         do {
             let page: Page<RecordingExport> = try await client.send(
-                PostHogAPI.exports(projectID: projectID)
+                PostHogAPI.exports(projectID: request.authority.projectID)
             )
+            guard generation == requestGeneration, currentRequest == request else { return }
             exports = page.results
             asOf = Date()
             loadedAt = asOf
@@ -137,8 +179,8 @@ final class RendersStore {
             // There is no `Capability` case for exports, so the wall is
             // classified from the failure rather than probed for in advance —
             // the same treatment Logs and Tracing give their ungated endpoints.
+            guard generation == requestGeneration, currentRequest == request else { return }
             state = ResourceAccessState(failure: error, resource: "export", defaultScope: "export:read")
-            exports = []
         }
     }
 
@@ -186,6 +228,19 @@ struct RendersRoot: View {
         )
     }
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard
+            let client = model.client,
+            let projectID = model.projectID,
+            let authSessionID = model.authSessionID
+        else { return nil }
+        return ResourceRequestAuthority(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
+    }
+
     var body: some View {
         @Bindable var store = store
 
@@ -201,7 +256,7 @@ struct RendersRoot: View {
             .projectSubtitle()
             .searchable(text: $store.search, prompt: "Search filename or session")
             .screenRefreshable { await load() }
-            .task(id: model.projectID) { await load() }
+            .task(id: requestAuthority) { await load() }
     }
 
     @ViewBuilder
@@ -211,6 +266,19 @@ struct RendersRoot: View {
             RendersLockedView(state: store.state) {
                 Task { await model.refreshCapabilities(); await load() }
             }
+
+        case .failed(let message) where !store.exports.isEmpty:
+            VStack(spacing: 0) {
+                filterBar
+                SectionEmptyState(
+                    text: "Couldn't refresh renders. \(message)",
+                    systemImage: "exclamationmark.triangle",
+                    actionTitle: "Try again"
+                ) { Task { await load() } }
+                .padding(.horizontal, Theme.Space.l)
+                list
+            }
+            .background(Theme.pageBackground)
 
         case .failed(let message):
             EmptyStateView(
@@ -335,8 +403,14 @@ struct RendersRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else {
+            store.invalidate()
+            return
+        }
+        await store.load(
+            client: client,
+            request: RendersRequestDescriptor(authority: authority)
+        )
     }
 }
 

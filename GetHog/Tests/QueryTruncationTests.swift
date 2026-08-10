@@ -567,3 +567,444 @@ private struct IssueTransport: HTTPTransport {
         return (try JSONSerialization.data(withJSONObject: object), response)
     }
 }
+
+// MARK: - Async resource request ownership
+
+/// A complete synthetic HTTP reply. Test expectations below are hand-derived
+/// from these immutable literals rather than decoded with production helpers.
+private struct ResourceStoreReply: Sendable {
+    let statusCode: Int
+    let body: Data
+
+    static func ok(_ body: String) -> Self {
+        Self(statusCode: 200, body: Data(body.utf8))
+    }
+
+    static func unavailable(_ detail: String) -> Self {
+        Self(
+            statusCode: 503,
+            body: Data(#"{"detail":"\#(detail)"}"#.utf8)
+        )
+    }
+}
+
+/// A real `HTTPTransport` whose held steps deliberately ignore task
+/// cancellation. That makes generation ownership, rather than cooperative
+/// cancellation in a test double, responsible for rejecting a late response.
+private actor DelayedResourceStoreTransport: HTTPTransport {
+    enum Step: Sendable {
+        case immediate(ResourceStoreReply)
+        case held(ResourceStoreReply)
+    }
+
+    private var steps: [Step]
+    private var requestCount = 0
+    private var started: Set<Int> = []
+    private var releases: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    init(_ steps: [Step]) {
+        self.steps = steps
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let index = requestCount
+        requestCount += 1
+        let step = try #require(steps.isEmpty ? nil : steps.removeFirst())
+        let reply: ResourceStoreReply
+        switch step {
+        case .immediate(let value):
+            reply = value
+        case .held(let value):
+            started.insert(index)
+            await withCheckedContinuation { continuation in
+                releases[index] = continuation
+            }
+            reply = value
+        }
+        return (
+            reply.body,
+            HTTPURLResponse(
+                url: try #require(request.url),
+                statusCode: reply.statusCode,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+        )
+    }
+
+    func waitForRequest(_ index: Int) async {
+        while !started.contains(index) { await Task.yield() }
+    }
+
+    func release(_ index: Int) {
+        releases.removeValue(forKey: index)?.resume()
+    }
+}
+
+@Suite("Async resource request ownership")
+@MainActor
+struct AsyncResourceRequestOwnershipTests {
+    /// Production mutation caught: removing descriptor-generation ownership
+    /// lets a cancelled request for the old Logs filter overwrite the new one.
+    @Test("logs reject a cancellation-ignoring response from the superseded filter")
+    func logsRejectSupersededFilterResponse() async {
+        let previousDescriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 41),
+            window: .day,
+            search: "legacy"
+        )
+        let currentDescriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 41),
+            window: .lastHour,
+            search: "current"
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.logsReply(id: "old-log", body: "Legacy result")),
+            .immediate(Self.logsReply(id: "new-log", body: "Current result")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+
+        store.window = previousDescriptor.window
+        store.search = previousDescriptor.search
+        let superseded = Task { await store.load(client: client, request: previousDescriptor) }
+        await transport.waitForRequest(0)
+
+        store.window = currentDescriptor.window
+        store.search = currentDescriptor.search
+        superseded.cancel()
+        await store.load(client: client, request: currentDescriptor)
+        #expect(store.rows.map(\.id) == ["new-log"])
+
+        await transport.release(0)
+        await superseded.value
+        #expect(store.rows.map(\.id) == ["new-log"])
+    }
+
+    /// Production mutation caught: clearing Logs rows in the same-descriptor
+    /// catch path turns a transient refresh outage into destructive data loss.
+    @Test("logs keep same-scope rows when refresh fails")
+    func logsKeepRowsAcrossRefreshFailure() async {
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.logsReply(id: "kept-log", body: "Keep this line")),
+            .immediate(.unavailable("Synthetic logs refresh failed")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+        let descriptor = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 42),
+            window: .day,
+            search: ""
+        )
+
+        await store.load(client: client, request: descriptor)
+        let loadedAt = store.loadedAt
+        await store.load(client: client, request: descriptor)
+
+        #expect(store.rows.map(\.id) == ["kept-log"])
+        #expect(store.loadedAt == loadedAt)
+        guard case .failed(let message) = store.state else {
+            Issue.record("Expected a retryable Logs failure beside the carried row.")
+            return
+        }
+        #expect(message.contains("Synthetic logs refresh failed"))
+    }
+
+    /// Production mutation caught: deferring a filter-boundary clear until
+    /// after suspension leaves rows answering the old Logs question on screen.
+    @Test("logs clear synchronously when filter authority changes")
+    func logsClearAtFilterBoundary() async {
+        let old = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 43), window: .day, search: "old"
+        )
+        let replacement = LogsRequestDescriptor(
+            authority: Self.authority(projectID: 43), window: .lastHour, search: "new"
+        )
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.logsReply(id: "old-filter-log", body: "Old filter")),
+            .held(Self.logsReply(id: "new-filter-log", body: "New filter")),
+        ])
+        let store = LogsStore()
+        let client = Self.client(transport)
+
+        await store.load(client: client, request: old)
+        let pending = Task { await store.load(client: client, request: replacement) }
+        await transport.waitForRequest(1)
+        #expect(store.rows.isEmpty)
+        #expect(store.loadedAt == nil)
+
+        await transport.release(1)
+        await pending.value
+    }
+
+    /// Production mutation caught: removing descriptor-generation ownership
+    /// lets a cancelled request for the old Tracing filter overwrite the new one.
+    @Test("tracing rejects a cancellation-ignoring response from the superseded filter")
+    func tracingRejectsSupersededFilterResponse() async {
+        let previousDescriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 51),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let currentDescriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 51),
+            window: .lastHour,
+            service: "checkout",
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.tracingReply(traceID: "old-trace", service: "legacy")),
+            .immediate(Self.tracingReply(traceID: "new-trace", service: "checkout")),
+        ])
+        let store = TracingStore()
+        let client = Self.client(transport)
+
+        store.window = previousDescriptor.window
+        store.service = previousDescriptor.service
+        let superseded = Task { await store.load(client: client, request: previousDescriptor) }
+        await transport.waitForRequest(0)
+
+        store.window = currentDescriptor.window
+        store.service = currentDescriptor.service
+        superseded.cancel()
+        await store.load(client: client, request: currentDescriptor)
+        #expect(store.traces.map(\.id) == ["new-trace"])
+
+        await transport.release(0)
+        await superseded.value
+        #expect(store.traces.map(\.id) == ["new-trace"])
+    }
+
+    /// Production mutation caught: clearing Tracing rows in the
+    /// same-descriptor catch path destroys the last successful trace page.
+    @Test("tracing keeps same-scope rows when refresh fails")
+    func tracingKeepsRowsAcrossRefreshFailure() async {
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.tracingReply(traceID: "kept-trace", service: "worker")),
+            .immediate(.unavailable("Synthetic tracing refresh failed")),
+        ])
+        let store = TracingStore()
+        let client = Self.client(transport)
+        let descriptor = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 52),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+
+        await store.load(client: client, request: descriptor)
+        let loadedAt = store.loadedAt
+        await store.load(client: client, request: descriptor)
+
+        #expect(store.traces.map(\.id) == ["kept-trace"])
+        #expect(store.loadedAt == loadedAt)
+        guard case .failed(let message) = store.state else {
+            Issue.record("Expected a retryable Tracing failure beside the carried trace.")
+            return
+        }
+        #expect(message.contains("Synthetic tracing refresh failed"))
+    }
+
+    /// Production mutation caught: comparing only numeric project ids carries
+    /// US tracing rows into the same-numbered EU project while replacement loads.
+    @Test("tracing clears synchronously when region authority changes")
+    func tracingClearsAtRegionBoundary() async {
+        let old = TracingRequestDescriptor(
+            authority: Self.authority(projectID: 53),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let replacement = TracingRequestDescriptor(
+            authority: ResourceRequestAuthority(
+                projectID: 53,
+                region: .euCloud,
+                authSessionID: old.authority.authSessionID
+            ),
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.tracingReply(traceID: "us-trace", service: "us-worker")),
+            .held(Self.tracingReply(traceID: "eu-trace", service: "eu-worker")),
+        ])
+        let store = TracingStore()
+
+        await store.load(client: Self.client(transport), request: old)
+        let pending = Task {
+            await store.load(
+                client: Self.client(transport, region: .euCloud),
+                request: replacement
+            )
+        }
+        await transport.waitForRequest(1)
+        #expect(store.traces.isEmpty)
+        #expect(store.services.isEmpty)
+        #expect(store.loadedAt == nil)
+
+        await transport.release(1)
+        await pending.value
+    }
+
+    /// Production mutations caught: deferring the project-boundary clear keeps
+    /// old rows visible while the replacement suspends, and keying publication
+    /// only on task cancellation lets the old response replace the new project.
+    @Test("renders clear at a project boundary and reject the superseded response")
+    func rendersRejectSupersededProjectResponse() async {
+        let previousProjectID = 61
+        let currentProjectID = 62
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.rendersReply(id: 6_100, filename: "Old baseline.mp4")),
+            .held(Self.rendersReply(id: 6_101, filename: "Old project.mp4")),
+            .held(Self.rendersReply(id: 6_201, filename: "Current project.mp4")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+        let previousDescriptor = RendersRequestDescriptor(
+            authority: Self.authority(projectID: previousProjectID)
+        )
+        let currentDescriptor = RendersRequestDescriptor(
+            authority: Self.authority(projectID: currentProjectID)
+        )
+
+        await store.load(client: client, request: previousDescriptor)
+        let superseded = Task {
+            await store.load(client: client, request: previousDescriptor)
+        }
+        await transport.waitForRequest(1)
+        superseded.cancel()
+        let replacement = Task {
+            await store.load(client: client, request: currentDescriptor)
+        }
+        await transport.waitForRequest(2)
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+
+        await transport.release(2)
+        await replacement.value
+        #expect(store.exports.map(\.id) == [6_201])
+
+        await transport.release(1)
+        await superseded.value
+        #expect(store.exports.map(\.id) == [6_201])
+    }
+
+    /// Production mutation caught: clearing Renders rows in the
+    /// same-descriptor catch path destroys a usable library on a transient 503.
+    @Test("renders keep same-scope rows when refresh fails")
+    func rendersKeepRowsAcrossRefreshFailure() async {
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.rendersReply(id: 7_001, filename: "Kept render.mp4")),
+            .immediate(.unavailable("Synthetic renders refresh failed")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+        let descriptor = RendersRequestDescriptor(
+            authority: Self.authority(projectID: 71)
+        )
+
+        await store.load(client: client, request: descriptor)
+        let loadedAt = store.loadedAt
+        await store.load(client: client, request: descriptor)
+
+        #expect(store.exports.map(\.id) == [7_001])
+        #expect(store.loadedAt == loadedAt)
+        guard case .failed(let message) = store.state else {
+            Issue.record("Expected a retryable Renders failure beside the carried render.")
+            return
+        }
+        #expect(message.contains("Synthetic renders refresh failed"))
+    }
+
+    /// Production mutation caught: omitting the authentication epoch carries
+    /// one credential's render library into its same-project replacement.
+    @Test("renders clear synchronously when authentication authority changes")
+    func rendersClearAtAuthenticationBoundary() async {
+        let old = RendersRequestDescriptor(authority: Self.authority(projectID: 72))
+        let replacement = RendersRequestDescriptor(
+            authority: ResourceRequestAuthority(
+                projectID: 72,
+                region: .usCloud,
+                authSessionID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+            )
+        )
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.rendersReply(id: 7_201, filename: "Old credential.mp4")),
+            .held(Self.rendersReply(id: 7_202, filename: "New credential.mp4")),
+        ])
+        let store = RendersStore()
+        let client = Self.client(transport)
+
+        await store.load(client: client, request: old)
+        let pending = Task { await store.load(client: client, request: replacement) }
+        await transport.waitForRequest(1)
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+
+        await transport.release(1)
+        await pending.value
+    }
+
+    private static func client(
+        _ transport: some HTTPTransport,
+        region: PostHogRegion = .usCloud
+    ) -> PostHogClient {
+        PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: region),
+            transport: transport
+        )
+    }
+
+    private static func authority(projectID: Int) -> ResourceRequestAuthority {
+        ResourceRequestAuthority(
+            projectID: projectID,
+            region: .usCloud,
+            authSessionID: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        )
+    }
+
+    private static func logsReply(id: String, body: String) -> ResourceStoreReply {
+        .ok(
+            """
+            {"columns":["uuid","timestamp","severity_text","body","service_name"],
+             "results":[["\(id)","2026-08-09T12:00:00Z","info","\(body)","worker"]]}
+            """
+        )
+    }
+
+    private static func tracingReply(
+        traceID: String,
+        service: String
+    ) -> ResourceStoreReply {
+        .ok(
+            """
+            {"columns":["uuid","trace_id","span_id","parent_span_id","name",\
+            "service_name","status_code","timestamp","duration_nano","is_root_span"],
+             "results":[["event-\(traceID)","\(traceID)","span-\(traceID)",null,\
+            "GET /synthetic","\(service)",1,"2026-08-09T12:00:00Z",12000000,true]]}
+            """
+        )
+    }
+
+    private static func rendersReply(id: Int, filename: String) -> ResourceStoreReply {
+        .ok(
+            """
+            {"count":1,"next":null,"previous":null,"results":[{
+              "id":\(id),"dashboard":null,"insight":null,"export_format":"video/mp4",
+              "created_at":"2026-08-09T12:00:00Z","has_content":true,
+              "export_context":{"session_recording_id":"synthetic-\(id)",
+                "file_size_bytes":1024,"video_duration_s":12.0},
+              "filename":"\(filename)","expires_after":"2026-08-10T12:00:00Z",
+              "exception":null,"user_access_level":"viewer"
+            }]}
+            """
+        )
+    }
+}

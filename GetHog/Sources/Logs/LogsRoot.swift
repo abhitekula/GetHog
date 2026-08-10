@@ -73,6 +73,22 @@ extension LogSeverity {
 
 // MARK: - Store
 
+/// The complete security namespace in which a read response may publish.
+/// Numeric project ids can repeat between hosts, and a replacement credential
+/// invalidates work even when both host and project number stay unchanged.
+struct ResourceRequestAuthority: Hashable, Sendable {
+    let projectID: Int
+    let region: PostHogRegion
+    let authSessionID: UUID?
+}
+
+/// Every value that changes the meaning of one Logs response.
+struct LogsRequestDescriptor: Hashable, Sendable {
+    let authority: ResourceRequestAuthority
+    let window: LogsWindow
+    let search: String
+}
+
 @MainActor
 @Observable
 final class LogsStore {
@@ -104,6 +120,9 @@ final class LogsStore {
     /// Comparing the row count with the requested ceiling remains conservative,
     /// while an envelope flag is honored whenever it arrives.
     private(set) var isTruncated = false
+
+    private var requestGeneration: UInt64 = 0
+    private var currentRequest: LogsRequestDescriptor?
 
     // Held here rather than in the view so a project switch or a pull-to-refresh
     // reuses whatever the reader last chose.
@@ -137,27 +156,66 @@ final class LogsStore {
     }
 
     func load(client: PostHogClient, projectID: Int) async {
+        await load(
+            client: client,
+            request: LogsRequestDescriptor(
+                authority: ResourceRequestAuthority(
+                    projectID: projectID,
+                    region: client.region,
+                    authSessionID: nil
+                ),
+                window: window,
+                search: search
+            )
+        )
+    }
+
+    func invalidate() {
+        requestGeneration &+= 1
+        currentRequest = nil
+        state = .loading
+        rows = []
+        rowsReturned = 0
+        isTruncated = false
+        loadedAt = nil
+        isLoading = false
+    }
+
+    func load(client: PostHogClient, request: LogsRequestDescriptor) async {
+        requestGeneration &+= 1
+        let generation = requestGeneration
+        if currentRequest != request {
+            currentRequest = request
+            state = .loading
+            rows = []
+            rowsReturned = 0
+            isTruncated = false
+            loadedAt = nil
+        }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if generation == requestGeneration, currentRequest == request {
+                isLoading = false
+            }
+        }
         do {
             let response: QueryResponse = try await client.send(
                 PostHogAPI.logs(
-                    projectID: projectID,
-                    dateFrom: window.rawValue,
-                    search: search,
+                    projectID: request.authority.projectID,
+                    dateFrom: request.window.rawValue,
+                    search: request.search,
                     limit: Self.limit
                 )
             )
+            guard generation == requestGeneration, currentRequest == request else { return }
             rows = LogRow.rows(from: response)
             rowsReturned = response.rows.count
             isTruncated = response.isTruncated || rowsReturned >= Self.limit
             state = .resolved(rowCount: rows.count)
             loadedAt = Date()
         } catch {
+            guard generation == requestGeneration, currentRequest == request else { return }
             state = ResourceAccessState(failure: error, resource: "logs", defaultScope: "logs:read")
-            rows = []
-            rowsReturned = 0
-            isTruncated = false
         }
     }
 }
@@ -182,6 +240,19 @@ struct LogsRoot: View {
         )
     }
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard
+            let client = model.client,
+            let projectID = model.projectID,
+            let authSessionID = model.authSessionID
+        else { return nil }
+        return ResourceRequestAuthority(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
+    }
+
     var body: some View {
         @Bindable var store = store
 
@@ -193,7 +264,7 @@ struct LogsRoot: View {
             .searchable(text: $store.search, prompt: "Search log messages")
             .onSubmit(of: .search) { Task { await load() } }
             .screenRefreshable { await load() }
-            .task(id: model.projectID) { await load() }
+            .task(id: requestAuthority) { await load() }
     }
 
     @ViewBuilder
@@ -212,6 +283,19 @@ struct LogsRoot: View {
                 LogsLockedView(state: store.state) {
                     Task { await model.refreshCapabilities(); await load() }
                 }
+
+            case .failed(let message) where !store.rows.isEmpty:
+                VStack(spacing: 0) {
+                    filterBar
+                    SectionEmptyState(
+                        text: "Couldn't refresh logs. \(message)",
+                        systemImage: "exclamationmark.triangle",
+                        actionTitle: "Try again"
+                    ) { Task { await load() } }
+                    .padding(.horizontal, Theme.Space.l)
+                    list
+                }
+                .background(Theme.pageBackground)
 
             case .failed(let message):
                 EmptyStateView(
@@ -390,8 +474,18 @@ struct LogsRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else {
+            store.invalidate()
+            return
+        }
+        await store.load(
+            client: client,
+            request: LogsRequestDescriptor(
+                authority: authority,
+                window: store.window,
+                search: store.search
+            )
+        )
     }
 }
 
