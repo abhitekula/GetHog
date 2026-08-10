@@ -724,17 +724,20 @@ private struct ResourceStoreTestTimeout: Error, CustomStringConvertible {
 @MainActor
 private final class StoreLoadStartProbe {
     private var started = false
-    private var waiter: CheckedContinuation<Void, Never>?
 
     func markStarted() {
         started = true
-        waiter?.resume()
-        waiter = nil
     }
 
-    func wait() async {
-        guard !started else { return }
-        await withCheckedContinuation { waiter = $0 }
+    func wait(within timeout: Duration = .seconds(1)) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !started {
+            guard clock.now < deadline else {
+                throw ResourceStoreTestTimeout("store load did not start")
+            }
+            await Task.yield()
+        }
     }
 }
 
@@ -752,6 +755,45 @@ private actor StoreLoadCompletionProbe {
             await Task.yield()
         }
         return completed
+    }
+}
+
+@MainActor
+private final class MutableResourceAuthority {
+    var value: ResourceRequestAuthority?
+
+    init(_ value: ResourceRequestAuthority?) {
+        self.value = value
+    }
+}
+
+/// Starts one store caller and bounds the wait for its continuation to resume.
+/// A broken waiter path records a failed expectation instead of hanging the
+/// entire selected Xcode run on `Task.value`.
+@MainActor
+private struct BoundedStoreLoad {
+    private let task: Task<Void, Never>
+    private let completion: StoreLoadCompletionProbe
+
+    static func start(
+        _ operation: @escaping @MainActor @Sendable () async -> Void
+    ) -> Self {
+        let completion = StoreLoadCompletionProbe()
+        let task = Task { @MainActor in
+            await operation()
+            await completion.markCompleted()
+        }
+        return Self(task: task, completion: completion)
+    }
+
+    func cancel() {
+        task.cancel()
+    }
+
+    func finishes(within timeout: Duration = .seconds(1)) async -> Bool {
+        guard await completion.completes(within: timeout) else { return false }
+        await task.value
+        return true
     }
 }
 
@@ -823,7 +865,9 @@ struct AsyncResourceRequestOwnershipTests {
 
         store.window = previousDescriptor.window
         store.search = previousDescriptor.search
-        let superseded = Task { await store.load(client: client, request: previousDescriptor) }
+        let superseded = BoundedStoreLoad.start {
+            await store.load(client: client, request: previousDescriptor)
+        }
         try await transport.waitForRequest(0)
 
         store.search = currentDescriptor.search
@@ -832,7 +876,7 @@ struct AsyncResourceRequestOwnershipTests {
         #expect(store.rows.map(\.id) == ["new-log"])
 
         await transport.release(0)
-        await superseded.value
+        #expect(await superseded.finishes())
         #expect(store.rows.map(\.id) == ["new-log"])
     }
 
@@ -857,7 +901,9 @@ struct AsyncResourceRequestOwnershipTests {
         store.window = descriptor.window
         store.search = descriptor.search
 
-        let oldWork = Task { await store.load(client: client, request: descriptor) }
+        let oldWork = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
         try await transport.waitForRequest(0)
         switch dimension {
         case .window: store.window = .lastHour
@@ -867,10 +913,88 @@ struct AsyncResourceRequestOwnershipTests {
         // No replacement load has started. Releasing here is the root's
         // `onChange { Task { ... } }` scheduling gap from the review finding.
         await transport.release(0)
-        await oldWork.value
+        #expect(await oldWork.finishes())
 
         #expect(store.rows.isEmpty)
         #expect(store.loadedAt == nil)
+    }
+
+    /// Production mutation caught: deleting the live-authority guard from the
+    /// Logs success publisher lets a held response cross a project, region, or
+    /// authentication boundary that changed after the request was sent.
+    @Test(
+        "logs reject success when live authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func logsRejectSuccessForChangedLiveAuthority(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let requestAuthority = Self.authority(projectID: 48)
+        let liveAuthority = MutableResourceAuthority(requestAuthority)
+        let descriptor = LogsRequestDescriptor(
+            authority: requestAuthority,
+            window: .day,
+            search: ""
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.logsReply(id: "cross-authority-log", body: "Must not publish")),
+        ])
+        let store = LogsStore()
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport),
+                request: descriptor,
+                currentAuthority: { liveAuthority.value }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        liveAuthority.value = Self.changedAuthority(requestAuthority, dimension: dimension)
+        await transport.release(0)
+        #expect(await pending.finishes())
+
+        #expect(store.rows.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
+    }
+
+    /// Production mutation caught: deleting the live-authority guard from the
+    /// Logs error publisher exposes an obsolete request failure in the new
+    /// project, region, or authentication session.
+    @Test(
+        "logs reject failure when live authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func logsRejectFailureForChangedLiveAuthority(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let requestAuthority = Self.authority(projectID: 49)
+        let liveAuthority = MutableResourceAuthority(requestAuthority)
+        let descriptor = LogsRequestDescriptor(
+            authority: requestAuthority,
+            window: .day,
+            search: ""
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(.unavailable("Obsolete logs failure")),
+        ])
+        let store = LogsStore()
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport),
+                request: descriptor,
+                currentAuthority: { liveAuthority.value }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        liveAuthority.value = Self.changedAuthority(requestAuthority, dimension: dimension)
+        await transport.release(0)
+        #expect(await pending.finishes())
+
+        #expect(store.rows.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
     }
 
     /// Production mutation caught: removing the equal-descriptor in-flight
@@ -887,18 +1011,20 @@ struct AsyncResourceRequestOwnershipTests {
         let store = LogsStore()
         let client = Self.client(transport)
 
-        let first = Task { await store.load(client: client, request: descriptor) }
+        let first = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
         try await transport.waitForRequest(0)
         let started = StoreLoadStartProbe()
-        let second = Task {
+        let second = BoundedStoreLoad.start {
             started.markStarted()
             await store.load(client: client, request: descriptor)
         }
-        await started.wait()
+        try await started.wait()
         let requestCount = await transport.observedRequestCount()
         for index in 0..<requestCount { await transport.release(index) }
-        await first.value
-        await second.value
+        #expect(await first.finishes())
+        #expect(await second.finishes())
 
         #expect(requestCount == 1)
         #expect(store.rows.map(\.id) == ["coalesced-log"])
@@ -919,25 +1045,22 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = LogsStore()
         let client = Self.client(transport)
-        let firstCompletion = StoreLoadCompletionProbe()
-
-        let first = Task {
+        let first = BoundedStoreLoad.start {
             await store.load(client: client, request: descriptor)
-            await firstCompletion.markCompleted()
         }
         try await transport.waitForRequest(0)
         let secondStarted = StoreLoadStartProbe()
-        let second = Task {
+        let second = BoundedStoreLoad.start {
             secondStarted.markStarted()
             await store.load(client: client, request: descriptor)
         }
-        await secondStarted.wait()
+        try await secondStarted.wait()
 
         first.cancel()
-        let cancelledCallerReturned = await firstCompletion.completes()
+        let cancelledCallerReturned = await first.finishes()
         await transport.release(0)
-        await first.value
-        await second.value
+        #expect(await second.finishes())
+        if !cancelledCallerReturned { _ = await first.finishes() }
 
         #expect(cancelledCallerReturned)
         #expect(await transport.observedRequestCount() == 1)
@@ -958,17 +1081,15 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = LogsStore()
         let client = Self.client(transport)
-        let completion = StoreLoadCompletionProbe()
-        let pending = Task {
+        let pending = BoundedStoreLoad.start {
             await store.load(client: client, request: descriptor)
-            await completion.markCompleted()
         }
         try await transport.waitForRequest(0)
 
         pending.cancel()
-        let returnedBeforeTransport = await completion.completes()
+        let returnedBeforeTransport = await pending.finishes()
         await transport.release(0)
-        await pending.value
+        if !returnedBeforeTransport { _ = await pending.finishes() }
 
         #expect(returnedBeforeTransport)
         #expect(store.rows.isEmpty)
@@ -1023,13 +1144,15 @@ struct AsyncResourceRequestOwnershipTests {
         let client = Self.client(transport)
 
         await store.load(client: client, request: old)
-        let pending = Task { await store.load(client: client, request: replacement) }
+        let pending = BoundedStoreLoad.start {
+            await store.load(client: client, request: replacement)
+        }
         try await transport.waitForRequest(1)
         #expect(store.rows.isEmpty)
         #expect(store.loadedAt == nil)
 
         await transport.release(1)
-        await pending.value
+        #expect(await pending.finishes())
     }
 
     /// Production mutation caught: removing descriptor-generation ownership
@@ -1059,7 +1182,9 @@ struct AsyncResourceRequestOwnershipTests {
 
         store.window = previousDescriptor.window
         store.service = previousDescriptor.service
-        let superseded = Task { await store.load(client: client, request: previousDescriptor) }
+        let superseded = BoundedStoreLoad.start {
+            await store.load(client: client, request: previousDescriptor)
+        }
         try await transport.waitForRequest(0)
 
         store.service = currentDescriptor.service
@@ -1068,7 +1193,7 @@ struct AsyncResourceRequestOwnershipTests {
         #expect(store.traces.map(\.id) == ["new-trace"])
 
         await transport.release(0)
-        await superseded.value
+        #expect(await superseded.finishes())
         #expect(store.traces.map(\.id) == ["new-trace"])
     }
 
@@ -1102,7 +1227,9 @@ struct AsyncResourceRequestOwnershipTests {
         store.spanName = descriptor.spanName
         store.errorsOnly = descriptor.errorsOnly
 
-        let oldWork = Task { await store.load(client: client, request: descriptor) }
+        let oldWork = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
         try await transport.waitForRequest(0)
         switch dimension {
         case .window: store.window = .lastHour
@@ -1112,10 +1239,147 @@ struct AsyncResourceRequestOwnershipTests {
         }
 
         await transport.release(0)
-        await oldWork.value
+        #expect(await oldWork.finishes())
 
         #expect(store.traces.isEmpty)
         #expect(store.loadedAt == nil)
+    }
+
+    /// Production mutation caught: deriving facet authority only from
+    /// `currentRequest` loses provenance when a filter invalidation clears that
+    /// descriptor, so a following project, region, or auth change can retain
+    /// and union service names from the obsolete authority.
+    @Test(
+        "tracing drops service facets across filter then authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func tracingDropsFacetAcrossCompoundAuthorityBoundary(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let previousAuthority = Self.authority(projectID: 58)
+        let replacementAuthority = Self.changedAuthority(previousAuthority, dimension: dimension)
+        let previous = TracingRequestDescriptor(
+            authority: previousAuthority,
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let replacement = TracingRequestDescriptor(
+            authority: replacementAuthority,
+            window: .day,
+            service: "shared-worker",
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .immediate(Self.tracingFacetBaselineReply()),
+            .held(Self.tracingReply(traceID: "replacement-shared", service: "shared-worker")),
+        ])
+        let store = TracingStore()
+
+        await store.load(client: Self.client(transport), request: previous)
+        #expect(store.services == ["legacy-only", "shared-worker"])
+
+        // This filter mutation intentionally clears `currentRequest` while the
+        // facet remains useful for the same authority.
+        store.service = "shared-worker"
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport, region: replacementAuthority.region),
+                request: replacement
+            )
+        }
+        try await transport.waitForRequest(1)
+
+        #expect(store.services.isEmpty)
+        await transport.release(1)
+        #expect(await pending.finishes())
+        #expect(store.services == ["shared-worker"])
+    }
+
+    /// Production mutation caught: deleting the Tracing success publisher's
+    /// live-authority guard allows old spans and service facets to cross any
+    /// project, region, or authentication boundary.
+    @Test(
+        "tracing rejects success when live authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func tracingRejectsSuccessForChangedLiveAuthority(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let requestAuthority = Self.authority(projectID: 59)
+        let liveAuthority = MutableResourceAuthority(requestAuthority)
+        let descriptor = TracingRequestDescriptor(
+            authority: requestAuthority,
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.tracingReply(traceID: "cross-authority-trace", service: "worker")),
+        ])
+        let store = TracingStore()
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport),
+                request: descriptor,
+                currentAuthority: { liveAuthority.value }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        liveAuthority.value = Self.changedAuthority(requestAuthority, dimension: dimension)
+        await transport.release(0)
+        #expect(await pending.finishes())
+
+        #expect(store.traces.isEmpty)
+        #expect(store.services.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
+    }
+
+    /// Production mutation caught: deleting the Tracing error publisher's
+    /// live-authority guard surfaces a stale failure after any authority
+    /// dimension changes.
+    @Test(
+        "tracing rejects failure when live authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func tracingRejectsFailureForChangedLiveAuthority(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let requestAuthority = Self.authority(projectID: 60)
+        let liveAuthority = MutableResourceAuthority(requestAuthority)
+        let descriptor = TracingRequestDescriptor(
+            authority: requestAuthority,
+            window: .day,
+            service: nil,
+            spanName: "",
+            errorsOnly: false
+        )
+        let transport = DelayedResourceStoreTransport([
+            .held(.unavailable("Obsolete tracing failure")),
+        ])
+        let store = TracingStore()
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport),
+                request: descriptor,
+                currentAuthority: { liveAuthority.value }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        liveAuthority.value = Self.changedAuthority(requestAuthority, dimension: dimension)
+        await transport.release(0)
+        #expect(await pending.finishes())
+
+        #expect(store.traces.isEmpty)
+        #expect(store.services.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
     }
 
     /// Production mutation caught: removing the equal-descriptor in-flight
@@ -1136,18 +1400,20 @@ struct AsyncResourceRequestOwnershipTests {
         let store = TracingStore()
         let client = Self.client(transport)
 
-        let first = Task { await store.load(client: client, request: descriptor) }
+        let first = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
         try await transport.waitForRequest(0)
         let started = StoreLoadStartProbe()
-        let second = Task {
+        let second = BoundedStoreLoad.start {
             started.markStarted()
             await store.load(client: client, request: descriptor)
         }
-        await started.wait()
+        try await started.wait()
         let requestCount = await transport.observedRequestCount()
         for index in 0..<requestCount { await transport.release(index) }
-        await first.value
-        await second.value
+        #expect(await first.finishes())
+        #expect(await second.finishes())
 
         #expect(requestCount == 1)
         #expect(store.traces.map(\.id) == ["coalesced-trace"])
@@ -1171,25 +1437,22 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = TracingStore()
         let client = Self.client(transport)
-        let firstCompletion = StoreLoadCompletionProbe()
-
-        let first = Task {
+        let first = BoundedStoreLoad.start {
             await store.load(client: client, request: descriptor)
-            await firstCompletion.markCompleted()
         }
         try await transport.waitForRequest(0)
         let secondStarted = StoreLoadStartProbe()
-        let second = Task {
+        let second = BoundedStoreLoad.start {
             secondStarted.markStarted()
             await store.load(client: client, request: descriptor)
         }
-        await secondStarted.wait()
+        try await secondStarted.wait()
 
         first.cancel()
-        let cancelledCallerReturned = await firstCompletion.completes()
+        let cancelledCallerReturned = await first.finishes()
         await transport.release(0)
-        await first.value
-        await second.value
+        #expect(await second.finishes())
+        if !cancelledCallerReturned { _ = await first.finishes() }
 
         #expect(cancelledCallerReturned)
         #expect(await transport.observedRequestCount() == 1)
@@ -1213,17 +1476,15 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = TracingStore()
         let client = Self.client(transport)
-        let completion = StoreLoadCompletionProbe()
-        let pending = Task {
+        let pending = BoundedStoreLoad.start {
             await store.load(client: client, request: descriptor)
-            await completion.markCompleted()
         }
         try await transport.waitForRequest(0)
 
         pending.cancel()
-        let returnedBeforeTransport = await completion.completes()
+        let returnedBeforeTransport = await pending.finishes()
         await transport.release(0)
-        await pending.value
+        if !returnedBeforeTransport { _ = await pending.finishes() }
 
         #expect(returnedBeforeTransport)
         #expect(store.traces.isEmpty)
@@ -1291,7 +1552,7 @@ struct AsyncResourceRequestOwnershipTests {
         let store = TracingStore()
 
         await store.load(client: Self.client(transport), request: old)
-        let pending = Task {
+        let pending = BoundedStoreLoad.start {
             await store.load(
                 client: Self.client(transport, region: .euCloud),
                 request: replacement
@@ -1303,7 +1564,7 @@ struct AsyncResourceRequestOwnershipTests {
         #expect(store.loadedAt == nil)
 
         await transport.release(1)
-        await pending.value
+        #expect(await pending.finishes())
     }
 
     /// Production mutations caught: deferring the project-boundary clear keeps
@@ -1328,7 +1589,7 @@ struct AsyncResourceRequestOwnershipTests {
         )
 
         await store.load(client: client, request: previousDescriptor)
-        let superseded = Task {
+        let superseded = BoundedStoreLoad.start {
             await store.load(client: client, request: previousDescriptor)
         }
         try await transport.waitForRequest(1)
@@ -1339,11 +1600,11 @@ struct AsyncResourceRequestOwnershipTests {
         // replacement `.task(id:)` body yet. The old transport must already be
         // unable to publish in this root scheduling gap.
         await transport.release(1)
-        await superseded.value
+        #expect(await superseded.finishes())
         #expect(store.exports.isEmpty)
         #expect(store.loadedAt == nil)
 
-        let replacement = Task {
+        let replacement = BoundedStoreLoad.start {
             await store.load(client: client, request: currentDescriptor)
         }
         try await transport.waitForRequest(2)
@@ -1351,7 +1612,7 @@ struct AsyncResourceRequestOwnershipTests {
         #expect(store.loadedAt == nil)
 
         await transport.release(2)
-        await replacement.value
+        #expect(await replacement.finishes())
         #expect(store.exports.map(\.id) == [6_201])
     }
 
@@ -1369,7 +1630,7 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = RendersStore()
         let client = Self.client(transport)
-        let pending = Task {
+        let pending = BoundedStoreLoad.start {
             await store.load(
                 client: client,
                 request: descriptor,
@@ -1382,7 +1643,77 @@ struct AsyncResourceRequestOwnershipTests {
         // between the real authority mutation and SwiftUI's next update pass.
         model.signOut()
         await transport.release(0)
-        await pending.value
+        #expect(await pending.finishes())
+
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
+    }
+
+    /// Production mutation caught: deleting the Renders success publisher's
+    /// live-authority guard permits a held export list to cross a project,
+    /// region, or authentication boundary.
+    @Test(
+        "renders reject success when live authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func rendersRejectSuccessForChangedLiveAuthority(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let requestAuthority = Self.authority(projectID: 63)
+        let liveAuthority = MutableResourceAuthority(requestAuthority)
+        let descriptor = RendersRequestDescriptor(authority: requestAuthority)
+        let transport = DelayedResourceStoreTransport([
+            .held(Self.rendersReply(id: 6_302, filename: "Must not publish.mp4")),
+        ])
+        let store = RendersStore()
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport),
+                request: descriptor,
+                currentAuthority: { liveAuthority.value }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        liveAuthority.value = Self.changedAuthority(requestAuthority, dimension: dimension)
+        await transport.release(0)
+        #expect(await pending.finishes())
+
+        #expect(store.exports.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.state == .loading)
+    }
+
+    /// Production mutation caught: deleting the Renders error publisher's
+    /// live-authority guard exposes an obsolete export failure after any
+    /// authority dimension changes.
+    @Test(
+        "renders reject failure when live authority changes",
+        arguments: ResourceAuthorityDimension.allCases
+    )
+    func rendersRejectFailureForChangedLiveAuthority(
+        _ dimension: ResourceAuthorityDimension
+    ) async throws {
+        let requestAuthority = Self.authority(projectID: 64)
+        let liveAuthority = MutableResourceAuthority(requestAuthority)
+        let descriptor = RendersRequestDescriptor(authority: requestAuthority)
+        let transport = DelayedResourceStoreTransport([
+            .held(.unavailable("Obsolete renders failure")),
+        ])
+        let store = RendersStore()
+        let pending = BoundedStoreLoad.start {
+            await store.load(
+                client: Self.client(transport),
+                request: descriptor,
+                currentAuthority: { liveAuthority.value }
+            )
+        }
+        try await transport.waitForRequest(0)
+
+        liveAuthority.value = Self.changedAuthority(requestAuthority, dimension: dimension)
+        await transport.release(0)
+        #expect(await pending.finishes())
 
         #expect(store.exports.isEmpty)
         #expect(store.loadedAt == nil)
@@ -1436,13 +1767,15 @@ struct AsyncResourceRequestOwnershipTests {
         let client = Self.client(transport)
 
         await store.load(client: client, request: old)
-        let pending = Task { await store.load(client: client, request: replacement) }
+        let pending = BoundedStoreLoad.start {
+            await store.load(client: client, request: replacement)
+        }
         try await transport.waitForRequest(1)
         #expect(store.exports.isEmpty)
         #expect(store.loadedAt == nil)
 
         await transport.release(1)
-        await pending.value
+        #expect(await pending.finishes())
     }
 
     /// Production mutation caught: removing the equal-descriptor in-flight
@@ -1459,18 +1792,20 @@ struct AsyncResourceRequestOwnershipTests {
         let store = RendersStore()
         let client = Self.client(transport)
 
-        let first = Task { await store.load(client: client, request: descriptor) }
+        let first = BoundedStoreLoad.start {
+            await store.load(client: client, request: descriptor)
+        }
         try await transport.waitForRequest(0)
         let started = StoreLoadStartProbe()
-        let second = Task {
+        let second = BoundedStoreLoad.start {
             started.markStarted()
             await store.load(client: client, request: descriptor)
         }
-        await started.wait()
+        try await started.wait()
         let requestCount = await transport.observedRequestCount()
         for index in 0..<requestCount { await transport.release(index) }
-        await first.value
-        await second.value
+        #expect(await first.finishes())
+        #expect(await second.finishes())
 
         #expect(requestCount == 1)
         #expect(store.exports.map(\.id) == [7_301])
@@ -1489,25 +1824,22 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = RendersStore()
         let client = Self.client(transport)
-        let firstCompletion = StoreLoadCompletionProbe()
-
-        let first = Task {
+        let first = BoundedStoreLoad.start {
             await store.load(client: client, request: descriptor)
-            await firstCompletion.markCompleted()
         }
         try await transport.waitForRequest(0)
         let secondStarted = StoreLoadStartProbe()
-        let second = Task {
+        let second = BoundedStoreLoad.start {
             secondStarted.markStarted()
             await store.load(client: client, request: descriptor)
         }
-        await secondStarted.wait()
+        try await secondStarted.wait()
 
         first.cancel()
-        let cancelledCallerReturned = await firstCompletion.completes()
+        let cancelledCallerReturned = await first.finishes()
         await transport.release(0)
-        await first.value
-        await second.value
+        #expect(await second.finishes())
+        if !cancelledCallerReturned { _ = await first.finishes() }
 
         #expect(cancelledCallerReturned)
         #expect(await transport.observedRequestCount() == 1)
@@ -1528,17 +1860,15 @@ struct AsyncResourceRequestOwnershipTests {
         ])
         let store = RendersStore()
         let client = Self.client(transport)
-        let completion = StoreLoadCompletionProbe()
-        let pending = Task {
+        let pending = BoundedStoreLoad.start {
             await store.load(client: client, request: descriptor)
-            await completion.markCompleted()
         }
         try await transport.waitForRequest(0)
 
         pending.cancel()
-        let returnedBeforeTransport = await completion.completes()
+        let returnedBeforeTransport = await pending.finishes()
         await transport.release(0)
-        await pending.value
+        if !returnedBeforeTransport { _ = await pending.finishes() }
 
         #expect(returnedBeforeTransport)
         #expect(store.exports.isEmpty)
@@ -1562,6 +1892,32 @@ struct AsyncResourceRequestOwnershipTests {
             region: .usCloud,
             authSessionID: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         )
+    }
+
+    private static func changedAuthority(
+        _ authority: ResourceRequestAuthority,
+        dimension: ResourceAuthorityDimension
+    ) -> ResourceRequestAuthority {
+        switch dimension {
+        case .project:
+            ResourceRequestAuthority(
+                projectID: authority.projectID + 1,
+                region: authority.region,
+                authSessionID: authority.authSessionID
+            )
+        case .region:
+            ResourceRequestAuthority(
+                projectID: authority.projectID,
+                region: .euCloud,
+                authSessionID: authority.authSessionID
+            )
+        case .authentication:
+            ResourceRequestAuthority(
+                projectID: authority.projectID,
+                region: authority.region,
+                authSessionID: UUID(uuidString: "99999999-AAAA-BBBB-CCCC-DDDDDDDDDDDD")!
+            )
+        }
     }
 
     private static func authority(from model: AppModel) -> ResourceRequestAuthority? {
@@ -1600,6 +1956,21 @@ struct AsyncResourceRequestOwnershipTests {
         )
     }
 
+    private static func tracingFacetBaselineReply() -> ResourceStoreReply {
+        .ok(
+            """
+            {"columns":["uuid","trace_id","span_id","parent_span_id","name",\
+            "service_name","status_code","timestamp","duration_nano","is_root_span"],
+             "results":[
+               ["event-shared","trace-shared","span-shared",null,"GET /shared",\
+            "shared-worker",1,"2026-08-09T12:00:00Z",12000000,true],
+               ["event-legacy","trace-legacy","span-legacy",null,"GET /legacy",\
+            "legacy-only",1,"2026-08-09T12:00:00Z",12000000,true]
+             ]}
+            """
+        )
+    }
+
     private static func rendersReply(id: Int, filename: String) -> ResourceStoreReply {
         .ok(
             """
@@ -1626,4 +1997,10 @@ enum TracingFilterDimension: Sendable {
     case service
     case spanName
     case errorsOnly
+}
+
+enum ResourceAuthorityDimension: CaseIterable, Sendable {
+    case project
+    case region
+    case authentication
 }

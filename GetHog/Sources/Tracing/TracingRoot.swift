@@ -80,6 +80,7 @@ final class TracingStore {
     private(set) var isLoading = false
     private var requestGeneration: UInt64 = 0
     private var currentRequest: TracingRequestDescriptor?
+    private var serviceFacetAuthority: ResourceRequestAuthority?
     private var inFlight: InFlight?
 
     private struct InFlight {
@@ -123,6 +124,7 @@ final class TracingStore {
         state = .loading
         traces = []
         services = []
+        serviceFacetAuthority = nil
         loadedAt = nil
         isLoading = false
     }
@@ -214,14 +216,14 @@ final class TracingStore {
     private func prepare(for request: TracingRequestDescriptor) {
         guard currentRequest != request else { return }
         requestGeneration &+= 1
-        let previousAuthority = currentRequest?.authority
         currentRequest = request
         cancelInFlight()
         state = .loading
         traces = []
         loadedAt = nil
-        if previousAuthority != nil, previousAuthority != request.authority {
+        if serviceFacetAuthority != nil, serviceFacetAuthority != request.authority {
             services = []
+            serviceFacetAuthority = nil
         }
     }
 
@@ -267,7 +269,11 @@ final class TracingStore {
         traces = TraceSpan.traces(from: spans)
         state = .resolved(rowCount: traces.count)
         loadedAt = Date()
-        updateServiceFacet(from: spans, filteredService: request.service)
+        updateServiceFacet(
+            from: spans,
+            filteredService: request.service,
+            authority: request.authority
+        )
         completeInFlight(id: id)
     }
 
@@ -351,9 +357,14 @@ final class TracingStore {
     /// filter the page is one service by construction, so recomputing from it
     /// would collapse the menu to the user's own choice and trap them there.
     /// Filtered loads may only widen the facet, never replace it.
-    private func updateServiceFacet(from spans: [TraceSpan], filteredService: String?) {
+    private func updateServiceFacet(
+        from spans: [TraceSpan],
+        filteredService: String?,
+        authority: ResourceRequestAuthority
+    ) {
         let found = TraceSpan.serviceNames(from: spans)
         services = filteredService == nil ? found : Set(services).union(found).sorted()
+        serviceFacetAuthority = authority
     }
 }
 
