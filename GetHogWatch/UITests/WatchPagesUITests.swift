@@ -53,7 +53,8 @@ final class WatchPagesUITests: XCTestCase {
     func testMetricsPageShowsTheHeadlineAndItsDelta() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "metrics"])
 
-        XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Starling Metrics Lab"], timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Metrics"], timeout: 60))
+        XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Starling Metrics Lab"], timeout: 30))
         XCTAssertTrue(DemoLaunch.wait(for: app.staticTexts["Example daily engagement"], timeout: 30))
         XCTAssertTrue(DemoLaunch.wait(for: app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "55", "55")
