@@ -225,6 +225,18 @@ class LiveScreenshotCase: ScreenshotCase {
         DemoLaunch.pause(1.2)
     }
 
+    /// Redaction placeholders do not expose a native activity indicator.
+    ///
+    /// Warehouse issues three requests and redacts the list while the first two
+    /// are pending, so the generic live settle can otherwise photograph the
+    /// skeleton as if it were a terminal screen. The root publishes a state-only
+    /// identifier after all requests resolve; it exposes no project values and
+    /// is not defeated by accessibility-sized lazy lists.
+    static func waitForWarehouseTerminalState(in app: XCUIApplication) -> Bool {
+        let terminal = app.descendants(matching: .any)["gethog.warehouse-terminal"]
+        return DemoLaunch.wait(for: terminal, timeout: 60)
+    }
+
     /// A tab root, live.
     func captureLiveRoot(
         _ tab: String,
@@ -251,6 +263,12 @@ class LiveScreenshotCase: ScreenshotCase {
                         return false
                     }
                     Self.settleLive(app)
+                    if tab == "warehouse" {
+                        guard Self.waitForWarehouseTerminalState(in: app) else {
+                            print("LIVE-UNSETTLED warehouse")
+                            return false
+                        }
+                    }
                     return true
                 }
             ],

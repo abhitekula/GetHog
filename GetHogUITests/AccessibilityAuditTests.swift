@@ -204,6 +204,19 @@ final class AccessibilityAuditTests: XCTestCase {
         )
     }
 
+    /// Live screenshot sweeps must distinguish Warehouse's redacted skeleton
+    /// from any truthful terminal composition without depending on project
+    /// names or rows. The identifier is state, not customer content.
+    func testWarehousePublishesTerminalSurfaceState() {
+        let app = DemoLaunch.launch(tab: "warehouse")
+        XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Warehouse"]))
+        let terminal = app.descendants(matching: .any)["gethog.warehouse-terminal"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: terminal),
+            "Warehouse never published its terminal surface identifier."
+        )
+    }
+
     /// The one screen in this file that demo mode cannot reach.
     ///
     /// Every other case launches with `-GetHogDemo`, and demo mode hands

@@ -172,6 +172,74 @@ final class MacSurfaceSweepTests: XCTestCase {
         capture(app, name: "35-settings-default")
     }
 
+    /// Manual, authenticated counterpart to the deterministic demo sweep.
+    ///
+    /// Normal CI never spends a real workspace's request budget: without the
+    /// opt-in flag this test is skipped before it creates an application. A
+    /// live audit injects both values into the *test runner's environment*;
+    /// XCUITest then hands the key to the app as process environment, never as
+    /// an argument, fixture, screenshot label, or diagnostic string.
+    func testLivePATAllRootScreensRender() throws {
+        let environment = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(
+            environment["GETHOG_LIVE_PAT_SWEEP"] == "1",
+            "The live PAT sweep is manual and opt-in."
+        )
+        let apiKey = try XCTUnwrap(
+            environment["GETHOG_API_KEY"].flatMap { $0.isEmpty ? nil : $0 },
+            "The live PAT sweep requires a runner-injected API key."
+        )
+
+        guard ExclusiveRun.claim() else { return }
+        let app = XCUIApplication()
+        app.launchEnvironment["GETHOG_API_KEY"] = apiKey
+        app.launchEnvironment["GETHOG_REGION"] = environment["GETHOG_REGION"] ?? "us"
+        app.launchEnvironment["GETHOG_TAB"] = "dashboards"
+        app.launch()
+
+        let dashboardDestination = app.windows.descendants(matching: .any)
+            .matching(DemoLaunch.macTextPredicate("Dashboards"))
+            .firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: dashboardDestination, timeout: 60),
+            "The authenticated Mac shell never rendered its dashboard destination."
+        )
+
+        let roots = Self.analyze + Self.monitor + Self.data + Self.experiment + Self.workspace
+        for screen in roots {
+            open(screen.title, in: app)
+            // A live endpoint may begin its request on the frame after the
+            // destination click. Give that frame time to arrive before polling
+            // the native progress indicator, then photograph the settled view.
+            DemoLaunch.pause(0.75)
+            DemoLaunch.settle(app, timeout: 20)
+            if screen.title == "Warehouse" {
+                XCTAssertTrue(
+                    waitForWarehouseTerminalState(in: app),
+                    "The live Warehouse screen never left its redacted loading state."
+                )
+            }
+            XCTAssertEqual(
+                app.state,
+                .runningForeground,
+                "The app was gone by live \(screen.title)."
+            )
+            captureLiveWindow(
+                app,
+                name: String(format: "live-%02d-%@", screen.index, slug(screen.title))
+            )
+        }
+
+        let windowsBefore = app.windows.count
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { app.windows.count > windowsBefore }),
+            "The live sweep could not open Settings with Command-comma."
+        )
+        DemoLaunch.settle(app, timeout: 20)
+        captureLiveWindow(app, name: "live-35-settings")
+    }
+
     /// The flows a list row opens, which is where an iOS-ism survives longest:
     /// a detail that was a sheet on the phone has to fill the Mac's detail
     /// column, and a screenshot is the only thing that says whether it does.
@@ -445,6 +513,34 @@ final class MacSurfaceSweepTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// Authenticated evidence is intentionally window-scoped.
+    ///
+    /// The deterministic sweep above owns the entire simulator desktop, so the
+    /// menu bar and Dock are useful shell evidence there. A manual live sweep
+    /// runs in the developer's real GUI session; a full-screen attachment can
+    /// capture unrelated applications behind GetHog. The front app window is
+    /// the complete product surface and the only privacy-safe boundary.
+    private func captureLiveWindow(_ app: XCUIApplication, name: String) {
+        let window = app.windows.firstMatch
+        XCTAssertTrue(window.exists, "The live sweep had no GetHog window for \(name).")
+        let attachment = XCTAttachment(screenshot: window.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Waits for one of Warehouse's three truthful terminal compositions.
+    ///
+    /// SwiftUI's redaction skeleton is not a progress indicator, so the generic
+    /// `settle` helper can finish while the list still contains placeholders.
+    /// `WarehouseRoot` publishes a state-only identifier after the three
+    /// requests resolve. It contains no project data and remains available when
+    /// accessibility-sized lazy lists keep lower section headers off-screen.
+    private func waitForWarehouseTerminalState(in app: XCUIApplication) -> Bool {
+        let terminal = app.descendants(matching: .any)["gethog.warehouse-terminal"]
+        return DemoLaunch.wait(for: terminal, timeout: 60)
     }
 
     private func slug(_ title: String) -> String {

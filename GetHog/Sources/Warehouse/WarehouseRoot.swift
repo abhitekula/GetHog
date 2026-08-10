@@ -144,6 +144,7 @@ struct WarehouseRoot: View {
 
     var body: some View {
         content
+            .accessibilityIdentifier(surfaceIdentifier)
             .navigationTitle("Warehouse")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
@@ -156,6 +157,23 @@ struct WarehouseRoot: View {
                 case .view(let view): WarehouseViewDetailView(view: view)
                 }
             }
+    }
+
+    /// Stable automation state without exposing any project values.
+    ///
+    /// The list's redaction skeleton is not a native progress indicator, so a
+    /// screenshot harness cannot infer that it is still waiting from XCUI's
+    /// element types. An outcome from any of the three requests plus no active
+    /// request is the truthful terminal boundary. Before `.task` begins there
+    /// is no outcome, so the initial frame remains `loading` rather than briefly
+    /// advertising the empty composition as final.
+    private var surfaceIdentifier: String {
+        if !model.isAvailable(.dashboards) { return "gethog.warehouse-terminal" }
+        let hasOutcome = store.loadedAt != nil || store.error != nil
+            || views.loadedAt != nil || views.error != nil
+        return !store.isLoading && !views.isLoading && hasOutcome
+            ? "gethog.warehouse-terminal"
+            : "gethog.warehouse-loading"
     }
 
     // MARK: - States
