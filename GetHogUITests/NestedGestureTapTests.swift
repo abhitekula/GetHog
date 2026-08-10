@@ -42,7 +42,7 @@ final class NestedGestureTapTests: XCTestCase {
     /// selectable text rather than beside it — frame 370×91.7pt. So selection
     /// here neither swallows the tap nor latches the button, and the claim in
     /// `TaxonomyPropertyRowView.curationAccessory` that "the row is still a
-    /// `Button` and still opens" is now something this project has observed
+    /// `Button` and still opens" is now covered by a rendered regression test
     /// rather than assumed.
     ///
     /// Deliberately not asserted from a second tap. If this ever does start
@@ -134,7 +134,7 @@ final class NestedGestureTapTests: XCTestCase {
     // investigation tile defect, so the four authored by the replay demo are
     // measured here instead. `TimelineRunRowView` remains a declared fixture gap:
     // `session_events.json` has no three consecutive lookalike non-custom events,
-    // and this target must not manufacture a second production data path merely
+    // and this target must not manufacture a second runtime fixture path merely
     // to make a row appear. Each probe launches its own app and the tap that
     // matters is the first tap that control receives.
     //
