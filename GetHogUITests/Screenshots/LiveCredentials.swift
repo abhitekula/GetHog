@@ -19,29 +19,46 @@ import XCTest
 /// is certain to be read aloud in a log.
 enum LiveCredentials {
 
-    /// `GETHOG_`-prefixed assignments from `.env.local` at the repository root.
+    private static let allowlistedKeys = ["GETHOG_API_KEY", "GETHOG_REGION"]
+
+    private static var controlFile: URL {
+        ExclusiveRun.repositoryRoot
+            .appendingPathComponent("build")
+            .appendingPathComponent(".live-pat-sweep")
+    }
+
+    /// Allowlisted assignments from `.env.local` at the repository root.
     ///
     /// Parsed rather than sourced: this is read by a process inside the simulator,
-    /// which has no shell to source it with. Only `GETHOG_`-prefixed keys are kept,
-    /// so an unrelated secret sharing the file cannot be forwarded into the app's
-    /// launch environment by accident.
+    /// which has no shell to source it with. Parsing and launch environment
+    /// construction both enforce the two-key allowlist, so demo, scenario,
+    /// mutation, and unrelated secret values cannot cross into the app.
     static let values: [String: String] = {
         let url = ExclusiveRun.repositoryRoot.appendingPathComponent(".env.local")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [:] }
 
+        return parse(text)
+    }()
+
+    static func parse(_ text: String) -> [String: String] {
         var parsed: [String: String] = [:]
         for line in text.split(whereSeparator: \.isNewline) {
-            let statement = line.trimmingCharacters(in: .whitespaces)
+            var statement = line.trimmingCharacters(in: .whitespaces)
+            if statement.hasPrefix("export") {
+                let suffix = statement.dropFirst("export".count)
+                guard suffix.first?.isWhitespace == true else { continue }
+                statement = suffix.trimmingCharacters(in: .whitespaces)
+            }
             guard !statement.hasPrefix("#"), let separator = statement.firstIndex(of: "=") else {
                 continue
             }
             let key = String(statement[..<separator]).trimmingCharacters(in: .whitespaces)
-            guard key.hasPrefix("GETHOG_") else { continue }
+            guard allowlistedKeys.contains(key) else { continue }
 
             var value = String(statement[statement.index(after: separator)...])
                 .trimmingCharacters(in: .whitespaces)
             // `export FOO="bar"` and `FOO='bar'` are both common in a file people
-            // also source from a shell, and a quoted key would be sent to PostHog
+            // also source from a shell, and a quoted value would be sent to PostHog
             // with its quotes attached and fail as a malformed credential.
             if value.count >= 2,
                (value.hasPrefix("\"") && value.hasSuffix("\""))
@@ -51,9 +68,26 @@ enum LiveCredentials {
             parsed[key] = value
         }
         return parsed
-    }()
+    }
+
+    static func launchEnvironment(from values: [String: String]) -> [String: String] {
+        allowlistedKeys.reduce(into: [:]) { environment, key in
+            if let value = values[key] {
+                environment[key] = value
+            }
+        }
+    }
 
     static var isAvailable: Bool { !(values["GETHOG_API_KEY"] ?? "").isEmpty }
+
+    static func sweepIsAvailable(
+        controlFileURL: URL,
+        values: [String: String]
+    ) -> Bool {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: controlFileURL.path)
+        return attributes?[.type] as? FileAttributeType == .typeRegular
+            && !(values["GETHOG_API_KEY"] ?? "").isEmpty
+    }
 
     /// Skips rather than fails when there is no credential.
     ///
@@ -67,8 +101,16 @@ enum LiveCredentials {
         )
     }
 
+    /// Requires the host wrapper's explicit per-run opt-in as well as a key.
+    static func requireSweep() throws {
+        try XCTSkipUnless(
+            sweepIsAvailable(controlFileURL: controlFile, values: values),
+            "Live sweep requires the wrapper opt-in and a nonempty .env.local key."
+        )
+    }
+
     /// The launch environment for a normal live run.
-    static var environment: [String: String] { values }
+    static var environment: [String: String] { launchEnvironment(from: values) }
 
     /// The same, with the region replaced.
     ///
@@ -78,15 +120,15 @@ enum LiveCredentials {
     /// exercised without touching the simulator's network settings, something no
     /// XCUITest can do.
     static func environment(region: String) -> [String: String] {
-        var environment = values
-        environment["GETHOG_REGION"] = region
-        return environment
+        var launchEnvironment = environment
+        launchEnvironment["GETHOG_REGION"] = region
+        return launchEnvironment
     }
 
     /// The same, with the key replaced — for the rejected-credential paths.
     static func environment(key: String) -> [String: String] {
-        var environment = values
-        environment["GETHOG_API_KEY"] = key
-        return environment
+        var launchEnvironment = environment
+        launchEnvironment["GETHOG_API_KEY"] = key
+        return launchEnvironment
     }
 }

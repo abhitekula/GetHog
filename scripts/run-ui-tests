@@ -98,6 +98,32 @@ fi
 log_file=${LOG_FILE:-$(mktemp "${TMPDIR:-/tmp}/gethog-ui-tests.XXXXXX")}
 results_root=$repository_root/build/TestResults
 mkdir -p "$results_root"
+
+live_sweep_control=$repository_root/build/.live-pat-sweep
+owns_live_sweep_control=0
+cleanup() {
+    if [ "$owns_live_sweep_control" -eq 1 ]; then
+        rm -f -- "$live_sweep_control"
+    fi
+}
+trap cleanup EXIT
+
+if [ -e "$live_sweep_control" ]; then
+    printf 'Live sweep control file already exists; refusing to use an unowned marker: %s\n' \
+        "$live_sweep_control" >&2
+    exit 2
+fi
+
+if [ "${GETHOG_LIVE_PAT_SWEEP:-}" = "1" ]; then
+    if (umask 077 && set -C && : > "$live_sweep_control") 2>/dev/null; then
+        owns_live_sweep_control=1
+    else
+        printf 'Could not create the live sweep control file exclusively: %s\n' \
+            "$live_sweep_control" >&2
+        exit 2
+    fi
+fi
+
 if [ -n "${RESULT_BUNDLE:-}" ]; then
     case "$RESULT_BUNDLE" in
     /*) result_bundle=$RESULT_BUNDLE ;;

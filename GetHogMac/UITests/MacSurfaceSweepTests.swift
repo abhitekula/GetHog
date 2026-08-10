@@ -175,25 +175,17 @@ final class MacSurfaceSweepTests: XCTestCase {
     /// Manual, authenticated counterpart to the deterministic demo sweep.
     ///
     /// Normal CI never spends a real workspace's request budget: without the
-    /// opt-in flag this test is skipped before it creates an application. A
-    /// live audit injects both values into the *test runner's environment*;
-    /// XCUITest then hands the key to the app as process environment, never as
-    /// an argument, fixture, screenshot label, or diagnostic string.
+    /// opt-in control file this test is skipped before it creates an
+    /// application. The runner reads the untracked credential file directly;
+    /// XCUITest then hands its two allowlisted values to the app as process
+    /// environment, never as an argument, fixture, screenshot label, or
+    /// diagnostic string.
     func testLivePATAllRootScreensRender() throws {
-        let environment = ProcessInfo.processInfo.environment
-        try XCTSkipUnless(
-            environment["GETHOG_LIVE_PAT_SWEEP"] == "1",
-            "The live PAT sweep is manual and opt-in."
-        )
-        let apiKey = try XCTUnwrap(
-            environment["GETHOG_API_KEY"].flatMap { $0.isEmpty ? nil : $0 },
-            "The live PAT sweep requires a runner-injected API key."
-        )
+        try LiveCredentials.requireSweep()
 
         guard ExclusiveRun.claim() else { return }
         let app = XCUIApplication()
-        app.launchEnvironment["GETHOG_API_KEY"] = apiKey
-        app.launchEnvironment["GETHOG_REGION"] = environment["GETHOG_REGION"] ?? "us"
+        app.launchEnvironment = LiveCredentials.environment
         app.launchEnvironment["GETHOG_TAB"] = "dashboards"
         app.launch()
 
@@ -229,6 +221,56 @@ final class MacSurfaceSweepTests: XCTestCase {
                 name: String(format: "live-%02d-%@", screen.index, slug(screen.title))
             )
         }
+
+        open("Dashboards", in: app)
+        let dashboardCards = app.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                "gethog.dashboard-card.",
+                "gethog.dashboard-recent-card."
+            )
+        )
+        var dashboardCard: XCUIElement?
+        guard DemoLaunch.wait(timeout: 60, until: {
+            dashboardCard = dashboardCards.allElementsBoundByIndex.first { $0.isHittable }
+            return dashboardCard != nil
+        }), let dashboardCard else {
+            XCTFail("The live dashboard hub never exposed an actionable dashboard card.")
+            return
+        }
+        let dashboardPrefixes = [
+            "gethog.dashboard-card.",
+            "gethog.dashboard-recent-card.",
+        ]
+        guard let dashboardPrefix = dashboardPrefixes.first(where: {
+            dashboardCard.identifier.hasPrefix($0)
+        }) else {
+            XCTFail("The selected live dashboard card had no stable identifier prefix.")
+            return
+        }
+        let dashboardID = String(dashboardCard.identifier.dropFirst(dashboardPrefix.count))
+        guard !dashboardID.isEmpty else {
+            XCTFail("The selected live dashboard card had an empty stable identifier suffix.")
+            return
+        }
+        dashboardCard.click()
+
+        let dashboardDetail = app.descendants(matching: .any)[
+            "gethog.dashboard-detail.\(dashboardID)"
+        ]
+        guard DemoLaunch.wait(for: dashboardDetail, timeout: 60) else {
+            XCTFail("The live dashboard card never opened its matching stable detail root.")
+            return
+        }
+        let dashboardActions = DemoLaunch.elements(labelled: "Dashboard actions", in: app).firstMatch
+        guard DemoLaunch.wait(timeout: 60, until: {
+            dashboardActions.exists && dashboardActions.isHittable
+        }) else {
+            XCTFail("The live dashboard detail never exposed its actions.")
+            return
+        }
+        XCTAssertEqual(app.state, .runningForeground, "The live dashboard detail took the app down.")
+        captureLiveWindow(app, name: "live-dashboard-detail")
 
         let windowsBefore = app.windows.count
         app.typeKey(",", modifierFlags: .command)
