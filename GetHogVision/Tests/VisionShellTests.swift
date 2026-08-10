@@ -43,6 +43,16 @@ struct VisionShellStructureTests {
         #expect(VisionRootView.sections.map(\.id) == AppTab.sections.map(\.id))
     }
 
+    @Test("the shell-embedded split candidates are every regular split except Dashboards")
+    func shellEmbeddedSplitCandidatesAreExplicit() {
+        let expected: Set<AppTab> = [
+            .events, .sessions, .flags, .people, .errorTracking, .insights,
+        ]
+
+        #expect(VisionRootView.shellEmbeddedSplitTabs == expected)
+        #expect(!VisionRootView.shellEmbeddedSplitTabs.contains(.dashboards))
+    }
+
     @Test("restored scenes win; genuinely new scenes use the durable selection")
     func restorationSourceIsUnambiguous() {
         #expect(

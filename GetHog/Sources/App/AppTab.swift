@@ -1,5 +1,21 @@
 import SwiftUI
 
+enum ScreenNavigationPlacement: Sendable {
+    case standalone
+    case visionSectionDetail
+}
+
+private struct ScreenNavigationPlacementKey: EnvironmentKey {
+    static let defaultValue = ScreenNavigationPlacement.standalone
+}
+
+extension EnvironmentValues {
+    var screenNavigationPlacement: ScreenNavigationPlacement {
+        get { self[ScreenNavigationPlacementKey.self] }
+        set { self[ScreenNavigationPlacementKey.self] = newValue }
+    }
+}
+
 enum AppTab: String, Hashable, CaseIterable {
     case dashboards, events, sessions, flags
     /// The saved-insight library.

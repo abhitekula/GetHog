@@ -127,6 +127,7 @@ final class SessionsStore {
 struct SessionsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.screenNavigationPlacement) private var navigationPlacement
     @Environment(OpenDetails.self) private var openDetails
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
@@ -152,9 +153,13 @@ struct SessionsRoot: View {
         selectedID.wrappedValue.flatMap { id in store.recordings.first { $0.id == id } }
     }
 
+    private var usesHostNavigation: Bool {
+        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+    }
+
     var body: some View {
         Group {
-            if sizeClass == .compact {
+            if usesHostNavigation {
                 listChrome
                     .navigationDestination(item: selectedID) { id in
                         if let recording = store.recordings.first(where: { $0.id == id }) {

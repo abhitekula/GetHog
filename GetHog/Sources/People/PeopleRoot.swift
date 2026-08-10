@@ -128,6 +128,7 @@ struct PeopleRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.screenNavigationPlacement) private var navigationPlacement
 
     @Environment(OpenDetails.self) private var openDetails
 
@@ -185,13 +186,17 @@ struct PeopleRoot: View {
         Dictionary(store.cohorts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
+    private var usesHostNavigation: Bool {
+        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+    }
+
     // In compact width the index behind "More" owns the navigation stack (see
     // `RootView`). A `NavigationSplitView` here collapses into a stack of its
     // own inside that one, which draws a second navigation bar above the first —
     // a whole row spent on a back chevron. There is no second column at phone
     // width anyway, so nothing is lost by pushing instead.
     var body: some View {
-        if sizeClass == .compact {
+        if usesHostNavigation {
             sidebar
                 // Bound to `selection`, not registered `for: PersonSummary.self`.
                 // A `for:` destination is driven by values the `NavigationLink`

@@ -16,6 +16,7 @@ import SwiftUI
 struct InsightsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.screenNavigationPlacement) private var navigationPlacement
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @Environment(OpenDetails.self) private var openDetails
@@ -55,8 +56,12 @@ struct InsightsRoot: View {
         InsightsRequest(search: search, kind: kind, favoritesOnly: favoritesOnly)
     }
 
+    private var usesHostNavigation: Bool {
+        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+    }
+
     var body: some View {
-        if sizeClass == .compact {
+        if usesHostNavigation {
             list
                 // Bound to the selection rather than registered `for:`, for the
                 // reason `ErrorTrackingRoot` documents: a `for:` destination is

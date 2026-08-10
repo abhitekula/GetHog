@@ -346,6 +346,141 @@ final class VisionWindowTests: XCTestCase {
         return contentBar.frame.union(roster.frame)
     }
 
+    func testSiblingSplitRootsKeepTheSectionRosterInOneStableColumn() {
+        let width = ["GETHOG_VISION_CONTENT_WIDTH": "1280"]
+        let analyze = DemoLaunch.launch(tab: "webAnalytics", environment: width)
+        guard contentElement(containing: "Overview", in: analyze) != nil,
+              let analyzeRoster = visibleSectionRosterFrame(in: analyze)
+        else { return }
+
+        assertStableSectionRoster(
+            afterActivating: "Events",
+            contentWitness: "meteor_report_opened",
+            baseline: analyzeRoster,
+            in: analyze
+        )
+        assertStableSectionRoster(
+            afterActivating: "Sessions",
+            contentWitness: "Alex Example",
+            baseline: analyzeRoster,
+            in: analyze
+        )
+        analyze.terminate()
+
+        let experiment = DemoLaunch.launch(tab: "experiments", environment: width)
+        guard contentElement(containing: "Example cache strategy trial", in: experiment) != nil,
+              let experimentRoster = visibleSectionRosterFrame(in: experiment)
+        else { return }
+
+        assertStableSectionRoster(
+            afterActivating: "Flags",
+            contentWitness: "Example navigation preview",
+            baseline: experimentRoster,
+            in: experiment
+        )
+    }
+
+    private func assertStableSectionRoster(
+        afterActivating destination: String,
+        contentWitness: String,
+        baseline: CGRect,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard VisionSidebar.tap(destination, in: app, file: file, line: line),
+              let witness = contentElement(containing: contentWitness, in: app),
+              let current = visibleSectionRosterFrame(in: app, file: file, line: line)
+        else { return }
+
+        XCTAssertEqual(current.minX, baseline.minX, accuracy: 2, file: file, line: line)
+        XCTAssertEqual(current.minY, baseline.minY, accuracy: 2, file: file, line: line)
+        XCTAssertEqual(current.width, baseline.width, accuracy: 2, file: file, line: line)
+        XCTAssertEqual(current.height, baseline.height, accuracy: 2, file: file, line: line)
+
+        let rosterInterior = current.insetBy(dx: 2, dy: 2)
+        guard let viewportWidth = contentViewportFrame(in: app)?.width else {
+            return XCTFail(
+                "\(destination) exposed no measurable content viewport.",
+                file: file,
+                line: line
+            )
+        }
+        // A host-owned root List is reported by Vision AX as spanning the full
+        // viewport even though its rendered rows begin after the roster; the
+        // witness-origin check below pins those rows. A nested split is the
+        // distinct partial-width collection that previously covered the roster
+        // (560pt in the valid RED), so reject that concrete extra column.
+        let nestedSplitCollections = app.collectionViews.allElementsBoundByIndex.filter {
+            $0.identifier != "gethog.vision.section-sidebar"
+                && $0.exists
+                && $0.isHittable
+                && $0.frame.width > 0
+                && $0.frame.height > 0
+                && $0.frame.width < viewportWidth - 2
+                && $0.frame.intersects(rosterInterior)
+        }
+        XCTAssertTrue(
+            nestedSplitCollections.isEmpty,
+            "\(destination) mounted a collection over the section roster: "
+                + nestedSplitCollections.map {
+                    "\($0.identifier.isEmpty ? "<unidentified>" : $0.identifier) \($0.frame)"
+                }.joined(separator: ", "),
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            witness.frame.minX,
+            current.maxX - 2,
+            "\(destination)'s loaded content began inside the section roster.",
+            file: file,
+            line: line
+        )
+    }
+
+    private func visibleSectionRosterFrame(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> CGRect? {
+        let roster = app.collectionViews["gethog.vision.section-sidebar"].firstMatch
+        guard DemoLaunch.wait(until: {
+            roster.exists
+                && roster.isHittable
+                && roster.frame.width > 0
+                && roster.frame.height > 0
+        }) else {
+            XCTFail("The Vision section roster was not visibly rendered.", file: file, line: line)
+            return nil
+        }
+        return roster.frame
+    }
+
+    private func contentElement(
+        containing text: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement? {
+        let predicate = NSPredicate(
+            format: "label CONTAINS %@ OR value CONTAINS %@",
+            text,
+            text
+        )
+        let candidates = [
+            app.staticTexts.matching(predicate).firstMatch,
+            app.buttons.matching(predicate).firstMatch,
+            app.cells.matching(predicate).firstMatch,
+        ]
+        guard DemoLaunch.wait(until: {
+            candidates.contains(where: \.exists)
+        }) else {
+            XCTFail("The rendered screen never exposed \(text).", file: file, line: line)
+            return nil
+        }
+        return candidates.first(where: \.exists)
+    }
+
     func testDashboardTearsOffIntoItsOwnWindow() {
         let app = DemoLaunch.launch()
         let analyzeSection = VisionSidebar.section("Analyze", in: app)

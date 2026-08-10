@@ -149,6 +149,7 @@ struct ErrorTrackingRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.screenNavigationPlacement) private var navigationPlacement
 
     @Environment(OpenDetails.self) private var openDetails
 
@@ -180,10 +181,14 @@ struct ErrorTrackingRoot: View {
         )
     }
 
+    private var usesHostNavigation: Bool {
+        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+    }
+
     // In compact width the enclosing navigation stack owns navigation. A nested
     // split view would add a redundant navigation bar without a second column.
     var body: some View {
-        if sizeClass == .compact {
+        if usesHostNavigation {
             issueList
                 // Bound to `selection`, not registered `for: ErrorIssue.self`.
                 // A `for:` destination is driven by values the `NavigationLink`

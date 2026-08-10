@@ -60,6 +60,9 @@ struct VisionRootView: View {
     static let looseTabs: [AppTab] = [.search]
     static let sections: [AppTabSection] = AppTab.sections
     static let utilityTabs: [AppTab] = AppTab.utility
+    static let shellEmbeddedSplitTabs: Set<AppTab> = [
+        .events, .sessions, .flags, .people, .errorTracking, .insights,
+    ]
 
     static func shouldResetOpenDetails(
         from previousScope: FlagWriteScope?,
@@ -420,7 +423,12 @@ struct VisionRootView: View {
     /// same measured silent failures.
     @ViewBuilder
     private func container(for tab: AppTab) -> some View {
-        if tab.ownsNavigationContainer(compact: sizeClass == .compact) {
+        if Self.shellEmbeddedSplitTabs.contains(tab) {
+            NavigationStack {
+                inlineDetailHost(for: tab)
+                    .environment(\.screenNavigationPlacement, .visionSectionDetail)
+            }
+        } else if tab.ownsNavigationContainer(compact: sizeClass == .compact) {
             TabRootView(tab: tab)
         } else {
             NavigationStack {

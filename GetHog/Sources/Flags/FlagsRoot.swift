@@ -112,6 +112,7 @@ final class FlagsStore {
 struct FlagsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.screenNavigationPlacement) private var navigationPlacement
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(OpenDetails.self) private var openDetails
     @State private var store = FlagsStore()
@@ -143,8 +144,12 @@ struct FlagsRoot: View {
         selectedID.wrappedValue.flatMap { id in store.flags.first { $0.id == id } }
     }
 
+    private var usesHostNavigation: Bool {
+        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+    }
+
     var body: some View {
-        if sizeClass == .compact {
+        if usesHostNavigation {
             // No `NavigationSplitView` here, and that is the whole fix: in
             // compact width this screen is hosted either by its own tab or by a
             // push on the search stack, and only the second of those was broken.

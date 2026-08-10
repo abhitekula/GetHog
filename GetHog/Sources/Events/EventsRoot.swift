@@ -439,6 +439,7 @@ extension EventRow {
 struct EventsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.screenNavigationPlacement) private var navigationPlacement
     @Environment(OpenDetails.self) private var openDetails
     @Environment(CSVExportCoordinator.self) private var exporter: CSVExportCoordinator?
     @State private var store = EventsStore()
@@ -495,8 +496,12 @@ struct EventsRoot: View {
         selectedID.wrappedValue.flatMap { id in store.events.first { $0.id == id } }
     }
 
+    private var usesHostNavigation: Bool {
+        sizeClass == .compact || navigationPlacement == .visionSectionDetail
+    }
+
     var body: some View {
-        if sizeClass == .compact {
+        if usesHostNavigation {
             listChrome
                 .navigationDestination(item: selectedID) { id in
                     EventDetailDestination(
