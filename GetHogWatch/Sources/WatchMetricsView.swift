@@ -260,7 +260,9 @@ struct WatchMetricsView: View {
         } else if metric.sparkline.count > 1 {
             WatchSparkline(values: metric.sparkline)
                 .frame(height: 44)
-                .accessibilityLabel("\(metric.title) trend, \(metric.sparkline.count) points")
+                // The visible caption already names this metric. Keep the
+                // adjacent chart contextual without announcing that name twice.
+                .accessibilityLabel("Trend, \(metric.sparkline.count) points")
         }
     }
 
