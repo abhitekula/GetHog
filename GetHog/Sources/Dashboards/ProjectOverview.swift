@@ -151,13 +151,8 @@ struct ProjectOverviewContent: View {
 
     @Environment(AppModel.self) private var model
 
-    /// Tiles stay legible at this measured minimum. The horizontal summary only
-    /// fits when it can retain two of these columns plus their actual gap.
+    /// Tiles stay legible at this measured minimum.
     private static let pinnedPreviewMinimumColumnWidth: CGFloat = 230
-
-    private var pinnedPreviewTwoColumnWidth: CGFloat {
-        (Self.pinnedPreviewMinimumColumnWidth * 2) + Theme.Space.l
-    }
 
     private var facts: DashboardOverviewFacts {
         DashboardOverviewFacts(dashboards: dashboards)
@@ -202,28 +197,9 @@ struct ProjectOverviewContent: View {
     private var summaryScene: some View {
         VStack(alignment: .leading, spacing: Theme.Space.l) {
             SignalRule(mark: .dashboard)
+            projectSummary
             if facts.pinned != nil {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: Theme.Space.xxl) {
-                        projectSummary.frame(
-                            minWidth: 320,
-                            idealWidth: 360,
-                            maxWidth: 360,
-                            alignment: .leading
-                        )
-                        pinnedPreview.frame(
-                            minWidth: pinnedPreviewTwoColumnWidth,
-                            maxWidth: .infinity,
-                            alignment: .leading
-                        )
-                    }
-                    VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                        projectSummary
-                        pinnedPreview
-                    }
-                }
-            } else {
-                projectSummary
+                pinnedPreview
             }
         }
         .padding(.leading, Theme.Space.m)
@@ -233,7 +209,11 @@ struct ProjectOverviewContent: View {
                 .frame(width: 3)
                 .accessibilityHidden(true)
         }
-        .accessibilityIdentifier("gethog.signal-summary.dashboard")
+        .background {
+            Color.clear
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("gethog.signal-summary.dashboard")
+        }
         .signalConfirmation(trigger: summaryTrigger)
     }
 
@@ -241,33 +221,54 @@ struct ProjectOverviewContent: View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             SectionLabel(text: "Project signal", productMark: .dashboard)
 
-            Text(model.selectedProject?.name ?? "PostHog")
-                .font(.largeTitle.weight(.semibold))
-
-            StatStrip(stacksAtAccessibilitySizes: true) {
-                MetricTile(
-                    label: "Dashboards",
-                    value: "\(facts.dashboardCount)",
-                    compact: true
-                )
-                MetricTile(
-                    label: "Computed",
-                    value: "\(facts.computedCount)",
-                    compact: true
-                )
-                // Named rather than hidden: half this project's dashboards are
-                // feature-flag by-products, and a count of 10 that is really
-                // 5 real ones plus 5 artefacts misrepresents the project.
-                if facts.generatedCount > 0 {
-                    MetricTile(
-                        label: "Generated",
-                        value: "\(facts.generatedCount)",
-                        compact: true
-                    )
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.xxl) {
+                    projectTitle
+                    Spacer(minLength: Theme.Space.xl)
+                    projectMetrics
+                }
+                VStack(alignment: .leading, spacing: Theme.Space.m) {
+                    projectTitle
+                    projectMetrics
                 }
             }
-            .padding(.horizontal, -Theme.Space.l)
         }
+        .background {
+            Color.clear
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("gethog.dashboard-project-summary")
+        }
+    }
+
+    private var projectTitle: some View {
+        Text(model.selectedProject?.name ?? "PostHog")
+            .font(.largeTitle.weight(.semibold))
+    }
+
+    private var projectMetrics: some View {
+        StatStrip(stacksAtAccessibilitySizes: true) {
+            MetricTile(
+                label: "Dashboards",
+                value: "\(facts.dashboardCount)",
+                compact: true
+            )
+            MetricTile(
+                label: "Computed",
+                value: "\(facts.computedCount)",
+                compact: true
+            )
+            // Named rather than hidden: half this project's dashboards are
+            // feature-flag by-products, and a count of 10 that is really
+            // 5 real ones plus 5 artefacts misrepresents the project.
+            if facts.generatedCount > 0 {
+                MetricTile(
+                    label: "Generated",
+                    value: "\(facts.generatedCount)",
+                    compact: true
+                )
+            }
+        }
+        .padding(.horizontal, -Theme.Space.l)
     }
 
     @ViewBuilder
@@ -300,6 +301,11 @@ struct ProjectOverviewContent: View {
                         Text("Loading \(pinned.title)…")
                     }
                 }
+            }
+            .background {
+                Color.clear
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("gethog.dashboard-pinned-preview")
             }
         }
     }

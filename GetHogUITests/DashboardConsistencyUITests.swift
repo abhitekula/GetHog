@@ -89,6 +89,12 @@ final class DashboardConsistencyUITests: XCTestCase {
         guard DemoLaunch.wait(for: hub) else {
             return XCTFail("The regular dashboard landing did not expose its hub.")
         }
+        let projectSummary = hub.descendants(matching: .any)[
+            "gethog.dashboard-project-summary"
+        ].firstMatch
+        let pinnedPreview = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-preview"
+        ].firstMatch
         let firstTile = DemoLaunch.elements(
             labelled: DemoLaunch.firstTileTitle,
             in: app
@@ -103,6 +109,34 @@ final class DashboardConsistencyUITests: XCTestCase {
         guard DemoLaunch.wait(for: secondTile) else {
             return XCTFail("The regular dashboard hub did not render its second pinned tile.")
         }
+        guard DemoLaunch.wait(for: projectSummary) else {
+            return XCTFail("The regular dashboard hub did not expose its project-summary geometry.")
+        }
+        guard DemoLaunch.wait(for: pinnedPreview) else {
+            return XCTFail("The regular dashboard hub did not expose its pinned-preview geometry.")
+        }
+
+        print(
+            "iPad dashboard geometry: hub=\(hub.frame), summary=\(projectSummary.frame), "
+                + "preview=\(pinnedPreview.frame), first=\(firstTile.frame), second=\(secondTile.frame)"
+        )
+        capture("iPad Dashboard \(Int(hub.frame.width))pt")
+
+        XCTAssertGreaterThan(
+            projectSummary.frame.width,
+            hub.frame.width * 0.75,
+            "The project summary did not span the regular dashboard hub."
+        )
+        XCTAssertGreaterThanOrEqual(
+            pinnedPreview.frame.minY,
+            projectSummary.frame.maxY - 12,
+            "The pinned preview rendered beside or above the project summary."
+        )
+        XCTAssertGreaterThan(
+            pinnedPreview.frame.width,
+            hub.frame.width * 0.75,
+            "The pinned preview did not span the regular dashboard hub."
+        )
 
         XCTAssertEqual(
             firstTile.frame.minY,
@@ -115,6 +149,13 @@ final class DashboardConsistencyUITests: XCTestCase {
             firstTile.frame.maxX,
             "The second pinned tile did not occupy a second column beside the first."
         )
+    }
+
+    private func capture(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     func testRegularDashboardReturnPreservesSearch() throws {
@@ -340,6 +381,10 @@ final class DashboardConsistencyUITests: XCTestCase {
         guard DemoLaunch.wait(for: compactTabBar) else {
             throw XCTSkip("This Max iPhone did not start in the compact dashboard topology.")
         }
+        XCTAssertFalse(
+            app.scrollViews["gethog.dashboard-hub"].firstMatch.exists,
+            "The compact dashboard topology mounted the regular-width hub."
+        )
 
         let compactWidth = app.windows.firstMatch.frame.width
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -359,6 +404,10 @@ final class DashboardConsistencyUITests: XCTestCase {
             return XCTFail("The regular dashboard hub never crossed back to compact width.")
         }
         DemoLaunch.settle(app)
+        XCTAssertFalse(
+            app.scrollViews["gethog.dashboard-hub"].firstMatch.exists,
+            "Crossing back to compact width retained the regular-width hub."
+        )
 
         let compactRow = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Example App metric 33")

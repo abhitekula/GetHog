@@ -30,6 +30,45 @@ final class MacWindowSizeTests: XCTestCase {
         guard hubs.count == 1 else { return }
 
         let projectSignal = hub.staticTexts["Project signal"].firstMatch
+        let projectSummary = hub.descendants(matching: .any)[
+            "gethog.dashboard-project-summary"
+        ].firstMatch
+        let pinnedPreview = hub.descendants(matching: .any)[
+            "gethog.dashboard-pinned-preview"
+        ].firstMatch
+        let firstTile = DemoLaunch.elements(
+            labelled: DemoLaunch.firstTileTitle,
+            in: app
+        ).firstMatch
+        let secondTile = DemoLaunch.elements(
+            labelled: "Example daily engagement",
+            in: app
+        ).firstMatch
+        guard DemoLaunch.wait(for: projectSummary) else {
+            return XCTFail("The dashboard hub did not expose its project-summary geometry.")
+        }
+        guard DemoLaunch.wait(for: pinnedPreview) else {
+            return XCTFail("The dashboard hub did not expose its pinned-preview geometry.")
+        }
+        guard DemoLaunch.wait(for: firstTile) else {
+            return XCTFail("The dashboard hub did not render its first pinned tile.")
+        }
+        guard DemoLaunch.wait(for: secondTile) else {
+            return XCTFail("The dashboard hub did not render its second pinned tile.")
+        }
+
+        print(
+            "Mac dashboard geometry: hub=\(hub.frame), summary=\(projectSummary.frame), "
+                + "preview=\(pinnedPreview.frame), first=\(firstTile.frame), second=\(secondTile.frame)"
+        )
+        capture("Mac Dashboard \(Int(hub.frame.width))pt")
+
+        XCTAssertGreaterThan(projectSummary.frame.width, hub.frame.width * 0.75)
+        XCTAssertGreaterThanOrEqual(pinnedPreview.frame.minY, projectSummary.frame.maxY - 12)
+        XCTAssertGreaterThan(pinnedPreview.frame.width, hub.frame.width * 0.75)
+        XCTAssertEqual(firstTile.frame.minY, secondTile.frame.minY, accuracy: 12)
+        XCTAssertGreaterThan(secondTile.frame.minX, firstTile.frame.maxX)
+
         let collections = hub.otherElements.matching(
             NSPredicate(format: "identifier == %@", "gethog.dashboard-collection")
         )
