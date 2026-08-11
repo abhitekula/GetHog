@@ -474,6 +474,7 @@ struct PeopleRoot: View {
                 }
             }
             .listRowSpacing(Theme.Space.xs)
+            .accessibilityIdentifier("gethog.people-cohorts-list")
             .pageSurface()
             .skeleton(store.isLoadingCohorts && store.cohorts.isEmpty)
         }

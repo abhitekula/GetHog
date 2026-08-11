@@ -315,6 +315,7 @@ struct TaxonomyRoot: View {
                 .listRowBackground(Color.clear)
         }
         .listRowSpacing(Theme.Space.xs)
+        .accessibilityIdentifier("gethog.taxonomy-events-list")
         .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }

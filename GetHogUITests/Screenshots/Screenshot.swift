@@ -725,21 +725,66 @@ class ScreenshotCase: XCTestCase {
         return true
     }
 
-    /// Taps the first element whose label starts with `prefix`.
+    /// Taps the first visible control whose label starts with `prefix`.
+    ///
+    /// Re-querying on every pass matters for lazy SwiftUI containers: a target
+    /// below the fold is absent from the accessibility tree until scrolling
+    /// builds it. Buttons are tried before the untyped fallback so a labelled
+    /// child inside a button cannot win `firstMatch` while remaining untappable.
     @discardableResult
-    func tapFirst(startingWith prefix: String, in app: XCUIApplication) -> Bool {
-        tap(elements(startingWith: prefix, in: app).firstMatch)
+    func tapFirst(
+        startingWith prefix: String,
+        in app: XCUIApplication,
+        maximumSwipes: Int = 24,
+        scrolling scrollIdentifier: String? = nil
+    ) -> Bool {
+        for attempt in 0...maximumSwipes {
+            var queries = [
+                app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
+            ]
+            // A named scroller is paired with a real semantic control. Avoiding
+            // the untyped whole-tree fallback keeps a long accessibility-sized
+            // List from being re-serialized on every swipe.
+            if scrollIdentifier == nil {
+                queries.append(
+                    app.descendants(matching: .any).matching(
+                        NSPredicate(format: "label BEGINSWITH %@", prefix)
+                    )
+                )
+            }
+            for query in queries {
+                for index in 0..<min(query.count, 24) {
+                    let element = query.element(boundBy: index)
+                    guard element.exists, element.isHittable else { continue }
+                    if let scrollIdentifier {
+                        guard tapUnobscured(
+                            element,
+                            in: app,
+                            scrolling: scrollIdentifier
+                        ) else { continue }
+                    } else {
+                        element.tap()
+                    }
+                    DemoLaunch.pause(0.8)
+                    return true
+                }
+            }
+            guard attempt < maximumSwipes else { break }
+            guard swipeForwardThroughContent(in: app, identifiedBy: scrollIdentifier) else {
+                return false
+            }
+            DemoLaunch.pause(0.5)
+        }
+        return false
     }
 
     /// Scrolls until an element is on screen, or gives up.
     ///
     /// Bounded, because an element that is genuinely absent would otherwise
     /// scroll forever, and a capture run that hangs is worse than one that
-    /// records a missing image. Swipes the app rather than a located scroll view:
-    /// several of these screens nest one inside another, and `swipeUp` on the
-    /// window hits whichever is under the finger — which is the one being read.
+    /// records a missing image.
     @discardableResult
-    func scrollIntoView(_ element: XCUIElement, maximumSwipes: Int = 10) -> Bool {
+    func scrollIntoView(_ element: XCUIElement, maximumSwipes: Int = 24) -> Bool {
         let app = XCUIApplication()
         for _ in 0..<maximumSwipes {
             // `exists` is re-read every pass rather than captured: the element
@@ -747,10 +792,120 @@ class ScreenshotCase: XCTestCase {
             // because SwiftUI builds a `ScrollView`'s rows as they approach the
             // viewport.
             if element.exists && element.isHittable { return true }
-            app.swipeUp()
+            swipeForwardThroughContent(in: app)
             DemoLaunch.pause(0.5)
         }
         return element.exists && element.isHittable
+    }
+
+    /// Swipes a named content List when the screen exposes one, otherwise keeps
+    /// the established application-wide gesture.
+    ///
+    /// Guessing among unnamed collection views is unsafe: the largest one can
+    /// be the full-window TabView host rather than the page being read. A stable
+    /// identifier is the contract that makes a bounded List gesture reliable.
+    @discardableResult
+    func swipeForwardThroughContent(
+        in app: XCUIApplication,
+        identifiedBy identifier: String? = nil
+    ) -> Bool {
+        if let identifier {
+            let scroller = app.descendants(matching: .any)[identifier].firstMatch
+            // SwiftUI can publish a `List` identifier on a non-interactive
+            // accessibility wrapper at default type sizes and on the backing
+            // `CollectionView` at AX5. The wrapper is not itself a control, so
+            // `isHittable` is not a valid scrollability test; its stable frame
+            // is the contract used to keep the gesture inside this List.
+            guard scroller.exists else { return false }
+            guard let viewport = unobscuredViewport(of: scroller, in: app), viewport.height >= 44
+            else { return false }
+
+            // `XCUIElement.swipeUp()` uses the element's raw frame. A short List
+            // below an AX5 header can extend underneath the tab bar, so XCTest
+            // began the gesture on the tab itself and changed screens. Anchor
+            // both endpoints inside the identified List's visible viewport.
+            let applicationFrame = app.frame
+            let start = app.coordinate(
+                withNormalizedOffset: CGVector(
+                    dx: (viewport.midX - applicationFrame.minX) / applicationFrame.width,
+                    dy: (viewport.maxY - 12 - applicationFrame.minY) / applicationFrame.height
+                )
+            )
+            let end = app.coordinate(
+                withNormalizedOffset: CGVector(
+                    dx: (viewport.midX - applicationFrame.minX) / applicationFrame.width,
+                    dy: (viewport.minY + 12 - applicationFrame.minY) / applicationFrame.height
+                )
+            )
+            start.press(forDuration: 0.05, thenDragTo: end)
+            return true
+        }
+
+        app.swipeUp()
+        return true
+    }
+
+    /// Taps an actual semantic control inside an identified List's visible
+    /// viewport.
+    ///
+    /// Prefer the Button's own activation whenever its midpoint is unobscured.
+    /// An AX5 taxonomy row can be taller than the List viewport, though, so its
+    /// midpoint can never enter that viewport. Once at least a standard 44pt
+    /// target is visible, the centre of `Button ∩ viewport` is the same Button,
+    /// safely away from the navigation and tab chrome that obscures the rest.
+    @discardableResult
+    func tapUnobscured(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        scrolling identifier: String
+    ) -> Bool {
+        let scroller = app.descendants(matching: .any)[identifier].firstMatch
+        guard scroller.exists, let viewport = unobscuredViewport(of: scroller, in: app)
+        else { return false }
+
+        let safeViewport = viewport.insetBy(dx: 4, dy: 4)
+        let midpoint = CGPoint(x: element.frame.midX, y: element.frame.midY)
+        if safeViewport.contains(midpoint) {
+            element.tap()
+            return true
+        }
+
+        let visible = element.frame.intersection(safeViewport)
+        guard !visible.isNull, visible.width >= 44, visible.height >= 44 else { return false }
+
+        let applicationFrame = app.frame
+        app.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: (visible.midX - applicationFrame.minX) / applicationFrame.width,
+                dy: (visible.midY - applicationFrame.minY) / applicationFrame.height
+            )
+        ).tap()
+        return true
+    }
+
+    private func unobscuredViewport(
+        of scroller: XCUIElement,
+        in app: XCUIApplication
+    ) -> CGRect? {
+        var viewport = scroller.frame.intersection(app.frame)
+        guard !viewport.isNull else { return nil }
+
+        let navigationBar = app.navigationBars.firstMatch
+        if navigationBar.exists {
+            let top = max(viewport.minY, navigationBar.frame.maxY)
+            viewport = CGRect(
+                x: viewport.minX,
+                y: top,
+                width: viewport.width,
+                height: max(0, viewport.maxY - top)
+            )
+        }
+
+        let tabBar = app.tabBars.firstMatch
+        if tabBar.exists, tabBar.frame.minY > viewport.minY {
+            viewport.size.height = max(0, min(viewport.maxY, tabBar.frame.minY) - viewport.minY)
+        }
+        return viewport
     }
 
     /// Scrolls until an element is near the **top** of the window, not merely

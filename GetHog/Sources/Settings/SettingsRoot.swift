@@ -58,6 +58,7 @@ struct SettingsRoot: View {
             SettingsAboutSection()
         }
         .listStyle(.insetGrouped)
+        .accessibilityIdentifier("gethog.settings-list")
         .pageSurface()
         // Phones and tablets keep the iPad-derived readable measure. A TV row
         // needs the wider, viewing-distance-aware measure so identifiers stay

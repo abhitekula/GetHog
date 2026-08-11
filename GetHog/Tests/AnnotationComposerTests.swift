@@ -344,6 +344,11 @@ struct DemoAnnotationRouteTests {
         )
         #expect(tables.columns.contains("table_name"))
         #expect(!tables.rows.isEmpty)
+        let listedTableNames = Set(tables.rows.compactMap { SchemaTable(row: $0)?.name })
+        #expect(
+            Set(["events", "persons", "sessions"]).isSubset(of: listedTableNames),
+            "every table with authored columns must be listed in the schema browser"
+        )
 
         // Each authored table answers with its own columns…
         for table in ["events", "persons", "sessions"] {

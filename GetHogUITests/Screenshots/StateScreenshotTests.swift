@@ -31,10 +31,11 @@ final class StateScreenshotTests: ScreenshotCase {
 
     /// The deterministic dashboard-detail fixture.
     private static let dashboard = "gethog://dashboard/\(DemoLaunch.dashboardID)"
-    /// Tile 5 by `order` is "Pageview funnel, by browser", the only `FunnelsQuery`
-    /// in the fixture and therefore the only tile with a drillable axis that
-    /// needs no chart scrubbing to reach.
-    private static let funnelTileIndex = "5"
+    /// Tile 6 by `order` is the only `FunnelsQuery` in the fixture and therefore
+    /// the only tile with a drillable axis that needs no chart scrubbing to
+    /// reach. The fixture's array index is 5; the extra low-order weekly tile
+    /// makes its displayed index 6, which is what `GETHOG_OPEN_TILE` accepts.
+    private static let funnelTileIndex = "6"
     /// `error_tracking.json`, first synthetic row: `HarborRenderFault`, status active — so
     /// the triage buttons drawn are "Resolve" and "Suppress".
     private static let errorIssue = "018f3300-0000-7000-8000-000000000901"
@@ -322,8 +323,13 @@ final class StateScreenshotTests: ScreenshotCase {
             },
             steps: [
                 ScreenshotStep("insight-funnel-detail") { app in
-                    self.waitUntil {
-                        self.elements(startingWith: "Step 1,", in: app).firstMatch.exists
+                    guard DemoLaunch.wait(
+                        for: app.navigationBars["Example signup funnel by browser"]
+                    ) else { return false }
+                    return self.waitUntil {
+                        app.buttons.matching(
+                            NSPredicate(format: "label BEGINSWITH %@", "Step 1,")
+                        ).firstMatch.exists
                     }
                 },
                 ScreenshotStep("insight-drilldown") { app in
@@ -490,9 +496,9 @@ final class StateScreenshotTests: ScreenshotCase {
                     self.openPlaylists(app)
                 },
                 ScreenshotStep("session-playlist-collection") { app in
-                    guard self.tapFirst(startingWith: "Onboarding drop-offs", in: app)
+                    guard self.tapFirst(startingWith: "Example orbit overview", in: app)
                     else { return false }
-                    return self.waitUntil { app.navigationBars["Onboarding drop-offs"].exists }
+                    return self.waitUntil { app.navigationBars["Example orbit overview"].exists }
                 },
             ]
         )
@@ -507,10 +513,12 @@ final class StateScreenshotTests: ScreenshotCase {
             steps: [
                 ScreenshotStep("session-playlist-saved-filter") { app in
                     guard self.openPlaylists(app) else { return false }
-                    guard self.tapFirst(startingWith: "Sessions with exceptions", in: app)
+                    guard self.tapFirst(
+                        startingWith: "Example observatory console review", in: app
+                    )
                     else { return false }
                     return self.waitUntil {
-                        app.navigationBars["Sessions with exceptions"].exists
+                        app.navigationBars["Example observatory console review"].exists
                     }
                 },
             ]
@@ -679,7 +687,11 @@ final class StateScreenshotTests: ScreenshotCase {
             steps: [
                 ScreenshotStep("llm-trace-detail-sheet") { app in
                     guard DemoLaunch.wait(for: app.navigationBars["LLM"]) else { return false }
-                    guard self.tapFirstRow(in: app, startingWith: "Trace ") else { return false }
+                    guard self.tapFirstRow(
+                        in: app,
+                        startingWith: "Trace ",
+                        scrolling: "gethog.llm-list"
+                    ) else { return false }
                     return self.waitUntil { app.buttons["Done"].exists }
                 }
             ]
@@ -745,7 +757,8 @@ final class StateScreenshotTests: ScreenshotCase {
             tab: "taxonomy",
             titled: "Taxonomy",
             named: "taxonomy-event-detail",
-            row: "feature_used"
+            row: "feature_used",
+            scrolling: "gethog.taxonomy-events-list"
         )
     }
 
@@ -836,7 +849,11 @@ final class StateScreenshotTests: ScreenshotCase {
                     return false
                 },
                 ScreenshotStep("cohort-definition") { app in
-                    guard self.tapFirstRow(in: app, startingWith: "Example comet explorers")
+                    guard self.tapFirstRow(
+                        in: app,
+                        startingWith: "Example comet explorers",
+                        scrolling: "gethog.people-cohorts-list"
+                    )
                     else { return false }
                     // Waited for by *content*, not by a navigation bar, because
                     // the two devices do not produce the same one: on iPhone the
@@ -890,12 +907,17 @@ final class StateScreenshotTests: ScreenshotCase {
                     // is why `popToRoot` treats an already-visible root as
                     // success rather than as a failure to pop.
                     _ = self.popToRoot(app, titled: "People")
-                    guard self.tapFirstRow(in: app, startingWith: "Spent over") else { return false }
+                    guard self.tapFirstRow(
+                        in: app,
+                        startingWith: "Example launch-day visitors",
+                        scrolling: "gethog.people-cohorts-list"
+                    ) else { return false }
                     // The unrenderable state's own sentence, for the same
                     // reason the step above waits on content: this screen is a
                     // push on one device and a column on the other.
                     return self.waitUntil {
                         app.navigationBars["Example launch-day visitors"].exists
+                            || app.staticTexts["Example launch-day visitors"].exists
                             || app.descendants(matching: .any).matching(
                                 NSPredicate(
                                     format: "label CONTAINS %@", "SQL query rather than by filters"
@@ -927,9 +949,9 @@ final class StateScreenshotTests: ScreenshotCase {
             steps: [
                 ScreenshotStep("template-detail") { app in
                     guard DemoLaunch.wait(for: app.navigationBars["Templates"]) else { return false }
-                    guard self.tapFirst(startingWith: "Landing Pages Report", in: app)
+                    guard self.tapFirst(startingWith: "Example App metric 125", in: app)
                     else { return false }
-                    return self.waitUntil { app.navigationBars["Landing Pages Report"].exists }
+                    return self.waitUntil { app.navigationBars["Example App metric 125"].exists }
                 }
             ]
         )
@@ -1167,7 +1189,12 @@ final class StateScreenshotTests: ScreenshotCase {
             steps: [
                 ScreenshotStep("settings-about") { app in
                     guard DemoLaunch.wait(for: app.navigationBars["Settings"]) else { return false }
-                    guard self.tapFirst(startingWith: "About GetHog", in: app) else {
+                    guard self.tapFirst(
+                        startingWith: "About GetHog",
+                        in: app,
+                        maximumSwipes: 48,
+                        scrolling: "gethog.settings-list"
+                    ) else {
                         return false
                     }
                     // **"About", not "About GetHog".** The row's label and the
@@ -1198,6 +1225,7 @@ final class StateScreenshotTests: ScreenshotCase {
         titled title: String,
         named name: String,
         row: String? = nil,
+        scrolling scrollIdentifier: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
@@ -1206,7 +1234,11 @@ final class StateScreenshotTests: ScreenshotCase {
             steps: [
                 ScreenshotStep(name) { app in
                     guard DemoLaunch.wait(for: app.navigationBars[title]) else { return false }
-                    guard self.tapFirstRow(in: app, startingWith: row) else { return false }
+                    guard self.tapFirstRow(
+                        in: app,
+                        startingWith: row,
+                        scrolling: scrollIdentifier
+                    ) else { return false }
                     // On iPhone the detail replaces the root's bar; on iPad it
                     // joins it in a second column. Either way the root's own
                     // title stops being the only one on screen — except on iPad,
@@ -1256,7 +1288,11 @@ final class StateScreenshotTests: ScreenshotCase {
     /// fallback for a screen whose rows are not cells at all — the template
     /// gallery's `LazyVGrid` is the shape that could be — so that a screen this
     /// change does not understand still gets the behaviour it had.
-    private func tapFirstRow(in app: XCUIApplication, startingWith prefix: String? = nil) -> Bool {
+    private func tapFirstRow(
+        in app: XCUIApplication,
+        startingWith prefix: String? = nil,
+        scrolling scrollIdentifier: String? = nil
+    ) -> Bool {
         if let prefix {
             // Recreate the query after every swipe. At AX5 SwiftUI materialises
             // the first taxonomy row only after the summary card has moved off
@@ -1271,11 +1307,22 @@ final class StateScreenshotTests: ScreenshotCase {
                 for index in 0..<min(matches.count, 12) {
                     let match = matches.element(boundBy: index)
                     guard match.exists, match.isHittable else { continue }
-                    match.tap()
+                    if let scrollIdentifier {
+                        guard self.tapUnobscured(
+                            match,
+                            in: app,
+                            scrolling: scrollIdentifier
+                        ) else { continue }
+                    } else {
+                        match.tap()
+                    }
                     DemoLaunch.pause(0.8)
                     return true
                 }
-                app.swipeUp(velocity: .slow)
+                guard self.swipeForwardThroughContent(
+                    in: app,
+                    identifiedBy: scrollIdentifier
+                ) else { return false }
                 DemoLaunch.pause(0.5)
             }
             return false

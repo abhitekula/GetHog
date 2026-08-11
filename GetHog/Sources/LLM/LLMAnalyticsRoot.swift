@@ -180,6 +180,7 @@ struct LLMAnalyticsRoot: View {
                 .listRowBackground(Color.clear)
         }
         .listRowSpacing(Theme.Space.xs)
+        .accessibilityIdentifier("gethog.llm-list")
         .pageSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }

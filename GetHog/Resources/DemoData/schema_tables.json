@@ -20,19 +20,19 @@
   ],
   "results": [
     [
-      "Example results 2296",
-      "Example results 2297",
-      "Example results 2298"
+      "events",
+      "posthog",
+      "Fictional search and product events recorded by the demo app."
     ],
     [
-      "Example results 2299",
-      "Example results 2297",
-      "Example results 2300"
+      "persons",
+      "posthog",
+      "A fictional person query surface for the deterministic demo project."
     ],
     [
-      "Example results 2301",
-      "Example results 2297",
-      "Example results 2302"
+      "sessions",
+      "posthog",
+      "Fictional sessions assembled from the demo event stream."
     ],
     [
       "Example results 2303",
