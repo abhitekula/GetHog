@@ -889,9 +889,15 @@ struct DemoTransport: HTTPTransport {
             // between the column fixtures.
             if body.contains("information_schema.tables") { return load("schema_tables") }
             if body.contains("information_schema.columns") {
-                if body.contains("'events'") { return load("schema_columns_events") }
-                if body.contains("'persons'") { return load("schema_columns_persons") }
-                if body.contains("'sessions'") { return load("schema_columns_sessions") }
+                if body.contains("'fictional_meteor_events'") {
+                    return load("schema_columns_events")
+                }
+                if body.contains("'fictional_harbor_people'") {
+                    return load("schema_columns_persons")
+                }
+                if body.contains("'fictional_orbit_sessions'") {
+                    return load("schema_columns_sessions")
+                }
                 // Deterministic fixture routing preserves the response shape and status for this case.
                 return Reply(emptyQueryResult)
             }

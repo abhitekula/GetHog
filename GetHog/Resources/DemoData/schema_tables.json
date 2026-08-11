@@ -20,19 +20,19 @@
   ],
   "results": [
     [
-      "events",
+      "fictional_meteor_events",
       "posthog",
-      "Fictional search and product events recorded by the demo app."
+      "Fictional meteor events generated for the deterministic demo."
     ],
     [
-      "persons",
+      "fictional_harbor_people",
       "posthog",
-      "A fictional person query surface for the deterministic demo project."
+      "Fictional harbor people created for the deterministic demo."
     ],
     [
-      "sessions",
+      "fictional_orbit_sessions",
       "posthog",
-      "Fictional sessions assembled from the demo event stream."
+      "Fictional orbit sessions assembled for the deterministic demo."
     ],
     [
       "Example results 2303",

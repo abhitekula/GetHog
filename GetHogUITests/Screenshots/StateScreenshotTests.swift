@@ -1066,13 +1066,13 @@ final class StateScreenshotTests: ScreenshotCase {
                     return self.waitUntil { app.navigationBars["Schema"].exists }
                 },
                 ScreenshotStep("sql-schema-columns") { app in
-                    // `events` rather than the first row: the fixture's sections
-                    // are ordered by kind and the first row is whichever table
-                    // sorts first inside the first kind, while `events` is the
-                    // one table whose columns are also recorded. A row that
-                    // pushes a detail with no columns under it would photograph
-                    // an empty screen and say nothing.
-                    guard self.tapFirst(startingWith: "events", in: app) else { return false }
+                    // Select the explicitly authored fictional table rather than
+                    // whichever row sorts first. A generic restored row has no
+                    // matching column fixture and would photograph an empty
+                    // detail screen without exercising the contract.
+                    guard self.tapFirst(startingWith: "fictional_meteor_events", in: app) else {
+                        return false
+                    }
                     return self.waitUntil {
                         !app.navigationBars["Schema"].exists || app.navigationBars.count > 1
                     }

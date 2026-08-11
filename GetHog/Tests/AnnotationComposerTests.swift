@@ -345,13 +345,18 @@ struct DemoAnnotationRouteTests {
         #expect(tables.columns.contains("table_name"))
         #expect(!tables.rows.isEmpty)
         let listedTableNames = Set(tables.rows.compactMap { SchemaTable(row: $0)?.name })
+        let authoredTables = [
+            "fictional_meteor_events",
+            "fictional_harbor_people",
+            "fictional_orbit_sessions",
+        ]
         #expect(
-            Set(["events", "persons", "sessions"]).isSubset(of: listedTableNames),
+            Set(authoredTables).isSubset(of: listedTableNames),
             "every table with authored columns must be listed in the schema browser"
         )
 
         // Each authored table answers with its own columns…
-        for table in ["events", "persons", "sessions"] {
+        for table in authoredTables {
             let columns = try QueryResponse.decode(
                 from: try await send(
                     PostHogAPI.schemaColumns(projectID: 1_001, table: table)
@@ -364,7 +369,7 @@ struct DemoAnnotationRouteTests {
         // table's columns, which would be confidently wrong rather than blank.
         let unrecorded = try QueryResponse.decode(
             from: try await send(
-                PostHogAPI.schemaColumns(projectID: 1_001, table: "raw_sessions")
+                PostHogAPI.schemaColumns(projectID: 1_001, table: "fictional_unrecorded_archive")
             ).0
         )
         #expect(unrecorded.rows.isEmpty)
