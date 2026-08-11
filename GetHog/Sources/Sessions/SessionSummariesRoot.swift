@@ -140,6 +140,7 @@ struct SessionSummariesRoot: View {
                 .listRowSeparator(.hidden)
         }
         .listRowSpacing(Theme.Space.xs)
+        .accessibilityIdentifier("gethog.session-summaries-list")
         .pageSurface()
         .skeleton(store.isLoading && store.rows.isEmpty)
     }

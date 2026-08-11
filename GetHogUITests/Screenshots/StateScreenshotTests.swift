@@ -764,7 +764,11 @@ final class StateScreenshotTests: ScreenshotCase {
 
     func testSessionSummaryDetail() {
         capturePushedDetail(
-            tab: "sessionSummaries", titled: "Summaries", named: "summary-detail"
+            tab: "sessionSummaries",
+            titled: "Summaries",
+            named: "summary-detail",
+            row: "AI summary, Succeeded, The user refreshed the fictional dashboard widgets.",
+            scrolling: "gethog.session-summaries-list"
         )
     }
 
