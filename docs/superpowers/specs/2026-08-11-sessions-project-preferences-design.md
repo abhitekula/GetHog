@@ -116,7 +116,8 @@ transient.
 ## Clear Semantics
 
 "Clear" means clear constraints, not restore every Sessions control to factory
-defaults. Both Clear entry points—the active summary and filter sheet—will:
+defaults. All three Clear entry points—the active summary, filter sheet, and
+filtered-empty state—will:
 
 - reset all narrowing fields, including the persisted test-user and
   playable-only choices;
@@ -167,8 +168,8 @@ Coverage will prove:
 - changing each durable control writes immediately, while transient controls do
   not write;
 - applying a saved playlist updates only its durable projection in storage;
-- both Clear paths disable durable narrowings, clear transient constraints, and
-  preserve sort order;
+- all three Clear paths disable durable narrowings, clear transient
+  constraints, and preserve sort order;
 - the rendered normal-size summary aligns its sentence and Clear action while
   retaining at least a 44-by-44-point Clear hit target;
 - the accessibility-size summary remains vertically ordered and untruncated;
