@@ -103,24 +103,24 @@ final class StateScreenshotTests: ScreenshotCase {
         )
     }
 
-    func testBrandFamilyEmblemData() {
-        captureBrandEmblem(
+    func testBrandFamilyEmblemData() throws {
+        try captureBrandEmblem(
             query: "Actions",
             result: "Actions",
             name: "brand-family-emblem-data"
         )
     }
 
-    func testBrandFamilyEmblemExperiment() {
-        captureBrandEmblem(
+    func testBrandFamilyEmblemExperiment() throws {
+        try captureBrandEmblem(
             query: "Experiments",
             result: "Experiments",
             name: "brand-family-emblem-experiment"
         )
     }
 
-    func testBrandFamilyEmblemWorkspace() {
-        captureBrandEmblem(
+    func testBrandFamilyEmblemWorkspace() throws {
+        try captureBrandEmblem(
             query: "Notebooks",
             result: "Notebooks",
             name: "brand-family-emblem-workspace"
@@ -168,7 +168,11 @@ final class StateScreenshotTests: ScreenshotCase {
         )
     }
 
-    private func captureBrandEmblem(query: String, result: String, name: String) {
+    private func captureBrandEmblem(query: String, result: String, name: String) throws {
+        try XCTSkipIf(
+            Screenshot.isPad,
+            "Screen-family emblems live in the compact Search index; iPad lists screens in its sidebar."
+        )
         capture(
             launching: { Screenshot.launch($0, tab: "search") },
             steps: [
@@ -323,9 +327,10 @@ final class StateScreenshotTests: ScreenshotCase {
             },
             steps: [
                 ScreenshotStep("insight-funnel-detail") { app in
-                    guard DemoLaunch.wait(
-                        for: app.navigationBars["Example signup funnel by browser"]
-                    ) else { return false }
+                    guard self.waitUntil({
+                        app.navigationBars["Example signup funnel by browser"].exists
+                            || app.staticTexts["Example signup funnel by browser"].exists
+                    }) else { return false }
                     return self.waitUntil {
                         app.buttons.matching(
                             NSPredicate(format: "label BEGINSWITH %@", "Step 1,")
@@ -1197,7 +1202,7 @@ final class StateScreenshotTests: ScreenshotCase {
                         startingWith: "About GetHog",
                         in: app,
                         maximumSwipes: 48,
-                        scrolling: "gethog.settings-list"
+                        scrolling: Screenshot.isPad ? nil : "gethog.settings-list"
                     ) else {
                         return false
                     }

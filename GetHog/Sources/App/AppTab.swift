@@ -158,7 +158,10 @@ enum AppTab: String, Hashable, CaseIterable {
         case .warehouse: "cylinder.split.1x2"
         case .pipelines: "arrow.triangle.branch"
         case .automation: "gearshape.2"
-        case .actions: "cursorarrow.rays"
+        // `cursorarrow.rays` resolves, but repeatedly drove the iPad tab item's
+        // image host into an unbounded relayout loop. The click variant says
+        // what an action matches and remained stable across repeated launches.
+        case .actions: "cursorarrow.click"
         case .annotations: "note.text"
         case .notebooks: "book"
         case .max: "bubble.left.and.bubble.right"
