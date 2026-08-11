@@ -529,7 +529,10 @@ final class VisionSurfaceSweepTests: XCTestCase {
             "The live Vision \(title) root never rendered its stable title."
         )
         DemoLaunch.pause(0.75)
-        DemoLaunch.settle(app, timeout: 20)
+        XCTAssertTrue(
+            LiveSurfaceState.waitForTerminalState(in: app, timeout: 60),
+            "The live Vision \(title) root remained loading or failed."
+        )
         XCTAssertEqual(
             app.state,
             .runningForeground,

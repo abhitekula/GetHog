@@ -36,6 +36,7 @@ struct WatchSectionFailureView: View {
                 }
             }
         }
+        .accessibilityIdentifier("gethog.load-state.failure")
     }
 }
 
@@ -158,17 +159,21 @@ struct WatchMetricsView: View {
                             systemImage: "wifi.exclamationmark",
                             description: Text(message)
                         )
+                        .accessibilityIdentifier("gethog.load-state.failure")
                     case .credential(let entry):
                         WatchManualKeyEntryView(state: entry)
+                            .accessibilityIdentifier("gethog.load-state.failure")
                     case .failure(let message):
                         ContentUnavailableView(
                             "Couldn't refresh",
                             systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90",
                             description: Text(message)
                         )
+                        .accessibilityIdentifier("gethog.load-state.failure")
                     case .loading:
                         ProgressView()
                             .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("gethog.load-state.loading")
                     case .headline, .noMetrics:
                         headline
                     }

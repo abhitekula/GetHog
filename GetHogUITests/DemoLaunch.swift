@@ -320,6 +320,47 @@ enum DemoLaunch {
     }
 }
 
+/// Data-free live-surface state shared by the iOS, Vision, TV, and Watch UI
+/// targets. Product-authored identifiers and controls are the only witnesses:
+/// no customer title, event, flag, or project value is read or logged.
+@MainActor
+enum LiveSurfaceState {
+    static func waitForTerminalState(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if hasFailure(in: app) { return false }
+            if !isLoading(in: app) {
+                // Require a second quiet sample. A spinner can disappear one
+                // frame before a failure or terminal body joins the AX tree.
+                DemoLaunch.pause(0.25)
+                if hasFailure(in: app) { return false }
+                if !isLoading(in: app) { return true }
+            }
+            DemoLaunch.pause(0.25)
+        }
+        return false
+    }
+
+    private static func isLoading(in app: XCUIApplication) -> Bool {
+        app.activityIndicators.firstMatch.exists
+            || element("gethog.load-state.loading", in: app).exists
+            || element("gethog.warehouse-loading", in: app).exists
+    }
+
+    private static func hasFailure(in app: XCUIApplication) -> Bool {
+        element("gethog.load-state.failure", in: app).exists
+            || app.buttons["Try again"].exists
+            || app.buttons["Retry"].exists
+    }
+
+    private static func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
+    }
+}
+
 /// One simulator, one run at a time.
 ///
 /// **The failure this exists for, and why it was so hard to read.** Three agents

@@ -541,6 +541,7 @@ struct DashboardsRoot: View {
             systemImage: "square.grid.2x2",
             description: Text("Fetching this project's dashboard list.")
         )
+        .accessibilityIdentifier("gethog.load-state.loading")
     }
 
     private var dashboardUnavailable: some View {

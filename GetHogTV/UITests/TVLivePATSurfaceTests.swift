@@ -34,7 +34,10 @@ final class TVLivePATSurfaceTests: XCTestCase {
                 "The live TV \(destination) root never rendered its stable anchor."
             )
             DemoLaunch.pause(0.75)
-            DemoLaunch.settle(app, timeout: 20)
+            XCTAssertTrue(
+                LiveSurfaceState.waitForTerminalState(in: app, timeout: 60),
+                "The live TV \(destination) root remained loading or failed."
+            )
             XCTAssertEqual(
                 app.state,
                 .runningForeground,

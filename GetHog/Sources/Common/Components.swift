@@ -304,6 +304,7 @@ struct LoadFailureState: View {
         // the ground rather than leaving a strip of system background under the
         // one piece of text somebody reading a failure came for.
         .appGround()
+        .accessibilityIdentifier("gethog.load-state.failure")
     }
 }
 
@@ -664,8 +665,14 @@ extension View {
     /// Applies a redacted skeleton while loading, so layout never jumps.
     @ViewBuilder
     func skeleton(_ isLoading: Bool) -> some View {
-        redacted(reason: isLoading ? .placeholder : [])
-            .animation(.default, value: isLoading)
+        if isLoading {
+            redacted(reason: .placeholder)
+                .animation(.default, value: isLoading)
+                .accessibilityIdentifier("gethog.load-state.loading")
+        } else {
+            redacted(reason: [])
+                .animation(.default, value: isLoading)
+        }
     }
 }
 

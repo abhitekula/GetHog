@@ -38,7 +38,10 @@ final class WatchPagesUITests: XCTestCase {
             "The live Watch \(title) page never rendered its stable title."
         )
         DemoLaunch.pause(0.75)
-        DemoLaunch.settle(app, timeout: 20)
+        XCTAssertTrue(
+            LiveSurfaceState.waitForTerminalState(in: app, timeout: 60),
+            "The live Watch \(title) page remained loading or failed."
+        )
         XCTAssertEqual(
             app.state,
             .runningForeground,
