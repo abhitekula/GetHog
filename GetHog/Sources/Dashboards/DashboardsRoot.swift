@@ -10,6 +10,28 @@ enum DashboardCollectionContentState: Equatable {
     case loaded
 }
 
+enum DashboardNavigationTopology {
+    static var showsExplicitReturnControl: Bool {
+        #if os(macOS) || os(visionOS)
+        true
+        #else
+        false
+        #endif
+    }
+}
+
+enum DashboardRowContainer {
+    case navigationLink
+    case button
+
+    var showsAuthoredChevron: Bool {
+        switch self {
+        case .navigationLink: false
+        case .button: true
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class DashboardsStore {
@@ -418,7 +440,7 @@ struct DashboardsRoot: View {
 
     private func row(_ dashboard: DashboardSummary) -> some View {
         NavigationLink(value: dashboard.id) {
-            dashboardRowContent(dashboard)
+            dashboardRowContent(dashboard, in: .navigationLink)
         }
         .dashboardRowSurface()
         .listRowSeparator(.hidden)
@@ -434,7 +456,7 @@ struct DashboardsRoot: View {
                 padding: Theme.Space.m,
                 accent: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent
             ) {
-                dashboardRowContent(dashboard)
+                dashboardRowContent(dashboard, in: .button)
             }
         }
         .buttonStyle(.plain)
@@ -443,7 +465,10 @@ struct DashboardsRoot: View {
         .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
     }
 
-    private func dashboardRowContent(_ dashboard: DashboardSummary) -> some View {
+    private func dashboardRowContent(
+        _ dashboard: DashboardSummary,
+        in container: DashboardRowContainer
+    ) -> some View {
         DataRow(
             glyph: dashboard.creationMode == .template ? "wand.and.stars" : "square.grid.2x2",
             brandGlyph: DashboardBrandAppearance.glyph(for: dashboard.creationMode),
@@ -453,7 +478,7 @@ struct DashboardsRoot: View {
             footnote: dashboard.lastRefresh.map {
                 "Updated \($0.formatted(.relative(presentation: .named)))"
             },
-            accessory: .chevron,
+            accessory: container.showsAuthoredChevron ? .chevron : .none,
             // The compact television list uses the native NavigationLink
             // focus slab, which becomes bright and therefore needs semantic
             // foregrounds to follow that effective appearance. Card-style TV

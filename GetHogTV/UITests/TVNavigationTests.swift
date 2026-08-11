@@ -681,6 +681,54 @@ final class TVDashboardPresentationTests: XCTestCase {
     private static let hogQLDashboardID = "725102"
     private static let emptyDashboardID = "725103"
 
+    func testDashboardDetailHasOneNativeReturnPath() {
+        let app = DemoLaunch.launch()
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Example App metric 33")
+        ).firstMatch
+
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The first dashboard row never rendered.")
+        TVRemote.press(.right)
+        TVRemote.press(.select)
+
+        let savedRange = app.buttons["Saved"].firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: savedRange),
+            "Selecting the first dashboard row did not open its detail."
+        )
+        XCTAssertEqual(
+            DemoLaunch.elements(labelled: "All dashboards", in: app).count,
+            0,
+            "The compact TV detail added a second focusable return control beside native Back."
+        )
+
+        let dashboardLabels = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "Dashboards")
+        )
+        var nativeReturnCount = 0
+        for index in 0 ..< dashboardLabels.count {
+            let label = dashboardLabels.element(boundBy: index)
+            guard label.exists, label.isHittable else { continue }
+            let frame = label.frame
+            if frame.minX < 360, frame.minY < 140 {
+                nativeReturnCount += 1
+            }
+        }
+        XCTAssertEqual(
+            nativeReturnCount,
+            1,
+            "The pushed dashboard detail did not expose exactly one native top-left return path."
+        )
+
+        TVRemote.press(.menu)
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10) {
+                !savedRange.exists && row.exists && row.isHittable
+            },
+            "Menu did not pop the detail and restore the dashboard row."
+        )
+    }
+
     func testFocusedDashboardRowKeepsRenderedTitleDistinctFromItsBackground() throws {
         let app = DemoLaunch.launch()
         let row = app.buttons.matching(

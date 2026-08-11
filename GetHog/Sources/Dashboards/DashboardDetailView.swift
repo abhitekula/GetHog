@@ -428,11 +428,9 @@ struct DashboardDetailView: View {
             // Same URL the "Open in PostHog" item below opens, offered to the
             // *other* device instead of this one.
             .handoff(webURL: webURL, title: title)
-#if !os(iOS)
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .dashboardReturnControl {
                 regularReturnControl
             }
-#endif
             .toolbar { toolbarContent }
 #if !os(tvOS) && !os(iOS)
             .navigationBarBackButtonHidden(onReturnToDashboards != nil)
@@ -766,6 +764,19 @@ struct DashboardDetailView: View {
         await store.loadIfNeeded(
             client: client, projectID: projectID, dashboardID: dashboardID
         )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func dashboardReturnControl<Control: View>(
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        if DashboardNavigationTopology.showsExplicitReturnControl {
+            safeAreaInset(edge: .top, spacing: 0, content: control)
+        } else {
+            self
+        }
     }
 }
 

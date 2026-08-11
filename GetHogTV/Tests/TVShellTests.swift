@@ -160,4 +160,11 @@ struct TVDestinationTests {
         #expect(image.size.width > 0)
         #expect(image.size.height > 0)
     }
+
+    @Test("compact dashboard navigation owns one return path and one disclosure")
+    func compactDashboardNavigationChrome() {
+        #expect(!DashboardNavigationTopology.showsExplicitReturnControl)
+        #expect(!DashboardRowContainer.navigationLink.showsAuthoredChevron)
+        #expect(DashboardRowContainer.button.showsAuthoredChevron)
+    }
 }

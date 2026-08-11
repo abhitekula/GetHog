@@ -19,6 +19,33 @@ final class DashboardConsistencyUITests: XCTestCase {
         )
     }
 
+    func testCompactDashboardNavigationRowDrawsOneDisclosureIndicator() throws {
+        let app = DemoLaunch.launch(tab: "dashboards")
+        defer { app.terminate() }
+
+        try XCTSkipUnless(
+            app.windows.firstMatch.frame.width <= 700,
+            "The compact disclosure contract is measured on a compact window."
+        )
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Example App metric 33")
+        ).firstMatch
+        guard DemoLaunch.wait(for: row, timeout: 60) else {
+            return XCTFail("The compact dashboard row never rendered.")
+        }
+
+        let screenshot = XCUIScreen.main.screenshot()
+        XCTAssertEqual(
+            try trailingInkClusterCount(
+                in: screenshot,
+                rowFrame: row.frame,
+                screenFrame: app.frame
+            ),
+            1,
+            "A NavigationLink row must draw only its native disclosure indicator."
+        )
+    }
+
     func testPinnedDashboardPreviewFailureIsVisibleAndRetryable() throws {
         let deviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ""
         try XCTSkipUnless(
@@ -736,6 +763,78 @@ final class DashboardConsistencyUITests: XCTestCase {
         )
         context.draw(crop, in: CGRect(x: 0, y: 0, width: 1, height: 1))
         return RGBPixel(red: Int(bytes[0]), green: Int(bytes[1]), blue: Int(bytes[2]))
+    }
+
+    private func trailingInkClusterCount(
+        in screenshot: XCUIScreenshot,
+        rowFrame: CGRect,
+        screenFrame: CGRect
+    ) throws -> Int {
+        let source = try XCTUnwrap(screenshot.image.cgImage)
+        let scaleX = CGFloat(source.width) / screenFrame.width
+        let scaleY = CGFloat(source.height) / screenFrame.height
+        let sampleFrame = CGRect(
+            x: rowFrame.maxX - 128,
+            y: rowFrame.midY - 18,
+            width: 112,
+            height: 36
+        )
+        let cropRect = CGRect(
+            x: (sampleFrame.minX - screenFrame.minX) * scaleX,
+            y: (sampleFrame.minY - screenFrame.minY) * scaleY,
+            width: sampleFrame.width * scaleX,
+            height: sampleFrame.height * scaleY
+        ).integral.intersection(
+            CGRect(x: 0, y: 0, width: source.width, height: source.height)
+        )
+        let crop = try XCTUnwrap(source.cropping(to: cropRect))
+        let width = crop.width
+        let height = crop.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let rendered = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        XCTAssertTrue(rendered, "The dashboard row disclosure region could not be sampled.")
+        guard rendered else { return 0 }
+
+        var inkColumns: [Int] = []
+        for x in 0 ..< width {
+            var minimum = 1.0
+            var maximum = 0.0
+            for y in 0 ..< height {
+                let index = ((y * width) + x) * 4
+                let red = Double(pixels[index]) / 255
+                let green = Double(pixels[index + 1]) / 255
+                let blue = Double(pixels[index + 2]) / 255
+                let luminance = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+                minimum = min(minimum, luminance)
+                maximum = max(maximum, luminance)
+            }
+            if maximum - minimum > 0.08 {
+                inkColumns.append(x)
+            }
+        }
+
+        var clusters = 0
+        var previous: Int?
+        for column in inkColumns {
+            if previous.map({ column - $0 > 3 }) ?? true {
+                clusters += 1
+            }
+            previous = column
+        }
+        return clusters
     }
 }
 
