@@ -164,7 +164,7 @@ final class MacMenuBarController {
     @ObservationIgnored private var ticker: Task<Void, Never>?
 
     init(
-        store: SharedSnapshotStore = .shared,
+        store: SharedSnapshotStore,
         defaults: UserDefaults = .standard,
         authSessionID: UUID? = nil
     ) {

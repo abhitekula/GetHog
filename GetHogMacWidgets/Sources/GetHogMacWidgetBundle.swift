@@ -5,11 +5,17 @@ import WidgetKit
 
 #if GETHOG_UNSHARED_MAC_WIDGETS
 
-/// One cache-free provider for the two teamless Debug cards. Placeholder,
+/// One cache-free provider for the three teamless Debug cards. Placeholder,
 /// snapshot and timeline all carry the same neutral entry, so the installed
 /// widget can always leave redaction for an explicit unavailable state.
 private struct MacDebugUnavailableEntry: TimelineEntry {
     let date: Date
+}
+
+private enum MacDebugUnavailable {
+    /// Literal by design: deriving these words from the production cache would
+    /// resolve the App Group just to rediscover that this build cannot share it.
+    static let message = "Open GetHog to connect. This build can't share data with widgets."
 }
 
 private struct MacDebugUnavailableProvider: TimelineProvider {
@@ -43,11 +49,25 @@ private struct MacDebugMetricWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: Self.kind, provider: MacDebugUnavailableProvider()) { _ in
-            NoDataView(message: WidgetCache.noDataMessage)
+            NoDataView(message: MacDebugUnavailable.message)
                 .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Metric")
         .description("This Debug build can't share app data with widgets. Signed builds let you select a synced metric.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+private struct MacDebugHealthWidget: Widget {
+    static let kind = "app.gethog.widget.debug.health-unshared"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: Self.kind, provider: MacDebugUnavailableProvider()) { _ in
+            NoDataView(message: MacDebugUnavailable.message)
+                .containerBackground(Theme.cardBackground, for: .widget)
+        }
+        .configurationDisplayName("Project Health")
+        .description("This Debug build can't share app data with widgets. Signed builds show health from the app's last sync.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -57,7 +77,7 @@ private struct MacDebugFlagWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: Self.kind, provider: MacDebugUnavailableProvider()) { _ in
-            NoDataView(message: WidgetCache.noDataMessage)
+            NoDataView(message: MacDebugUnavailable.message)
                 .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Feature Flag")
@@ -89,7 +109,7 @@ struct GetHogMacWidgetBundle: WidgetBundle {
     var body: some Widget {
         #if GETHOG_UNSHARED_MAC_WIDGETS
         MacDebugMetricWidget()
-        HealthWidget()
+        MacDebugHealthWidget()
         MacDebugFlagWidget()
         #else
         MetricWidget()

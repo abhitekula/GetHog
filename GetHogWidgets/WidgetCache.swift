@@ -33,7 +33,17 @@ enum WidgetMetricRoute {
 /// fresher data.
 enum WidgetCache {
 
-    static var store: SharedSnapshotStore { .shared }
+    static var store: SharedSnapshotStore {
+        #if os(macOS) && GETHOG_UNSHARED_MAC_WIDGETS
+        // Defense in depth for metadata or a future Debug-only surface: the
+        // teamless extension never asks Foundation to resolve an App Group it
+        // is not entitled to enter, even if a cache reader is accidentally
+        // reached outside the three neutral wrappers.
+        SharedSnapshotStore.resolve(container: { _ in nil })
+        #else
+        SharedSnapshotStore.shared
+        #endif
+    }
 
     static func snapshot() -> SharedSnapshot? { store.loadOrNil() }
 

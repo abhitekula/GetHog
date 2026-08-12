@@ -678,7 +678,7 @@ final class AppModel {
         // fields are all unavailable there), so evaluating would latch state
         // for a delivery that can never happen.
         guard snapshotPublicationIsCurrent(context) else { return false }
-        await MetricAlertDelivery.evaluate(snapshot: snapshot)
+        await MetricAlertDelivery.evaluate(snapshot: snapshot, store: snapshotStore)
         #endif
         guard snapshotPublicationIsCurrent(context) else { return false }
         #if canImport(WidgetKit)

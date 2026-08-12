@@ -250,6 +250,7 @@ targets:
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac.entitlements
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) GETHOG_UNSHARED_MAC_APP"
         Release:
           CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac-Distribution.entitlements
 

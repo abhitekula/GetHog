@@ -15,11 +15,15 @@ import UIKit
 /// were live alerts would be the same lie as an unlabelled stale chart, and this
 /// app labels those everywhere.
 struct MetricAlertsView: View {
-    @State private var controller = MetricWatchController()
+    @State private var controller: MetricWatchController
     @State private var metrics: [SharedSnapshot.Metric] = []
     @State private var capturedAt: Date?
     @State private var isAddingWatch = false
     @State private var pendingDeletion: MetricWatch?
+
+    init(snapshotStore: SharedSnapshotStore) {
+        _controller = State(initialValue: MetricWatchController(store: snapshotStore))
+    }
 
     /// Said in full on the list and in shorter form on the empty state, because
     /// whichever one a user meets first is where the expectation gets set.

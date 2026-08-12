@@ -14,6 +14,11 @@ struct MacRootView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
+    /// The app shell's entitled cache boundary. Required rather than defaulted
+    /// so a teamless Mac Debug build cannot accidentally resolve the App Group
+    /// singleton while draining a widget or menu-bar navigation request.
+    let snapshotStore: SharedSnapshotStore
+
     @SceneStorage("selectedTab") private var selectedTab: AppTab = .dashboards
     /// The search tab's stack — heterogeneous for the reason RootView's is:
     /// screen results push `AppTab`, links push `PostHogLink`.
@@ -380,9 +385,9 @@ struct MacRootView: View {
         // rather than showing another project's dashboard under the same
         // number; an unknown id routes one honest level up; and it is consumed
         // either way, so a stale request cannot redirect a later launch.
-        if let pending = SharedSnapshotStore.shared.pendingOpen() {
-            SharedSnapshotStore.shared.clearPendingOpen()
-            let snapshot = SharedSnapshotStore.shared.loadOrNil()
+        if let pending = snapshotStore.pendingOpen() {
+            snapshotStore.clearPendingOpen()
+            let snapshot = snapshotStore.loadOrNil()
             if let metricID = pending.metricID,
                let dashboardID = snapshot?.metric(id: metricID)?.dashboardID,
                let projectID = snapshot?.projectID {

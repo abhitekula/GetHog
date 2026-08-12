@@ -38,7 +38,7 @@ struct SettingsRoot: View {
             // present the notification these settings configure, and this
             // section's footer promises background delivery it could not make
             // good on.
-            SettingsAlertsSection()
+            SettingsAlertsSection(snapshotStore: alertsSnapshotStore)
             // Nothing on tvOS to arrange. There is no tab-slot preference, no
             // `TabViewCustomization` (unavailable on the platform), and the
             // sidebar is fixed — so this section would be a preferences row
@@ -76,6 +76,14 @@ struct SettingsRoot: View {
         Theme.Measure.televisionPair
         #else
         Theme.Measure.pair
+        #endif
+    }
+
+    private var alertsSnapshotStore: SharedSnapshotStore {
+        #if os(macOS)
+        MacSharedSnapshotPolicy.store
+        #else
+        SharedSnapshotStore.shared
         #endif
     }
 
@@ -173,10 +181,12 @@ struct SettingsProjectSection: View {
 // this platform cannot keep.
 #if !os(tvOS)
 struct SettingsAlertsSection: View {
+    let snapshotStore: SharedSnapshotStore
+
     var body: some View {
         Section {
             NavigationLink {
-                MetricAlertsView()
+                MetricAlertsView(snapshotStore: snapshotStore)
             } label: {
                 Label("Metric alerts", systemImage: "bell.badge")
             }

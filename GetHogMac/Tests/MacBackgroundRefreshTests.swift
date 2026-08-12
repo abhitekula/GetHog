@@ -120,14 +120,16 @@ struct MacRefreshScheduleTests {
 //      — a directory the sandbox will not let this process create. (Measured:
 //      it does not exist, and every group container that does on a Mac carries
 //      the Team ID prefix the kit documents.)
-//   3. `AppModel.publish` writes with `try?`. A denied write is therefore
-//      silent, and every read afterwards is `nil`.
+//   3. A teamless Debug app must not attempt that lookup at all. The Mac shell
+//      now injects `MacSharedSnapshotPolicy.store`, whose private fallback
+//      deliberately bypasses App Group resolution; Release retains the shared
+//      container path.
 //
 // So such a suite fails on the container, never reaching the behaviour under
 // test, and the only ways to make it pass are to grant Debug an entitlement
 // that breaks the fresh-clone build or to weaken it into asserting something
-// it does not mean. `AppModel.publish` hardcodes `SharedSnapshotStore.shared`,
-// so there is no seam to point it at a writable directory either.
+// it does not mean. `AppModel` now has the seam needed by the Mac shell, but a
+// test-host private directory still cannot prove cross-process publication.
 //
 // The wake path is shared code fully covered by `BackgroundRefreshTests`; what
 // is Mac-specific is the cadence, and that is entirely above. The Wave 5

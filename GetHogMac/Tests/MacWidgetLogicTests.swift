@@ -306,10 +306,13 @@ struct MacDebugWidgetConfigurationTests {
             .map { $0.trimmingCharacters(in: .whitespaces) }
 
         #expect(debugLines.contains("MacDebugMetricWidget()"))
+        #expect(debugLines.contains("MacDebugHealthWidget()"))
         #expect(debugLines.contains("MacDebugFlagWidget()"))
         #expect(!debugLines.contains("MetricWidget()"))
+        #expect(!debugLines.contains("HealthWidget()"))
         #expect(!debugLines.contains("FlagWidget()"))
         #expect(releaseLines.contains("MetricWidget()"))
+        #expect(releaseLines.contains("HealthWidget()"))
         #expect(releaseLines.contains("FlagWidget()"))
 
         let provider = try sourceSlice(
@@ -327,6 +330,11 @@ struct MacDebugWidgetConfigurationTests {
 
         let metricWrapper = try sourceSlice(
             named: "private struct MacDebugMetricWidget: Widget",
+            before: "private struct MacDebugHealthWidget: Widget",
+            in: String(debugDefinitions)
+        )
+        let healthWrapper = try sourceSlice(
+            named: "private struct MacDebugHealthWidget: Widget",
             before: "private struct MacDebugFlagWidget: Widget",
             in: String(debugDefinitions)
         )
@@ -334,12 +342,14 @@ struct MacDebugWidgetConfigurationTests {
         let flagWrapper = debugDefinitions[flagStart.lowerBound...]
         for (wrapper, kind) in [
             (metricWrapper, "app.gethog.widget.debug.metric-unshared"),
+            (healthWrapper, "app.gethog.widget.debug.health-unshared"),
             (flagWrapper, "app.gethog.widget.debug.flag-unshared"),
         ] {
             #expect(wrapper.contains(kind))
             #expect(wrapper.contains("StaticConfiguration"))
-            #expect(wrapper.contains("NoDataView(message: WidgetCache.noDataMessage)"))
+            #expect(wrapper.contains("NoDataView(message: MacDebugUnavailable.message)"))
             #expect(!wrapper.contains("AppIntentConfiguration"))
+            #expect(!wrapper.contains("WidgetCache"))
         }
 
         let metric = try String(

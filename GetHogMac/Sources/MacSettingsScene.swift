@@ -99,7 +99,7 @@ struct MacSettingsRoot: View {
         case .permissions: SettingsPermissionsSection()
         case .apiKey: SettingsAPIKeySection()
         case .navigation: SettingsNavigationSection()
-        case .alerts: SettingsAlertsSection()
+        case .alerts: SettingsAlertsSection(snapshotStore: MacSharedSnapshotPolicy.store)
         case .usage: SettingsUsageSection(quotaStore: quotaStore)
         case .sdkHealth: SettingsSDKHealthSection(store: sdkHealthStore)
         case .about: SettingsAboutSection()

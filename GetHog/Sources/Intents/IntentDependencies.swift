@@ -109,9 +109,17 @@ struct IntentDependencies: Sendable {
         FlagQuickToggle.Scope(projectID: projectID, region: projectRegion)
     }
 
-    /// Shared defaults, or `nil` when the App Group isn't provisioned (a plain
-    /// `xcodebuild` run without the entitlement, for instance).
-    static var sharedDefaults: UserDefaults? { UserDefaults(suiteName: appGroupID) }
+    /// Shared defaults, or `nil` when this build deliberately has no App Group.
+    /// The Mac Debug policy must decide before constructing a named suite:
+    /// unlike iOS, macOS may present an App Data authorization prompt merely
+    /// for asking to enter an unentitled shared domain.
+    static var sharedDefaults: UserDefaults? {
+        #if os(macOS)
+        MacSharedSnapshotPolicy.sharedDefaults
+        #else
+        UserDefaults(suiteName: appGroupID)
+        #endif
+    }
 
     static func credentialStore() -> KeychainTokenStore {
         KeychainTokenStore(accessGroup: keychainAccessGroup)

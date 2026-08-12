@@ -15,10 +15,15 @@ import WidgetKit
 enum MacAppModelFactory {
     static func makeModel(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        demoModeEnabled: Bool = DemoTransport.isEnabled
+        demoModeEnabled: Bool = DemoTransport.isEnabled,
+        snapshotStore: SharedSnapshotStore = MacSharedSnapshotPolicy.store
     ) -> AppModel {
         if environment["GETHOG_FORCE_KEYLESS"] == "1" {
-            return AppModel(store: InMemoryTokenStore(), transport: DemoTransport())
+            return AppModel(
+                store: InMemoryTokenStore(),
+                transport: DemoTransport(),
+                snapshotStore: snapshotStore
+            )
         }
 
         // Demo mode drives the real UI from recorded API responses, so every
@@ -28,7 +33,8 @@ enum MacAppModelFactory {
                 store: InMemoryTokenStore(
                     credential: StoredCredential(key: "demo", region: .usCloud)
                 ),
-                transport: DemoTransport()
+                transport: DemoTransport(),
+                snapshotStore: snapshotStore
             )
         }
 
@@ -45,11 +51,12 @@ enum MacAppModelFactory {
             return AppModel(
                 store: InMemoryTokenStore(
                     credential: StoredCredential(key: key, region: region)
-                )
+                ),
+                snapshotStore: snapshotStore
             )
         }
 
-        return AppModel()
+        return AppModel(snapshotStore: snapshotStore)
     }
 }
 #endif
@@ -71,7 +78,7 @@ struct GetHogMacApp: App {
 
     /// The menu bar's reader of the snapshot file; one for the process, owned
     /// here so the label and the popover observe the same reloads.
-    @State private var menuBar = MacMenuBarController()
+    @State private var menuBar = MacMenuBarController(store: MacSharedSnapshotPolicy.store)
 
     /// Owns the last-window-closed rules — see `MenuBarWindowPolicy`. SwiftUI
     /// alone cannot express them: `applicationShouldTerminateAfterLastWindowClosed`
@@ -106,10 +113,10 @@ struct GetHogMacApp: App {
                 if let target = DebugLaunch.soloWindowTarget {
                     DetachedWindowView(target: target)
                 } else {
-                    MacRootView()
+                    MacRootView(snapshotStore: MacSharedSnapshotPolicy.store)
                 }
                 #else
-                MacRootView()
+                MacRootView(snapshotStore: MacSharedSnapshotPolicy.store)
                 #endif
             }
                 .frame(minWidth: 560, minHeight: 420)
@@ -254,7 +261,7 @@ struct GetHogMacApp: App {
         #else
         // DEBUG and acceptance launch seams do not exist in an ordinary
         // shipped binary.
-        AppModel()
+        AppModel(snapshotStore: MacSharedSnapshotPolicy.store)
         #endif
     }
 
@@ -269,7 +276,8 @@ struct GetHogMacApp: App {
                 store: InMemoryTokenStore(
                     credential: StoredCredential(key: "signed-widget-acceptance", region: .usCloud)
                 ),
-                transport: DemoTransport()
+                transport: DemoTransport(),
+                snapshotStore: MacSharedSnapshotPolicy.store
             )
         }
         return makeModel()

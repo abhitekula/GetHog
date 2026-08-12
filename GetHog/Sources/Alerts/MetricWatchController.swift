@@ -22,7 +22,7 @@ enum MetricAlertDelivery {
     /// The foreground case matters as much as the wake: a user who opens the app
     /// and watches a metric recover would otherwise leave the watch latched, and
     /// the *next* genuine crossing would pass in silence.
-    static func evaluate(snapshot: SharedSnapshot, store: SharedSnapshotStore = .shared) async {
+    static func evaluate(snapshot: SharedSnapshot, store: SharedSnapshotStore) async {
         let watches = store.metricWatches()
         let breaching = store.breachingWatchIDs()
 
@@ -103,7 +103,7 @@ final class MetricWatchController {
 
     private let store: SharedSnapshotStore
 
-    init(store: SharedSnapshotStore = .shared) {
+    init(store: SharedSnapshotStore) {
         self.store = store
         self.watches = store.metricWatches()
     }
