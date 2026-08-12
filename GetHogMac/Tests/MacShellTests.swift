@@ -129,9 +129,9 @@ struct MacShellStructureTests {
         #expect(Set(identifiers).count == identifiers.count)
     }
 
-    /// The Mac shell corrects an inherited outer-sidebar safe area only for
-    /// roots that bring a second split at regular width. Dashboard is the
-    /// important control: it owns navigation, but its landing is not nested.
+    /// The Mac shell's structural split matters only for roots that bring a
+    /// second split at regular width. Dashboard is the important control: it
+    /// owns navigation, but its landing is not nested.
     @Test("regular nested splits are exactly the six list-detail roots")
     func regularNestedSplitOwners() {
         let owners = Set(AppTab.allCases.filter(\.ownsRegularNestedSplit))
@@ -145,6 +145,200 @@ struct MacShellStructureTests {
             .flags,
         ]))
         #expect(!AppTab.dashboards.ownsRegularNestedSplit)
+    }
+
+    @Test("every grouped destination knows its one owning sidebar section")
+    func sidebarSectionOwnershipComesFromTheSharedSections() {
+        for section in AppTab.sections {
+            for tab in section.tabs {
+                #expect(tab.sidebarSectionID == section.id)
+            }
+        }
+        #expect(AppTab.search.sidebarSectionID == nil)
+        #expect(AppTab.settings.sidebarSectionID == nil)
+    }
+
+    @Test("opening a collapsed destination expands only its owning section")
+    func openingDestinationReconcilesSidebarExpansion() {
+        var expansion = MacSidebarExpansion(persistedValue: "Analyze,Monitor")
+
+        let reveal = expansion.reconcileOpening(.warehouse)
+
+        #expect(reveal == .warehouse)
+        #expect(expansion.expandedSectionIDs == ["Analyze", "Monitor", "Data"])
+        #expect(expansion.persistedValue == "Analyze,Monitor,Data")
+    }
+
+    @Test("opening a loose destination preserves every expansion choice")
+    func openingLooseDestinationPreservesSidebarExpansion() {
+        var expansion = MacSidebarExpansion(persistedValue: "Data,Workspace")
+
+        let reveal = expansion.reconcileOpening(.search)
+
+        #expect(reveal == .search)
+        #expect(expansion.expandedSectionIDs == ["Data", "Workspace"])
+        #expect(expansion.persistedValue == "Data,Workspace")
+    }
+
+    @Test("visible sidebar state always advertises Hide and hidden advertises Show")
+    func sidebarCommandMatchesRenderedState() {
+        #expect(MacSidebarPresentation.visible.commandTitle == "Hide Sidebar")
+        #expect(MacSidebarPresentation.hidden.commandTitle == "Show Sidebar")
+        #expect(MacSidebarPresentation.visible.toggled == .hidden)
+        #expect(MacSidebarPresentation.hidden.toggled == .visible)
+    }
+
+    @Test("sidebar visibility cannot change adaptive navigation topology")
+    func adaptiveWidthIsVisibilityIndependent() {
+        let shellWidth: CGFloat = 900
+        let adaptiveWidth = MacSidebarShellLayout.adaptiveDetailWidth(
+            forShellWidth: shellWidth,
+            preferredSidebarWidth: MacSidebarShellLayout.defaultWidth
+        )
+
+        #expect(adaptiveWidth == 679)
+        #expect(MacWindowLayout.sizeClass(forContentWidth: adaptiveWidth) == .compact)
+        #expect(
+            MacSidebarShellLayout.sourceListWidth(
+                presentation: .visible,
+                preferredWidth: MacSidebarShellLayout.defaultWidth
+            ) == MacSidebarShellLayout.defaultWidth
+        )
+        #expect(
+            MacSidebarShellLayout.sourceListWidth(
+                presentation: .hidden,
+                preferredWidth: MacSidebarShellLayout.defaultWidth
+            ) == 0
+        )
+        #expect(!MacSidebarShellLayout.isRevealable(sourceListWidth: 1))
+        #expect(MacSidebarShellLayout.isRevealable(sourceListWidth: 190))
+    }
+
+    @Test("hidden shell reserves no source-list or separator width and keeps detail mounted")
+    func hiddenSidebarGeometryIsActuallyZero() async throws {
+        let recorder = MacSidebarShellGeometryRecorder()
+        let controller = NSHostingController(
+            rootView: MacSidebarShellGeometryProbe(recorder: recorder)
+        )
+        let contentSize = CGSize(width: 900, height: 600)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        window.alphaValue = 0.01
+        window.makeKeyAndOrderFront(nil)
+        controller.view.frame = NSRect(origin: .zero, size: contentSize)
+        layoutSidebarShell(controller: controller, window: window)
+        defer { window.close() }
+
+        #expect(
+            await waitForSidebarShellGeometry(
+                pumpLayout: { layoutSidebarShell(controller: controller, window: window) }
+            ) {
+                recorder.detailWidth > 0 && recorder.sidebarWidth > 0
+            },
+            "The production shell never reported its visible child proposals."
+        )
+        #expect(recorder.sidebarWidth == MacSidebarShellLayout.defaultWidth)
+        #expect(
+            recorder.detailWidth
+                == contentSize.width
+                    - MacSidebarShellLayout.defaultWidth
+                    - MacSidebarShellLayout.visibleSeparatorWidth,
+            "The visible detail was not proposed the physical remainder."
+        )
+        let detailAppearances = recorder.detailAppearances
+
+        recorder.presentation = .hidden
+        #expect(
+            await waitForSidebarShellGeometry(
+                pumpLayout: { layoutSidebarShell(controller: controller, window: window) }
+            ) {
+                recorder.sidebarWidth <= 1
+                    && abs(recorder.detailWidth - contentSize.width) <= 1
+            },
+            "The hidden production shell retained source-list or divider width."
+        )
+        #expect(
+            MacSidebarShellLayout.separatorWidth(presentation: .hidden) == 0,
+            "The hidden shell retained a divider hairline."
+        )
+        #expect(
+            recorder.detailAppearances == detailAppearances,
+            "Toggling the source list rebuilt the selected detail root."
+        )
+    }
+
+    private func waitForSidebarShellGeometry(
+        timeout: Duration = .seconds(2),
+        pumpLayout: @escaping @MainActor () -> Void,
+        _ condition: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            pumpLayout()
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        pumpLayout()
+        return condition()
+    }
+
+    private func layoutSidebarShell(
+        controller: NSHostingController<MacSidebarShellGeometryProbe>,
+        window: NSWindow
+    ) {
+        window.contentView?.needsLayout = true
+        window.contentView?.layoutSubtreeIfNeeded()
+        controller.view.needsLayout = true
+        controller.view.layoutSubtreeIfNeeded()
+        window.contentView?.displayIfNeeded()
+    }
+}
+
+@MainActor
+@Observable
+private final class MacSidebarShellGeometryRecorder {
+    var presentation = MacSidebarPresentation.visible
+    var preferredWidth = Double(MacSidebarShellLayout.defaultWidth)
+    var sidebarWidth: CGFloat = 0
+    var detailWidth: CGFloat = 0
+    var detailAppearances = 0
+}
+
+private struct MacSidebarShellGeometryProbe: View {
+    @Bindable var recorder: MacSidebarShellGeometryRecorder
+
+    var body: some View {
+        GeometryReader { shellProxy in
+            let compact = MacWindowLayout.sizeClass(
+                forContentWidth: MacSidebarShellLayout.adaptiveDetailWidth(
+                    forShellWidth: shellProxy.size.width,
+                    preferredSidebarWidth: CGFloat(recorder.preferredWidth)
+                )
+            ) == .compact
+
+            MacSidebarShell(
+                presentation: recorder.presentation,
+                preferredSidebarWidth: $recorder.preferredWidth
+            ) {
+                Color.clear
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                        recorder.sidebarWidth = $0
+                    }
+            } detail: {
+                MacAdaptiveNavigationHost(tab: .events, compact: compact) {
+                    Color.clear
+                        .onAppear { recorder.detailAppearances += 1 }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                            recorder.detailWidth = $0
+                        }
+                }
+            }
+        }
     }
 }
 

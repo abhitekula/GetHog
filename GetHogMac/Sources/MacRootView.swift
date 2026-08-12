@@ -1,3 +1,4 @@
+import AppKit
 import GetHogKit
 import GetHogUI
 import SwiftUI
@@ -24,6 +25,15 @@ struct MacRootView: View {
     @State private var experimentLifecycle = ExperimentLifecycleController()
     @AppStorage(MacSidebarExpansion.storageKey)
     private var persistedSidebarExpansion = MacSidebarExpansion.defaultPersistedValue
+    /// Per window, and restored with that window. The same value draws the
+    /// column and names the View command; AppKit never has a second inferred
+    /// sidebar state to drift away from the visible shell.
+    @SceneStorage("macSidebarPresentation")
+    private var sidebarPresentationRawValue = MacSidebarPresentation.visible.rawValue
+    @SceneStorage("macSidebarWidth")
+    private var preferredSidebarWidth = Double(MacSidebarShellLayout.defaultWidth)
+    @State private var sidebarRevealGeneration = 0
+    @State private var sidebarHasRevealableWidth = false
     /// Set only when a link could not do what it said. Success is silent.
     @State private var linkNotice: LinkNotice?
     @State private var hasAppliedDebugTab = false
@@ -60,30 +70,54 @@ struct MacRootView: View {
     }
 
     private var tabs: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
-        } detail: {
-            GeometryReader { proxy in
-                let sizeClass = MacWindowLayout.sizeClass(
-                    forContentWidth: proxy.size.width
+        // A layout split, not another navigation container. The old outer
+        // NavigationSplitView exported its source-list width as the detail's
+        // leading safe area; each of the six roots then consumed that width a
+        // second time in its own split. This shell supplies physical sibling
+        // proposals instead: the detail proxy is exactly the width after the
+        // source list, with a zero inherited leading inset and no route
+        // correction.
+        //
+        // HSplitView was also rejected here. Collapsing its first child to a
+        // zero frame leaves NSSplitView's divider as structural width and a
+        // visible hairline. This SwiftUI shell keeps both children in one
+        // stable HStack, collapses both source list and separator to exactly
+        // zero, and keeps the selected detail root mounted while hidden.
+        GeometryReader { shellProxy in
+            let adaptiveSizeClass = MacWindowLayout.sizeClass(
+                forContentWidth: MacSidebarShellLayout.adaptiveDetailWidth(
+                    forShellWidth: shellProxy.size.width,
+                    preferredSidebarWidth: CGFloat(preferredSidebarWidth)
                 )
+            )
 
-                mountedRoot(
-                    for: selectedTab,
-                    sizeClass: sizeClass,
-                    inheritedLeadingSafeArea: proxy.safeAreaInsets.leading
-                )
+            MacSidebarShell(
+                presentation: sidebarPresentation,
+                preferredSidebarWidth: $preferredSidebarWidth
+            ) {
+                sidebar
+                    .onGeometryChange(for: Bool.self) {
+                        MacSidebarShellLayout.isRevealable(
+                            sourceListWidth: $0.size.width
+                        )
+                    } action: { isRevealable in
+                        guard isRevealable != sidebarHasRevealableWidth else { return }
+                        sidebarHasRevealableWidth = isRevealable
+                        if isRevealable { sidebarRevealGeneration += 1 }
+                    }
+            } detail: {
+                detailColumn(sizeClass: adaptiveSizeClass)
+                    .id("gethog.mac-detail-column")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("gethog.mac-detail-column")
             }
-            // The scene owns the selected root's native title from its outer
-            // detail column. Regular-width roots such as Events and Sessions
-            // bring a nested `NavigationSplitView`, which consumes title
-            // preferences attached inside its list column; without this outer
-            // title the containing window falls back to GetHog. The roots keep
-            // their own chrome for compact pushes and inner column labels.
-            .topLevelNavigationTitle(selectedTab.title)
-            .projectSubtitle()
         }
+        .focusedSceneValue(
+            \.macSidebarToggle,
+            MacSidebarToggleAction(presentation: sidebarPresentation) {
+                sidebarPresentation = sidebarPresentation.toggled
+            }
+        )
         // Nothing typed into this app is a sentence by default — see RootView's
         // note for the measurement. The Mac half of that pair is autocorrection;
         // there is no software keyboard to stop capitalising.
@@ -97,6 +131,7 @@ struct MacRootView: View {
             // Scene storage can only hold what this shell wrote, but the guard
             // costs one line and a selection with no sidebar row costs a launch.
             if selectedTab == .settings { selectedTab = .dashboards }
+            reconcileSidebar(for: selectedTab)
             // Cold launch: a URL that started the app arrived before this body
             // existed, so it is waiting rather than lost.
             routePendingLinks()
@@ -168,16 +203,45 @@ struct MacRootView: View {
         .environment(experimentLifecycle)
     }
 
+    private var sidebarPresentation: MacSidebarPresentation {
+        get {
+            MacSidebarPresentation(rawValue: sidebarPresentationRawValue) ?? .visible
+        }
+        nonmutating set {
+            sidebarPresentationRawValue = newValue.rawValue
+        }
+    }
+
+    private func detailColumn(sizeClass: UserInterfaceSizeClass) -> some View {
+        mountedRoot(for: selectedTab, sizeClass: sizeClass)
+        // The scene owns the selected root's native title from its shell detail
+        // surface. Regular-width roots such as Events and Sessions
+        // bring a nested `NavigationSplitView`, which consumes title
+        // preferences attached inside its list column; without this outer
+        // title the containing window falls back to GetHog. The roots keep
+        // their own chrome for compact pushes and inner column labels.
+        .topLevelNavigationTitle(selectedTab.title)
+        .projectSubtitle()
+    }
+
     // MARK: - Structure
 
     private var sidebar: some View {
-        List(selection: selectedTabBinding) {
-            Label(AppTab.search.title, systemImage: AppTab.search.systemImage)
-                .tag(AppTab.search)
+        ScrollViewReader { proxy in
+            List(selection: selectedTabBinding) {
+                Label(AppTab.search.title, systemImage: AppTab.search.systemImage)
+                    .tag(AppTab.search)
+                    .id(AppTab.search)
 
-            sidebarSections
+                sidebarSections
+            }
+            .listStyle(.sidebar)
+            .accessibilityIdentifier("gethog.mac-sidebar")
+            .onAppear { reveal(selectedTab, using: proxy) }
+            .onChange(of: sidebarRevealGeneration) { _, _ in
+                reveal(selectedTab, using: proxy)
+            }
         }
-        .listStyle(.sidebar)
     }
 
     private var selectedTabBinding: Binding<AppTab?> {
@@ -197,6 +261,7 @@ struct MacRootView: View {
                 ForEach(section.tabs, id: \.self) { tab in
                     Label(tab.title, systemImage: tab.systemImage)
                         .tag(tab)
+                        .id(tab)
                 }
             } header: {
                 Text(section.title)
@@ -223,27 +288,13 @@ struct MacRootView: View {
     @ViewBuilder
     private func mountedRoot(
         for tab: AppTab,
-        sizeClass: UserInterfaceSizeClass,
-        inheritedLeadingSafeArea: CGFloat
+        sizeClass: UserInterfaceSizeClass
     ) -> some View {
-        let root = container(for: tab, compact: sizeClass == .compact)
+        container(for: tab, compact: sizeClass == .compact)
             .id(tab)
             .accessibilityIdentifier(tab.selectedRootAccessibilityIdentifier)
             .environment(\.horizontalSizeClass, sizeClass)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        if sizeClass == .regular && tab.ownsRegularNestedSplit {
-            // The outer source list already placed this root after itself, but
-            // macOS still exports that column as a leading container safe area.
-            // Expand through it to clear the inherited value before the inner
-            // split consumes it, then put the root back at the same physical
-            // origin with the exact measured inset rather than a tuned offset.
-            root
-                .padding(.leading, inheritedLeadingSafeArea)
-                .ignoresSafeArea(.container, edges: .leading)
-        } else {
-            root
-        }
     }
 
     @ViewBuilder
@@ -253,7 +304,7 @@ struct MacRootView: View {
                 ProjectSearchView()
                     .navigationDestination(for: AppTab.self) { destination in
                         TabRootView(tab: destination)
-                            .onAppear { selectedTab = destination }
+                            .onAppear { open(destination) }
                     }
                     // A link and a search result open the same objects, so both
                     // routes deliberately share this one stack.
@@ -261,10 +312,8 @@ struct MacRootView: View {
                         LinkDestinationView(link: $0)
                     }
             }
-        } else if tab.ownsNavigationContainer(compact: compact) {
-            TabRootView(tab: tab)
         } else {
-            NavigationStack {
+            MacAdaptiveNavigationHost(tab: tab, compact: compact) {
                 inlineDetailHost(for: tab)
             }
         }
@@ -295,6 +344,19 @@ struct MacRootView: View {
 
     // MARK: - Navigation
 
+    private func reconcileSidebar(for tab: AppTab) {
+        var expansion = MacSidebarExpansion(persistedValue: persistedSidebarExpansion)
+        expansion.reconcileOpening(tab)
+        persistedSidebarExpansion = expansion.persistedValue
+        sidebarRevealGeneration += 1
+    }
+
+    private func reveal(_ tab: AppTab, using proxy: ScrollViewProxy) {
+        // `onChange` runs after expansion has rebuilt the List, so the stable
+        // row id exists by the time the native scroll container receives this.
+        proxy.scrollTo(tab, anchor: .center)
+    }
+
     /// Goes to a destination by name — from the Go menu (through `\.openTab`),
     /// a link, or `GETHOG_TAB`. Settings has no row; ⌘, territory.
     private func open(_ tab: AppTab) {
@@ -303,6 +365,7 @@ struct MacRootView: View {
             return
         }
         selectedTab = tab
+        reconcileSidebar(for: tab)
         // Asking for search means the field, not whatever the stack last held —
         // same reset, same reason, as RootView.
         if tab == .search { searchPath = NavigationPath() }
@@ -362,10 +425,145 @@ struct MacRootView: View {
                 )
                 return
             }
-            selectedTab = .search
+            open(.search)
             var path = NavigationPath()
             path.append(target.link)
             searchPath = path
         }
+    }
+}
+
+/// Keeps the compact/regular navigation boundary explicit and testable. The
+/// shell chooses `compact` from its visibility-independent adaptive width, so
+/// hiding a source list never swaps these branches underneath a selected root.
+struct MacAdaptiveNavigationHost<Root: View>: View {
+    let tab: AppTab
+    let compact: Bool
+    private let root: Root
+
+    init(
+        tab: AppTab,
+        compact: Bool,
+        @ViewBuilder root: () -> Root
+    ) {
+        self.tab = tab
+        self.compact = compact
+        self.root = root()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if tab.ownsNavigationContainer(compact: compact) {
+            root
+        } else {
+            NavigationStack { root }
+        }
+    }
+}
+
+/// The structural split between the app-wide source list and the selected
+/// product root. It deliberately is not a navigation container: nested product
+/// splits must receive only their physical detail width and no inherited
+/// source-list safe area.
+///
+/// Both children stay at stable structural positions. Hiding the sidebar
+/// changes two widths to zero; it never conditionally removes or duplicates
+/// the detail subtree.
+struct MacSidebarShell<Sidebar: View, Detail: View>: View {
+    let presentation: MacSidebarPresentation
+    @Binding private var preferredSidebarWidth: Double
+    private let sidebar: Sidebar
+    private let detail: Detail
+
+    @GestureState private var resizeTranslation: CGFloat = 0
+
+    init(
+        presentation: MacSidebarPresentation,
+        preferredSidebarWidth: Binding<Double>,
+        @ViewBuilder sidebar: () -> Sidebar,
+        @ViewBuilder detail: () -> Detail
+    ) {
+        self.presentation = presentation
+        _preferredSidebarWidth = preferredSidebarWidth
+        self.sidebar = sidebar()
+        self.detail = detail()
+    }
+
+    var body: some View {
+        let sourceListWidth = MacSidebarShellLayout.sourceListWidth(
+            presentation: presentation,
+            preferredWidth: CGFloat(preferredSidebarWidth),
+            resizeTranslation: resizeTranslation
+        )
+        let separatorWidth = MacSidebarShellLayout.separatorWidth(
+            presentation: presentation
+        )
+
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: sourceListWidth)
+                .clipped()
+                .opacity(presentation == .visible ? 1 : 0)
+                .allowsHitTesting(presentation == .visible)
+                .accessibilityHidden(presentation == .hidden)
+
+            sidebarSeparator(
+                sourceListWidth: sourceListWidth,
+                separatorWidth: separatorWidth
+            )
+
+            detail
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+        }
+        .animation(.easeInOut(duration: 0.16), value: presentation)
+    }
+
+    private func sidebarSeparator(
+        sourceListWidth: CGFloat,
+        separatorWidth: CGFloat
+    ) -> some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: separatorWidth)
+            .overlay {
+                Color.clear
+                    .frame(width: MacSidebarShellLayout.separatorHitWidth)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .updating($resizeTranslation) { value, state, _ in
+                                state = value.translation.width
+                            }
+                            .onEnded { value in
+                                preferredSidebarWidth = Double(
+                                    MacSidebarShellLayout.clampedWidth(
+                                        CGFloat(preferredSidebarWidth)
+                                            + value.translation.width
+                                    )
+                                )
+                            }
+                    )
+            }
+            .allowsHitTesting(presentation == .visible)
+            .accessibilityElement()
+            .accessibilityIdentifier("gethog.mac-sidebar-divider")
+            .accessibilityLabel("Sidebar width")
+            .accessibilityValue("\(Int(sourceListWidth)) points")
+            .accessibilityAdjustableAction { direction in
+                let delta: CGFloat
+                switch direction {
+                case .increment:
+                    delta = MacSidebarShellLayout.keyboardResizeStep
+                case .decrement:
+                    delta = -MacSidebarShellLayout.keyboardResizeStep
+                @unknown default:
+                    return
+                }
+                preferredSidebarWidth = Double(
+                    MacSidebarShellLayout.clampedWidth(sourceListWidth + delta)
+                )
+            }
+            .accessibilityHidden(presentation == .hidden)
     }
 }

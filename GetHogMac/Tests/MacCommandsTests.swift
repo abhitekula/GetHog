@@ -87,6 +87,28 @@ struct GoMenuLayoutTests {
 }
 
 @MainActor
+@Suite("Mac sidebar command action")
+struct MacSidebarCommandActionTests {
+    @MainActor
+    private final class Recorder {
+        var runs = 0
+    }
+
+    @Test("the action carries one presentation and invokes its window")
+    func forwards() {
+        let recorder = Recorder()
+        let action = MacSidebarToggleAction(
+            presentation: .visible,
+            run: { recorder.runs += 1 }
+        )
+
+        #expect(action.presentation.commandTitle == "Hide Sidebar")
+        action()
+        #expect(recorder.runs == 1)
+    }
+}
+
+@MainActor
 @Suite("CSV export routing")
 struct CSVExportRoutingTests {
 

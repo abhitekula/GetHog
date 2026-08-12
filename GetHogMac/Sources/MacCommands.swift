@@ -1,5 +1,18 @@
 import SwiftUI
 
+/// The key window's one sidebar action. Its presentation is captured with the
+/// closure so the menu title and the rendered shell are from the same update.
+struct MacSidebarToggleAction {
+    let presentation: MacSidebarPresentation
+    let run: @MainActor () -> Void
+
+    @MainActor func callAsFunction() { run() }
+}
+
+extension FocusedValues {
+    @Entry var macSidebarToggle: MacSidebarToggleAction?
+}
+
 /// How the Go menu lays itself out: `AppTab.sections`, in its own order, with
 /// ⌘1–⌘9 on the first nine destinations it lists.
 ///
@@ -66,8 +79,8 @@ enum GoMenuLayout {
     }
 }
 
-/// The menu bar, reading the three keys `FocusedCommandValues.swift` names as
-/// contract.
+/// The menu bar, reading the four key-window focus values named by the shared
+/// command contracts and `MacSidebarToggleAction` above.
 ///
 /// Items whose value is nil are disabled, never hidden: a window still
 /// connecting, the Settings window, and a tear-off with nothing in focus all
@@ -78,6 +91,7 @@ struct MacCommands: Commands {
     @FocusedValue(\.openTab) private var openTab
     @FocusedValue(\.screenRefresh) private var screenRefresh
     @FocusedValue(\.insightCSVExport) private var insightCSVExport
+    @FocusedValue(\.macSidebarToggle) private var macSidebarToggle
 
     var body: some Commands {
         // File ▸ New Window (⌘N) is the system's own `WindowGroup` item; these
@@ -101,8 +115,20 @@ struct MacCommands: Commands {
                 .disabled(insightCSVExport == nil)
         }
 
-        // View ▸ Toggle Sidebar (⌃⌘S), the sanctioned SwiftUI item.
-        SidebarCommands()
+        // `SidebarCommands` discovers a `NavigationSplitView` indirectly. Once
+        // the source list became the outer structural column, it kept a stale
+        // command state: a visible sidebar could advertise "Show Sidebar" and
+        // clicking it addressed no rendered column. The focused key-window
+        // action below is still the standard View ▸ sidebar command and
+        // shortcut, but it reads the same per-window value that draws the
+        // column, so its title cannot desynchronise.
+        CommandGroup(replacing: .sidebar) {
+            Button(macSidebarToggle?.presentation.commandTitle ?? "Show Sidebar") {
+                macSidebarToggle?()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .control])
+            .disabled(macSidebarToggle == nil)
+        }
 
         // View ▸ Show Toolbar / Customize Toolbar…, likewise sanctioned.
         //
@@ -114,7 +140,7 @@ struct MacCommands: Commands {
         // nobody can customise is the declaration silently doing nothing.
         ToolbarCommands()
 
-        CommandGroup(after: .sidebar) {
+        CommandGroup(after: .toolbar) {
             Button("Refresh") {
                 guard let screenRefresh else { return }
                 Task { await screenRefresh() }

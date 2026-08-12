@@ -86,8 +86,92 @@ struct MacSidebarExpansion: Equatable {
         expandedSectionIDs = Self.defaultExpandedSectionIDs
     }
 
+    /// Makes a programmatic destination a real sidebar selection.
+    ///
+    /// Clicking a row can only select an already-visible row. Go, a link,
+    /// restoration, and debug launch do not have that precondition, so their
+    /// shared open path expands the one owner before asking the source list to
+    /// reveal the stable tab id. Inserting preserves every unrelated choice.
+    @discardableResult
+    mutating func reconcileOpening(_ tab: AppTab) -> AppTab {
+        if let sectionID = tab.sidebarSectionID {
+            setExpanded(true, for: sectionID)
+        }
+        return tab
+    }
+
     private init(expandedSectionIDs: Set<String>) {
         self.expandedSectionIDs = expandedSectionIDs
+    }
+}
+
+/// Per-window truth for the Mac shell's rendered source list and its command.
+/// Keeping the action title on the same value makes the invalid combinations
+/// (visible + "Show", hidden + "Hide") unrepresentable.
+enum MacSidebarPresentation: String, Equatable {
+    case visible
+    case hidden
+
+    var commandTitle: String {
+        switch self {
+        case .visible: "Hide Sidebar"
+        case .hidden: "Show Sidebar"
+        }
+    }
+
+    var toggled: Self {
+        self == .visible ? .hidden : .visible
+    }
+}
+
+/// One shell-wide width policy for the Mac source list. Product destinations
+/// never participate: every selected root receives the remainder proposed by
+/// `MacSidebarShell`.
+enum MacSidebarShellLayout {
+    static let minimumWidth: CGFloat = 190
+    static let defaultWidth: CGFloat = 220
+    static let maximumWidth: CGFloat = 260
+    static let visibleSeparatorWidth: CGFloat = 1
+    static let separatorHitWidth: CGFloat = 8
+    static let keyboardResizeStep: CGFloat = 10
+
+    static func clampedWidth(_ width: CGFloat) -> CGFloat {
+        guard width.isFinite else { return defaultWidth }
+        return min(max(width, minimumWidth), maximumWidth)
+    }
+
+    /// The width that chooses a shared root's navigation topology. It is the
+    /// detail width the root receives with the source list shown, even while
+    /// that list is temporarily hidden. A visibility command can therefore
+    /// reveal canvas without crossing compact/regular branches and rebuilding
+    /// the selected root; resizing the window or divider still can.
+    static func adaptiveDetailWidth(
+        forShellWidth shellWidth: CGFloat,
+        preferredSidebarWidth: CGFloat
+    ) -> CGFloat {
+        max(
+            0,
+            shellWidth
+                - clampedWidth(preferredSidebarWidth)
+                - visibleSeparatorWidth
+        )
+    }
+
+    static func sourceListWidth(
+        presentation: MacSidebarPresentation,
+        preferredWidth: CGFloat,
+        resizeTranslation: CGFloat = 0
+    ) -> CGFloat {
+        guard presentation == .visible else { return 0 }
+        return clampedWidth(preferredWidth + resizeTranslation)
+    }
+
+    static func separatorWidth(presentation: MacSidebarPresentation) -> CGFloat {
+        presentation == .visible ? visibleSeparatorWidth : 0
+    }
+
+    static func isRevealable(sourceListWidth: CGFloat) -> Bool {
+        sourceListWidth >= minimumWidth - 1
     }
 }
 

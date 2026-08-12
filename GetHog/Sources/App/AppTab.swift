@@ -214,6 +214,16 @@ enum AppTab: String, Hashable, CaseIterable {
         }
     }
 
+    /// The one Mac source-list section that owns this destination.
+    ///
+    /// Derived from `sections`, never mirrored in a switch, so sidebar layout,
+    /// Go routing, deep links, and restoration cannot disagree after a screen
+    /// moves. Search and Settings deliberately return nil: neither belongs to
+    /// a collapsible product section.
+    var sidebarSectionID: String? {
+        Self.sections.first(where: { $0.tabs.contains(self) })?.id
+    }
+
     /// Whether the screen brings a navigation container of its own.
     ///
     /// The seven list-and-detail screens are `NavigationSplitView`s, which *are* a

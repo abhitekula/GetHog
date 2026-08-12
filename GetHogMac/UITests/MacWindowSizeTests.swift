@@ -356,6 +356,25 @@ final class MacWindowSizeTests: XCTestCase {
             + "dashboardsRow exists=\(row.exists) hittable=\(row.exists && row.isHittable)"
     }
 
+    private func outerSidebarIsVisible(_ app: XCUIApplication) -> Bool {
+        let sidebar = app.windows.descendants(matching: .any)["gethog.mac-sidebar"]
+            .firstMatch
+        return sidebar.exists && sidebar.frame.width > 100
+    }
+
+    private func setOuterSidebarVisible(_ visible: Bool, in app: XCUIApplication) {
+        guard outerSidebarIsVisible(app) != visible else { return }
+        app.menuBars.menuBarItems["View"].click()
+        let title = visible ? "Show Sidebar" : "Hide Sidebar"
+        let command = app.menuItems[title]
+        XCTAssertTrue(DemoLaunch.wait(for: command, timeout: 5), "View exposed no \(title).")
+        command.click()
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { self.outerSidebarIsVisible(app) == visible }),
+            "View ▸ \(title) did not make rendered sidebar state match its title."
+        )
+    }
+
     /// Full screen survives a relaunch, and a resize *inside* it is nonsense —
     /// measured: a narrow drag against a full-screen window produced a 3171pt
     /// frame. The tell is the window's top: outside full screen it sits below
@@ -442,7 +461,7 @@ final class MacWindowSizeTests: XCTestCase {
     /// second time. The Dashboard control is the non-nested witness: both
     /// topologies keep the same ordinary physical page inset at an exact
     /// window size and in native full screen.
-    func testNestedOverviewClearsInheritedOuterSidebarSafeArea() {
+    func testRegularShellUsesActualDetailWidthWithSidebarShownAndHidden() {
         let app = DemoLaunch.launch(
             tab: "dashboards",
             extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
@@ -450,6 +469,8 @@ final class MacWindowSizeTests: XCTestCase {
         defer { app.terminate() }
         DemoLaunch.settle(app)
         leaveFullScreen(app)
+        setOuterSidebarVisible(true, in: app)
+        defer { setOuterSidebarVisible(true, in: app) }
 
         let ordinarySize = CGSize(width: 1280, height: 820)
         resize(app, to: ordinarySize)
@@ -477,60 +498,87 @@ final class MacWindowSizeTests: XCTestCase {
         for layout in ["1280x820", "full-screen"] {
             if layout == "full-screen" { enterFullScreen(app) }
 
-            for destination in destinations {
-                XCTAssertTrue(
-                    go(destination.title, in: app),
-                    "The Go menu could not reach \(destination.title) at \(layout)."
-                )
-                let root = app.windows.descendants(matching: .any)[
-                    "gethog.root.\(destination.root)"
-                ].firstMatch
-                guard DemoLaunch.wait(for: root) else {
-                    XCTFail("The shell never selected the \(destination.title) root.")
-                    continue
+            for sidebarVisible in [true, false] {
+                setOuterSidebarVisible(sidebarVisible, in: app)
+                if !sidebarVisible {
+                    assertHiddenShellConsumesNoHorizontalChrome(in: app, at: layout)
                 }
 
-                let anchor = app.windows.descendants(matching: .any)[destination.anchor]
-                    .firstMatch
-                guard DemoLaunch.wait(for: anchor) else {
-                    XCTFail(
-                        "\(destination.title) exposed no full-width overview anchor "
-                            + "\(destination.anchor) at \(layout)."
+                for destination in destinations {
+                    XCTAssertTrue(
+                        go(destination.title, in: app),
+                        "The Go menu could not reach \(destination.title) at \(layout), "
+                            + "sidebar \(sidebarVisible ? "shown" : "hidden")."
                     )
-                    continue
-                }
+                    let root = app.windows.descendants(matching: .any)[
+                        "gethog.root.\(destination.root)"
+                    ].firstMatch
+                    guard DemoLaunch.wait(for: root) else {
+                        XCTFail("The shell never selected the \(destination.title) root.")
+                        continue
+                    }
 
-                let window = app.windows.firstMatch
-                let leadingColumns = window.outlines.allElementsBoundByIndex.filter {
-                    $0.frame.width > 0 && $0.frame.maxX <= anchor.frame.minX + 1
-                }
-                guard let list = leadingColumns.max(by: { $0.frame.maxX < $1.frame.maxX }) else {
-                    XCTFail(
-                        "\(destination.title) exposed no outline before its overview: "
-                            + "anchor=\(anchor.frame), outlines="
-                            + "\(window.outlines.allElementsBoundByIndex.map { $0.frame })."
+                    let anchor = app.windows.descendants(matching: .any)[destination.anchor]
+                        .firstMatch
+                    guard DemoLaunch.wait(for: anchor) else {
+                        XCTFail(
+                            "\(destination.title) exposed no full-width overview anchor "
+                                + "\(destination.anchor) at \(layout)."
+                        )
+                        continue
+                    }
+
+                    let window = app.windows.firstMatch
+                    let leadingColumns = window.outlines.allElementsBoundByIndex.filter {
+                        $0.frame.width > 0 && $0.frame.maxX <= anchor.frame.minX + 1
+                    }
+                    let list = leadingColumns.max(by: { $0.frame.maxX < $1.frame.maxX })
+                    if destination.title != "Dashboards" && list == nil {
+                        XCTFail(
+                            "\(destination.title) exposed no inner outline before its overview: "
+                                + "anchor=\(anchor.frame), outlines="
+                                + "\(window.outlines.allElementsBoundByIndex.map { $0.frame })."
+                        )
+                        continue
+                    }
+
+                    let leadingBoundary = list?.frame.maxX ?? window.frame.minX
+                    let leadingInset = anchor.frame.minX - leadingBoundary
+                    let trailingInset = window.frame.maxX - anchor.frame.maxX
+                    print(
+                        "SAFE-AREA-DETAIL layout=\(layout) destination=\(destination.title) "
+                            + "sidebar=\(sidebarVisible) window=\(window.frame) "
+                            + "list=\(String(describing: list?.frame)) anchor=\(anchor.frame) "
+                            + "leading=\(leadingInset) trailing=\(trailingInset)"
                     )
-                    continue
-                }
+                    XCTAssertLessThan(
+                        leadingInset,
+                        48,
+                        "\(destination.title) counted the outer sidebar safe area twice at \(layout)."
+                    )
+                    XCTAssertEqual(
+                        leadingInset,
+                        trailingInset,
+                        accuracy: 12,
+                        "\(destination.title) did not keep equal physical overview insets at \(layout)."
+                    )
 
-                let leadingInset = anchor.frame.minX - list.frame.maxX
-                let trailingInset = window.frame.maxX - anchor.frame.maxX
-                print(
-                    "SAFE-AREA-DETAIL layout=\(layout) destination=\(destination.title) "
-                        + "window=\(window.frame) list=\(list.frame) anchor=\(anchor.frame) "
-                        + "leading=\(leadingInset) trailing=\(trailingInset)"
-                )
-                XCTAssertLessThan(
-                    leadingInset,
-                    48,
-                    "\(destination.title) counted the outer sidebar safe area twice at \(layout)."
-                )
-                XCTAssertEqual(
-                    leadingInset,
-                    trailingInset,
-                    accuracy: 12,
-                    "\(destination.title) did not keep equal physical overview insets at \(layout)."
-                )
+                    if destination.title == "People" {
+                        let viewLabel = window.staticTexts.matching(
+                            DemoLaunch.macTextPredicate("View")
+                        ).firstMatch
+                        XCTAssertTrue(
+                            DemoLaunch.wait(for: viewLabel),
+                            "People exposed no View label at \(layout)."
+                        )
+                        XCTAssertLessThanOrEqual(
+                            viewLabel.frame.height,
+                            24,
+                            "People wrapped View vertically at \(layout), sidebar "
+                                + "\(sidebarVisible ? "shown" : "hidden"): \(viewLabel.frame)."
+                        )
+                    }
+                }
             }
         }
     }
@@ -546,6 +594,45 @@ final class MacWindowSizeTests: XCTestCase {
             "The window never entered native full screen."
         )
         DemoLaunch.settle(app)
+    }
+
+    private func assertHiddenShellConsumesNoHorizontalChrome(
+        in app: XCUIApplication,
+        at layout: String
+    ) {
+        let window = app.windows.firstMatch
+        let detail = window.descendants(matching: .any)["gethog.mac-detail-column"]
+            .firstMatch
+        guard DemoLaunch.wait(for: detail) else {
+            return XCTFail("The shell exposed no measurable detail column at \(layout).")
+        }
+        let divider = window.descendants(matching: .any)["gethog.mac-sidebar-divider"]
+            .firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5, until: {
+                abs(detail.frame.minX - window.frame.minX) <= 1
+                    && abs(detail.frame.maxX - window.frame.maxX) <= 1
+                    && !divider.exists
+            }),
+            "The hidden shell did not finish collapsing its horizontal chrome at \(layout)."
+        )
+
+        XCTAssertEqual(
+            detail.frame.minX,
+            window.frame.minX,
+            accuracy: 1,
+            "The hidden source list or divider retained leading structural width at \(layout)."
+        )
+        XCTAssertEqual(
+            detail.frame.maxX,
+            window.frame.maxX,
+            accuracy: 1,
+            "The hidden shell did not propose the whole window width at \(layout)."
+        )
+        XCTAssertFalse(
+            divider.exists,
+            "The hidden shell left its divider in the accessibility or hit-test surface at \(layout)."
+        )
     }
 
     private func assertCompactDrillIn(
