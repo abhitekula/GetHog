@@ -79,4 +79,45 @@ struct MacBuildGraphTests {
             )
         }
     }
+
+    /// Xcode 26.6 can collapse test-bundle module outputs to the generic
+    /// `.swiftmodule/Project` path when a test target inherits its product and
+    /// module names. Each platform scheme builds multiple test bundles, so make
+    /// every identity explicit and prove the generated Debug and Release
+    /// settings cannot write the same module artifacts.
+    @Test("all test bundles have distinct explicit product modules")
+    func testBundleModulesAreDistinct() throws {
+        let checkout = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let project = try String(
+            contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
+            encoding: .utf8
+        )
+        let configurations = project.components(separatedBy: "isa = XCBuildConfiguration;")
+
+        let targets = [
+            "GetHogTests",
+            "GetHogUITests",
+            "GetHogScreenshots",
+            "GetHogMacTests",
+            "GetHogMacUITests",
+            "GetHogVisionTests",
+            "GetHogVisionUITests",
+            "GetHogWatchTests",
+            "GetHogWatchUITests",
+            "GetHogTVTests",
+            "GetHogTVUITests",
+        ]
+        for target in targets {
+            let bundleID = "PRODUCT_BUNDLE_IDENTIFIER = app.gethog.\(target);"
+            let targetConfigurations = configurations.filter { $0.contains(bundleID) }
+            #expect(targetConfigurations.count == 2, "expected Debug and Release for \(target)")
+            for configuration in targetConfigurations {
+                #expect(configuration.contains("PRODUCT_NAME = \(target);"))
+                #expect(configuration.contains("PRODUCT_MODULE_NAME = \(target);"))
+            }
+        }
+    }
 }

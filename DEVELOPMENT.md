@@ -138,6 +138,11 @@ artifact unique, list its app and test bundles in `project.yml`, keep
 `buildImplicitDependencies: false`, and express extension and package
 relationships as target dependencies.
 
+Every test bundle also pins distinct `PRODUCT_NAME` and `PRODUCT_MODULE_NAME`
+values. Do not replace them with inherited project defaults: Xcode 26.6 can
+otherwise plan two bundles under the generic `.swiftmodule/Project` output and
+stop on duplicate Swift module artifacts before executing either suite.
+
 Do not run these `xcodebuild` commands concurrently in one checkout. They share
 Xcode's default DerivedData database, and overlapping builds can fail with a
 database lock before testing the app. This is why the final matrix is serial.

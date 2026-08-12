@@ -558,6 +558,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTests
+        PRODUCT_NAME: GetHogTests
+        PRODUCT_MODULE_NAME: GetHogTests
         GENERATE_INFOPLIST_FILE: YES
 
   # Accessibility regressions are invisible to the unit tests: every one of them
@@ -583,6 +585,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogUITests
+        PRODUCT_NAME: GetHogUITests
+        PRODUCT_MODULE_NAME: GetHogUITests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHog
 
@@ -618,6 +622,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogScreenshots
+        PRODUCT_NAME: GetHogScreenshots
+        PRODUCT_MODULE_NAME: GetHogScreenshots
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHog
 
@@ -644,6 +650,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogMacTests
+        # Xcode 26.6's test planner can otherwise collapse both Mac test
+        # bundles onto `.swiftmodule/Project` when the names are inherited,
+        # producing duplicate module artifacts before either suite executes.
+        PRODUCT_NAME: GetHogMacTests
+        PRODUCT_MODULE_NAME: GetHogMacTests
         GENERATE_INFOPLIST_FILE: YES
         # Spelled out because the derived one is wrong here, and wrong in a way
         # that only shows up at launch. XcodeGen builds a test host path out of
@@ -672,6 +683,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogMacUITests
+        PRODUCT_NAME: GetHogMacUITests
+        PRODUCT_MODULE_NAME: GetHogMacUITests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHogMac
 
@@ -693,6 +706,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogVisionTests
+        PRODUCT_NAME: GetHogVisionTests
+        PRODUCT_MODULE_NAME: GetHogVisionTests
         GENERATE_INFOPLIST_FILE: YES
 
   GetHogVisionUITests:
@@ -710,13 +725,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogVisionUITests
+        PRODUCT_NAME: GetHogVisionUITests
+        PRODUCT_MODULE_NAME: GetHogVisionUITests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHogVision
 
-  # No TEST_HOST override here, unlike its vision and TV siblings: the watch
-  # target's product name *is* GetHogWatch, so XcodeGen's derived path names a
-  # binary that exists. The override is only needed where PRODUCT_NAME
-  # diverges from the target name.
+  # No TEST_HOST override is needed: the app target's product name is
+  # GetHogWatch, so XcodeGen's derived path names a binary that exists.
   GetHogWatchTests:
     type: bundle.unit-test
     platform: watchOS
@@ -729,6 +744,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogWatchTests
+        PRODUCT_NAME: GetHogWatchTests
+        PRODUCT_MODULE_NAME: GetHogWatchTests
         GENERATE_INFOPLIST_FILE: YES
 
   GetHogWatchUITests:
@@ -746,6 +763,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogWatchUITests
+        PRODUCT_NAME: GetHogWatchUITests
+        PRODUCT_MODULE_NAME: GetHogWatchUITests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHogWatch
 
@@ -761,6 +780,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTVTests
+        PRODUCT_NAME: GetHogTVTests
+        PRODUCT_MODULE_NAME: GetHogTVTests
         GENERATE_INFOPLIST_FILE: YES
 
   GetHogTVUITests:
@@ -778,6 +799,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTVUITests
+        PRODUCT_NAME: GetHogTVUITests
+        PRODUCT_MODULE_NAME: GetHogTVUITests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: GetHogTV
 
