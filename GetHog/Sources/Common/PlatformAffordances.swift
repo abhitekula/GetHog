@@ -23,6 +23,22 @@ enum Platform {
     }
 }
 
+/// Interaction and presentation dimensions that differ by input model.
+///
+/// A Mac pointer does not need a fingertip-sized target, while every touch
+/// platform keeps the 44pt floor. List-card separation lives here for the same
+/// reason: `listRowSpacing` is unavailable on macOS, so the clipped background
+/// itself has to provide the desktop rhythm without changing iPhone or iPad.
+enum PlatformPresentationMetrics {
+    #if os(macOS)
+    static let minimumInteractiveLength: CGFloat = 28
+    static let listCardVerticalInset: CGFloat = 3
+    #else
+    static let minimumInteractiveLength: CGFloat = 44
+    static let listCardVerticalInset: CGFloat = 1
+    #endif
+}
+
 /// A hardware-keyboard shortcut with no on-screen control of its own.
 struct KeyboardAction: Identifiable {
     let id = UUID()
@@ -109,7 +125,7 @@ extension View {
         modifier(PointerHighlightModifier(cornerRadius: cornerRadius))
     }
 
-    /// Raises a control to the 44×44pt floor Apple's `hitRegion` audit checks.
+    /// Raises a control to its platform's minimum interactive floor.
     ///
     /// Only the box changes — no font, tint, padding or background is touched —
     /// so a control keeps the visual weight it was designed with and gains the
@@ -124,7 +140,10 @@ extension View {
     /// Applied the other way round it centres the control in a roomier box and
     /// moves nothing an audit can see.
     func minimumHitTarget() -> some View {
-        frame(minWidth: 44, minHeight: 44)
+        frame(
+            minWidth: PlatformPresentationMetrics.minimumInteractiveLength,
+            minHeight: PlatformPresentationMetrics.minimumInteractiveLength
+        )
             .contentShape(.rect)
     }
 }

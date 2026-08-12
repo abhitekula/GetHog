@@ -62,6 +62,12 @@ struct DashboardTemplatesRoot: View {
     @Environment(OpenDetails.self) private var openDetails
     @State private var store = DashboardTemplatesStore()
 
+    #if os(macOS)
+    static let minimumCardWidth: CGFloat = 340
+    #else
+    static let minimumCardWidth: CGFloat = 260
+    #endif
+
     /// The open template, held in `OpenDetails` rather than pushed as a value
     /// onto the container's path.
     ///
@@ -135,10 +141,16 @@ struct DashboardTemplatesRoot: View {
     }
 
     /// One column on a phone, two where there is room. Adaptive rather than
-    /// fixed: a card whose artwork has been squeezed below about 260pt stops
-    /// being recognisable, which is the only reason the artwork is there.
+    /// fixed: a card whose artwork is squeezed below the platform's readable
+    /// measure stops being recognisable, which is the only reason it is there.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: 260), spacing: Theme.Space.l, alignment: .top)]
+        [
+            GridItem(
+                .adaptive(minimum: Self.minimumCardWidth),
+                spacing: Theme.Space.l,
+                alignment: .top
+            )
+        ]
     }
 
     @ViewBuilder

@@ -33,7 +33,7 @@ struct EventDetailView: View {
                             .listRowBackground(
                                 Theme.cardBackground
                                     .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                    .padding(.vertical, 1)
+                                    .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
                             )
                             .listRowSeparator(.hidden)
                     }
@@ -85,7 +85,7 @@ struct EventDetailView: View {
         .listRowBackground(
             Theme.cardBackground
                 .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                .padding(.vertical, 1)
+                .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
         )
         .listRowSeparator(.hidden)
     }

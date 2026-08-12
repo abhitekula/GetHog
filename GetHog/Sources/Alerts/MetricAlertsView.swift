@@ -251,7 +251,7 @@ struct MetricAlertsView: View {
     private var cardRowBackground: some View {
         Theme.cardBackground
             .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-            .padding(.vertical, 1)
+            .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
     }
 
     /// The dialog wants a `Bool` binding while the payload lives in an optional.

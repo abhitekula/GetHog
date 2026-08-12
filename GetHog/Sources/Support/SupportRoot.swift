@@ -303,7 +303,7 @@ struct SupportRoot: View {
     private var cardRowBackground: some View {
         Theme.cardBackground
             .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-            .padding(.vertical, 1)
+            .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
     }
 
     private var replyNote: some View {
