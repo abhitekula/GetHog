@@ -168,10 +168,18 @@ struct MacSharedSnapshotPolicyTests {
         #expect(!widgetDefinitions.contains("WidgetCache."))
         let bundle = try suffix(widgetBundle, after: "struct GetHogMacWidgetBundle: WidgetBundle")
         let unsharedBranch = try slice(bundle, after: "#if GETHOG_UNSHARED_MAC_WIDGETS", before: "#else")
-        #expect(unsharedBranch.contains("MacDebugMetricWidget()"))
-        #expect(unsharedBranch.contains("MacDebugHealthWidget()"))
-        #expect(unsharedBranch.contains("MacDebugFlagWidget()"))
-        #expect(!unsharedBranch.contains("HealthWidget()"))
+        let unsharedRegistrations = unsharedBranch
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasSuffix("Widget()") }
+        #expect(unsharedRegistrations == [
+            "MacDebugMetricWidget()",
+            "MacDebugHealthWidget()",
+            "MacDebugFlagWidget()",
+        ])
+        #expect(!unsharedRegistrations.contains("MetricWidget()"))
+        #expect(!unsharedRegistrations.contains("HealthWidget()"))
+        #expect(!unsharedRegistrations.contains("FlagWidget()"))
 
         let widgetCache = try source("GetHogWidgets/WidgetCache.swift", repository: repository)
         let widgetStore = try slice(
