@@ -113,16 +113,16 @@ final class MacSurfaceSweepTests: XCTestCase {
 
     // MARK: - Tests
 
-    func testAllDestinationsAt560x420() {
-        sweep(.window(label: "560x420", size: CGSize(width: 560, height: 420)))
-    }
-
     func testAllDestinationsAt640x480() {
         sweep(.window(label: "640x480", size: CGSize(width: 640, height: 480)))
     }
 
     func testAllDestinationsAt800x600() {
         sweep(.window(label: "800x600", size: CGSize(width: 800, height: 600)))
+    }
+
+    func testAllDestinationsAt1000x700() {
+        sweep(.window(label: "1000x700", size: CGSize(width: 1_000, height: 700)))
     }
 
     func testAllDestinationsAt1280x820() {
