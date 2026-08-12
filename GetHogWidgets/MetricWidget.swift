@@ -1,4 +1,5 @@
 import AppIntents
+import Foundation
 import GetHogKit
 import GetHogUI
 import SwiftUI
@@ -191,6 +192,15 @@ struct MetricWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: Self.kind, intent: SelectMetricIntent.self, provider: MetricProvider()) { entry in
             MetricWidgetView(entry: entry)
+                // A populated metric opens the exact dashboard that produced
+                // it. WidgetKit foregrounding alone would land at the generic
+                // shell and could not prove the cached card still names its
+                // source. An empty widget has no invented destination.
+                .widgetURL(entry.primary.flatMap { metric in
+                    metric.dashboardID.flatMap {
+                        URL(string: "gethog://dashboard/\($0)")
+                    }
+                })
                 // Required from iOS 17: without it the widget draws its own
                 // background and the system renders it clipped and inset wrong.
                 //

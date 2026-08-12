@@ -4,6 +4,131 @@ import GetHogUI
 import Testing
 import WidgetKit
 
+private enum EntitlementCheckStatus: String, Equatable, Sendable {
+    case requiredSinglePresent = "required-single-present"
+    case requiredSingleMissing = "required-single-missing-key"
+    case requiredSingleWrongType = "required-single-wrong-type"
+    case requiredSingleEmpty = "required-single-empty"
+    case requiredSingleMultiple = "required-single-multiple"
+    case matching = "matching"
+    case mismatched = "mismatched"
+    case requiredPresent = "required-present"
+    case requiredMissing = "required-missing"
+    case forbiddenAbsent = "forbidden-absent"
+    case forbiddenPresent = "forbidden-present"
+}
+
+private struct EntitlementCheck: Equatable, Sendable, CustomStringConvertible {
+    let target: String
+    let key: String
+    let status: EntitlementCheckStatus
+
+    var description: String { "\(target).\(key): \(status.rawValue)" }
+}
+
+private struct DistributionEntitlementParity: Equatable, Sendable {
+    private static let applicationGroupsKey = "com.apple.security.application-groups"
+    private static let networkClientKey = "com.apple.security.network.client"
+
+    let checks: [EntitlementCheck]
+
+    var isAccepted: Bool {
+        checks == Self.acceptedChecks
+    }
+
+    var report: String {
+        checks.map(\.description).joined(separator: "; ")
+    }
+
+    var isExpectedOwnerConflict: Bool {
+        checks == Self.ownerConflictChecks
+    }
+
+    static func inspect(app: [String: Any], extension widget: [String: Any]) -> Self {
+        let appGroups = groupState(in: app)
+        let widgetGroups = groupState(in: widget)
+        return Self(checks: [
+            EntitlementCheck(
+                target: "app",
+                key: applicationGroupsKey,
+                status: appGroups.status
+            ),
+            EntitlementCheck(
+                target: "extension",
+                key: applicationGroupsKey,
+                status: widgetGroups.status
+            ),
+            EntitlementCheck(
+                target: "parity",
+                key: applicationGroupsKey,
+                status: appGroups.singleValue != nil
+                    && appGroups.singleValue == widgetGroups.singleValue
+                    ? .matching
+                    : .mismatched
+            ),
+            EntitlementCheck(
+                target: "app",
+                key: networkClientKey,
+                status: app[networkClientKey] as? Bool == true ? .requiredPresent : .requiredMissing
+            ),
+            EntitlementCheck(
+                target: "extension",
+                key: networkClientKey,
+                status: widget[networkClientKey] == nil ? .forbiddenAbsent : .forbiddenPresent
+            ),
+        ])
+    }
+
+    private static func groupState(in entitlements: [String: Any]) -> (
+        status: EntitlementCheckStatus,
+        singleValue: String?
+    ) {
+        guard let raw = entitlements[applicationGroupsKey] else {
+            return (.requiredSingleMissing, nil)
+        }
+        guard let groups = raw as? [String] else {
+            return (.requiredSingleWrongType, nil)
+        }
+        switch groups.count {
+        case 0: return (.requiredSingleEmpty, nil)
+        case 1: return (.requiredSinglePresent, groups[0])
+        default: return (.requiredSingleMultiple, nil)
+        }
+    }
+
+    static let acceptedChecks = [
+        EntitlementCheck(
+            target: "app",
+            key: applicationGroupsKey,
+            status: .requiredSinglePresent
+        ),
+        EntitlementCheck(
+            target: "extension",
+            key: applicationGroupsKey,
+            status: .requiredSinglePresent
+        ),
+        EntitlementCheck(target: "parity", key: applicationGroupsKey, status: .matching),
+        EntitlementCheck(target: "app", key: networkClientKey, status: .requiredPresent),
+        EntitlementCheck(target: "extension", key: networkClientKey, status: .forbiddenAbsent),
+    ]
+
+    static let ownerConflictChecks = [
+        EntitlementCheck(
+            target: "app",
+            key: applicationGroupsKey,
+            status: .requiredSingleEmpty
+        ),
+        EntitlementCheck(
+            target: "extension",
+            key: applicationGroupsKey,
+            status: .requiredSinglePresent
+        ),
+        EntitlementCheck(target: "parity", key: applicationGroupsKey, status: .mismatched),
+        EntitlementCheck(target: "app", key: networkClientKey, status: .requiredPresent),
+        EntitlementCheck(target: "extension", key: networkClientKey, status: .forbiddenAbsent),
+    ]
+}
+
 // Exercises GetHogWidgets/WidgetCache.swift, which project.yml compiles into
 // this bundle (the extension is an appex, not a framework — there is nothing to
 // import). Every suite here is pure arithmetic over injected dates and flags:
@@ -112,5 +237,93 @@ struct WidgetNoDataMessageTests {
         let message = WidgetCache.noDataMessage(sharedContainer: false)
         #expect(message.contains("connect"))
         #expect(!message.contains("sync"))
+    }
+}
+
+@Suite("Mac widget Distribution entitlements")
+struct MacWidgetDistributionEntitlementTests {
+
+    @Test("the app and extension can share one snapshot container without giving the widget network access")
+    func signedSnapshotSharingBoundary() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // GetHogMac
+            .deletingLastPathComponent()  // repository
+        let app = try entitlement(at: repository.appending(
+            path: "GetHogMac/Support/GetHogMac-Distribution.entitlements"
+        ))
+        let widget = try entitlement(at: repository.appending(
+            path: "GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements"
+        ))
+        let parity = DistributionEntitlementParity.inspect(app: app, extension: widget)
+
+        // This exact mismatch is a pre-existing owner edit: the app's
+        // application-group declaration is an empty array while the extension
+        // has one entry. Keep the issue visible without turning every CI run
+        // red; missing, wrong-type, multiple, and all other mismatch shapes
+        // fall outside this signature and fail.
+        // When the owner resolves it, the expectation passes and no known
+        // issue is recorded.
+        withKnownIssue(
+            Comment(rawValue:
+                "Owner-controlled app Distribution application-group declaration is an empty array. "
+                    + "Signed app/extension snapshot sharing remains unaccepted."
+            )
+        ) {
+            #expect(parity.isAccepted, Comment(rawValue: parity.report))
+        } when: {
+            parity.isExpectedOwnerConflict
+        }
+    }
+
+    @Test("parity diagnostics expose entitlement key names and statuses but no values")
+    func diagnosticsAreValueFree() {
+        let appGroup = "fictional-app-group-value"
+        let extensionGroup = "fictional-extension-group-value"
+        let parity = DistributionEntitlementParity.inspect(
+            app: [
+                "com.apple.security.application-groups": [appGroup],
+                "com.apple.security.network.client": true,
+            ],
+            extension: [
+                "com.apple.security.application-groups": [extensionGroup],
+            ]
+        )
+
+        #expect(parity.report.contains("com.apple.security.application-groups"))
+        #expect(parity.report.contains("mismatched"))
+        #expect(!parity.report.contains(appGroup))
+        #expect(!parity.report.contains(extensionGroup))
+    }
+
+    @Test("only the observed empty app group has the owner-conflict signature")
+    func ownerConflictSignatureIsExact() {
+        let key = "com.apple.security.application-groups"
+        let network = "com.apple.security.network.client"
+        let widget: [String: Any] = [key: ["fictional-widget-group"]]
+
+        let empty = DistributionEntitlementParity.inspect(
+            app: [key: [String](), network: true], extension: widget
+        )
+        let missing = DistributionEntitlementParity.inspect(
+            app: [network: true], extension: widget
+        )
+        let wrongType = DistributionEntitlementParity.inspect(
+            app: [key: "fictional-wrong-type", network: true], extension: widget
+        )
+        let multiple = DistributionEntitlementParity.inspect(
+            app: [key: ["fictional-one", "fictional-two"], network: true], extension: widget
+        )
+
+        #expect(empty.isExpectedOwnerConflict)
+        #expect(!missing.isExpectedOwnerConflict)
+        #expect(!wrongType.isExpectedOwnerConflict)
+        #expect(!multiple.isExpectedOwnerConflict)
+    }
+
+    private func entitlement(at url: URL) throws -> [String: Any] {
+        let data = try Data(contentsOf: url)
+        let propertyList = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return try #require(propertyList as? [String: Any])
     }
 }

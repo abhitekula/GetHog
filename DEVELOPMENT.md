@@ -286,6 +286,92 @@ The macOS App Group is spelled `$(TeamIdentifierPrefix)group.app.gethog`, with
 the prefix that iOS forbids; `SharedSnapshotStore.appGroupIdentifier(teamIDPrefix:)`
 is where that rule lives, so the two platforms name one container.
 
+### Mac widget sharing: Debug truth and Distribution acceptance
+
+The Mac widget extension has the same configuration split as its host, but a
+smaller capability set. Debug carries only the App Sandbox. Neither Debug
+process has an application-group entitlement, so each falls back to its own
+container; an installed Debug widget must therefore say:
+
+> Open GetHog to connect. This build can't share data with widgets.
+
+That state is expected for a teamless build. Opening the app cannot fill the
+widget's private container, so Debug must not use the signed build's “sync”
+copy or imply that gallery sample data came from the app.
+
+Distribution is the only shared-data configuration. Its source entitlements
+must satisfy all of these together:
+
+- the app and extension each declare exactly one application group, and the
+  declarations match;
+- the app declares `com.apple.security.network.client` because it owns every
+  PostHog request;
+- the extension does not declare that key and contains no `URLSession`,
+  PostHog client, credential, or direct API path.
+
+`MacWidgetDistributionEntitlementTests` parses both Distribution entitlement
+files and reports only key names and statuses. It never prints the group or
+other entitlement values. The test recognizes one explicitly documented
+owner-conflict signature as a Swift Testing known issue; any other mismatch is
+a hard failure, and resolving that signature removes the known issue rather
+than replacing it with a skip.
+
+The current owner-controlled Distribution app plist has the key with an empty
+array, while the widget plist has one entry. Its structural report is
+`app: required-single-empty`, `extension: required-single-present`, and
+`parity: mismatched`. Missing keys, wrong plist types, and multiple entries are
+not aliases for that known issue; they fail normally. Until the app declaration
+is the same single group, no passing signed-parity count exists.
+
+Entitlement source parity is necessary but not sufficient evidence. Signed
+sharing is accepted only after the app and embedded extension are signed with
+the matching Distribution group, the app writes a deterministic synthetic
+snapshot, WidgetKit timelines are reloaded, and a real installed widget shows
+the same synthetic metric and freshness. A teamless Debug run, an unsigned
+Release compile-check, a gallery preview, or a source-only test cannot make
+that claim.
+
+The system-widget UI contract is intentionally opt-in because it changes the
+desktop's installed widgets. Run `MacWidgetContractTests` only on the
+disposable macOS CUA VM with `GETHOG_WIDGET_SYSTEM_UI=1`. It covers the eight
+gallery variants, installation and every supported native resize family,
+Metric and Feature Flag configuration, the honest Debug copy, and opening the
+host app. Each method closes the gallery and removes the widgets it authored;
+the Mac UI target is non-parallel in the generated scheme, so the stateful
+system surface is serialized.
+
+For the teamless Debug contract on the disposable VM:
+
+```bash
+GETHOG_WIDGET_SYSTEM_UI=1 xcodebuild test \
+  -project GetHog.xcodeproj -scheme GetHogMac \
+  -destination 'platform=macOS' \
+  -only-testing:GetHogMacUITests/MacWidgetContractTests/testGalleryDiscoversAllEightFamilyPreviews \
+  -only-testing:GetHogMacUITests/MacWidgetContractTests/testInstalledDebugWidgetsResizeConfigureAndOpenGetHog
+```
+
+The signed method additionally requires `GETHOG_WIDGET_SIGNED_DISTRIBUTION=1`
+and a Release app/embedded extension pair signed with the matching App Group.
+It launches the committed `DemoTransport` fixture through the signed app. The
+real `AppModel.publish` path writes its deterministic snapshot and calls
+`WidgetCenter.shared.reloadAllTimelines()`; the test then installs Metric,
+requires `Example daily engagement` and freshness `Updated now ago` inside
+that widget, clicks it, and requires dashboard `725101`
+(`Example App metric 33`). Run it only after the Distribution parity test has
+no known issue:
+
+```bash
+GETHOG_WIDGET_SYSTEM_UI=1 GETHOG_WIDGET_SIGNED_DISTRIBUTION=1 \
+  xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac \
+  -configuration Release -destination 'platform=macOS' \
+  -only-testing:GetHogMacUITests/MacWidgetContractTests/testSignedDistributionWidgetShowsTheAppSnapshotWhenAvailable \
+  DEVELOPMENT_TEAM=<team id>
+```
+
+Without that valid signed pair the method skips and signed sharing remains
+explicitly unaccepted. Its teardown still removes the authored Metric widget;
+screenshots stay under ignored `build/`.
+
 The upload-facing compliance lives in the repository already:
 `GetHog/Resources/PrivacyInfo.xcprivacy` declares the required-reason APIs the
 app uses, and `ITSAppUsesNonExemptEncryption` in `project.yml` answers the
