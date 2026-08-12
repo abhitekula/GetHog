@@ -56,7 +56,7 @@ struct MacBuildGraphTests {
             contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
             encoding: .utf8
         )
-        let configurations = buildConfigurations(in: project)
+        let configurations = try buildConfigurations(in: project)
 
         for sdk in ["appletvos", "xros"] {
             let colliding = configurations.filter {
@@ -117,7 +117,7 @@ struct MacBuildGraphTests {
             contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
             encoding: .utf8
         )
-        let configurations = buildConfigurations(in: project)
+        let configurations = try buildConfigurations(in: project)
 
         let targets = [
             "GetHogTests",
@@ -157,7 +157,7 @@ struct MacBuildGraphTests {
             contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
             encoding: .utf8
         )
-        let configurations = buildConfigurations(in: project)
+        let configurations = try buildConfigurations(in: project)
         let bundleIDs = [
             "app.gethog.GetHog;",
             "app.gethog.GetHog.watchkitapp;",
@@ -194,15 +194,42 @@ struct MacBuildGraphTests {
         #expect(hostConfigurations.filter { $0.contains("name = Release;") }.count == 5)
     }
 
+    @Test("build configuration parser ignores braces in values and comments")
+    func parserKeepsQuotedAndCommentBracesInsideOneObject() throws {
+        let fixture = #"""
+		A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				QUOTED = "} and {";
+				COMMENTED = value; /* } */
+			};
+			name = Debug;
+		};
+		B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				QUOTED = "{";
+			};
+			name = Release;
+		};
+"""#
+
+        let parsed = try buildConfigurations(in: fixture)
+        #expect(parsed.count == 2)
+        #expect(parsed[0].contains("QUOTED = \"} and {\";"))
+        #expect(parsed[1].contains("QUOTED = \"{\";"))
+    }
+
     /// Returns complete XCBuildConfiguration objects. Splitting on the `isa`
     /// line loses the object header and leaves the next object's header on the
     /// previous chunk, so predicates can accidentally classify adjacent
-    /// configurations. Brace balancing keeps each generated object isolated.
-    private func buildConfigurations(in project: String) -> [String] {
+    /// configurations. Xcode's exact two-tab object terminator keeps each
+    /// generated object isolated without interpreting braces inside values or
+    /// comments as OpenStep structure.
+    private func buildConfigurations(in project: String) throws -> [String] {
         let lines = project.split(separator: "\n", omittingEmptySubsequences: false)
         var configurations: [String] = []
         var current: [Substring] = []
-        var depth = 0
 
         for index in lines.indices {
             let line = lines[index]
@@ -215,14 +242,17 @@ struct MacBuildGraphTests {
             }
 
             current.append(line)
-            depth += line.count(where: { $0 == "{" })
-            depth -= line.count(where: { $0 == "}" })
-            if depth == 0 {
+            if line == "\t\t};" {
                 configurations.append(current.joined(separator: "\n"))
                 current.removeAll(keepingCapacity: true)
             }
         }
 
+        guard current.isEmpty else { throw BuildConfigurationParsingError.unterminatedObject }
         return configurations
+    }
+
+    private enum BuildConfigurationParsingError: Error {
+        case unterminatedObject
     }
 }
