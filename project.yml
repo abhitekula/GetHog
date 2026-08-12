@@ -250,7 +250,9 @@ targets:
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac.entitlements
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) GETHOG_UNSHARED_MAC_APP"
+          # Target config values replace rather than extend hostedAppDebug's
+          # condition under XcodeGen 2.46, so DEBUG must remain explicit here.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG GETHOG_UNSHARED_MAC_APP"
         Release:
           CODE_SIGN_ENTITLEMENTS: GetHogMac/Support/GetHogMac-Distribution.entitlements
 
@@ -308,7 +310,8 @@ targets:
           # resolve. This condition is scoped to this target and configuration;
           # Release and the universal iOS widgets keep their production kinds
           # and App Intent configuration schemas unchanged.
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) GETHOG_UNSHARED_MAC_WIDGETS"
+          # Target config values replace hostedAppDebug here too.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG GETHOG_UNSHARED_MAC_WIDGETS"
         Release:
           CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements
 

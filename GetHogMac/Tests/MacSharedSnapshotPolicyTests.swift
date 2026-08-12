@@ -21,10 +21,24 @@ struct MacSharedSnapshotPolicyTests {
         let releaseSettings = try suffix(configs, after: "        Release:\n")
 
         #expect(debugSettings.contains("GetHogMac/Support/GetHogMac.entitlements"))
-        #expect(debugSettings.contains("GETHOG_UNSHARED_MAC_APP"))
+        #expect(debugSettings.contains(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS: \"DEBUG GETHOG_UNSHARED_MAC_APP\""
+        ))
         #expect(releaseSettings.contains("GetHogMac/Support/GetHogMac-Distribution.entitlements"))
         #expect(!releaseSettings.contains("GETHOG_UNSHARED_MAC_APP"))
+        #expect(!releaseSettings.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS"))
         #expect(project.components(separatedBy: "GETHOG_UNSHARED_MAC_APP").count - 1 == 1)
+
+        let generatedProject = try source(
+            "GetHog.xcodeproj/project.pbxproj",
+            repository: repository
+        )
+        let generatedCondition =
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS = \"DEBUG GETHOG_UNSHARED_MAC_APP\";"
+        #expect(generatedProject.components(separatedBy: generatedCondition).count - 1 == 1)
+        #expect(!generatedProject.contains(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS = \"$(inherited) GETHOG_UNSHARED_MAC_APP\";"
+        ))
 
         let rawDebugEntitlements = try PropertyListSerialization.propertyList(
             from: Data(contentsOf: repository.appending(path: "GetHogMac/Support/GetHogMac.entitlements")),
@@ -180,8 +194,9 @@ struct MacSharedSnapshotPolicyTests {
         after start: String,
         before end: String
     ) throws -> Substring {
-        let startRange = try #require(source.range(of: start))
-        let remainder = source[startRange.upperBound...]
+        let concrete = String(source)
+        let startRange = try #require(concrete.range(of: start))
+        let remainder = concrete[startRange.upperBound...]
         let endRange = try #require(remainder.range(of: end))
         return remainder[..<endRange.lowerBound]
     }
@@ -190,7 +205,8 @@ struct MacSharedSnapshotPolicyTests {
         _ source: some StringProtocol,
         after start: String
     ) throws -> Substring {
-        let startRange = try #require(source.range(of: start))
-        return Substring(source[startRange.upperBound...])
+        let concrete = String(source)
+        let startRange = try #require(concrete.range(of: start))
+        return concrete[startRange.upperBound...]
     }
 }

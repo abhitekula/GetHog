@@ -266,10 +266,24 @@ struct MacDebugWidgetConfigurationTests {
         let releaseSettings = afterDebug[releaseStart.upperBound...]
 
         #expect(debugSettings.contains("GetHogMacWidgets/Support/GetHogMacWidgets.entitlements"))
-        #expect(debugSettings.contains("GETHOG_UNSHARED_MAC_WIDGETS"))
+        #expect(debugSettings.contains(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS: \"DEBUG GETHOG_UNSHARED_MAC_WIDGETS\""
+        ))
         #expect(releaseSettings.contains("GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements"))
         #expect(!releaseSettings.contains("GETHOG_UNSHARED_MAC_WIDGETS"))
+        #expect(!releaseSettings.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS"))
         #expect(project.components(separatedBy: "GETHOG_UNSHARED_MAC_WIDGETS").count - 1 == 1)
+
+        let generatedProject = try String(
+            contentsOf: repository.appending(path: "GetHog.xcodeproj/project.pbxproj"),
+            encoding: .utf8
+        )
+        let generatedCondition =
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS = \"DEBUG GETHOG_UNSHARED_MAC_WIDGETS\";"
+        #expect(generatedProject.components(separatedBy: generatedCondition).count - 1 == 1)
+        #expect(!generatedProject.contains(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS = \"$(inherited) GETHOG_UNSHARED_MAC_WIDGETS\";"
+        ))
 
         let rawDebugEntitlements = try PropertyListSerialization.propertyList(
             from: Data(contentsOf: repository.appending(
