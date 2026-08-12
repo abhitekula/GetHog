@@ -15,9 +15,15 @@ final class MacWidgetContractTests: XCTestCase {
     }
 
     private struct InstalledCandidate {
+        let id: Int
         let element: XCUIElement
-        let identity: String
-        let area: CGFloat
+        let frame: CGRect
+    }
+
+    private struct InstalledResolution {
+        let witnessedCount: Int
+        let clusterCount: Int
+        let canonicals: [InstalledCandidate]
     }
 
     private static let variants = [
@@ -86,14 +92,29 @@ final class MacWidgetContractTests: XCTestCase {
         install(widget: "Feature Flag")
         closeGallery()
 
-        assertResizeFamilies(widget: "Metric", expected: ["Small", "Medium", "Large"])
-        assertResizeFamilies(widget: "Project Health", expected: ["Small", "Medium", "Large"])
-        assertResizeFamilies(widget: "Feature Flag", expected: ["Small", "Medium"])
-
-        assertConfiguration(widget: "Metric", parameter: "Metric")
-        assertConfiguration(widget: "Feature Flag", parameter: "Feature Flag")
-
         let metricWidget = installedWidget(named: "Metric")
+        let healthWidget = installedWidget(named: "Project Health")
+        let flagWidget = installedWidget(named: "Feature Flag")
+
+        assertResizeFamilies(
+            metricWidget,
+            named: "Metric",
+            expected: ["Small", "Medium", "Large"]
+        )
+        assertResizeFamilies(
+            healthWidget,
+            named: "Project Health",
+            expected: ["Small", "Medium", "Large"]
+        )
+        assertResizeFamilies(
+            flagWidget,
+            named: "Feature Flag",
+            expected: ["Small", "Medium"]
+        )
+
+        assertConfiguration(metricWidget, named: "Metric", parameter: "Metric")
+        assertConfiguration(flagWidget, named: "Feature Flag", parameter: "Feature Flag")
+
         let unshared = text(
             "Open GetHog to connect. This build can't share data with widgets.",
             in: metricWidget
@@ -280,9 +301,13 @@ final class MacWidgetContractTests: XCTestCase {
     // MARK: - Installed widgets
 
     @MainActor
-    private func assertResizeFamilies(widget name: String, expected: [String]) {
+    private func assertResizeFamilies(
+        _ widget: XCUIElement,
+        named name: String,
+        expected: [String]
+    ) {
         let nativeSizes = ["Small", "Medium", "Large", "Extra Large"]
-        let initialMenu = installedWidgetMenu(named: name)
+        let initialMenu = installedWidgetMenu(for: widget, named: name)
         XCTAssertTrue(
             DemoLaunch.wait(timeout: 5) {
                 nativeSizes.contains { initialMenu.menuItems[$0].exists }
@@ -298,7 +323,7 @@ final class MacWidgetContractTests: XCTestCase {
         closeMenus()
 
         for family in expected {
-            let menu = installedWidgetMenu(named: name)
+            let menu = installedWidgetMenu(for: widget, named: name)
             let size = menu.menuItems[family]
             XCTAssertTrue(
                 DemoLaunch.wait(for: size, timeout: 5),
@@ -310,8 +335,12 @@ final class MacWidgetContractTests: XCTestCase {
     }
 
     @MainActor
-    private func assertConfiguration(widget name: String, parameter: String) {
-        let menu = installedWidgetMenu(named: name)
+    private func assertConfiguration(
+        _ widget: XCUIElement,
+        named name: String,
+        parameter: String
+    ) {
+        let menu = installedWidgetMenu(for: widget, named: name)
         let edit = firstElement(containingAny: ["Edit Widget", "Configure Widget"], in: menu)
         XCTAssertTrue(DemoLaunch.wait(for: edit, timeout: 5), "The \(name) widget was not configurable.")
         edit.click()
@@ -340,12 +369,29 @@ final class MacWidgetContractTests: XCTestCase {
     }
 
     @MainActor
-    private func installedWidget(named name: String, required: Bool = true) -> XCUIElement {
-        guard closeMenus() else {
-            if required {
-                XCTFail("Could not close existing Notification Center menus before resolving \(name).")
-            }
+    private func installedWidget(named name: String) -> XCUIElement {
+        let resolution = installedWidgetResolution(named: name)
+        XCTAssertEqual(
+            resolution.clusterCount,
+            1,
+            "Expected exactly one installed \(name) widget cluster; found \(resolution.clusterCount) "
+                + "from \(resolution.witnessedCount) menu-witnessed descendants."
+        )
+        XCTAssertEqual(
+            resolution.canonicals.count,
+            resolution.clusterCount,
+            "Every installed \(name) widget cluster must have one witnessed container enclosing its descendants."
+        )
+        guard resolution.clusterCount == 1, let canonical = resolution.canonicals.first else {
             return missingInstalledWidget(named: name)
+        }
+        return canonical.element
+    }
+
+    @MainActor
+    private func installedWidgetResolution(named name: String) -> InstalledResolution {
+        guard closeMenus() else {
+            return InstalledResolution(witnessedCount: 0, clusterCount: 0, canonicals: [])
         }
         let predicate = NSPredicate(
             format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
@@ -356,51 +402,38 @@ final class MacWidgetContractTests: XCTestCase {
             .application, .window, .sheet, .popover, .scrollView,
             .searchField, .menu, .menuItem,
         ]
-        var deduplicated: [String: InstalledCandidate] = [:]
+        // Bind each proxy to the witnessed accessibility object itself. An
+        // index-bound query can silently retarget after a resize reorders the
+        // tree, defeating the promise that later actions reuse this widget.
+        let elements = notificationCenter.descendants(matching: .any)
+            .matching(predicate).allElementsBoundByAccessibilityElement
+        var witnessed: [InstalledCandidate] = []
 
-        for element in notificationCenter.descendants(matching: .any)
-            .matching(predicate).allElementsBoundByIndex
+        for (id, element) in elements.enumerated()
         where element.exists && element.isHittable && !excludedTypes.contains(element.elementType) {
             let frame = element.frame
             guard frame.width > 0, frame.height > 0 else { continue }
-            let identity = installedIdentity(for: element)
             let candidate = InstalledCandidate(
+                id: id,
                 element: element,
-                identity: identity,
-                area: frame.width * frame.height
+                frame: frame
             )
-            if let existing = deduplicated[identity], existing.area <= candidate.area {
-                continue
-            }
-            deduplicated[identity] = candidate
-        }
-
-        var witnessed: [InstalledCandidate] = []
-        for candidate in deduplicated.values.sorted(by: candidateOrder) {
-            if freshInstalledWidgetMenu(for: candidate.element) != nil {
+            if witnessesInstalledWidgetMenu(for: element) {
                 witnessed.append(candidate)
-                closeMenus()
             }
         }
-        let minimumArea = witnessed.map(\.area).min()
-        let minimal = minimumArea.map { area in
-            witnessed.filter { abs($0.area - area) < 0.5 }
-        } ?? []
 
-        if required || !witnessed.isEmpty {
-            XCTAssertEqual(
-                minimal.count,
-                1,
-                "Expected one minimal authored \(name) descendant with a fresh native Remove Widget menu; "
-                    + "found \(minimal.count) minimal among \(witnessed.count) witnessed identities."
-            )
-        }
-        if let candidate = minimal.first {
-            return candidate.element
-        }
-        // The uniqueness assertion above carries the actionable failure; keep
-        // the fallback rooted in Notification Center and guaranteed missing.
-        return missingInstalledWidget(named: name)
+        let clusters = InstalledWidgetGeometryResolver.clusters(for: witnessed.map {
+            InstalledWidgetGeometryCandidate(id: $0.id, frame: $0.frame)
+        })
+        let byID = Dictionary(uniqueKeysWithValues: witnessed.map { ($0.id, $0) })
+        return InstalledResolution(
+            witnessedCount: witnessed.count,
+            clusterCount: clusters.count,
+            canonicals: clusters.compactMap { cluster in
+                cluster.canonicalID.flatMap { byID[$0] }
+            }
+        )
     }
 
     @MainActor
@@ -412,65 +445,63 @@ final class MacWidgetContractTests: XCTestCase {
     }
 
     @MainActor
-    private func installedWidgetMenu(named name: String) -> XCUIElement {
-        let widget = installedWidget(named: name)
+    private func installedWidgetMenu(for widget: XCUIElement, named name: String) -> XCUIElement {
         XCTAssertTrue(DemoLaunch.wait(for: widget, timeout: 10), "The \(name) widget was not installed.")
-        let menu = freshInstalledWidgetMenu(for: widget)
-        XCTAssertNotNil(menu, "The installed \(name) identity opened no new native widget menu.")
+        let menu = openInstalledWidgetMenu(for: widget)
+        XCTAssertNotNil(menu, "The installed \(name) identity opened no scoped native widget menu.")
         return menu ?? notificationCenter.menus
             .matching(NSPredicate(format: "identifier == %@", "__missing-installed-menu__"))
             .firstMatch
     }
 
     @MainActor
-    private func freshInstalledWidgetMenu(for widget: XCUIElement) -> XCUIElement? {
-        guard closeMenus() else { return nil }
-        let baseline = notificationCenter.menus.count
+    private func witnessesInstalledWidgetMenu(for widget: XCUIElement) -> Bool {
+        guard openInstalledWidgetMenu(for: widget) != nil else { return false }
+        return closeMenus()
+    }
+
+    @MainActor
+    private func openInstalledWidgetMenu(for widget: XCUIElement) -> XCUIElement? {
+        guard closeMenus(), hittableRemoveWidget() == nil else { return nil }
         widget.rightClick()
         guard DemoLaunch.wait(timeout: 3, until: {
-            notificationCenter.menus.count == baseline + 1
+            visibleInstalledWidgetMenu() != nil
         }) else {
             _ = closeMenus()
             return nil
         }
-        let menus = notificationCenter.menus.allElementsBoundByIndex
-        guard menus.count == baseline + 1, let menu = menus.last else {
-            _ = closeMenus()
-            return nil
+        return visibleInstalledWidgetMenu()
+    }
+
+    @MainActor
+    private func visibleInstalledWidgetMenu() -> XCUIElement? {
+        notificationCenter.menus.allElementsBoundByIndex.first { menu in
+            menu.exists
+                && menu.isHittable
+                && firstHittableElement(containingAny: ["Remove Widget"], in: menu) != nil
         }
-        let remove = firstElement(containingAny: ["Remove Widget"], in: menu)
-        guard DemoLaunch.wait(for: remove, timeout: 2) else {
-            _ = closeMenus()
-            return nil
-        }
-        return menu
+    }
+
+    @MainActor
+    private func hittableRemoveWidget() -> XCUIElement? {
+        firstHittableElement(containingAny: ["Remove Widget"], in: notificationCenter)
     }
 
     @MainActor
     @discardableResult
     private func closeMenus() -> Bool {
-        for _ in 0..<6 where notificationCenter.menus.count > 0 {
+        for _ in 0..<6 {
+            let visibleMenuExists = notificationCenter.menus.allElementsBoundByIndex.contains {
+                $0.exists && $0.isHittable
+            }
+            guard visibleMenuExists || hittableRemoveWidget() != nil else { break }
             notificationCenter.typeKey(.escape, modifierFlags: [])
         }
-        return DemoLaunch.wait(timeout: 2) { notificationCenter.menus.count == 0 }
-    }
-
-    @MainActor
-    private func installedIdentity(for element: XCUIElement) -> String {
-        let frame = element.frame
-        let accessibilityIdentity = element.identifier.isEmpty
-            ? "\(element.label)|\(String(describing: element.value))"
-            : element.identifier
-        return [
-            "\(element.elementType.rawValue)", accessibilityIdentity,
-            String(format: "%.1f", frame.origin.x), String(format: "%.1f", frame.origin.y),
-            String(format: "%.1f", frame.width), String(format: "%.1f", frame.height),
-        ].joined(separator: "|")
-    }
-
-    private func candidateOrder(_ lhs: InstalledCandidate, _ rhs: InstalledCandidate) -> Bool {
-        if lhs.area != rhs.area { return lhs.area < rhs.area }
-        return lhs.identity < rhs.identity
+        return DemoLaunch.wait(timeout: 2) {
+            !notificationCenter.menus.allElementsBoundByIndex.contains {
+                $0.exists && $0.isHittable
+            } && hittableRemoveWidget() == nil
+        }
     }
 
     @MainActor
@@ -491,18 +522,39 @@ final class MacWidgetContractTests: XCTestCase {
     private func removeInstalledWidgets(named names: [String] = ["Metric", "Project Health", "Feature Flag"]) {
         openNotificationCenter()
         for name in names {
-            for _ in 0..<4 {
-                let widget = installedWidget(named: name, required: false)
-                guard widget.exists else { break }
-                guard let menu = freshInstalledWidgetMenu(for: widget) else { break }
-                let remove = firstElement(containingAny: ["Remove Widget"], in: menu)
-                guard DemoLaunch.wait(for: remove, timeout: 3) else {
-                    notificationCenter.typeKey(.escape, modifierFlags: [])
-                    break
+            while true {
+                let resolution = installedWidgetResolution(named: name)
+                guard resolution.clusterCount > 0 else { break }
+                guard resolution.canonicals.count == resolution.clusterCount else {
+                    XCTFail(
+                        "Cleanup found \(resolution.clusterCount) installed \(name) widget clusters, "
+                            + "but only \(resolution.canonicals.count) had a witnessed canonical container."
+                    )
+                    return
+                }
+                guard let widget = resolution.canonicals.first else {
+                    XCTFail("Cleanup could not select a canonical installed \(name) widget.")
+                    return
+                }
+                guard let menu = openInstalledWidgetMenu(for: widget.element) else {
+                    XCTFail("Cleanup could not reopen the canonical \(name) widget menu.")
+                    return
+                }
+                guard let remove = firstHittableElement(
+                    containingAny: ["Remove Widget"],
+                    in: menu
+                ) else {
+                    _ = closeMenus()
+                    XCTFail("Cleanup's canonical \(name) widget menu had no hittable Remove Widget action.")
+                    return
                 }
                 remove.click()
                 let confirm = firstElement(containingAny: ["Remove"], in: notificationCenter)
                 if DemoLaunch.wait(for: confirm, timeout: 2), confirm.isHittable { confirm.click() }
+                guard DemoLaunch.wait(timeout: 10, until: { !widget.element.exists }) else {
+                    XCTFail("Cleanup did not remove the selected canonical \(name) widget.")
+                    return
+                }
             }
         }
     }
@@ -521,7 +573,9 @@ final class MacWidgetContractTests: XCTestCase {
         for _ in 0..<6 {
             let hasEditor = notificationCenter.popovers.firstMatch.exists
                 || notificationCenter.sheets.firstMatch.exists
-                || notificationCenter.menus.firstMatch.exists
+                || notificationCenter.menus.allElementsBoundByIndex.contains {
+                    $0.exists && $0.isHittable
+                }
             guard hasEditor else { break }
             notificationCenter.typeKey(.escape, modifierFlags: [])
         }
@@ -547,5 +601,20 @@ final class MacWidgetContractTests: XCTestCase {
         return app.descendants(matching: .any)
             .matching(NSPredicate(format: predicates.map { "(\($0))" }.joined(separator: " OR ")))
             .firstMatch
+    }
+
+    @MainActor
+    private func firstHittableElement(
+        containingAny values: [String],
+        in container: XCUIElement
+    ) -> XCUIElement? {
+        let predicates = values.map {
+            "label CONTAINS[c] '\($0.replacingOccurrences(of: "'", with: "''"))' "
+                + "OR value CONTAINS[c] '\($0.replacingOccurrences(of: "'", with: "''"))'"
+        }
+        return container.descendants(matching: .any)
+            .matching(NSPredicate(format: predicates.map { "(\($0))" }.joined(separator: " OR ")))
+            .allElementsBoundByIndex
+            .first { $0.exists && $0.isHittable }
     }
 }

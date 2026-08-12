@@ -622,6 +622,298 @@ struct SharedSnapshotTests {
         #expect(attempted == expected)
     }
 
+    @Test("absence classifier accepts only the two supported terminal error codes")
+    func absenceClassifierAcceptsSupportedTerminalCodes() {
+        let cocoaAbsence = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue
+        )
+        let posixAbsence = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.ENOENT.rawValue)
+        )
+
+        #expect(FileAbsenceCausalGraphClassifier.accepts(cocoaAbsence))
+        #expect(FileAbsenceCausalGraphClassifier.accepts(posixAbsence))
+    }
+
+    @Test("absence classifier follows nested single underlying errors through wrappers")
+    func absenceClassifierAcceptsNestedWrappers() {
+        let posixAbsence = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.ENOENT.rawValue)
+        )
+        let innerWrapper = NSError(
+            domain: "app.gethog.tests.inner-wrapper",
+            code: 41,
+            userInfo: [NSUnderlyingErrorKey: posixAbsence]
+        )
+        let outerWrapper = NSError(
+            domain: "app.gethog.tests.outer-wrapper",
+            code: 42,
+            userInfo: [NSUnderlyingErrorKey: innerWrapper]
+        )
+
+        #expect(FileAbsenceCausalGraphClassifier.accepts(outerWrapper))
+    }
+
+    @Test("absence classifier accepts single and multiple branches when every terminal is absent")
+    func absenceClassifierAcceptsAllAbsenceBranches() {
+        let cocoaAbsence = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue
+        )
+        let posixAbsence = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.ENOENT.rawValue)
+        )
+        let wrapper = NSError(
+            domain: "app.gethog.tests.multiple-wrapper",
+            code: 43,
+            userInfo: [
+                NSUnderlyingErrorKey: cocoaAbsence,
+                NSMultipleUnderlyingErrorsKey: [
+                    posixAbsence,
+                    NSError(
+                        domain: "app.gethog.tests.branch-wrapper",
+                        code: 44,
+                        userInfo: [NSUnderlyingErrorKey: cocoaAbsence]
+                    ),
+                ],
+            ]
+        )
+
+        #expect(FileAbsenceCausalGraphClassifier.accepts(wrapper))
+    }
+
+    @Test("absence classifier rejects every non-absence terminal even beside an absence")
+    func absenceClassifierRejectsMixedTerminalCauses() {
+        let cocoaAbsence = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue
+        )
+        let permission = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.EACCES.rawValue)
+        )
+        let corruption = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileReadCorruptFile.rawValue
+        )
+        let unknown = NSError(domain: "app.gethog.tests.unknown", code: 45, userInfo: nil)
+
+        for terminal in [permission, corruption, unknown] {
+            let wrapper = NSError(
+                domain: "app.gethog.tests.mixed-wrapper",
+                code: 46,
+                userInfo: [NSMultipleUnderlyingErrorsKey: [cocoaAbsence, terminal]]
+            )
+            #expect(!FileAbsenceCausalGraphClassifier.accepts(wrapper))
+        }
+    }
+
+    @Test("absence classifier rejects POSIX permission beside POSIX absence")
+    func absenceClassifierRejectsPOSIXAbsenceAndPermissionBranches() {
+        let posixAbsence = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.ENOENT.rawValue)
+        )
+        let posixPermission = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.EACCES.rawValue)
+        )
+        let wrapper = NSError(
+            domain: "app.gethog.tests.posix-mixed-wrapper",
+            code: 56,
+            userInfo: [NSMultipleUnderlyingErrorsKey: [posixAbsence, posixPermission]]
+        )
+
+        #expect(!FileAbsenceCausalGraphClassifier.accepts(wrapper))
+    }
+
+    @Test("absence classifier rejects POSIX permission under a Cocoa absence wrapper")
+    func absenceClassifierRejectsCocoaAbsenceWrapperOverPOSIXPermission() {
+        let permission = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.EACCES.rawValue)
+        )
+        let misleadingAbsenceWrapper = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue,
+            userInfo: [NSUnderlyingErrorKey: permission]
+        )
+
+        #expect(!FileAbsenceCausalGraphClassifier.accepts(misleadingAbsenceWrapper))
+    }
+
+    @Test("absence classifier rejects wrappers without a supported terminal cause")
+    func absenceClassifierRejectsUnknownAndMalformedTerminals() {
+        let cocoaAbsence = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue
+        )
+        let unknownTerminal = NSError(
+            domain: "app.gethog.tests.empty-wrapper",
+            code: 47,
+            userInfo: nil
+        )
+        let malformedGraph = NSError(
+            domain: "app.gethog.tests.malformed-wrapper",
+            code: 48,
+            userInfo: [NSMultipleUnderlyingErrorsKey: [cocoaAbsence, "not-an-error"]]
+        )
+
+        #expect(!FileAbsenceCausalGraphClassifier.accepts(unknownTerminal))
+        #expect(!FileAbsenceCausalGraphClassifier.accepts(malformedGraph))
+    }
+
+    @Test("absence classifier permits a shared absence node that is not a cycle")
+    func absenceClassifierAcceptsSharedAbsenceLeaf() {
+        let sharedAbsence = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue
+        )
+        let wrapper = NSError(
+            domain: "app.gethog.tests.shared-leaf-wrapper",
+            code: 49,
+            userInfo: [
+                NSUnderlyingErrorKey: sharedAbsence,
+                NSMultipleUnderlyingErrorsKey: [sharedAbsence],
+            ]
+        )
+
+        #expect(FileAbsenceCausalGraphClassifier.accepts(wrapper))
+    }
+
+    @Test("absence classifier skips cycle edges and accepts an exclusively absent terminal")
+    func absenceClassifierAcceptsCycleWithOnlyAbsenceTerminal() {
+        let causes = NSMutableArray()
+        let cyclicWrapper = NSError(
+            domain: "app.gethog.tests.cyclic-wrapper",
+            code: 50,
+            userInfo: [NSMultipleUnderlyingErrorsKey: causes]
+        )
+        causes.add(NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.ENOENT.rawValue)
+        ))
+        causes.add(cyclicWrapper)
+
+        #expect(FileAbsenceCausalGraphClassifier.accepts(cyclicWrapper))
+    }
+
+    @Test("absence classifier rejects a pure cycle with no absence terminal")
+    func absenceClassifierRejectsPureCycle() {
+        let causes = NSMutableArray()
+        let cyclicWrapper = NSError(
+            domain: "app.gethog.tests.pure-cycle-wrapper",
+            code: 57,
+            userInfo: [NSMultipleUnderlyingErrorsKey: causes]
+        )
+        causes.add(cyclicWrapper)
+
+        #expect(!FileAbsenceCausalGraphClassifier.accepts(cyclicWrapper))
+    }
+
+    @Test("absence classifier rejects a cycle that reaches a permission terminal")
+    func absenceClassifierRejectsCycleWithPermissionTerminal() {
+        let causes = NSMutableArray()
+        let cyclicWrapper = NSError(
+            domain: "app.gethog.tests.permission-cycle-wrapper",
+            code: 58,
+            userInfo: [NSMultipleUnderlyingErrorsKey: causes]
+        )
+        causes.add(cyclicWrapper)
+        causes.add(NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.EACCES.rawValue)
+        ))
+
+        #expect(!FileAbsenceCausalGraphClassifier.accepts(cyclicWrapper))
+    }
+
+    @Test("strict clearing classifies complete causal graphs and still attempts every artifact")
+    func strictProjectDataClearUsesCausalGraphClassifier() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let expectedAttempts = [
+            "snapshot.json",
+            "pending-flag.json",
+            "pending-open.json",
+            "metric-watches.json",
+            "metric-watch-breaches.json",
+        ]
+        let cocoaAbsence = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileNoSuchFile.rawValue
+        )
+        let posixAbsence = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(POSIXError.Code.ENOENT.rawValue)
+        )
+        var attempted: [String] = []
+
+        do {
+            try store.clearProjectDataStrict { url in
+                attempted.append(url.lastPathComponent)
+                switch url.lastPathComponent {
+                case "snapshot.json":
+                    throw NSError(
+                        domain: "app.gethog.tests.accepted-wrapper",
+                        code: 51,
+                        userInfo: [NSUnderlyingErrorKey: cocoaAbsence]
+                    )
+                case "pending-flag.json":
+                    throw NSError(
+                        domain: "app.gethog.tests.rejected-wrapper",
+                        code: 52,
+                        userInfo: [NSMultipleUnderlyingErrorsKey: [
+                            posixAbsence,
+                            NSError(
+                                domain: NSCocoaErrorDomain,
+                                code: CocoaError.fileWriteNoPermission.rawValue
+                            ),
+                        ]]
+                    )
+                case "pending-open.json":
+                    throw NSError(
+                        domain: "app.gethog.tests.nested-wrapper",
+                        code: 53,
+                        userInfo: [NSUnderlyingErrorKey: NSError(
+                            domain: "app.gethog.tests.inner-wrapper",
+                            code: 54,
+                            userInfo: [NSUnderlyingErrorKey: posixAbsence]
+                        )]
+                    )
+                case "metric-watches.json":
+                    throw NSError(
+                        domain: "app.gethog.tests.unknown-terminal",
+                        code: 55,
+                        userInfo: nil
+                    )
+                default:
+                    break
+                }
+            }
+            Issue.record("Strict clear accepted non-absence causal terminals.")
+        } catch let error as SharedSnapshotStore.ProjectDataClearError {
+            #expect(error.failures == [
+                .init(
+                    artifact: "pending-flag",
+                    domain: "app.gethog.tests.rejected-wrapper",
+                    code: 52
+                ),
+                .init(
+                    artifact: "metric-watches",
+                    domain: "app.gethog.tests.unknown-terminal",
+                    code: 55
+                ),
+            ])
+        }
+
+        #expect(attempted == expectedAttempts)
+    }
+
     @Test("strict clearing attempts all artifacts and preserves every non-absence failure")
     func strictProjectDataClearReportsAllFailures() throws {
         let (store, dir) = try makeStore()

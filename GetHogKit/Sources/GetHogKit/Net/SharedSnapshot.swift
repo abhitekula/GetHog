@@ -401,6 +401,80 @@ public struct PendingOpen: Codable, Sendable, Equatable {
     }
 }
 
+/// Classifies an `NSError` causal graph without performing file-system work.
+///
+/// Foundation may wrap a file-system error in one or more higher-level errors,
+/// or report several independent underlying errors. An error is accepted only
+/// when every terminal cause is one of the two supported file-absence errors.
+/// Nodes shared by separate branches and cycle edges are visited once. A graph
+/// with no terminal absence still rejects, so skipping a cycle can never turn a
+/// cause-free graph into accepted absence.
+enum FileAbsenceCausalGraphClassifier {
+    static func accepts(_ error: NSError) -> Bool {
+        var visited: Set<ObjectIdentifier> = []
+        var foundAbsenceTerminal = false
+        let hasOnlyAbsenceTerminals = accepts(
+            error,
+            visited: &visited,
+            foundAbsenceTerminal: &foundAbsenceTerminal
+        )
+        return hasOnlyAbsenceTerminals && foundAbsenceTerminal
+    }
+
+    private static func accepts(
+        _ error: NSError,
+        visited: inout Set<ObjectIdentifier>,
+        foundAbsenceTerminal: inout Bool
+    ) -> Bool {
+        let identity = ObjectIdentifier(error)
+        guard visited.insert(identity).inserted else { return true }
+
+        guard let causes = causalErrors(of: error) else { return false }
+        guard !causes.isEmpty else {
+            guard isAbsenceTerminal(error) else { return false }
+            foundAbsenceTerminal = true
+            return true
+        }
+
+        for cause in causes {
+            guard accepts(
+                cause,
+                visited: &visited,
+                foundAbsenceTerminal: &foundAbsenceTerminal
+            ) else { return false }
+        }
+        return true
+    }
+
+    /// `nil` distinguishes malformed causal metadata from a genuine terminal.
+    private static func causalErrors(of error: NSError) -> [NSError]? {
+        var causes: [NSError] = []
+
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] {
+            guard let cause = underlying as? NSError else { return nil }
+            causes.append(cause)
+        }
+
+        if let multipleUnderlying = error.userInfo[NSMultipleUnderlyingErrorsKey] {
+            guard let values = multipleUnderlying as? [Any] else { return nil }
+            for value in values {
+                guard let cause = value as? NSError else { return nil }
+                causes.append(cause)
+            }
+        }
+
+        return causes
+    }
+
+    private static func isAbsenceTerminal(_ error: NSError) -> Bool {
+        let isCocoaFileNotFound = error.domain == NSCocoaErrorDomain
+            && error.code == CocoaError.fileNoSuchFile.rawValue
+        let isPOSIXFileNotFound = error.domain == NSPOSIXErrorDomain
+            && error.code == Int(POSIXError.Code.ENOENT.rawValue)
+        return isCocoaFileNotFound || isPOSIXFileNotFound
+    }
+}
+
 // MARK: - Store
 
 /// Reads and writes the snapshot as JSON in the App Group container.
@@ -842,11 +916,7 @@ public struct SharedSnapshotStore: Sendable {
                 }
             } catch {
                 let nsError = error as NSError
-                let isCocoaFileNotFound = nsError.domain == NSCocoaErrorDomain
-                    && nsError.code == CocoaError.fileNoSuchFile.rawValue
-                let isPOSIXFileNotFound = nsError.domain == NSPOSIXErrorDomain
-                    && nsError.code == Int(POSIXError.Code.ENOENT.rawValue)
-                if !isCocoaFileNotFound && !isPOSIXFileNotFound {
+                if !FileAbsenceCausalGraphClassifier.accepts(nsError) {
                     failures.append(.init(
                         artifact: artifact.name,
                         domain: nsError.domain,
