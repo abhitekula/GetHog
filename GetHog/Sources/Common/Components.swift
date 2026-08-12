@@ -34,6 +34,94 @@ struct FreshnessLabel: View {
     }
 }
 
+/// The result-state freshness stamp. Unlike the legacy date-only initializer,
+/// this cannot label an in-flight request as freshly completed and it names a
+/// failed refresh as stale while retaining the last successful timestamp.
+struct ResultFreshnessLabel: View {
+    let freshness: ResultFreshness
+
+    var body: some View {
+        Group {
+            switch freshness {
+            case .current(let date):
+                Text("Updated \(date, format: .relative(presentation: .named))")
+            case .stale(let date):
+                Text("Last updated \(date, format: .relative(presentation: .named)) · refresh failed")
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(Theme.Ink.secondary)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        switch freshness {
+        case .current(let date):
+            "Data updated \(date.formatted(.relative(presentation: .named)))"
+        case .stale(let date):
+            "Data may be stale. Last updated \(date.formatted(.relative(presentation: .named))). The latest refresh failed."
+        }
+    }
+}
+
+/// Visible initial progress that does not depend on collection rows existing.
+/// Redaction can stabilise populated geometry, but it cannot create a row for
+/// an empty array; every full-surface first load therefore uses this state.
+struct ResultLoadingState: View {
+    let title: String
+
+    var body: some View {
+        VStack(spacing: Theme.Space.m) {
+            ProgressView()
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(Theme.Ink.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appGround()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("gethog.load-state.loading")
+    }
+}
+
+/// Status for a request that retains the most recent successful composition.
+/// Populated and empty surfaces both use it, so a refresh never silently leaves
+/// old content in place and a failed refresh never masquerades as current.
+struct ResultRetainedUpdateStatus: View {
+    let state: ResultSurfaceState
+    let subject: String
+    var retry: (() -> Void)?
+
+    @ViewBuilder
+    var body: some View {
+        switch state.retainedUpdate {
+        case .some(.refreshing):
+            HStack(spacing: Theme.Space.s) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Refreshing \(subject)…")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Ink.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Refreshing \(subject)")
+
+        case .some(.stale(let failure)):
+            SectionEmptyState(
+                text: "Couldn't refresh \(subject). \(failure.summary)",
+                systemImage: "exclamationmark.triangle",
+                detail: failure.detail,
+                actionTitle: retry == nil ? nil : "Try again",
+                action: retry
+            )
+
+        case .none:
+            EmptyView()
+        }
+    }
+}
+
 /// Shown in place of a feature the current API key can't reach.
 ///
 /// Telling somebody to go and edit a credential is the strongest instruction

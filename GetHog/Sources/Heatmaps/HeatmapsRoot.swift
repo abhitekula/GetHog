@@ -60,9 +60,53 @@ final class HeatmapsStore {
     var isLoadingElements = false
     var heatmapError: String?
     var elementsError: String?
-    var loadedAt: Date?
+    var heatmapLoadedAt: Date?
+    var elementsLoadedAt: Date?
+    private var heatmapLoadedScope: ResultScope?
+    private var elementsLoadedScope: ResultScope?
+    private var renderLoadedScope: ResultScope?
+    private var heatmapRequestAuthority = ResultRequestAuthority()
+    private var elementsRequestAuthority = ResultRequestAuthority()
+    private var renderRequestAuthority = ResultRequestAuthority()
 
     var isLoading: Bool { isLoadingHeatmap || isLoadingElements }
+
+    var heatmapResultState: ResultSurfaceState {
+        ResultSurfaceState.resolve(
+            lastSuccess: heatmapLoadedAt.map {
+                ResultSuccess(
+                    content: profile.isEmpty ? .empty : .populated,
+                    updatedAt: $0,
+                    scope: heatmapLoadedScope
+                )
+            },
+            currentScope: heatmapRequestAuthority.currentScope,
+            isLoading: heatmapRequestAuthority.isLoading || isLoadingHeatmap,
+            failure: heatmapError.map { LoadFailure(summary: $0) }
+        )
+    }
+
+    var elementsResultState: ResultSurfaceState {
+        ResultSurfaceState.resolve(
+            lastSuccess: elementsLoadedAt.map {
+                ResultSuccess(
+                    content: elementStats.isEmpty ? .empty : .populated,
+                    updatedAt: $0,
+                    scope: elementsLoadedScope
+                )
+            },
+            currentScope: elementsRequestAuthority.currentScope,
+            isLoading: elementsRequestAuthority.isLoading || isLoadingElements,
+            failure: elementsError.map { LoadFailure(summary: $0) }
+        )
+    }
+
+    /// Page freshness covers the two click distributions and nothing else.
+    /// Saved renders answer an independent navigation question and must never
+    /// stamp a still-running analytics result as complete.
+    var resultFreshness: ResultFreshness? {
+        ResultFreshness.combining([heatmapResultState, elementsResultState])
+    }
 
     /// Whether the *click* sections have anything to chart. Scoped to the two
     /// query responses on purpose — it is what decides skeletons and section
@@ -73,7 +117,9 @@ final class HeatmapsStore {
     /// is pending or failed — which is a statement about what this screen can
     /// offer, never about what the project contains.
     var renderablePages: [SavedHeatmap] {
-        guard case .loaded(let renders) = renderLookup else { return [] }
+        guard renderLoadedScope == renderRequestAuthority.currentScope,
+              case .loaded(let renders) = renderLookup
+        else { return [] }
         return renders.filter(\.isRenderable)
     }
 
@@ -99,6 +145,40 @@ final class HeatmapsStore {
         if case .pending = renderLookup { true } else { false }
     }
 
+    /// The whole-screen result composition after accounting for the independent
+    /// saved-render navigation surface.
+    enum ClickResultPresentation: Equatable {
+        case loading
+        case failed(String)
+        case empty
+        case report
+    }
+
+    /// Whole-screen replacement is derived from completed query states, not
+    /// request booleans. Saved-render navigation keeps the report mounted; with
+    /// none, both sources must successfully answer empty before emptiness is
+    /// declared, and retained success keeps its stale/refresh status in-report.
+    var clickResultPresentation: ClickResultPresentation {
+        guard hasNothingToShow, !isResolvingRenders else { return .report }
+        let states = [heatmapResultState, elementsResultState]
+        if states.allSatisfy(\.isSettledEmpty) {
+            return .empty
+        }
+        if states.contains(where: { $0.presentation == .populated }) {
+            return .report
+        }
+        if states.contains(where: {
+            if case .loading = $0 { true } else { false }
+        }) {
+            return .loading
+        }
+        if states.contains(where: { $0.presentation != nil }) {
+            return .report
+        }
+        if let error = heatmapError ?? elementsError { return .failed(error) }
+        return .loading
+    }
+
     /// Why the render lookup failed, if it did. Read by the two states that
     /// would otherwise present its absence as a finding.
     var renderLookupFailure: String? {
@@ -107,54 +187,70 @@ final class HeatmapsStore {
 
     /// Two independent requests. A heatmap outage must not blank the element
     /// list — they answer different questions and either is useful alone.
-    func load(client: PostHogClient, projectID: Int, window: AnalyticsWindow) async {
+    func load(
+        client: PostHogClient,
+        authority: ResourceRequestAuthority,
+        window: AnalyticsWindow
+    ) async {
         async let coordinates: Void = loadCoordinates(
-            client: client, projectID: projectID, window: window
+            client: client, authority: authority, window: window
         )
         async let elements: Void = loadElements(
-            client: client, projectID: projectID, window: window
+            client: client, authority: authority, window: window
         )
         _ = await (coordinates, elements)
     }
 
     private func loadCoordinates(
         client: PostHogClient,
-        projectID: Int,
+        authority: ResourceRequestAuthority,
         window: AnalyticsWindow
     ) async {
+        let token = beginHeatmapRequest(authority: authority, window: window)
         isLoadingHeatmap = true
-        defer { isLoadingHeatmap = false }
+        defer {
+            if heatmapRequestAuthority.finish(token) { isLoadingHeatmap = false }
+        }
         do {
             // Deliberately not `Page<HeatmapPoint>`: that would decode cleanly
             // and throw away `fold` and `has_more`, leaving the screen to add up
             // a truncated sample and present it as a total.
             let response: HeatmapResponse = try await client.send(
-                PostHogAPI.heatmap(projectID: projectID, dateFrom: window.rawValue)
+                PostHogAPI.heatmap(projectID: authority.projectID, dateFrom: window.rawValue)
             )
+            guard heatmapRequestAuthority.owns(token) else { return }
             profile = HeatmapProfile.make(response)
             heatmapError = nil
-            loadedAt = Date()
+            heatmapLoadedAt = Date()
+            heatmapLoadedScope = token.scope
         } catch {
+            guard heatmapRequestAuthority.owns(token) else { return }
             heatmapError = Self.message(for: error)
         }
     }
 
     private func loadElements(
         client: PostHogClient,
-        projectID: Int,
+        authority: ResourceRequestAuthority,
         window: AnalyticsWindow
     ) async {
+        let token = beginElementsRequest(authority: authority, window: window)
         isLoadingElements = true
-        defer { isLoadingElements = false }
+        defer {
+            if elementsRequestAuthority.finish(token) { isLoadingElements = false }
+        }
         do {
             let page: Page<ElementStat> = try await client.send(
-                PostHogAPI.elementStats(projectID: projectID, dateFrom: window.rawValue)
+                PostHogAPI.elementStats(projectID: authority.projectID, dateFrom: window.rawValue)
             )
+            guard elementsRequestAuthority.owns(token) else { return }
             elementStats = page.results
             elementsTruncated = page.next != nil
             elementsError = nil
-            loadedAt = Date()
+            elementsLoadedAt = Date()
+            elementsLoadedScope = token.scope
         } catch {
+            guard elementsRequestAuthority.owns(token) else { return }
             elementsError = Self.message(for: error)
         }
     }
@@ -166,15 +262,103 @@ final class HeatmapsStore {
     ///
     /// A failure must reach the closing note: an empty list is distinct from an
     /// unsuccessful lookup, and the UI must preserve that distinction.
-    func loadSavedRenders(client: PostHogClient, projectID: Int) async {
+    func loadSavedRenders(client: PostHogClient, authority: ResourceRequestAuthority) async {
+        let token = beginRenderLookup(authority: authority)
         do {
             let page: Page<SavedHeatmap> = try await client.send(
-                PostHogAPI.savedHeatmaps(projectID: projectID)
+                PostHogAPI.savedHeatmaps(projectID: authority.projectID)
             )
-            renderLookup = .loaded(page.results)
+            completeRenderLookup(token: token, result: .loaded(page.results))
         } catch {
-            renderLookup = .failed(Self.message(for: error))
+            completeRenderLookup(token: token, result: .failed(Self.message(for: error)))
         }
+    }
+
+    func beginRenderLookup(authority: ResourceRequestAuthority) -> ResultRequestAuthority.Token {
+        let scope = ResultScope.request(authority: authority)
+        prepareRenderLookup(scope: scope)
+        return renderRequestAuthority.begin(scope: scope)
+    }
+
+    func beginHeatmapRequest(
+        authority: ResourceRequestAuthority,
+        window: AnalyticsWindow
+    ) -> ResultRequestAuthority.Token {
+        let scope = ResultScope.request(
+            authority: authority,
+            dimensions: ["window:\(window.rawValue)"]
+        )
+        prepareHeatmap(scope: scope)
+        return heatmapRequestAuthority.begin(scope: scope)
+    }
+
+    private func beginElementsRequest(
+        authority: ResourceRequestAuthority,
+        window: AnalyticsWindow
+    ) -> ResultRequestAuthority.Token {
+        let scope = ResultScope.request(
+            authority: authority,
+            dimensions: ["window:\(window.rawValue)"]
+        )
+        prepareElements(scope: scope)
+        return elementsRequestAuthority.begin(scope: scope)
+    }
+
+    /// Invalidates all raw collections before a new security/query authority
+    /// can draw them. The per-request begin methods repeat these idempotent
+    /// checks so correctness does not depend on SwiftUI callback ordering.
+    func prepare(authority: ResourceRequestAuthority?, window: AnalyticsWindow) {
+        guard let authority else {
+            prepareHeatmap(scope: nil)
+            prepareElements(scope: nil)
+            prepareRenderLookup(scope: nil)
+            return
+        }
+        let clickScope = ResultScope.request(
+            authority: authority,
+            dimensions: ["window:\(window.rawValue)"]
+        )
+        prepareHeatmap(scope: clickScope)
+        prepareElements(scope: clickScope)
+        prepareRenderLookup(scope: ResultScope.request(authority: authority))
+    }
+
+    private func prepareHeatmap(scope: ResultScope?) {
+        guard heatmapRequestAuthority.currentScope != scope else { return }
+        heatmapRequestAuthority.invalidate()
+        profile = HeatmapProfile.make(points: [])
+        heatmapError = nil
+        heatmapLoadedAt = nil
+        heatmapLoadedScope = nil
+        isLoadingHeatmap = false
+    }
+
+    private func prepareElements(scope: ResultScope?) {
+        guard elementsRequestAuthority.currentScope != scope else { return }
+        elementsRequestAuthority.invalidate()
+        elementStats = []
+        elementsTruncated = false
+        elementsError = nil
+        elementsLoadedAt = nil
+        elementsLoadedScope = nil
+        isLoadingElements = false
+    }
+
+    private func prepareRenderLookup(scope: ResultScope?) {
+        guard renderRequestAuthority.currentScope != scope else { return }
+        renderRequestAuthority.invalidate()
+        renderLookup = .pending
+        renderLoadedScope = nil
+    }
+
+    func completeRenderLookup(
+        token: ResultRequestAuthority.Token,
+        result: RenderLookup
+    ) {
+        guard renderRequestAuthority.owns(token) else { return }
+        renderLookup = result
+        renderLoadedScope = token.scope
+        _ = renderRequestAuthority.finish(token)
     }
 
     private static func message(for error: any Error) -> String {
@@ -204,18 +388,30 @@ struct HeatmapsRoot: View {
     @State private var lens: HeatmapLens = .depth
     @State private var kindFilter: ElementClickKind?
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(projectID: projectID, region: client.region, authSessionID: authSessionID)
+    }
+
     var body: some View {
         content
             .navigationTitle("Clickmap")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .screenRefreshable { await load() }
-            .task(id: LoadKey(projectID: model.projectID, window: window)) { await load() }
-            .task(id: model.projectID) { await loadSavedRenders() }
+            .onChange(of: LoadKey(authority: requestAuthority, window: window), initial: true) {
+                _, key in
+                store.prepare(authority: key.authority, window: key.window)
+            }
+            .task(id: LoadKey(authority: requestAuthority, window: window)) { await load() }
+            .task(id: requestAuthority) { await loadSavedRenders() }
     }
 
     private struct LoadKey: Hashable {
-        let projectID: Int?
+        let authority: ResourceRequestAuthority?
         let window: AnalyticsWindow
     }
 
@@ -234,7 +430,9 @@ struct HeatmapsRoot: View {
         // one drawn over a project that has a saved page render would hide the
         // one section on this screen that neither query feeds. A failed query
         // still gets said — inline, on the section it belongs to.
-        } else if let error = store.heatmapError ?? store.elementsError, store.hasNothingToShow {
+        } else if store.clickResultPresentation == .loading {
+            ResultLoadingState(title: "Loading click distributions…")
+        } else if case .failed(let error) = store.clickResultPresentation {
             EmptyStateView(
                 title: "Couldn't load the clickmap",
                 systemImage: "exclamationmark.triangle",
@@ -242,7 +440,7 @@ struct HeatmapsRoot: View {
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.hasNothingToShow && !store.isLoading && !store.isResolvingRenders {
+        } else if store.clickResultPresentation == .empty {
             EmptyStateView(
                 title: "No clicks recorded",
                 systemImage: "hand.tap",
@@ -304,8 +502,10 @@ struct HeatmapsRoot: View {
 
                     screenshotNote
 
-                    FreshnessLabel(date: store.loadedAt)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let freshness = store.resultFreshness {
+                        ResultFreshnessLabel(freshness: freshness)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .padding(.horizontal, Theme.Space.l)
             }
@@ -780,13 +980,13 @@ struct HeatmapsRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID, window: window)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.load(client: client, authority: authority, window: window)
     }
 
     private func loadSavedRenders() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.loadSavedRenders(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.loadSavedRenders(client: client, authority: authority)
     }
 }
 

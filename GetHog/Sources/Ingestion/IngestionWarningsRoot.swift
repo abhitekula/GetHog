@@ -60,6 +60,23 @@ final class IngestionWarningsStore {
     private(set) var isLoading = false
     private(set) var error: String?
     private(set) var loadedAt: Date?
+    private var loadedScope: ResultScope?
+    private var requestAuthority = ResultRequestAuthority()
+
+    var resultState: ResultSurfaceState {
+        ResultSurfaceState.resolve(
+            lastSuccess: loadedAt.map {
+                ResultSuccess(
+                    content: warnings.isEmpty ? .empty : .populated,
+                    updatedAt: $0,
+                    scope: loadedScope
+                )
+            },
+            currentScope: requestAuthority.currentScope,
+            isLoading: requestAuthority.isLoading,
+            failure: error.map { LoadFailure(summary: $0) }
+        )
+    }
 
     /// Held on the store rather than in the view so a project switch or a
     /// pull-to-refresh reuses whatever the reader last chose.
@@ -67,24 +84,34 @@ final class IngestionWarningsStore {
     var category: IngestionWarningCategory?
     var search = ""
 
-    func load(client: PostHogClient, projectID: Int) async {
+    func load(client: PostHogClient, authority: ResourceRequestAuthority) async {
+        let scope = ResultScope.request(authority: authority, dimensions: [
+            "window:\(window.rawValue)",
+            "category:\(category?.apiValue ?? "all")",
+        ])
+        let token = requestAuthority.begin(scope: scope)
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if requestAuthority.finish(token) { isLoading = false }
+        }
         do {
             // The response is a bare array, not a `Page` — decoding it as one
             // throws, and a screen whose decode throws reports "couldn't load"
             // when the truth is "your ingestion is fine".
             let rows: [IngestionWarning] = try await client.send(
                 PostHogAPI.ingestionWarnings(
-                    projectID: projectID,
+                    projectID: authority.projectID,
                     window: window,
                     category: category
                 )
             )
+            guard requestAuthority.owns(token) else { return }
             warnings = rows.sorted(by: IngestionWarning.mostUrgentFirst)
             loadedAt = Date()
+            loadedScope = scope
             error = nil
         } catch {
+            guard requestAuthority.owns(token) else { return }
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }
@@ -134,39 +161,123 @@ struct IngestionWarningsRoot: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var store = IngestionWarningsStore()
 
-    var body: some View {
-        @Bindable var store = store
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(projectID: projectID, region: client.region, authSessionID: authSessionID)
+    }
 
-        content
+    var body: some View {
+        searchOwnedContent
             .navigationTitle("Ingestion")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $store.search, prompt: "Search warnings")
             .screenRefreshable { await load() }
-            .task(id: model.projectID) { await load() }
+            .task(id: requestAuthority) { await load() }
+    }
+
+    @ViewBuilder
+    private var searchOwnedContent: some View {
+        @Bindable var store = store
+        if store.resultState.ownsSearch {
+            content.searchable(text: $store.search, prompt: "Search warnings")
+        } else {
+            content
+        }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let error = store.error, store.warnings.isEmpty {
+        switch store.resultState {
+        case .loading:
+            ResultLoadingState(title: "Loading ingestion warnings…")
+
+        case .failed(let failure):
             EmptyStateView(
                 title: "Couldn't load ingestion warnings",
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                message: failure.summary,
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else {
-            VStack(spacing: 0) {
-                filterBar
-                if store.visible.isEmpty && !store.isLoading {
-                    emptyState
-                        .frame(maxHeight: .infinity)
-                } else {
-                    list
-                }
+
+        case .empty, .populated, .refreshing, .stale:
+            if store.resultState.presentation == .empty {
+                emptyResult
+            } else {
+                populatedResult
             }
-            .background(Theme.pageBackground)
+        }
+    }
+
+    private var emptyResult: some View {
+        VStack(spacing: 0) {
+            filterBar
+            emptyState
+                .frame(maxHeight: .infinity)
+
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "ingestion warnings",
+                    retry: { Task { await load() } }
+                )
+                .padding(.horizontal, Theme.Space.l)
+                .padding(.bottom, Theme.Space.s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
+                    .padding(Theme.Space.l)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(Theme.pageBackground)
+    }
+
+    private var populatedResult: some View {
+        VStack(spacing: 0) {
+            filterBar
+            if store.visible.isEmpty && !store.isLoading {
+                VStack(spacing: 0) {
+                    filteredEmptyState
+                        .frame(maxHeight: .infinity)
+                    retainedResultFooter
+                }
+            } else {
+                list
+            }
+        }
+        .background(Theme.pageBackground)
+    }
+
+    private var filteredEmptyState: some View {
+        EmptyStateView(
+            title: "No matching warnings",
+            systemImage: "magnifyingglass",
+            message: "Nothing in the loaded warnings matches “\(store.search)”."
+        )
+    }
+
+    @ViewBuilder
+    private var retainedResultFooter: some View {
+        if store.resultState.retainedUpdate != nil {
+            ResultRetainedUpdateStatus(
+                state: store.resultState,
+                subject: "ingestion warnings",
+                retry: { Task { await load() } }
+            )
+            .padding(.horizontal, Theme.Space.l)
+            .padding(.bottom, Theme.Space.s)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if let freshness = store.resultState.completedFreshness {
+            ResultFreshnessLabel(freshness: freshness)
+                .padding(Theme.Space.l)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -239,6 +350,16 @@ struct IngestionWarningsRoot: View {
 
     private var list: some View {
         List {
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "ingestion warnings",
+                    retry: { Task { await load() } }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             Section {
                 ForEach(store.visible) { warning in
                     row(warning)
@@ -253,15 +374,14 @@ struct IngestionWarningsRoot: View {
                 SectionLabel(text: summaryLine, systemImage: "arrow.down.circle")
             }
 
-            if let loadedAt = store.loadedAt {
-                FreshnessLabel(date: loadedAt)
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
-        .skeleton(store.isLoading && store.warnings.isEmpty)
     }
 
     private var summaryLine: String {
@@ -477,8 +597,8 @@ struct IngestionWarningsRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.load(client: client, authority: authority)
     }
 }
 

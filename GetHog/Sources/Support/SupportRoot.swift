@@ -20,6 +20,23 @@ final class SupportTicketsStore {
     private(set) var isLoading = false
     private(set) var error: String?
     private(set) var loadedAt: Date?
+    private var loadedScope: ResultScope?
+    private var requestAuthority = ResultRequestAuthority()
+
+    var resultState: ResultSurfaceState {
+        ResultSurfaceState.resolve(
+            lastSuccess: loadedAt.map {
+                ResultSuccess(
+                    content: tickets.isEmpty ? .empty : .populated,
+                    updatedAt: $0,
+                    scope: loadedScope
+                )
+            },
+            currentScope: requestAuthority.currentScope,
+            isLoading: requestAuthority.isLoading,
+            failure: error.map { LoadFailure(summary: $0) }
+        )
+    }
 
     var search = ""
 
@@ -27,17 +44,24 @@ final class SupportTicketsStore {
     /// calling it would cost a second round trip against an organisation-wide
     /// budget to learn one integer that `unread_team_count` already puts on every
     /// row — so the total below is computed from the page and labelled as such.
-    func load(client: PostHogClient, projectID: Int) async {
+    func load(client: PostHogClient, authority: ResourceRequestAuthority) async {
+        let scope = ResultScope.request(authority: authority)
+        let token = requestAuthority.begin(scope: scope)
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if requestAuthority.finish(token) { isLoading = false }
+        }
         do {
             let page: Page<SupportTicket> = try await client.send(
-                PostHogAPI.supportTickets(projectID: projectID)
+                PostHogAPI.supportTickets(projectID: authority.projectID)
             )
+            guard requestAuthority.owns(token) else { return }
             tickets = SupportTicket.triaged(page.results)
             loadedAt = Date()
+            loadedScope = scope
             error = nil
         } catch {
+            guard requestAuthority.owns(token) else { return }
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }
@@ -88,6 +112,14 @@ struct SupportRoot: View {
     @Environment(OpenDetails.self) private var openDetails
     @State private var store = SupportTicketsStore()
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(projectID: projectID, region: client.region, authSessionID: authSessionID)
+    }
+
     /// The open ticket, and deliberately **not** `@State` and not a value on the
     /// container's path.
     ///
@@ -112,16 +144,23 @@ struct SupportRoot: View {
     }
 
     var body: some View {
-        @Bindable var store = store
-
-        content
+        searchOwnedContent
             .navigationTitle("Support")
             .navigationDestination(item: selection) { SupportTicketDetailView(ticket: $0) }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $store.search, prompt: "Search tickets")
             .screenRefreshable { await load() }
-            .task(id: model.projectID) { await load() }
+            .task(id: requestAuthority) { await load() }
+    }
+
+    @ViewBuilder
+    private var searchOwnedContent: some View {
+        @Bindable var store = store
+        if store.resultState.ownsSearch {
+            content.searchable(text: $store.search, prompt: "Search tickets")
+        } else {
+            content
+        }
     }
 
     // MARK: States
@@ -134,26 +173,79 @@ struct SupportRoot: View {
     /// answer and show what it said.
     @ViewBuilder
     private var content: some View {
-        if let error = store.error, store.tickets.isEmpty {
+        switch store.resultState {
+        case .loading:
+            ResultLoadingState(title: "Loading support tickets…")
+
+        case .failed(let failure):
             EmptyStateView(
                 title: "Couldn't load tickets",
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                message: failure.summary,
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.tickets.isEmpty && !store.isLoading {
+
+        case .empty, .populated, .refreshing, .stale:
+            if store.resultState.presentation == .empty {
+                emptyResult
+            } else if store.visible.isEmpty && !store.isLoading {
+                VStack(spacing: 0) {
+                    EmptyStateView(
+                        title: "No matching tickets",
+                        systemImage: "magnifyingglass",
+                        message: "No subject, customer, tag or ticket number in the loaded page matches "
+                            + "“\(store.search)”. Message bodies aren't searched on device — "
+                            + "PostHog's own search reaches those."
+                    )
+                    retainedResultFooter
+                }
+            } else {
+                list
+            }
+        }
+    }
+
+    private var emptyResult: some View {
+        VStack(spacing: 0) {
             emptyInbox
-        } else if store.visible.isEmpty && !store.isLoading {
-            EmptyStateView(
-                title: "No matching tickets",
-                systemImage: "magnifyingglass",
-                message: "No subject, customer, tag or ticket number in the loaded page matches "
-                    + "“\(store.search)”. Message bodies aren't searched on device — "
-                    + "PostHog's own search reaches those."
+
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "support tickets",
+                    retry: { Task { await load() } }
+                )
+                .padding(.horizontal, Theme.Space.l)
+                .padding(.bottom, Theme.Space.s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
+                    .padding(Theme.Space.l)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .appGround()
+    }
+
+    @ViewBuilder
+    private var retainedResultFooter: some View {
+        if store.resultState.retainedUpdate != nil {
+            ResultRetainedUpdateStatus(
+                state: store.resultState,
+                subject: "support tickets",
+                retry: { Task { await load() } }
             )
-        } else {
-            list
+            .padding(.horizontal, Theme.Space.l)
+            .padding(.bottom, Theme.Space.s)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if let freshness = store.resultState.completedFreshness {
+            ResultFreshnessLabel(freshness: freshness)
+                .padding(Theme.Space.l)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -226,8 +318,6 @@ struct SupportRoot: View {
             }
 
             replyNote
-
-            FreshnessLabel(date: store.loadedAt)
         }
     }
 
@@ -250,6 +340,16 @@ struct SupportRoot: View {
     /// display leaves a tap that only highlights the row.
     private var list: some View {
         List(selection: selection) {
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "support tickets",
+                    retry: { Task { await load() } }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             Section {
                 DataRow(
                     glyph: store.unreadTotal > 0 ? "envelope.badge" : "envelope.open",
@@ -292,12 +392,13 @@ struct SupportRoot: View {
                     .listRowBackground(Color.clear)
             }
 
-            FreshnessLabel(date: store.loadedAt)
-                .listRowBackground(Color.clear)
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
+                    .listRowBackground(Color.clear)
+            }
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
-        .skeleton(store.isLoading && store.tickets.isEmpty)
     }
 
     private var cardRowBackground: some View {
@@ -311,8 +412,8 @@ struct SupportRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.load(client: client, authority: authority)
     }
 }
 

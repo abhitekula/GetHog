@@ -82,6 +82,7 @@ final class TracingStore {
     private var currentRequest: TracingRequestDescriptor?
     private var serviceFacetAuthority: ResourceRequestAuthority?
     private var inFlight: InFlight?
+    private(set) var hasSearchSession = false
 
     private struct InFlight {
         let id: UUID
@@ -106,7 +107,10 @@ final class TracingStore {
     }
     var spanName = "" {
         didSet {
-            if spanName != oldValue { invalidateFilterAuthority() }
+            if spanName != oldValue {
+                hasSearchSession = true
+                invalidateFilterAuthority()
+            }
         }
     }
     var errorsOnly = false {
@@ -116,6 +120,18 @@ final class TracingStore {
     }
 
     var isEmpty: Bool { traces.isEmpty }
+
+    var resultState: ResultSurfaceState {
+        .resource(state, hasContent: !traces.isEmpty, updatedAt: loadedAt, isLoading: isLoading)
+    }
+
+    var ownsSearch: Bool {
+        (resultState.ownsSearch || hasSearchSession) && !state.isBlocked
+    }
+
+    func completeSearchSession(submittedQuery: String, currentQuery: String) {
+        if submittedQuery.isEmpty, currentQuery.isEmpty { hasSearchSession = false }
+    }
 
     func invalidate() {
         requestGeneration &+= 1
@@ -405,13 +421,10 @@ struct TracingRoot: View {
     }
 
     var body: some View {
-        @Bindable var store = store
-
-        content
+        searchOwnedContent
             .navigationTitle("Tracing")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $store.spanName, prompt: "Filter by span name")
             .onSubmit(of: .search) { Task { await load() } }
             .screenRefreshable { await load() }
             .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
@@ -419,6 +432,16 @@ struct TracingRoot: View {
             .navigationDestination(item: selection) { trace in
                 TraceDetailView(trace: trace)
             }
+    }
+
+    @ViewBuilder
+    private var searchOwnedContent: some View {
+        @Bindable var store = store
+        if model.isAvailable(.events) && store.ownsSearch {
+            content.searchable(text: $store.spanName, prompt: "Filter by span name")
+        } else {
+            content
+        }
     }
 
     // MARK: States
@@ -626,6 +649,7 @@ struct TracingRoot: View {
             store.invalidate()
             return
         }
+        let submittedQuery = store.spanName
         await store.load(
             client: client,
             request: TracingRequestDescriptor(
@@ -637,6 +661,7 @@ struct TracingRoot: View {
             ),
             currentAuthority: { requestAuthority }
         )
+        store.completeSearchSession(submittedQuery: submittedQuery, currentQuery: store.spanName)
     }
 }
 

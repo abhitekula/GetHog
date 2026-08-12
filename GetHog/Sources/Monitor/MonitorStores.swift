@@ -45,18 +45,42 @@ final class SignalsStore {
     var isLoading = false
     var error: String?
     var loadedAt: Date?
+    private var loadedScope: ResultScope?
+    private var requestAuthority = ResultRequestAuthority()
 
-    func load(client: PostHogClient, projectID: Int) async {
+    var resultState: ResultSurfaceState {
+        ResultSurfaceState.resolve(
+            lastSuccess: loadedAt.map {
+                ResultSuccess(
+                    content: reports.isEmpty ? .empty : .populated,
+                    updatedAt: $0,
+                    scope: loadedScope
+                )
+            },
+            currentScope: requestAuthority.currentScope,
+            isLoading: requestAuthority.isLoading,
+            failure: error.map { LoadFailure(summary: $0) }
+        )
+    }
+
+    func load(client: PostHogClient, authority: ResourceRequestAuthority) async {
+        let scope = ResultScope.request(authority: authority)
+        let token = requestAuthority.begin(scope: scope)
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if requestAuthority.finish(token) { isLoading = false }
+        }
         do {
             let page: Page<SignalReport> = try await client.send(
-                PostHogAPI.signalReports(projectID: projectID)
+                PostHogAPI.signalReports(projectID: authority.projectID)
             )
+            guard requestAuthority.owns(token) else { return }
             reports = page.results
             loadedAt = Date()
+            loadedScope = scope
             error = nil
         } catch {
+            guard requestAuthority.owns(token) else { return }
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }

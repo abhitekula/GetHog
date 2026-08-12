@@ -135,53 +135,111 @@ struct SignalsRoot: View {
     @Environment(AppModel.self) private var model
     @State private var store = SignalsStore()
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(projectID: projectID, region: client.region, authSessionID: authSessionID)
+    }
+
     var body: some View {
         content
             .navigationTitle("Signals")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .screenRefreshable { await load() }
-            .task(id: model.projectID) { await load() }
+            .task(id: requestAuthority) { await load() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let error = store.error, store.reports.isEmpty {
+        switch store.resultState {
+        case .loading:
+            ResultLoadingState(title: "Loading signal reports…")
+
+        case .failed(let failure):
             EmptyStateView(
                 title: "Couldn't load signals",
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                message: failure.summary,
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.reports.isEmpty && !store.isLoading {
+
+        case .empty, .populated, .refreshing, .stale:
+            if store.resultState.presentation == .empty {
+                emptyResult
+            } else {
+                populatedList
+            }
+        }
+    }
+
+    private var emptyResult: some View {
+        VStack(spacing: 0) {
             EmptyStateView(
                 title: "No reports yet",
                 systemImage: "antenna.radiowaves.left.and.right",
                 message: "Scouts write a report here when a scheduled run finds something."
             )
-        } else {
-            List {
-                ForEach(store.grouped, id: \.status) { group in
-                    Section {
-                        ForEach(group.reports) { report in
-                            row(report)
-                                .listRowBackground(
-                                    Theme.cardBackground
-                                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                        .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-                                )
-                                .listRowSeparator(.hidden)
-                        }
-                    } header: {
-                        SectionLabel(text: group.status.title, systemImage: symbol(group.status))
+
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "signals",
+                    retry: { Task { await load() } }
+                )
+                .padding(.horizontal, Theme.Space.l)
+                .padding(.bottom, Theme.Space.s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
+                    .padding(Theme.Space.l)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .appGround()
+    }
+
+    private var populatedList: some View {
+        List {
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "signals",
+                    retry: { Task { await load() } }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+            ForEach(store.grouped, id: \.status) { group in
+                Section {
+                    ForEach(group.reports) { report in
+                        row(report)
+                            .listRowBackground(
+                                Theme.cardBackground
+                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+                                    .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
+                            )
+                            .listRowSeparator(.hidden)
                     }
+                } header: {
+                    SectionLabel(text: group.status.title, systemImage: symbol(group.status))
                 }
             }
-            .listRowSpacing(Theme.Space.xs)
-            .pageSurface()
-            .skeleton(store.isLoading && store.reports.isEmpty)
+
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
         }
+        .listRowSpacing(Theme.Space.xs)
+        .pageSurface()
     }
 
     private func row(_ report: SignalReport) -> some View {
@@ -241,8 +299,8 @@ struct SignalsRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.load(client: client, authority: authority)
     }
 }
 

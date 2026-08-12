@@ -22,21 +22,53 @@ final class LLMAnalyticsStore {
     var isLoading = false
     var error: String?
     var loadedAt: Date?
+    private var loadedScope: ResultScope?
+    private var requestAuthority = ResultRequestAuthority()
 
     var traces: [LLMTrace] { response?.ranked ?? [] }
     var isEmpty: Bool { traces.isEmpty }
 
-    func load(client: PostHogClient, projectID: Int, range: LLMDateRange, limit: Int = 50) async {
+    var resultState: ResultSurfaceState {
+        ResultSurfaceState.resolve(
+            lastSuccess: loadedAt.map {
+                ResultSuccess(
+                    content: traces.isEmpty ? .empty : .populated,
+                    updatedAt: $0,
+                    scope: loadedScope
+                )
+            },
+            currentScope: requestAuthority.currentScope,
+            isLoading: requestAuthority.isLoading,
+            failure: error.map { LoadFailure(summary: $0) }
+        )
+    }
+
+    func load(
+        client: PostHogClient,
+        authority: ResourceRequestAuthority,
+        range: LLMDateRange,
+        limit: Int = 50
+    ) async {
+        let scope = ResultScope.request(authority: authority, dimensions: [
+            "range:\(range.rawValue)",
+            "limit:\(limit)",
+        ])
+        let token = requestAuthority.begin(scope: scope)
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if requestAuthority.finish(token) { isLoading = false }
+        }
         do {
             let response: LLMTracesResponse = try await client.send(
-                Self.tracesEndpoint(projectID: projectID, range: range, limit: limit)
+                Self.tracesEndpoint(projectID: authority.projectID, range: range, limit: limit)
             )
+            guard requestAuthority.owns(token) else { return }
             self.response = response
             loadedAt = Date()
+            loadedScope = scope
             error = nil
         } catch {
+            guard requestAuthority.owns(token) else { return }
             self.error = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
         }
@@ -71,6 +103,14 @@ struct LLMAnalyticsRoot: View {
     @State private var range: LLMDateRange = .week
     @State private var search = ""
 
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(projectID: projectID, region: client.region, authSessionID: authSessionID)
+    }
+
     /// The open trace, held outside this screen and presented by `RootView`.
     ///
     /// Measured with a trace open, dragging the window 834 → 375 → 834pt: the
@@ -83,17 +123,25 @@ struct LLMAnalyticsRoot: View {
     }
 
     var body: some View {
-        content
+        searchOwnedContent
             .navigationTitle("LLM")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search traces")
             .screenRefreshable { await load() }
-            .task(id: LoadKey(projectID: model.projectID, range: range)) { await load() }
+            .task(id: LoadKey(authority: requestAuthority, range: range)) { await load() }
+    }
+
+    @ViewBuilder
+    private var searchOwnedContent: some View {
+        if model.isAvailable(.events) && store.resultState.ownsSearch {
+            content.searchable(text: $search, prompt: "Search traces")
+        } else {
+            content
+        }
     }
 
     private struct LoadKey: Hashable {
-        let projectID: Int?
+        let authority: ResourceRequestAuthority?
         let range: LLMDateRange
     }
 
@@ -107,15 +155,17 @@ struct LLMAnalyticsRoot: View {
             LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
                 Task { await model.refreshCapabilities() }
             }
-        } else if let error = store.error, store.isEmpty {
+        } else if case .loading = store.resultState {
+            ResultLoadingState(title: "Loading LLM traces…")
+        } else if case .failed(let failure) = store.resultState {
             EmptyStateView(
                 title: "Couldn't load traces",
                 systemImage: "exclamationmark.triangle",
-                message: error,
+                message: failure.summary,
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.isEmpty && !store.isLoading {
+        } else if store.resultState.presentation == .empty {
             VStack(spacing: 0) {
                 GlassFilterBar { rangePicker }
                     .padding(.vertical, Theme.Space.s)
@@ -125,6 +175,23 @@ struct LLMAnalyticsRoot: View {
                     message: "Nothing was recorded in the \(range.accessibleTitle.lowercased()). Traces appear here once an SDK sends $ai_generation events."
                 )
                 .frame(maxHeight: .infinity)
+
+                if store.resultState.retainedUpdate != nil {
+                    ResultRetainedUpdateStatus(
+                        state: store.resultState,
+                        subject: "LLM traces",
+                        retry: { Task { await load() } }
+                    )
+                    .padding(.horizontal, Theme.Space.l)
+                    .padding(.bottom, Theme.Space.s)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let freshness = store.resultState.completedFreshness {
+                    ResultFreshnessLabel(freshness: freshness)
+                        .padding(Theme.Space.l)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .background(Theme.pageBackground)
         } else {
@@ -134,6 +201,16 @@ struct LLMAnalyticsRoot: View {
 
     private var list: some View {
         List {
+            if store.resultState.retainedUpdate != nil {
+                ResultRetainedUpdateStatus(
+                    state: store.resultState,
+                    subject: "LLM traces",
+                    retry: { Task { await load() } }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             Section {
                 GlassFilterBar { rangePicker }
                     // Horizontal insets come from the bar itself, which carries
@@ -176,13 +253,14 @@ struct LLMAnalyticsRoot: View {
                     .listRowBackground(Color.clear)
             }
 
-            FreshnessLabel(date: store.loadedAt)
-                .listRowBackground(Color.clear)
+            if let freshness = store.resultState.completedFreshness {
+                ResultFreshnessLabel(freshness: freshness)
+                    .listRowBackground(Color.clear)
+            }
         }
         .listRowSpacing(Theme.Space.xs)
         .accessibilityIdentifier("gethog.llm-list")
         .pageSurface()
-        .skeleton(store.isLoading && store.isEmpty)
     }
 
     /// The heading states the sort, because a list ordered by cost and a list
@@ -227,8 +305,8 @@ struct LLMAnalyticsRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID, range: range)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.load(client: client, authority: authority, range: range)
     }
 }
 

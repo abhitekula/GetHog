@@ -124,6 +124,7 @@ final class LogsStore {
     private var requestGeneration: UInt64 = 0
     private var currentRequest: LogsRequestDescriptor?
     private var inFlight: InFlight?
+    private(set) var hasSearchSession = false
 
     private struct InFlight {
         let id: UUID
@@ -143,12 +144,27 @@ final class LogsStore {
     }
     var search = "" {
         didSet {
-            if search != oldValue { invalidateFilterAuthority() }
+            if search != oldValue {
+                hasSearchSession = true
+                invalidateFilterAuthority()
+            }
         }
     }
     var problemsOnly = false
 
     var isEmpty: Bool { rows.isEmpty }
+
+    var resultState: ResultSurfaceState {
+        .resource(state, hasContent: !rows.isEmpty, updatedAt: loadedAt, isLoading: isLoading)
+    }
+
+    var ownsSearch: Bool {
+        (resultState.ownsSearch || hasSearchSession) && !state.isBlocked
+    }
+
+    func completeSearchSession(submittedQuery: String, currentQuery: String) {
+        if submittedQuery.isEmpty, currentQuery.isEmpty { hasSearchSession = false }
+    }
 
     /// The rows a VoiceOver rotor jumps between, in the order they are drawn.
     ///
@@ -423,18 +439,25 @@ struct LogsRoot: View {
     }
 
     var body: some View {
-        @Bindable var store = store
-
-        content
+        searchOwnedContent
             .navigationTitle("Logs")
             .navigationDestination(item: selection) { LogDetailView(row: $0) }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $store.search, prompt: "Search log messages")
             .onSubmit(of: .search) { Task { await load() } }
             .screenRefreshable { await load() }
             .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
+    }
+
+    @ViewBuilder
+    private var searchOwnedContent: some View {
+        @Bindable var store = store
+        if model.isAvailable(.events) && store.ownsSearch {
+            content.searchable(text: $store.search, prompt: "Search log messages")
+        } else {
+            content
+        }
     }
 
     @ViewBuilder
@@ -647,6 +670,7 @@ struct LogsRoot: View {
             store.invalidate()
             return
         }
+        let submittedQuery = store.search
         await store.load(
             client: client,
             request: LogsRequestDescriptor(
@@ -656,6 +680,7 @@ struct LogsRoot: View {
             ),
             currentAuthority: { requestAuthority }
         )
+        store.completeSearchSession(submittedQuery: submittedQuery, currentQuery: store.search)
     }
 }
 
