@@ -69,13 +69,11 @@ struct MacRootView: View {
                     forContentWidth: proxy.size.width
                 )
 
-                container(for: selectedTab, compact: sizeClass == .compact)
-                    .id(selectedTab)
-                    .accessibilityIdentifier(
-                        selectedTab.selectedRootAccessibilityIdentifier
-                    )
-                    .environment(\.horizontalSizeClass, sizeClass)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                mountedRoot(
+                    for: selectedTab,
+                    sizeClass: sizeClass,
+                    inheritedLeadingSafeArea: proxy.safeAreaInsets.leading
+                )
             }
             // The scene owns the selected root's native title from its outer
             // detail column. Regular-width roots such as Events and Sessions
@@ -168,11 +166,6 @@ struct MacRootView: View {
         }
         .environment(surveyLifecycle)
         .environment(experimentLifecycle)
-        // Keep the outer source list in the window's layout proposal. With
-        // macOS' automatic prominent-detail style its safe-area inset is
-        // inherited by regular roots' nested split views, so their overview
-        // content counts this sidebar width a second time.
-        .navigationSplitViewStyle(.balanced)
     }
 
     // MARK: - Structure
@@ -225,6 +218,32 @@ struct MacRootView: View {
                 persistedSidebarExpansion = expansion.persistedValue
             }
         )
+    }
+
+    @ViewBuilder
+    private func mountedRoot(
+        for tab: AppTab,
+        sizeClass: UserInterfaceSizeClass,
+        inheritedLeadingSafeArea: CGFloat
+    ) -> some View {
+        let root = container(for: tab, compact: sizeClass == .compact)
+            .id(tab)
+            .accessibilityIdentifier(tab.selectedRootAccessibilityIdentifier)
+            .environment(\.horizontalSizeClass, sizeClass)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        if sizeClass == .regular && tab.ownsRegularNestedSplit {
+            // The outer source list already placed this root after itself, but
+            // macOS still exports that column as a leading container safe area.
+            // Expand through it to clear the inherited value before the inner
+            // split consumes it, then put the root back at the same physical
+            // origin with the exact measured inset rather than a tuned offset.
+            root
+                .padding(.leading, inheritedLeadingSafeArea)
+                .ignoresSafeArea(.container, edges: .leading)
+        } else {
+            root
+        }
     }
 
     @ViewBuilder

@@ -128,6 +128,24 @@ struct MacShellStructureTests {
         ])
         #expect(Set(identifiers).count == identifiers.count)
     }
+
+    /// The Mac shell corrects an inherited outer-sidebar safe area only for
+    /// roots that bring a second split at regular width. Dashboard is the
+    /// important control: it owns navigation, but its landing is not nested.
+    @Test("regular nested splits are exactly the six list-detail roots")
+    func regularNestedSplitOwners() {
+        let owners = Set(AppTab.allCases.filter(\.ownsRegularNestedSplit))
+
+        #expect(owners == Set([
+            AppTab.events,
+            .sessions,
+            .insights,
+            .people,
+            .errorTracking,
+            .flags,
+        ]))
+        #expect(!AppTab.dashboards.ownsRegularNestedSplit)
+    }
 }
 
 @MainActor

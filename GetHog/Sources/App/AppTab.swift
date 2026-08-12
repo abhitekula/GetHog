@@ -199,6 +199,21 @@ enum AppTab: String, Hashable, CaseIterable {
         }
     }
 
+    /// Whether the regular-width root brings its own list-and-detail split.
+    ///
+    /// Dashboard owns navigation at regular width too, but its landing is a
+    /// single hub rather than a split. Keeping that distinction here gives the
+    /// Mac shell one semantic boundary for clearing an outer source-list safe
+    /// area before a nested split can consume it again.
+    var ownsRegularNestedSplit: Bool {
+        switch self {
+        case .events, .sessions, .insights, .people, .errorTracking, .flags:
+            true
+        default:
+            false
+        }
+    }
+
     /// Whether the screen brings a navigation container of its own.
     ///
     /// The seven list-and-detail screens are `NavigationSplitView`s, which *are* a
@@ -220,13 +235,9 @@ enum AppTab: String, Hashable, CaseIterable {
     /// `navigationBars` empty; and a screen converted to the compact shape while
     /// this still claimed a container drew no navigation bar at all.
     func ownsNavigationContainer(compact: Bool, accessibilitySize: Bool = false) -> Bool {
-        switch self {
-        case .events, .flags:
-            !compact && !accessibilitySize
-        case .dashboards, .sessions, .people, .errorTracking, .insights:
-            !compact
-        default: false
-        }
+        guard !compact else { return false }
+        if accessibilitySize && (self == .events || self == .flags) { return false }
+        return self == .dashboards || ownsRegularNestedSplit
     }
 }
 

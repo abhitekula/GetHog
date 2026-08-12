@@ -440,15 +440,29 @@ final class MacWindowSizeTests: XCTestCase {
     /// A regular-width nested split must start its overview at the inner list's
     /// trailing edge, not inherit the outer source list's safe-area inset a
     /// second time. The Dashboard control is the non-nested witness: both
-    /// topologies keep the same ordinary, visually balanced page inset.
-    func testFullScreenOverviewSurfacesHaveBalancedDetailInsets() {
+    /// topologies keep the same ordinary physical page inset at an exact
+    /// window size and in native full screen.
+    func testNestedOverviewClearsInheritedOuterSidebarSafeArea() {
         let app = DemoLaunch.launch(
             tab: "dashboards",
             extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
         )
         defer { app.terminate() }
         DemoLaunch.settle(app)
-        enterFullScreen(app)
+        leaveFullScreen(app)
+
+        let ordinarySize = CGSize(width: 1280, height: 820)
+        resize(app, to: ordinarySize)
+        XCTAssertEqual(
+            app.windows.firstMatch.frame.width,
+            ordinarySize.width,
+            "The window missed the required regular-width geometry oracle."
+        )
+        XCTAssertEqual(
+            app.windows.firstMatch.frame.height,
+            ordinarySize.height,
+            "The window missed the required regular-height geometry oracle."
+        )
 
         let destinations: [(title: String, root: String, anchor: String)] = [
             ("Dashboards", "dashboards", "gethog.dashboard-project-summary"),
@@ -460,60 +474,64 @@ final class MacWindowSizeTests: XCTestCase {
             ("Flags", "flags", "gethog.signal-summary.flags"),
         ]
 
-        for destination in destinations {
-            XCTAssertTrue(
-                go(destination.title, in: app),
-                "The Go menu could not reach \(destination.title) in full screen."
-            )
-            let root = app.windows.descendants(matching: .any)[
-                "gethog.root.\(destination.root)"
-            ].firstMatch
-            guard DemoLaunch.wait(for: root) else {
-                XCTFail("The shell never selected the \(destination.title) root.")
-                continue
-            }
+        for layout in ["1280x820", "full-screen"] {
+            if layout == "full-screen" { enterFullScreen(app) }
 
-            let anchor = app.windows.descendants(matching: .any)[destination.anchor]
-                .firstMatch
-            guard DemoLaunch.wait(for: anchor) else {
-                XCTFail(
-                    "\(destination.title) exposed no full-width overview anchor "
-                        + "\(destination.anchor)."
+            for destination in destinations {
+                XCTAssertTrue(
+                    go(destination.title, in: app),
+                    "The Go menu could not reach \(destination.title) at \(layout)."
                 )
-                continue
-            }
+                let root = app.windows.descendants(matching: .any)[
+                    "gethog.root.\(destination.root)"
+                ].firstMatch
+                guard DemoLaunch.wait(for: root) else {
+                    XCTFail("The shell never selected the \(destination.title) root.")
+                    continue
+                }
 
-            let window = app.windows.firstMatch
-            let leadingColumns = window.outlines.allElementsBoundByIndex.filter {
-                $0.frame.width > 0 && $0.frame.maxX <= anchor.frame.minX + 1
-            }
-            guard let list = leadingColumns.max(by: { $0.frame.maxX < $1.frame.maxX }) else {
-                XCTFail(
-                    "\(destination.title) exposed no outline before its overview: "
-                        + "anchor=\(anchor.frame), outlines="
-                        + "\(window.outlines.allElementsBoundByIndex.map { $0.frame })."
+                let anchor = app.windows.descendants(matching: .any)[destination.anchor]
+                    .firstMatch
+                guard DemoLaunch.wait(for: anchor) else {
+                    XCTFail(
+                        "\(destination.title) exposed no full-width overview anchor "
+                            + "\(destination.anchor) at \(layout)."
+                    )
+                    continue
+                }
+
+                let window = app.windows.firstMatch
+                let leadingColumns = window.outlines.allElementsBoundByIndex.filter {
+                    $0.frame.width > 0 && $0.frame.maxX <= anchor.frame.minX + 1
+                }
+                guard let list = leadingColumns.max(by: { $0.frame.maxX < $1.frame.maxX }) else {
+                    XCTFail(
+                        "\(destination.title) exposed no outline before its overview: "
+                            + "anchor=\(anchor.frame), outlines="
+                            + "\(window.outlines.allElementsBoundByIndex.map { $0.frame })."
+                    )
+                    continue
+                }
+
+                let leadingInset = anchor.frame.minX - list.frame.maxX
+                let trailingInset = window.frame.maxX - anchor.frame.maxX
+                print(
+                    "SAFE-AREA-DETAIL layout=\(layout) destination=\(destination.title) "
+                        + "window=\(window.frame) list=\(list.frame) anchor=\(anchor.frame) "
+                        + "leading=\(leadingInset) trailing=\(trailingInset)"
                 )
-                continue
+                XCTAssertLessThan(
+                    leadingInset,
+                    48,
+                    "\(destination.title) counted the outer sidebar safe area twice at \(layout)."
+                )
+                XCTAssertEqual(
+                    leadingInset,
+                    trailingInset,
+                    accuracy: 12,
+                    "\(destination.title) did not keep equal physical overview insets at \(layout)."
+                )
             }
-
-            let leadingInset = anchor.frame.minX - list.frame.maxX
-            let trailingInset = window.frame.maxX - anchor.frame.maxX
-            print(
-                "BALANCED-DETAIL destination=\(destination.title) window=\(window.frame) "
-                    + "list=\(list.frame) anchor=\(anchor.frame) "
-                    + "leading=\(leadingInset) trailing=\(trailingInset)"
-            )
-            XCTAssertLessThan(
-                leadingInset,
-                48,
-                "\(destination.title) counted a leading split-view inset twice."
-            )
-            XCTAssertEqual(
-                leadingInset,
-                trailingInset,
-                accuracy: 12,
-                "\(destination.title) did not balance its overview's outer insets."
-            )
         }
     }
 
