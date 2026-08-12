@@ -128,7 +128,6 @@ struct MacSignedWidgetAcceptanceTests {
 
     @Test("a strict-clear failure prevents snapshot write, reload, and completion")
     func strictClearFailureShortCircuitsPublication() throws {
-        struct SyntheticFailure: Error {}
         let request = try #require(SignedWidgetAcceptancePolicy.request(
             environment: acceptedEnvironment(),
             arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument]
@@ -145,15 +144,25 @@ struct MacSignedWidgetAcceptanceTests {
         )
         try store.write(stale)
         var reloaded = false
+        let clearingFailure = SharedSnapshotStore.ProjectDataClearError(failures: [
+            .init(
+                artifact: "snapshot",
+                domain: NSCocoaErrorDomain,
+                code: CocoaError.fileWriteNoPermission.rawValue
+            )
+        ])
 
-        #expect(throws: SyntheticFailure.self) {
+        do {
             try SignedWidgetAcceptancePublisher.publish(
                 request: request,
                 store: store,
                 capturedAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
-                clearProjectData: { _ in throw SyntheticFailure() },
+                clearProjectData: { _ in throw clearingFailure },
                 reloadTimelines: { reloaded = true }
             )
+            Issue.record("Publication continued after strict clearing failed.")
+        } catch let error as SharedSnapshotStore.ProjectDataClearError {
+            #expect(error == clearingFailure)
         }
 
         #expect(store.loadOrNil() == stale)

@@ -591,7 +591,38 @@ struct SharedSnapshotTests {
         #expect(store.breachingWatchIDs().isEmpty)
     }
 
-    @Test("strict clearing attempts every artifact and reports every failed deletion")
+    @Test("strict clearing attempts every artifact and accepts only file-not-found as absent")
+    func strictProjectDataClearTreatsOnlyFileNotFoundAsAbsent() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let expected = [
+            "snapshot.json",
+            "pending-flag.json",
+            "pending-open.json",
+            "metric-watches.json",
+            "metric-watch-breaches.json",
+        ]
+        var attempted: [String] = []
+
+        try store.clearProjectDataStrict { url in
+            attempted.append(url.lastPathComponent)
+            switch url.lastPathComponent {
+            case "snapshot.json":
+                throw CocoaError(.fileNoSuchFile)
+            case "pending-flag.json":
+                throw NSError(
+                    domain: NSPOSIXErrorDomain,
+                    code: Int(POSIXError.Code.ENOENT.rawValue)
+                )
+            default:
+                break
+            }
+        }
+
+        #expect(attempted == expected)
+    }
+
+    @Test("strict clearing attempts all artifacts and preserves every non-absence failure")
     func strictProjectDataClearReportsAllFailures() throws {
         let (store, dir) = try makeStore()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -603,21 +634,45 @@ struct SharedSnapshotTests {
             "metric-watch-breaches.json",
         ]
         var attempted: [String] = []
-        enum SyntheticDeletionFailure: Error { case refused }
 
         do {
-            try store.clearProjectDataStrict(
-                fileExists: { _ in true },
-                removeItem: { url in
-                    attempted.append(url.lastPathComponent)
-                    if ["pending-open.json", "metric-watches.json"].contains(url.lastPathComponent) {
-                        throw SyntheticDeletionFailure.refused
-                    }
+            try store.clearProjectDataStrict { url in
+                attempted.append(url.lastPathComponent)
+                switch url.lastPathComponent {
+                case "snapshot.json":
+                    throw CocoaError(.fileNoSuchFile)
+                case "pending-open.json":
+                    throw CocoaError(.fileWriteNoPermission)
+                case "metric-watches.json":
+                    throw CocoaError(.fileReadCorruptFile)
+                case "metric-watch-breaches.json":
+                    throw NSError(
+                        domain: NSPOSIXErrorDomain,
+                        code: Int(POSIXError.Code.EACCES.rawValue)
+                    )
+                default:
+                    break
                 }
-            )
+            }
             Issue.record("Strict clear accepted failed deletions.")
         } catch let error as SharedSnapshotStore.ProjectDataClearError {
-            #expect(error.failedArtifacts == ["pending-open", "metric-watches"])
+            #expect(error.failures == [
+                .init(
+                    artifact: "pending-open",
+                    domain: NSCocoaErrorDomain,
+                    code: CocoaError.fileWriteNoPermission.rawValue
+                ),
+                .init(
+                    artifact: "metric-watches",
+                    domain: NSCocoaErrorDomain,
+                    code: CocoaError.fileReadCorruptFile.rawValue
+                ),
+                .init(
+                    artifact: "metric-watch-breaches",
+                    domain: NSPOSIXErrorDomain,
+                    code: Int(POSIXError.Code.EACCES.rawValue)
+                ),
+            ])
         }
 
         #expect(attempted == expected)

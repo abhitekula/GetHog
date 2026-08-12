@@ -410,10 +410,24 @@ public struct PendingOpen: Codable, Sendable, Equatable {
 public struct SharedSnapshotStore: Sendable {
 
     public struct ProjectDataClearError: Error, Equatable, Sendable {
-        public let failedArtifacts: [String]
+        public struct Failure: Equatable, Sendable {
+            public let artifact: String
+            public let domain: String
+            public let code: Int
 
-        public init(failedArtifacts: [String]) {
-            self.failedArtifacts = failedArtifacts
+            public init(artifact: String, domain: String, code: Int) {
+                self.artifact = artifact
+                self.domain = domain
+                self.code = code
+            }
+        }
+
+        public let failures: [Failure]
+
+        public var failedArtifacts: [String] { failures.map(\.artifact) }
+
+        public init(failures: [Failure]) {
+            self.failures = failures
         }
     }
 
@@ -800,18 +814,14 @@ public struct SharedSnapshotStore: Sendable {
     /// artifact survived before publishing replacement state.
     ///
     /// Every artifact is attempted even when an earlier deletion fails. The
-    /// caller receives the complete set of failed artifact *kinds* and can
-    /// refuse the subsequent write instead of accepting a partially cleared
-    /// container.
+    /// caller receives the complete set of failed artifact kinds plus each
+    /// original error domain/code, and can refuse the subsequent write instead
+    /// of accepting a partially cleared container.
     public func clearProjectDataStrict() throws {
-        try clearProjectDataStrict(
-            fileExists: { FileManager.default.fileExists(atPath: $0.path) },
-            removeItem: { try FileManager.default.removeItem(at: $0) }
-        )
+        try clearProjectDataStrict { try FileManager.default.removeItem(at: $0) }
     }
 
     func clearProjectDataStrict(
-        fileExists: (URL) -> Bool,
         removeItem: (URL) throws -> Void
     ) throws {
         let artifacts: [(name: String, url: URL)] = [
@@ -821,18 +831,28 @@ public struct SharedSnapshotStore: Sendable {
             ("metric-watches", metricWatchesURL),
             ("metric-watch-breaches", breachingWatchIDsURL),
         ]
-        var failedArtifacts: [String] = []
+        var failures: [ProjectDataClearError.Failure] = []
         var snapshotRemoved = false
 
         for artifact in artifacts {
-            guard fileExists(artifact.url) else { continue }
             do {
                 try removeItem(artifact.url)
                 if artifact.name == "snapshot" {
                     snapshotRemoved = true
                 }
             } catch {
-                failedArtifacts.append(artifact.name)
+                let nsError = error as NSError
+                let isCocoaFileNotFound = nsError.domain == NSCocoaErrorDomain
+                    && nsError.code == CocoaError.fileNoSuchFile.rawValue
+                let isPOSIXFileNotFound = nsError.domain == NSPOSIXErrorDomain
+                    && nsError.code == Int(POSIXError.Code.ENOENT.rawValue)
+                if !isCocoaFileNotFound && !isPOSIXFileNotFound {
+                    failures.append(.init(
+                        artifact: artifact.name,
+                        domain: nsError.domain,
+                        code: nsError.code
+                    ))
+                }
             }
         }
 
@@ -842,8 +862,8 @@ public struct SharedSnapshotStore: Sendable {
                 object: fileURL
             )
         }
-        guard failedArtifacts.isEmpty else {
-            throw ProjectDataClearError(failedArtifacts: failedArtifacts)
+        guard failures.isEmpty else {
+            throw ProjectDataClearError(failures: failures)
         }
     }
 
