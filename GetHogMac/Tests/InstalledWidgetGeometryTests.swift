@@ -217,10 +217,10 @@ struct InstalledWidgetGeometryTests {
     @Test("non-finite and non-positive frames block geometry resolution")
     func invalidFramesAreBlocked() {
         let invalidFrames: [(Int, CGRect)] = [
-            (1, CGRect(x: .nan, y: 0, width: 100, height: 100)),
-            (2, CGRect(x: 0, y: .infinity, width: 100, height: 100)),
-            (3, CGRect(x: 0, y: 0, width: .nan, height: 100)),
-            (4, CGRect(x: 0, y: 0, width: 100, height: .infinity)),
+            (1, CGRect(x: CGFloat.nan, y: 0, width: 100, height: 100)),
+            (2, CGRect(x: 0, y: CGFloat.infinity, width: 100, height: 100)),
+            (3, CGRect(x: 0, y: 0, width: CGFloat.nan, height: 100)),
+            (4, CGRect(x: 0, y: 0, width: 100, height: CGFloat.infinity)),
             (5, CGRect(x: 0, y: 0, width: 0, height: 100)),
             (6, CGRect(x: 0, y: 0, width: 100, height: 0)),
             (7, CGRect(x: 0, y: 0, width: -1, height: 100)),
