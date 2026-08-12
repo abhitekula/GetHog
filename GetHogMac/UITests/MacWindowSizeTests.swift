@@ -278,99 +278,86 @@ final class MacWindowSizeTests: XCTestCase {
         print("PHASEB-SIZE left-full-screen frame=\(app.windows.firstMatch.frame)")
     }
 
-    /// Opt-in, exactly like `MacSurfaceSweepTests`' own alternate-size pass and
-    /// for a sharper version of the same reason.
-    ///
-    /// This test **mutates state that outlives the process**: a window frame is
-    /// autosaved, full screen is restored across launches, and neither can be
-    /// set back reliably from a UI test — there is no resize API, only a drag,
-    /// and a drag against a full-screen window produced a 3171pt frame here.
-    /// Left in the default suite it hands the next run a window wider than the
-    /// display, whose trailing toolbar search field is then off screen, and
-    /// two unrelated suites fail for a reason neither can see. It is evidence
-    /// for a human reading images, which is what the environment gate says.
-    ///
-    ///     GETHOG_SWEEP_SIZES=all xcodebuild test … \
-    ///       -only-testing:GetHogMacUITests/MacWindowSizeTests
-    ///
-    /// Seed a sane frame first, and expect to seed one after:
-    ///
-    ///     defaults write ~/Library/Containers/app.gethog.GetHog/Data/Library/\
-    ///       Preferences/app.gethog.GetHog.plist \
-    ///       "NSWindow Frame main-AppWindow-1" "0 129 1280 820 0 0 1512 949 "
-    func testNarrowAndWideSweep() throws {
-        try XCTSkipUnless(
-            ProcessInfo.processInfo.environment["GETHOG_SWEEP_SIZES"] == "all",
-            "Set GETHOG_SWEEP_SIZES=all to run the size passes; they leave a resized window."
-        )
+    /// At both ordinary compact Mac sizes the source list stays a source list,
+    /// while each shared list/detail root drills into exactly one detail pane.
+    func testExactCompactWindowSizesDrillIntoOnePane() {
         let app = DemoLaunch.launch()
         DemoLaunch.settle(app)
         leaveFullScreen(app)
-        print("PHASEB-SIZE default window=\(app.windows.firstMatch.frame) \(sidebarState(app))")
-        capture("g0-default-dashboards")
+        defer { resize(app, to: CGSize(width: 800, height: 600)) }
 
-        // **Wide first, narrow last, and the order is load-bearing.** A window
-        // frame outlives the process, so whatever this suite ends at is what
-        // the next run of every other suite starts at — and the wide pass ends
-        // wider than the display, which puts the toolbar's *trailing* search
-        // field off the right edge. Measured: a 1806pt window on a 1512pt
-        // screen took `MacSearchSheetTests` and the replay search-field check
-        // down in a later run, for a reason neither of them could see. Ending
-        // narrow leaves a window that fits.
-        for (label, size) in [("wide", CGSize.zero),
-                              ("narrow", CGSize(width: 800, height: 600))] {
-            if label == "wide" {
-                // **Not a drag.** Dragging this window from ~877pt wide up to
-                // 1400 crashed the app twice out of two: `EXC_BREAKPOINT` from
-                // an uncaught AppKit exception thrown inside
-                // `-[NSWindow(NSDisplayCycle) _postWindowNeedsUpdateConstraints]`
-                // during the live resize (crash reports
-                // `GetHog-2026-08-06-024547` and `-024829`). The green button's
-                // full-screen transition is AppKit resizing the same window to
-                // the largest size there is, without a stream of intermediate
-                // frames, and it is the wide evidence this pass can get.
-                app.typeKey("f", modifierFlags: [.command, .control])
-                DemoLaunch.pause(5)
-            } else {
-                resize(app, to: size)
-            }
+        for size in [CGSize(width: 800, height: 600), CGSize(width: 640, height: 480)] {
+            resize(app, to: size)
             let reached = app.windows.firstMatch.frame
-            print("PHASEB-SIZE \(label) asked=\(size) got=\(reached) \(sidebarState(app))")
+            print("ADAPTIVE-SIZE asked=\(size) got=\(reached) \(sidebarState(app))")
+            XCTAssertEqual(reached.width, size.width, "The window missed the requested width.")
+            XCTAssertEqual(reached.height, size.height, "The window missed the requested height.")
 
-            for (title, anchor) in [("Dashboards", "Example App metric 33"),
-                                    ("Events", "meteor_report_opened"),
-                                    ("Sessions", "Alex Example")] {
-                let routed = go(title, in: app)
-                let rendered = DemoLaunch.waitForContent(containing: anchor, in: app) != nil
-                print("PHASEB-SIZE \(label) \(title) routed=\(routed) rendered=\(rendered)")
-                capture("g-\(label)-\(title.lowercased())")
-                XCTAssertTrue(routed, "The Go menu could not reach \(title) at \(label).")
-                if title == "Dashboards" {
-                    assertUsableDashboardHub(in: app, at: label)
-                }
+            let destinations: [(title: String, row: String, otherRow: String, detail: String)] = [
+                ("Events", "meteor_report_opened", "meteor_filter_applied", "Copy as JSON"),
+                ("People", "Sable Okafor", "visitor:amber-comet-73", "Distinct IDs ("),
+                ("Sessions", "Alex Example", "Casey Example", "gethog.session-detail-primary"),
+            ]
+            for destination in destinations {
+                assertCompactDrillIn(destination, at: size, in: app)
             }
-
-            // …and a replay, which is the widest thing in the app.
-            if let row = DemoLaunch.waitForContent(containing: "Alex Example", in: app) {
-                row.click()
-                DemoLaunch.settle(app)
-                DemoLaunch.pause(2.5)
-                capture("g-\(label)-replay-detail")
-                print("PHASEB-SIZE \(label) replay stage="
-                    + "\(app.windows.buttons["Session replay"].frame)")
-            }
-            XCTAssertEqual(app.state, .runningForeground, "The \(label) pass took the app down.")
-            if label == "wide" { leaveFullScreen(app) }
+            XCTAssertEqual(app.state, .runningForeground, "The \(Int(size.width))pt pass took the app down.")
         }
+    }
 
-        // Settings at the narrow size the loop ends on.
-        let before = app.windows.count
-        app.typeKey(",", modifierFlags: .command)
-        _ = DemoLaunch.wait(until: { app.windows.count > before })
+    private func assertCompactDrillIn(
+        _ destination: (title: String, row: String, otherRow: String, detail: String),
+        at size: CGSize,
+        in app: XCUIApplication
+    ) {
+        XCTAssertTrue(
+            go(destination.title, in: app),
+            "The Go menu could not reach \(destination.title) at \(Int(size.width))pt."
+        )
+        guard let row = DemoLaunch.waitForContent(containing: destination.row, in: app) else {
+            return XCTFail("\(destination.title) never rendered its first row.")
+        }
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: destination.otherRow, in: app),
+            "\(destination.title) did not start on its list pane."
+        )
+
+        row.click()
         DemoLaunch.settle(app)
-        DemoLaunch.pause(1)
-        capture("g-settings-default")
-        XCTAssertGreaterThan(app.windows.count, before, "⌘, opened no Settings window.")
+
+        let detailMatches: XCUIElementQuery
+        if destination.detail.hasPrefix("gethog.") {
+            detailMatches = app.windows.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier == %@", destination.detail))
+        } else {
+            detailMatches = app.windows.descendants(matching: .any)
+                .matching(NSPredicate(
+                    format: "label CONTAINS %@ OR value CONTAINS %@",
+                    destination.detail,
+                    destination.detail
+                ))
+        }
+        let detail = detailMatches.firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: detail), "\(destination.title) opened no detail pane.")
+        XCTAssertEqual(
+            detailMatches.count,
+            1,
+            "\(destination.title) mounted more than one identified detail pane."
+        )
+        XCTAssertNil(
+            DemoLaunch.waitForContent(containing: destination.otherRow, in: app, timeout: 1),
+            "\(destination.title) retained its list beside the compact detail."
+        )
+
+        let back = app.windows.buttons["Back"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: back), "\(destination.title) detail offered no Back control.")
+        XCTAssertTrue(back.isHittable, "\(destination.title)'s Back control was not hittable.")
+        capture("adaptive-\(Int(size.width))-\(destination.title.lowercased())-detail")
+        back.click()
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: destination.otherRow, in: app),
+            "Back did not restore the \(destination.title) list."
+        )
     }
 
     @discardableResult

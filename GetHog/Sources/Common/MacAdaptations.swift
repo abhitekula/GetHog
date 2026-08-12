@@ -10,14 +10,85 @@ import SwiftUI
 
 // MARK: - Size classes
 
-/// Shadow of the iOS-only type: every Mac window is regular-width.
-enum UserInterfaceSizeClass {
+/// Shadow of the iOS-only type, driven by the Mac window's real content width.
+enum UserInterfaceSizeClass: Equatable {
     case compact, regular
 }
 
+private struct MacHorizontalSizeClassKey: EnvironmentKey {
+    static let defaultValue: UserInterfaceSizeClass? = .regular
+}
+
 extension EnvironmentValues {
-    /// Screens keep their iPad regular-width layout on the Mac.
-    var horizontalSizeClass: UserInterfaceSizeClass? { .regular }
+    var horizontalSizeClass: UserInterfaceSizeClass? {
+        get { self[MacHorizontalSizeClassKey.self] }
+        set { self[MacHorizontalSizeClassKey.self] = newValue }
+    }
+}
+
+enum MacWindowLayout {
+    static let compactContentWidth: CGFloat = 720
+
+    static func sizeClass(forContentWidth width: CGFloat) -> UserInterfaceSizeClass {
+        width < compactContentWidth ? .compact : .regular
+    }
+}
+
+/// Stable encoding for the source-list groups a person leaves expanded.
+/// Unknown ids are filtered through `AppTab.sections`, so renamed or removed
+/// sections cannot return as invisible persisted state.
+struct MacSidebarExpansion: Equatable {
+    static let storageKey = "macSidebarExpandedSections"
+    static let defaultExpandedSectionIDs: Set<String> = ["Analyze", "Monitor"]
+
+    private(set) var expandedSectionIDs: Set<String>
+
+    init(persistedValue: String?) {
+        guard let persistedValue else {
+            expandedSectionIDs = Self.defaultExpandedSectionIDs
+            return
+        }
+
+        let validIDs = Set(AppTab.sections.map(\.id))
+        expandedSectionIDs = Set(
+            persistedValue
+                .split(separator: ",")
+                .map(String.init)
+                .filter(validIDs.contains)
+        )
+    }
+
+    static var defaultPersistedValue: String {
+        Self(expandedSectionIDs: defaultExpandedSectionIDs).persistedValue
+    }
+
+    var persistedValue: String {
+        AppTab.sections
+            .map(\.id)
+            .filter(expandedSectionIDs.contains)
+            .joined(separator: ",")
+    }
+
+    func contains(_ sectionID: String) -> Bool {
+        expandedSectionIDs.contains(sectionID)
+    }
+
+    mutating func setExpanded(_ isExpanded: Bool, for sectionID: String) {
+        guard AppTab.sections.contains(where: { $0.id == sectionID }) else { return }
+        if isExpanded {
+            expandedSectionIDs.insert(sectionID)
+        } else {
+            expandedSectionIDs.remove(sectionID)
+        }
+    }
+
+    mutating func reset() {
+        expandedSectionIDs = Self.defaultExpandedSectionIDs
+    }
+
+    private init(expandedSectionIDs: Set<String>) {
+        self.expandedSectionIDs = expandedSectionIDs
+    }
 }
 
 // MARK: - Navigation bar title display mode

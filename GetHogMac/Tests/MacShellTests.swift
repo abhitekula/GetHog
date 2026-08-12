@@ -9,6 +9,39 @@ import Testing
 @Suite("Mac shell structure")
 struct MacShellStructureTests {
 
+    @Test("content width, not device, selects compact navigation")
+    func contentWidthClassifiesNavigation() {
+        #expect(MacWindowLayout.sizeClass(forContentWidth: 719) == .compact)
+        #expect(MacWindowLayout.sizeClass(forContentWidth: 720) == .regular)
+    }
+
+    @Test("Analyze and Monitor start expanded")
+    func defaultSidebarExpansion() {
+        let expansion = MacSidebarExpansion(persistedValue: nil)
+
+        #expect(expansion.expandedSectionIDs == ["Analyze", "Monitor"])
+    }
+
+    @Test("persisted expansion ignores sections the app no longer has")
+    func staleSidebarExpansionIsDiscarded() {
+        let expansion = MacSidebarExpansion(
+            persistedValue: "Workspace,Removed section,Analyze"
+        )
+
+        #expect(expansion.expandedSectionIDs == ["Analyze", "Workspace"])
+        #expect(expansion.persistedValue == "Analyze,Workspace")
+    }
+
+    @Test("reset restores the default expanded sections")
+    func resetSidebarExpansion() {
+        var expansion = MacSidebarExpansion(persistedValue: "Data,Workspace")
+
+        expansion.reset()
+
+        #expect(expansion.expandedSectionIDs == ["Analyze", "Monitor"])
+        #expect(expansion.persistedValue == "Analyze,Monitor")
+    }
+
     /// On the Mac a section row is a screen's only route — there is no phone
     /// index behind a search tab — so a tab missing from every section is a
     /// screen nothing can open.

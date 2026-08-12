@@ -1,101 +1,68 @@
 import XCTest
 
-/// `TabViewCustomization` persistence: the sidebar the user rearranged is the
-/// sidebar they get back.
-///
-/// `MacRootView` stores the customisation in `@AppStorage("sidebarCustomization")`
-/// and stamps every section and destination with a `customizationID`. Whether
-/// that round-trips is not something a unit test can answer — the drag, the
-/// encode and the restore all happen inside SwiftUI — so it is measured here,
-/// by reading the sidebar's order out of the accessibility tree before and
-/// after a relaunch.
+/// The source list persists section expansion instead of a drag-reordered tab
+/// arrangement. This exercises the control, storage, and restoration together.
 final class MacSidebarCustomizationTests: XCTestCase {
 
     override func setUpWithError() throws {
-        continueAfterFailure = true
+        continueAfterFailure = false
     }
 
-    private func capture(_ name: String) {
-        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    private func sectionToggle(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        for type: XCUIElement.ElementType in [.disclosureTriangle, .button, .staticText] {
+            let match = app.windows.descendants(matching: type)
+                .matching(DemoLaunch.macTextPredicate(title))
+                .firstMatch
+            if match.exists { return match }
+        }
+        return app.windows.descendants(matching: .any)
+            .matching(DemoLaunch.macTextPredicate(title))
+            .firstMatch
     }
 
-    /// The sidebar's destinations, top to bottom.
-    ///
-    /// Read off the first outline only: on a split-view screen the *content*
-    /// list is an outline too, and folding both together would report an order
-    /// that is not the sidebar's.
-    private func order(in app: XCUIApplication) -> [String] {
-        let sidebar = app.windows.outlines.firstMatch
-        return sidebar.descendants(matching: .staticText).allElementsBoundByIndex
-            .compactMap { element in
-                let value = "\(element.value ?? "")"
-                return value.isEmpty ? nil : value
-            }
-    }
-
-    private func row(_ title: String, in app: XCUIApplication) -> XCUIElement {
+    private func sidebarRow(_ title: String, in app: XCUIApplication) -> XCUIElement {
         app.windows.outlines.firstMatch.descendants(matching: .any)
             .matching(DemoLaunch.macTextPredicate(title))
             .firstMatch
     }
 
-    func testASidebarRearrangementSurvivesARelaunch() {
+    func testSectionCollapsePersistsAcrossRelaunch() {
         let app = DemoLaunch.launch()
         DemoLaunch.settle(app)
-        let before = order(in: app)
-        print("PHASEB-SIDEBAR-ORDER before=\(before)")
-        capture("h1-sidebar-before")
-        XCTAssertTrue(before.contains("Dashboards"), "The sidebar did not render its destinations.")
 
-        // The first two Analyze destinations, swapped — whichever they are.
-        //
-        // Named rows would make this run-once: the customisation *persists*, so
-        // "drag Web above Dashboards" is a no-op the second time and the test
-        // fails reporting a drag that changed nothing. Reading the pair out of
-        // the live order instead makes every run a real move, and two runs
-        // leave the sidebar where they found it.
-        let destinations = Array(before.dropFirst())
-        guard destinations.count >= 2 else {
-            XCTFail("The sidebar offers too few destinations to rearrange.")
-            return
+        let toggle = sectionToggle("Data", in: app)
+        guard DemoLaunch.wait(for: toggle) else {
+            return XCTFail("The sidebar exposed no Data section disclosure control.")
         }
-        let source = row(destinations[1], in: app)
-        let target = row(destinations[0], in: app)
-        print("PHASEB-SIDEBAR-DRAG \(destinations[1]) above \(destinations[0])")
-        guard source.exists, target.exists else {
-            XCTFail("The sidebar is missing the rows this drag needs.")
-            return
-        }
-        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .press(
-                forDuration: 1.0,
-                thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.3))
-            )
-        DemoLaunch.pause(2)
-        let after = order(in: app)
-        print("PHASEB-SIDEBAR-ORDER after=\(after)")
-        capture("h2-sidebar-after-drag")
-
-        guard after != before else {
-            // Recorded, not swallowed: a drag that does not take is a fact
-            // about this harness or this control, and either way the
-            // persistence half below has nothing to measure.
-            XCTFail("The sidebar drag changed nothing; order stayed \(before).")
-            return
-        }
+        let wasExpanded = sidebarRow("Warehouse", in: app).exists
+        toggle.click()
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { self.sidebarRow("Warehouse", in: app).exists != wasExpanded }),
+            "Toggling Data did not change its destination visibility."
+        )
+        let changedExpansion = !wasExpanded
 
         app.terminate()
         let relaunched = DemoLaunch.launch()
         DemoLaunch.settle(relaunched)
-        let restored = order(in: relaunched)
-        print("PHASEB-SIDEBAR-ORDER restored=\(restored)")
-        capture("h3-sidebar-after-relaunch")
         XCTAssertEqual(
-            restored, after,
-            "The rearranged sidebar did not survive a relaunch."
+            sidebarRow("Warehouse", in: relaunched).exists,
+            changedExpansion,
+            "The Data section did not restore its expansion state after relaunch."
+        )
+
+        // Return the durable preference to its starting state so this contract
+        // remains independent of later sidebar tests.
+        let restoredToggle = sectionToggle("Data", in: relaunched)
+        guard DemoLaunch.wait(for: restoredToggle) else {
+            return XCTFail("The relaunched sidebar exposed no Data disclosure control.")
+        }
+        restoredToggle.click()
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                self.sidebarRow("Warehouse", in: relaunched).exists == wasExpanded
+            }),
+            "The test could not restore Data's original expansion state."
         )
     }
 }

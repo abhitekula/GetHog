@@ -80,6 +80,44 @@ final class MacCommandContractTests: XCTestCase {
         capture("c3-go-menu-flags")
     }
 
+    /// A destination that leaves the hierarchy cannot keep its searchable
+    /// modifier or text alive in the shared window toolbar.
+    func testSwitchingDestinationsRemovesThePreviousSearchField() {
+        let app = DemoLaunch.launch(tab: "events")
+        guard DemoLaunch.waitForContent(containing: "meteor_report_opened", in: app) != nil else {
+            return XCTFail("Events never rendered before the search ownership check.")
+        }
+
+        let field = app.searchFields.firstMatch.exists
+            ? app.searchFields.firstMatch
+            : app.textFields.firstMatch
+        guard DemoLaunch.wait(for: field) else {
+            return XCTFail("Events exposed no search field.")
+        }
+        let probe = "only-events-owns-this"
+        field.click()
+        field.typeText(probe)
+        XCTAssertTrue("\(field.value ?? "")".contains(probe), "Events did not own the typed search.")
+
+        app.typeKey("3", modifierFlags: .command)
+        DemoLaunch.settle(app)
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "Alex Example", in: app),
+            "⌘3 did not switch to Sessions."
+        )
+
+        let leakedSearch = app.searchFields.matching(
+            NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", probe, probe)
+        ).firstMatch
+        let leakedText = app.textFields.matching(
+            NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", probe, probe)
+        ).firstMatch
+        XCTAssertFalse(
+            leakedSearch.exists || leakedText.exists,
+            "Events' search text remained attached after Sessions became selected."
+        )
+    }
+
     // MARK: - Refresh
 
     /// ⌘R is enabled on a screen that can refresh, and refreshing leaves the
@@ -221,6 +259,11 @@ final class MacCommandContractTests: XCTestCase {
         guard DemoLaunch.wait(for: initialToggle, timeout: 5) else {
             return XCTFail("View has no sidebar toggle.")
         }
+        XCTAssertEqual(
+            initialToggle.title,
+            wasVisible ? "Hide Sidebar" : "Show Sidebar",
+            "The sidebar command title did not describe its current action."
+        )
         print("PHASEB-SIDEBAR-INITIAL-ITEM \(initialToggle.title)")
         if !wasVisible {
             initialToggle.click()
@@ -236,6 +279,7 @@ final class MacCommandContractTests: XCTestCase {
         guard DemoLaunch.wait(for: hideSidebar, timeout: 5) else {
             return XCTFail("View lost its sidebar toggle after state normalization.")
         }
+        XCTAssertEqual(hideSidebar.title, "Hide Sidebar")
         hideSidebar.click()
         let wentAway = DemoLaunch.wait(timeout: 10) {
             !sidebarIsVisible()
@@ -252,6 +296,7 @@ final class MacCommandContractTests: XCTestCase {
             app.typeKey(.escape, modifierFlags: [])
             return XCTFail("View lost its sidebar toggle after hiding it.")
         }
+        XCTAssertEqual(showSidebar.title, "Show Sidebar")
         showSidebar.click()
         capture("c7-sidebar-restored")
         XCTAssertTrue(

@@ -2,12 +2,11 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
-/// The Mac shell. The same one-`TabView` architecture as `RootView` — and the
-/// same `AppTab.sections` source of truth, third consumer — rendered as a real
-/// sidebar by `.sidebarAdaptable`, with every compact-width mechanism deleted
-/// rather than ported: no sheet hoisting (details push inline), no "More"
-/// index, no tab-slot preference. Settings has no sidebar row; the `Settings`
-/// scene owns ⌘,.
+/// A native Mac source-list shell over the shared product screens. Only the
+/// selected destination is mounted, so hidden screens cannot retain toolbar,
+/// title, or search ownership. The detail column injects a size class derived
+/// from its real width, letting the shared roots choose their compact drill-in
+/// or regular split topology without a device-width fiction.
 struct MacRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
@@ -23,13 +22,8 @@ struct MacRootView: View {
     /// disagreement this prevents.
     @State private var surveyLifecycle = SurveyLifecycleController()
     @State private var experimentLifecycle = ExperimentLifecycleController()
-    /// Same store key, and the same `customizationID`s below it, as the iPad
-    /// sidebar: a stored arrangement written by either shell *means* the same
-    /// thing to the other. It does not travel there — `@AppStorage` reads the
-    /// process's own `UserDefaults`, and macOS and iOS are separate domains, so
-    /// each platform arranges its own sidebar. What the shared vocabulary buys
-    /// is that one key cannot come to mean two arrangements.
-    @AppStorage("sidebarCustomization") private var sidebarCustomization = TabViewCustomization()
+    @AppStorage(MacSidebarExpansion.storageKey)
+    private var persistedSidebarExpansion = MacSidebarExpansion.defaultPersistedValue
     /// Set only when a link could not do what it said. Success is silent.
     @State private var linkNotice: LinkNotice?
     @State private var hasAppliedDebugTab = false
@@ -66,12 +60,21 @@ struct MacRootView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: $selectedTab) {
-            searchTab
-            sidebarSections
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
+        } detail: {
+            GeometryReader { proxy in
+                let sizeClass = MacWindowLayout.sizeClass(
+                    forContentWidth: proxy.size.width
+                )
+
+                container(for: selectedTab, compact: sizeClass == .compact)
+                    .id(selectedTab)
+                    .environment(\.horizontalSizeClass, sizeClass)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .tabViewStyle(.sidebarAdaptable)
-        .tabViewCustomization($sidebarCustomization)
         // Nothing typed into this app is a sentence by default — see RootView's
         // note for the measurement. The Mac half of that pair is autocorrection;
         // there is no software keyboard to stop capitalising.
@@ -158,55 +161,73 @@ struct MacRootView: View {
 
     // MARK: - Structure
 
-    private var searchTab: some TabContent<AppTab> {
-        Tab(AppTab.search.title, systemImage: AppTab.search.systemImage, value: AppTab.search) {
+    private var sidebar: some View {
+        List(selection: selectedTabBinding) {
+            Label(AppTab.search.title, systemImage: AppTab.search.systemImage)
+                .tag(AppTab.search)
+
+            sidebarSections
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("GetHog")
+    }
+
+    private var selectedTabBinding: Binding<AppTab?> {
+        Binding(
+            get: { selectedTab },
+            set: { tab in
+                guard let tab else { return }
+                open(tab)
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var sidebarSections: some View {
+        ForEach(Self.sections) { section in
+            Section(isExpanded: expansionBinding(for: section.id)) {
+                ForEach(section.tabs, id: \.self) { tab in
+                    Label(tab.title, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+            } header: {
+                Text(section.title)
+            }
+        }
+    }
+
+    private func expansionBinding(for sectionID: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                MacSidebarExpansion(persistedValue: persistedSidebarExpansion)
+                    .contains(sectionID)
+            },
+            set: { isExpanded in
+                var expansion = MacSidebarExpansion(
+                    persistedValue: persistedSidebarExpansion
+                )
+                expansion.setExpanded(isExpanded, for: sectionID)
+                persistedSidebarExpansion = expansion.persistedValue
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func container(for tab: AppTab, compact: Bool) -> some View {
+        if tab == .search {
             NavigationStack(path: $searchPath) {
                 ProjectSearchView()
-                    .navigationDestination(for: AppTab.self) { tab in
-                        TabRootView(tab: tab)
-                            .onAppear { selectedTab = tab }
+                    .navigationDestination(for: AppTab.self) { destination in
+                        TabRootView(tab: destination)
+                            .onAppear { selectedTab = destination }
                     }
-                    // Where a link lands. On this stack rather than one of its
-                    // own because a link and a search result open the same
-                    // objects — see RootView's twin.
-                    .navigationDestination(for: PostHogLink.self) { LinkDestinationView(link: $0) }
+                    // A link and a search result open the same objects, so both
+                    // routes deliberately share this one stack.
+                    .navigationDestination(for: PostHogLink.self) {
+                        LinkDestinationView(link: $0)
+                    }
             }
-        }
-    }
-
-    /// Written as `@TabContentBuilder<AppTab>` members rather than inline, for
-    /// the reason `RootView` writes its own that way: the builder cannot infer
-    /// one tab value type across a loose `Tab` and a `ForEach` of sections.
-    @TabContentBuilder<AppTab>
-    private var sidebarSections: some TabContent<AppTab> {
-        // Every section, unfiltered — the Mac has no loose product tabs to
-        // exclude, so `AppTab.sections` is used directly rather than through
-        // `groupedScreens(excluding:)`.
-        ForEach(Self.sections) { section in
-            TabSection(section.title) {
-                tabItems(for: section.tabs)
-            }
-            // The same ids as the iPad sidebar, so one stored arrangement means
-            // the same thing on both.
-            .customizationID("section.\(section.title)")
-        }
-    }
-
-    @TabContentBuilder<AppTab>
-    private func tabItems(for tabs: [AppTab]) -> some TabContent<AppTab> {
-        ForEach(tabs, id: \.self) { tab in
-            Tab(tab.title, systemImage: tab.systemImage, value: tab) {
-                container(for: tab)
-            }
-            .customizationID(tab.rawValue)
-        }
-    }
-
-    /// Every Mac window is regular width (`MacAdaptations` pins the size
-    /// class), so the seven split-view screens always own their container.
-    @ViewBuilder
-    private func container(for tab: AppTab) -> some View {
-        if tab.ownsNavigationContainer(compact: false) {
+        } else if tab.ownsNavigationContainer(compact: compact) {
             TabRootView(tab: tab)
         } else {
             NavigationStack {
