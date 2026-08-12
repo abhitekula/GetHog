@@ -37,6 +37,20 @@ private actor DemoReplaySourceState {
     }
 }
 
+/// Counts only the Renders collection requests made by one transport.
+///
+/// The stale scenario needs an honest last-good response before its refresh
+/// fails. Keeping that transition in an actor preserves the transport's
+/// `Sendable` contract when SwiftUI starts overlapping refresh work.
+private actor DemoRendersScenarioState {
+    private var requestCount = 0
+
+    func registerRequest() -> Int {
+        requestCount += 1
+        return requestCount
+    }
+}
+
 struct DemoTransport: HTTPTransport {
 
     static let launchArgument = "-GetHogDemo"
@@ -51,6 +65,12 @@ struct DemoTransport: HTTPTransport {
     static let dashboardDetailFailureEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
     static let populatedMaxConversationsEnvironment = "GETHOG_DEMO_MAX_CONVERSATIONS"
+    static let rendersStateEnvironment = "GETHOG_DEMO_RENDERS_STATE"
+    static let rendersLoadingDelayEnvironment = "GETHOG_DEMO_RENDERS_LOADING_DELAY_MS"
+    static let surfaceNoMatchEnvironment = "GETHOG_DEMO_SURFACE_NO_MATCH"
+    static let surfaceNoMatchProbe = "zzzz-no-match-fixture"
+    static let surfaceLongRenderFilename =
+        "Example orbital telemetry render with an intentionally long fictional filename for narrow-window verification 0312.mp4"
     #if DEBUG
     static let dashboardListDelayEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS"
     static let dashboardListFailureEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_FAILURE"
@@ -75,6 +95,18 @@ struct DemoTransport: HTTPTransport {
         }
     }
 
+    /// Focused edge-state coverage for one screen whose existing store renders
+    /// all six Task 7 state classes independently. This is deliberately not a
+    /// generic endpoint override: a broad override would make a plausible but
+    /// wrong response shape available to unrelated products.
+    enum RendersState: String, CaseIterable {
+        case loading
+        case failed
+        case empty
+        case longText = "long-text"
+        case stale
+    }
+
     private let emptyCollection: EmptyCollection?
     private let summaryGeneration: DemoSummaryGenerationState
     private let replaySources: DemoReplaySourceState
@@ -83,6 +115,10 @@ struct DemoTransport: HTTPTransport {
     private let dashboardDetailFailure: Bool
     private let dashboardRecomputeFailure: Bool
     private let populatedMaxConversations: Bool
+    private let rendersState: RendersState?
+    private let rendersLoadingDelayMilliseconds: Int
+    private let rendersRequests: DemoRendersScenarioState
+    private let surfaceNoMatchProbeEnabled: Bool
     private let dashboardListDelayMilliseconds: Int
     private let dashboardListFailure: Bool
 
@@ -94,7 +130,10 @@ struct DemoTransport: HTTPTransport {
         dashboardRecomputeFailure: Bool? = nil,
         replaySourceFailures: Int? = nil,
         deniedResource: String? = nil,
-        populatedMaxConversations: Bool? = nil
+        populatedMaxConversations: Bool? = nil,
+        rendersState: RendersState? = nil,
+        rendersLoadingDelayMilliseconds: Int? = nil,
+        surfaceNoMatchProbeEnabled: Bool? = nil
     ) {
         self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
             Self.emptyCollectionEnvironment
@@ -130,6 +169,19 @@ struct DemoTransport: HTTPTransport {
             ?? (ProcessInfo.processInfo.environment[
                 Self.populatedMaxConversationsEnvironment
             ] == "1")
+        self.rendersState = rendersState
+            ?? ProcessInfo.processInfo.environment[Self.rendersStateEnvironment]
+                .flatMap(RendersState.init(rawValue:))
+        self.rendersLoadingDelayMilliseconds = max(
+            0,
+            rendersLoadingDelayMilliseconds
+                ?? ProcessInfo.processInfo.environment[Self.rendersLoadingDelayEnvironment]
+                    .flatMap(Int.init)
+                ?? 1_800
+        )
+        rendersRequests = DemoRendersScenarioState()
+        self.surfaceNoMatchProbeEnabled = surfaceNoMatchProbeEnabled
+            ?? (ProcessInfo.processInfo.environment[Self.surfaceNoMatchEnvironment] == "1")
         #if DEBUG
         dashboardListDelayMilliseconds = max(
             0,
@@ -173,6 +225,52 @@ struct DemoTransport: HTTPTransport {
                 ),
                 status: 400
             )
+        }
+
+        // One fixed fictional term makes server-backed no-match screens as
+        // deterministic as client-filtered ones. Preserve the two response
+        // envelopes callers decode rather than returning one universal empty.
+        let decodedQuery = query.removingPercentEncoding ?? query
+        if surfaceNoMatchProbeEnabled,
+           decodedQuery.contains(Self.surfaceNoMatchProbe)
+                || body.contains(Self.surfaceNoMatchProbe) {
+            return Self.jsonReply(
+                url: request.url!,
+                data: path.hasSuffix("/query/") ? Self.emptyQueryResult : Self.emptyPage,
+                status: 200
+            )
+        }
+
+        let isRendersCollection = (request.httpMethod ?? "GET") == "GET"
+            && path.hasSuffix("/exports/")
+        if isRendersCollection, let rendersState {
+            let requestNumber = await rendersRequests.registerRequest()
+            switch rendersState {
+            case .loading:
+                try? await Task.sleep(for: .milliseconds(rendersLoadingDelayMilliseconds))
+            case .failed:
+                return Self.jsonReply(
+                    url: request.url!,
+                    data: Data(#"{"detail":"Synthetic renders load failed"}"#.utf8),
+                    status: 503
+                )
+            case .empty:
+                try? await Task.sleep(for: .milliseconds(120))
+                return Self.jsonReply(url: request.url!, data: Self.emptyPage, status: 200)
+            case .longText:
+                try? await Task.sleep(for: .milliseconds(120))
+                return Self.jsonReply(
+                    url: request.url!, data: Self.exportsWithLongFilename(), status: 200
+                )
+            case .stale where requestNumber > 1:
+                return Self.jsonReply(
+                    url: request.url!,
+                    data: Data(#"{"detail":"Synthetic renders refresh failed"}"#.utf8),
+                    status: 503
+                )
+            case .stale:
+                break
+            }
         }
 
         if path.contains("/snapshots"),
@@ -280,6 +378,20 @@ struct DemoTransport: HTTPTransport {
                 headerFields: ["Content-Type": "application/json"]
             )!
         )
+    }
+
+    /// Changes exactly one authored value while preserving the real collection
+    /// envelope and every other export field. The result remains fixed fiction.
+    private static func exportsWithLongFilename() -> Data {
+        let ordinary = load("exports").data
+        guard var envelope = try? JSONSerialization.jsonObject(with: ordinary) as? [String: Any],
+              var results = envelope["results"] as? [[String: Any]],
+              !results.isEmpty
+        else { return ordinary }
+
+        results[0]["filename"] = surfaceLongRenderFilename
+        envelope["results"] = results
+        return (try? JSONSerialization.data(withJSONObject: envelope)) ?? ordinary
     }
 
     /// One demo answer: the bytes, and the status they arrive with.

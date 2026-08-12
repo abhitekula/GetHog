@@ -69,6 +69,152 @@ struct DemoTransportTests {
     private static let healthySavedQueryID = "018f9000-0000-7000-8000-000000000243"
     private static let plainSavedQueryID = "018f9000-0000-7000-8000-000000000014"
 
+    /// Production mutation caught: removing the surface-scenario branch, or
+    /// matching it against every endpoint, would either leave Renders unable to
+    /// enter its deterministic empty state or would empty an unrelated list.
+    @Test("the surface empty scenario affects only its named collection")
+    func surfaceEmptyScenarioIsResourceScoped() async throws {
+        let transport = DemoTransport(
+            rendersState: .empty
+        )
+
+        let renders = try await reply(
+            for: PostHogAPI.exports(projectID: Self.projectID),
+            transport: transport
+        )
+        let flags = try await reply(
+            for: PostHogAPI.featureFlags(projectID: Self.projectID),
+            transport: transport
+        )
+        let flagPage = try JSONDecoder().decode(Page<FeatureFlag>.self, from: flags.0)
+
+        #expect(renders.1.statusCode == 200)
+        #expect(try JSONDecoder().decode(Page<RecordingExport>.self, from: renders.0).results.isEmpty)
+        #expect(flags.1.statusCode == 200)
+        #expect(!flagPage.results.isEmpty)
+    }
+
+    /// Production mutation caught: returning an empty 200 from the failed
+    /// branch would make the UI report a successful empty project instead of
+    /// offering a retry for the outage.
+    @Test("the surface failed scenario retains an HTTP failure")
+    func surfaceFailedScenarioRetainsFailureStatus() async throws {
+        let transport = DemoTransport(rendersState: .failed)
+
+        let response = try await reply(
+            for: PostHogAPI.exports(projectID: Self.projectID),
+            transport: transport
+        )
+
+        #expect(response.1.statusCode == 503)
+        let payload = try #require(
+            try JSONSerialization.jsonObject(with: response.0) as? [String: Any]
+        )
+        #expect(payload["detail"] as? String == "Synthetic renders load failed")
+    }
+
+    /// Production mutation caught: treating stale as an unconditional failure
+    /// would prevent the screen from retaining a successfully loaded list;
+    /// treating it as success forever would make the stale banner unreachable.
+    @Test("the surface stale scenario succeeds once and then fails")
+    func surfaceStaleScenarioChangesAfterTheFirstMatchingRequest() async throws {
+        let transport = DemoTransport(
+            rendersState: .stale
+        )
+        let endpoint = PostHogAPI.exports(projectID: Self.projectID)
+
+        let first = try await reply(for: endpoint, transport: transport)
+        let second = try await reply(for: endpoint, transport: transport)
+        let firstPage = try JSONDecoder().decode(Page<RecordingExport>.self, from: first.0)
+
+        #expect(first.1.statusCode == 200)
+        #expect(!firstPage.results.isEmpty)
+        #expect(second.1.statusCode == 503)
+    }
+
+    /// Production mutation caught: returning the ordinary fixture from the long
+    /// text branch would let the narrow-window contract pass without ever laying
+    /// out an unusually long authored value.
+    @Test("the surface long-text scenario changes one fictional render filename")
+    func surfaceLongTextScenarioUsesFixedFiction() async throws {
+        let transport = DemoTransport(
+            rendersState: .longText
+        )
+        let (data, response) = try await reply(
+            for: PostHogAPI.exports(projectID: Self.projectID),
+            transport: transport
+        )
+        let page = try JSONDecoder().decode(Page<RecordingExport>.self, from: data)
+
+        #expect(response.statusCode == 200)
+        #expect(page.results.first?.filename == DemoTransport.surfaceLongRenderFilename)
+        #expect(page.results.dropFirst().contains { $0.filename != DemoTransport.surfaceLongRenderFilename })
+    }
+
+    /// Production mutation caught: ignoring the no-match probe would return the
+    /// ordinary rows for server-filtered screens, so their rendered no-match
+    /// states could never be exercised deterministically.
+    @Test("the fixed no-match probe preserves page and query response shapes")
+    func surfaceNoMatchProbeReturnsShapeCorrectEmpties() async throws {
+        let transport = DemoTransport(surfaceNoMatchProbeEnabled: true)
+        let renders = try await reply(
+            for: Endpoint(
+                path: "/api/projects/\(Self.projectID)/exports/",
+                query: [URLQueryItem(name: "search", value: DemoTransport.surfaceNoMatchProbe)],
+                category: .query
+            ),
+            transport: transport
+        )
+        let events = try await reply(
+            for: Endpoint(
+                path: "/api/projects/\(Self.projectID)/query/",
+                method: "POST",
+                body: Data(
+                    #"{"query":{"kind":"HogQLQuery","search":"\#(DemoTransport.surfaceNoMatchProbe)"}}"#.utf8
+                ),
+                category: .query
+            ),
+            transport: transport
+        )
+
+        #expect(try JSONDecoder().decode(Page<RecordingExport>.self, from: renders.0).results.isEmpty)
+        let query = try QueryResponse.decode(from: events.0)
+        #expect(query.rows.isEmpty)
+        #expect(query.columns.isEmpty)
+    }
+
+    /// Production mutation caught: dropping the loading delay would make the
+    /// rendered loading witness race the already-loaded list on every run.
+    @Test("the surface loading scenario delays only its matching response")
+    func surfaceLoadingScenarioDelaysTheNamedCollection() async throws {
+        let transport = DemoTransport(
+            rendersState: .loading,
+            rendersLoadingDelayMilliseconds: 40
+        )
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        let response = try await reply(
+            for: PostHogAPI.exports(projectID: Self.projectID),
+            transport: transport
+        )
+
+        #expect(start.duration(to: clock.now) >= .milliseconds(30))
+        #expect(response.1.statusCode == 200)
+    }
+
+    private func reply(
+        for endpoint: Endpoint,
+        transport: DemoTransport
+    ) async throws -> (Data, HTTPURLResponse) {
+        var components = URLComponents(string: "https://app.example.com" + endpoint.path)!
+        if !endpoint.query.isEmpty { components.queryItems = endpoint.query }
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = endpoint.method
+        request.httpBody = endpoint.body
+        return try await transport.send(request)
+    }
+
     private func expectTerminalPage(
         _ data: Data,
         named name: String,

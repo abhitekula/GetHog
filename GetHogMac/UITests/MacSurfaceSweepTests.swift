@@ -1,30 +1,17 @@
 import XCTest
 
-/// Walks every screen the Mac sidebar reaches and photographs it.
+/// The deterministic 34-root Mac audit at every supported adaptive mode.
 ///
-/// The point of this suite is not its assertions — they are deliberately
-/// shallow, an anchor its demo fixture alone can produce plus an app still in
-/// the foreground. The point is the **attachments**: one full-screen shot per
-/// screen, kept always, so a sweep is read rather than inferred. A screen can
-/// pass "the row exists" while its detail floats at sheet size in a 1600pt
-/// window, and no assertion anybody would write in advance catches that. A
-/// photograph does.
+/// Destination order is read from the running Go menu, whose production layout
+/// is derived from `AppTab.sections`, after the loose Search row is verified.
+/// The table below is metadata — anchors and ownership — rather than a second
+/// navigation list. A missing/extra/reordered menu item fails before the sweep,
+/// so adding an `AppTab` cannot silently leave a green 34-item copied array.
 ///
-/// Split by sidebar section so one broken screen costs one test's screens
-/// rather than all thirty-four, and so a re-sweep after a fix reruns the
-/// section that changed.
-///
-/// Sizes: the default pass asserts and shoots at the launch size the shell
-/// declares (1280×820). The narrow and wide passes are screenshot-only and off
-/// unless `TEST_RUNNER_GETHOG_SWEEP_SIZES=all` is set, because they triple the
-/// runtime and exist for a human reading images, not for CI.
-///
-/// **Screenshot indices follow `AppTab.sections`, which is the sidebar's real
-/// order: Analyze, Monitor, Data, Experiment, Workspace.** Read the exported
-/// PNGs against the numbering here, not against any external table — Data
-/// (Warehouse…Taxonomy) precedes Experiment (Flags…Early access), and a table
-/// that lists them the other way round will mis-attribute a finding to the
-/// wrong screen.
+/// Each cell proves terminal content, the selected root's sole project toolbar,
+/// and its exact search ownership. A sidebar label is never accepted as a
+/// loaded witness: sidebar labels remain mounted for unselected destinations.
+@MainActor
 final class MacSurfaceSweepTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -37,139 +24,245 @@ final class MacSurfaceSweepTests: XCTestCase {
 
     // MARK: - The surface
 
-    /// One sidebar destination and the demo string that proves it rendered.
-    private struct Screen {
-        /// The sidebar row's label — `AppTab.title`, verbatim.
+    /// Assertions layered onto the code-derived destination order.
+    private struct DestinationContract {
         let title: String
-        /// A string only this screen's fixture can produce, traced from the
-        /// fixture through the model to the rendered row before being pinned
-        /// here — never copied from a plan, which is how two anchors that do
-        /// not render got proposed for this file.
-        ///
-        /// `nil` means one of two things, and each `nil` below says which in a
-        /// comment: the demo dataset has no fixture for the screen, or its
-        /// demo-derived content is not on the root. A `nil` anchor is
-        /// screenshot-only, and the screenshot is what says whether the screen
-        /// is populated, empty and honest, or stuck.
-        let anchor: String?
-        /// Screenshot filename stem, so shots sort in sweep order.
+        let anchor: String
+        let searchPrompt: String?
+        let alternateSearchPrompt: String?
         let index: Int
 
-        init(_ index: Int, _ title: String, anchor: String? = nil) {
+        init(
+            _ index: Int,
+            _ title: String,
+            _ anchor: String,
+            search: String? = nil,
+            alternateSearch: String? = nil
+        ) {
             self.index = index
             self.title = title
             self.anchor = anchor
+            self.searchPrompt = search
+            alternateSearchPrompt = alternateSearch
+        }
+
+        var searchPrompts: [String] {
+            [searchPrompt, alternateSearchPrompt].compactMap { $0 }
         }
     }
 
-    /// Search sits loose above the sections; the nine Analyze screens follow.
-    private static let analyze: [Screen] = [
-        Screen(1, "Search"),
-        Screen(2, "Dashboards", anchor: "Example App metric 33"),
-        // The events feed is backed by `query_hogql.json`, the generic HogQL
-        // fixture (`DemoTransport.swift`'s documented fallback) — *not* by
-        // `event_definitions.json`, which is a different screen's data. Its
-        // first row's event name is this, and `EventAppearance.displayName`
-        // passes any name without a `$` prefix through verbatim.
-        Screen(3, "Events", anchor: "meteor_report_opened"),
-        Screen(4, "Sessions", anchor: "Alex Example"),
-        Screen(5, "Insights", anchor: "Example meteor report"),
-        Screen(6, "Web", anchor: "sample visitors"),
-        // Unanchored, and the sweep is what established why: demo mode has no
-        // route for `/api/projects/1001/heatmaps/`, so the screen renders an
-        // honest "Couldn't load the clickmap" naming the missing fixture. The
-        // saved render this once expected cannot appear until DemoTransport
-        // answers that endpoint. Same class as Pipelines and Inbox below —
-        // a demo-data gap, not a Mac defect, and it reads identically on iOS.
-        Screen(7, "Clickmap"),
-        Screen(8, "People", anchor: "Sable Okafor"),
-        // The root lists group *types*; the groups themselves are a level down.
-        // This is the raw type from `groups_types.json`, which the type row
-        // carries as its subtitle and which `DataRow` folds into the row label.
-        Screen(9, "Groups", anchor: "example-team"),
-        // Deliberately unanchored. The console's demo-derived content is the
-        // schema browser and the query result, and neither is on the root: the
-        // browser is a `.sheet` (`SQLConsoleRoot.swift:301`) and the result
-        // needs a run. The seeded statement is real text but lives in an editor,
-        // whose content is a value rather than a label. The screenshot is the
-        // evidence here, and a stuck console is still visible in it.
-        Screen(10, "SQL"),
+    private static let contracts: [DestinationContract] = [
+        .init(
+            1,
+            "Search",
+            "Orbital operations",
+            search: "Search names and folders",
+            alternateSearch: "Search screens, names and folders"
+        ),
+        .init(2, "Dashboards", "Project signal", search: "Search dashboards"),
+        .init(3, "Events", "meteor_report_opened", search: "Filter events"),
+        .init(4, "Sessions", "Alex Example", search: "Search person email"),
+        .init(5, "Insights", "Example meteor report", search: "Search insight names"),
+        .init(6, "Web", "sample visitors", search: "Filter pages"),
+        .init(7, "Clickmap", "Pages with a render"),
+        .init(8, "People", "Sable Okafor", search: "Search persons"),
+        .init(9, "Groups", "example-team"),
+        .init(10, "SQL", "Browse tables and columns"),
+        .init(11, "Errors", "HarborRenderFault"),
+        .init(12, "Summaries", "1 summarized session", search: "Search the narrative or person"),
+        .init(13, "LLM", "synthetic-id-0099", search: "Search traces"),
+        .init(14, "Tracing", "No spans", search: "Filter by span name"),
+        .init(15, "Logs", "No log lines", search: "Search log messages"),
+        .init(
+            16,
+            "Support",
+            "Scheduled report attachments are unreadable",
+            search: "Search tickets"
+        ),
+        .init(17, "Inbox", "Nothing to triage", search: "Search tasks"),
+        .init(18, "Signals", "No reports yet"),
+        .init(19, "Health", "SDK out of date"),
+        .init(20, "Ingestion", "Cannot merge already identified", search: "Search warnings"),
+        .init(21, "Warehouse", "gethog.warehouse-terminal", search: "Search sources, tables and views"),
+        .init(22, "Pipelines", "No pipelines", search: "Search pipelines"),
+        .init(23, "Automation", "Workflows chain messaging and automation steps behind a trigger"),
+        .init(24, "Actions", "No actions", search: "Search actions"),
+        .init(25, "Annotations", "No annotations", search: "Search annotations"),
+        .init(26, "Taxonomy", "feature_used", search: "Search events"),
+        .init(27, "Flags", "example-navigation", search: "Search flag key or name"),
+        .init(28, "Experiments", "Example cache strategy trial"),
+        .init(29, "Surveys", "Example App metric 829"),
+        .init(30, "Early access", "No early access features", search: "Search features"),
+        .init(31, "Notebooks", "Orbit field log", search: "Search notebooks"),
+        .init(32, "Max", "No Max conversations", search: "Search conversations"),
+        .init(33, "Renders", "Example filename 0312", search: "Search filename or session"),
+        .init(34, "Templates", "Example App metric 125", search: "Search templates"),
     ]
 
-    private static let monitor: [Screen] = [
-        Screen(11, "Errors", anchor: "HarborRenderFault"),
-        // `single_session_summaries.json` carries exactly one row, and the
-        // header row states the count in words.
-        Screen(12, "Summaries", anchor: "1 summarized session"),
-        // The trace's `distinctID` subtitle. `displayName` is not usable here:
-        // `llm_traces.json`'s first row carries no `traceName`, so it falls
-        // back to an id.
-        Screen(13, "LLM", anchor: "synthetic-id-0099"),
-        Screen(14, "Tracing"),
-        Screen(15, "Logs"),
-        // `SupportTicket.displayTitle` prefers `email_subject`, which the first
-        // ticket in `conversations_tickets.json` has.
-        Screen(16, "Support", anchor: "Example email subject 0735"),
-        // No route for `/api/projects/1001/tasks/` — same honest error state.
-        Screen(17, "Inbox"),
-        Screen(18, "Signals"),
-        Screen(19, "Health"),
-        // Humanised, not raw: `IngestionWarning.title` is
-        // `humanise(type)`, so the fixture's `quota_limited_wandering_hedgehog`
-        // reaches the row as this.
-        Screen(20, "Ingestion", anchor: "Quota limited wandering hedgehog"),
-    ]
+    private enum Mode {
+        case window(label: String, size: CGSize)
+        case fullScreen
 
-    private static let data: [Screen] = [
-        Screen(21, "Warehouse", anchor: "example_meteor_delivery_failures"),
-        Screen(22, "Pipelines"),
-        Screen(23, "Automation"),
-        Screen(24, "Actions"),
-        Screen(25, "Annotations"),
-        Screen(26, "Taxonomy"),
-    ]
-
-    private static let experiment: [Screen] = [
-        Screen(27, "Flags", anchor: "example-navigation"),
-        Screen(28, "Experiments", anchor: "Example cache strategy trial"),
-        Screen(29, "Surveys", anchor: "Example App metric 829"),
-        Screen(30, "Early access"),
-    ]
-
-    private static let workspace: [Screen] = [
-        Screen(31, "Notebooks", anchor: "Orbit field log"),
-        Screen(32, "Max"),
-        Screen(33, "Renders"),
-        Screen(34, "Templates", anchor: "Example App metric 125"),
-    ]
+        var label: String {
+            switch self {
+            case .window(let label, _): label
+            case .fullScreen: "native-full-screen"
+            }
+        }
+    }
 
     // MARK: - Tests
 
-    func testAnalyzeScreensRender() {
-        sweep(Self.analyze)
+    func testAllDestinationsAt560x420() {
+        sweep(.window(label: "560x420", size: CGSize(width: 560, height: 420)))
     }
 
-    func testMonitorScreensRender() {
-        sweep(Self.monitor)
+    func testAllDestinationsAt640x480() {
+        sweep(.window(label: "640x480", size: CGSize(width: 640, height: 480)))
     }
 
-    func testDataAndExperimentScreensRender() {
-        sweep(Self.data + Self.experiment)
+    func testAllDestinationsAt800x600() {
+        sweep(.window(label: "800x600", size: CGSize(width: 800, height: 600)))
     }
 
-    func testWorkspaceScreensRender() {
-        let app = sweep(Self.workspace)
+    func testAllDestinationsAt1280x820() {
+        sweep(.window(label: "1280x820", size: CGSize(width: 1_280, height: 820)))
+    }
 
-        // Screen 35, and the only one with no sidebar row: Settings is a scene
-        // of its own, reached the way a Mac user reaches it.
-        let windowsBefore = app.windows.count
-        app.typeKey(",", modifierFlags: .command)
-        XCTAssertTrue(
-            DemoLaunch.wait(until: { app.windows.count > windowsBefore }),
-            "⌘, never opened the Settings scene."
+    func testAllDestinationsAtNativeFullScreen() {
+        sweep(.fullScreen)
+    }
+
+    // MARK: - Focused deterministic states
+
+    func testRendersLoadingFailedAndEmptyStatesAreExclusive() {
+        var app = DemoLaunch.launch(
+            tab: "renders",
+            environment: [
+                "GETHOG_DEMO_RENDERS_STATE": "loading",
+                "GETHOG_DEMO_RENDERS_LOADING_DELAY_MS": "8000",
+            ]
         )
-        DemoLaunch.settle(app)
-        capture(app, name: "35-settings-default")
+        let loading = app.descendants(matching: .any)["gethog.load-state.loading"]
+        XCTAssertTrue(DemoLaunch.wait(for: loading, timeout: 5), "Renders exposed no loading witness.")
+        XCTAssertNil(
+            DemoLaunch.waitForContent(containing: "Example filename 0312", in: app, timeout: 1),
+            "The held loading state leaked loaded content."
+        )
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "Example filename 0312", in: app, timeout: 20),
+            "Renders never left the held loading state."
+        )
+        app.terminate()
+
+        app = DemoLaunch.launch(
+            tab: "renders",
+            environment: ["GETHOG_DEMO_RENDERS_STATE": "failed"]
+        )
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "Couldn't load renders", in: app),
+            "The deterministic failure was not distinguished from empty."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.buttons["Try again"].firstMatch),
+            "The initial Renders failure offered no retry."
+        )
+        XCTAssertNil(
+            DemoLaunch.waitForContent(containing: "No renders", in: app, timeout: 1),
+            "The deterministic failure was presented as a successful empty response."
+        )
+        app.terminate()
+
+        app = DemoLaunch.launch(
+            tab: "renders",
+            environment: ["GETHOG_DEMO_RENDERS_STATE": "empty"]
+        )
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "No renders", in: app),
+            "The successful empty Renders response had no honest empty state."
+        )
+        XCTAssertFalse(app.buttons["Try again"].firstMatch.exists, "Successful empty offered failure retry.")
+        XCTAssertNil(
+            DemoLaunch.waitForContent(containing: "Example filename 0312", in: app, timeout: 1),
+            "The empty response retained an ordinary render row."
+        )
+    }
+
+    func testRendersNoMatchLongTextAndStaleStatesRetainTheirMeaning() {
+        var app = DemoLaunch.launch(tab: "renders")
+        guard let field = visibleSearchField(prompt: "Search filename or session", in: app) else {
+            return XCTFail("Renders exposed no search field for the no-match probe.")
+        }
+        field.click()
+        field.typeText("zzzz-no-match-fixture")
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "No matches", in: app),
+            "Renders did not distinguish a client-side no-match from project-empty."
+        )
+        XCTAssertNil(
+            DemoLaunch.waitForContent(containing: "No renders", in: app, timeout: 1),
+            "A no-match was flattened into successful project-empty."
+        )
+        app.terminate()
+
+        let longFilename =
+            "Example orbital telemetry render with an intentionally long fictional filename for narrow-window verification 0312.mp4"
+        app = DemoLaunch.launch(
+            tab: "renders",
+            environment: ["GETHOG_DEMO_RENDERS_STATE": "long-text"]
+        )
+        resize(app, to: CGSize(width: 560, height: 420))
+        guard let longRow = DemoLaunch.waitForContent(containing: longFilename, in: app) else {
+            return XCTFail("The named long-text scenario did not render its fixed fictional value.")
+        }
+        XCTAssertGreaterThan(longRow.frame.width, 0, "The long row collapsed at 560×420.")
+        XCTAssertLessThanOrEqual(
+            longRow.frame.maxX,
+            app.windows.firstMatch.frame.maxX + 1,
+            "The long fictional filename overflowed the narrow window."
+        )
+        app.terminate()
+
+        app = DemoLaunch.launch(
+            tab: "renders",
+            environment: ["GETHOG_DEMO_RENDERS_STATE": "stale"]
+        )
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "Example filename 0312", in: app),
+            "The stale scenario never established last-good content."
+        )
+        app.typeKey("r", modifierFlags: .command)
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "Couldn't refresh renders", in: app),
+            "The deterministic refresh failure produced no stale-state banner."
+        )
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "Example filename 0312", in: app),
+            "The stale refresh discarded its last-good render row."
+        )
+    }
+
+    func testServerBackedNoMatchProbeReturnsAnEventsNoMatch() {
+        let app = DemoLaunch.launch(
+            tab: "events",
+            environment: ["GETHOG_DEMO_SURFACE_NO_MATCH": "1"]
+        )
+        guard let field = visibleSearchField(prompt: "Filter events", in: app) else {
+            return XCTFail("Events exposed no search field for the server no-match probe.")
+        }
+        field.click()
+        field.typeText("zzzz-no-match-fixture")
+        app.typeKey(.return, modifierFlags: [])
+
+        XCTAssertNotNil(
+            DemoLaunch.waitForContent(containing: "No events", in: app),
+            "The shape-correct query no-match response did not reach Events' terminal state."
+        )
+        XCTAssertNil(
+            DemoLaunch.waitForContent(containing: "meteor_report_opened", in: app, timeout: 1),
+            "The no-match response retained an ordinary event row."
+        )
+        XCTAssertEqual(app.state, .runningForeground)
     }
 
     /// Manual, authenticated counterpart to the deterministic demo sweep.
@@ -197,13 +290,11 @@ final class MacSurfaceSweepTests: XCTestCase {
             "The authenticated Mac shell never rendered its dashboard destination."
         )
 
-        let roots = Self.analyze + Self.monitor + Self.data + Self.experiment + Self.workspace
+        let roots = Self.contracts
         for screen in roots {
             open(screen.title, in: app)
-            // A live endpoint may begin its request on the frame after the
-            // destination click. Give that frame time to arrive before polling
-            // the native progress indicator, then photograph the settled view.
-            DemoLaunch.pause(0.75)
+            // Observe the screen settling instead of sleeping through an
+            // assumed request duration.
             DemoLaunch.settle(app, timeout: 20)
             if screen.title == "Warehouse" {
                 XCTAssertTrue(
@@ -287,9 +378,17 @@ final class MacSurfaceSweepTests: XCTestCase {
     /// column, and a screenshot is the only thing that says whether it does.
     func testDetailFlowsRender() {
         let app = DemoLaunch.launch()
+        normalize(app, to: .window(label: "560x420", size: CGSize(width: 560, height: 420)))
 
         for (title, rowText, name) in Self.detailFlows {
             open(title, in: app)
+            if title == "Search", let field = visibleSearchField(
+                prompts: ["Search screens, names and folders", "Search names and folders"],
+                in: app
+            ) {
+                field.click()
+                field.typeText(rowText)
+            }
             if title == "Dashboards" {
                 let row = app.buttons["gethog.dashboard-card.725101"].firstMatch
                 var scrolls = 0
@@ -307,43 +406,88 @@ final class MacSurfaceSweepTests: XCTestCase {
                     DemoLaunch.wait(for: detail),
                     "The dashboard card did not open its matching detail root."
                 )
-                DemoLaunch.settle(app)
-                capture(app, name: "\(name)-default")
+                assertBackRestores(
+                    title: title,
+                    rootAnchor: "gethog.dashboard-hub",
+                    attachmentName: "\(name)-560x420",
+                    in: app
+                )
                 XCTAssertEqual(app.state, .runningForeground, "Dashboards' detail took the app down.")
                 continue
+            }
+            if title == "Warehouse", let field = visibleSearchField(
+                prompt: "Search sources, tables and views",
+                in: app
+            ) {
+                field.click()
+                field.typeText(rowText)
             }
             guard let row = DemoLaunch.waitForContent(containing: rowText, in: app) else {
                 XCTFail("\(title) never offered a row containing \(rowText).")
                 continue
             }
             row.click()
-            DemoLaunch.settle(app)
-            capture(app, name: "\(name)-default")
+            assertBackRestores(
+                title: title,
+                rootAnchor: rowText,
+                attachmentName: "\(name)-560x420",
+                in: app
+            )
             XCTAssertEqual(app.state, .runningForeground, "\(title)'s detail took the app down.")
         }
     }
 
-    /// Sidebar row, the row to click in it, and the shot's name.
+    private func assertBackRestores(
+        title: String,
+        rootAnchor: String,
+        attachmentName: String,
+        in app: XCUIApplication
+    ) {
+        let back = app.windows.buttons["Back"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: back), "\(title)'s compact detail offered no Back control.")
+        XCTAssertTrue(back.isHittable, "\(title)'s compact Back control was not usable.")
+        capture(app, name: attachmentName)
+        back.click()
+
+        if rootAnchor.hasPrefix("gethog.") {
+            XCTAssertTrue(
+                DemoLaunch.wait(for: app.windows.descendants(matching: .any)[rootAnchor]),
+                "Back did not restore \(title)'s root."
+            )
+        } else {
+            XCTAssertNotNil(
+                DemoLaunch.waitForContent(containing: rootAnchor, in: app),
+                "Back did not restore \(title)'s loaded anchor."
+            )
+        }
+    }
+
+    /// Destination, deterministic actionable row, and attachment stem.
     ///
-    /// Three of the four ex-sheet screens lead — `llm`, `experiments` and
-    /// `surveys` had their detail lifted out of a sheet and into a navigation
-    /// destination, and this is where that lands or does not. The fourth,
-    /// `pipelines`, is absent on purpose: the demo dataset ships no
-    /// `hog_functions` fixture, so there is no row to open. Its root
-    /// screenshot at all three sizes is the whole evidence available, and a
-    /// stuck spinner there is still a finding.
-    ///
-    /// The LLM row is named by its `distinctID` subtitle, because a trace's
-    /// `displayName` falls back to an id when the fixture carries no
-    /// `traceName` — which this one does not.
+    /// Empty roots are represented by their terminal state in the 170-cell
+    /// matrix and cannot honestly promise Back. These populated roots each
+    /// prove the compact push and return path once, including the Mac-hoisted
+    /// LLM/Experiments/Surveys details.
     private static let detailFlows: [(String, String, String)] = [
+        ("Search", "Orbital operations", "d01-search-detail"),
+        ("Events", "meteor_report_opened", "d02-event-detail"),
+        ("People", "Sable Okafor", "d03-person-detail"),
+        ("Groups", "example-team", "d04-group-type-detail"),
+        ("Errors", "HarborRenderFault", "d05-error-detail"),
+        ("Summaries", "Succeeded", "d06-summary-detail"),
         ("LLM", "synthetic-id-0099", "d1-llm-detail"),
-        ("Experiments", "Example cache strategy trial", "d2-experiments-detail"),
-        ("Surveys", "Example App metric 829", "d3-surveys-detail"),
-        ("Dashboards", "Example App metric 33", "d4-dashboard-detail"),
-        ("Sessions", "Alex Example", "d5-replay-detail"),
-        ("Insights", "Example meteor report", "d6-insight-detail"),
-        ("Notebooks", "Orbit field log", "d7-notebook-detail"),
+        ("Support", "Scheduled report attachments are unreadable", "d08-support-detail"),
+        ("Warehouse", "example_meteor_delivery_failures", "d09-warehouse-detail"),
+        ("Taxonomy", "feature_used", "d10-taxonomy-detail"),
+        ("Flags", "example-navigation", "d11-flag-detail"),
+        ("Experiments", "Example cache strategy trial", "d12-experiment-detail"),
+        ("Surveys", "Example App metric 829", "d13-survey-detail"),
+        ("Dashboards", "Example App metric 33", "d14-dashboard-detail"),
+        ("Sessions", "Alex Example", "d15-replay-detail"),
+        ("Insights", "Example meteor report", "d16-insight-detail"),
+        ("Notebooks", "Orbit field log", "d17-notebook-detail"),
+        ("Renders", "Example filename 0312", "d18-render-detail"),
+        ("Templates", "Example App metric 125", "d19-template-detail"),
     ]
 
     /// The pointer over a chart, photographed at the two positions that decide
@@ -394,77 +538,279 @@ final class MacSurfaceSweepTests: XCTestCase {
 
     // MARK: - The sweep
 
-    @discardableResult
-    private func sweep(_ screens: [Screen]) -> XCUIApplication {
+    private func sweep(_ mode: Mode) {
         let app = DemoLaunch.launch()
+        normalize(app, to: mode)
 
-        for screen in screens {
-            open(screen.title, in: app)
+        let derived = authoritativeDestinationOrder(in: app)
+        XCTAssertEqual(
+            derived,
+            Self.contracts.map(\.title),
+            "The runtime AppTab-derived destination order drifted from the audit metadata."
+        )
+        guard derived == Self.contracts.map(\.title) else { return }
 
-            if let anchor = screen.anchor {
+        for contract in Self.contracts {
+            open(contract.title, in: app)
+            assertSelectedToolbar(for: contract, in: app)
+            prepareLoadedAnchor(for: contract, in: app)
+            if contract.anchor.hasPrefix("gethog.") {
+                let anchor = app.windows.descendants(matching: .any)[contract.anchor]
+                XCTAssertTrue(
+                    DemoLaunch.wait(for: anchor, timeout: 60),
+                    "\(mode.label) \(contract.title) never rendered \(contract.anchor)."
+                )
+            } else {
                 XCTAssertNotNil(
-                    DemoLaunch.waitForContent(containing: anchor, in: app),
-                    "\(screen.title) never rendered its demo anchor “\(anchor)”."
+                    DemoLaunch.waitForContent(containing: contract.anchor, in: app),
+                    "\(mode.label) \(contract.title) never rendered “\(contract.anchor)”."
                 )
             }
-            // Holds for anchored and unanchored screens alike, and is the one
-            // thing a photograph cannot show: that the screen before this did
-            // not take the process with it.
-            XCTAssertEqual(app.state, .runningForeground, "The app was gone by \(screen.title).")
-
-            capture(app, name: "\(screen.index)-\(slug(screen.title))-default")
-        }
-
-        sweepAlternateSizes(screens, in: app)
-        return app
-    }
-
-    /// The narrow and wide passes: photographs only, and never a failure.
-    ///
-    /// Nothing here asserts, on purpose. Resizing a window from a UI test is
-    /// the least reliable thing this suite does — there is no resize API, only
-    /// a drag of the frame's corner — and a sweep whose *evidence-gathering*
-    /// step can fail the run would make the fix loop chase the harness instead
-    /// of the app. If a drag does not take, the screenshot shows the size that
-    /// was actually reached, which is still the truth about what was seen.
-    private func sweepAlternateSizes(_ screens: [Screen], in app: XCUIApplication) {
-        guard ProcessInfo.processInfo.environment["GETHOG_SWEEP_SIZES"] == "all" else { return }
-
-        for (label, size) in [("narrow", CGSize(width: 800, height: 600)),
-                              ("wide", CGSize(width: 1_800, height: 1_100))] {
-            resizeMainWindow(of: app, to: size)
-            for screen in screens {
-                // `reach`, not `open`: at 800×600 the sidebar is the single most
-                // likely thing to collapse or drop out of the outline query, and
-                // `open` ends in an `XCTFail`. A screen this pass cannot get to
-                // is a screenshot not taken, not a failed run — which is the
-                // contract this whole function is written to.
-                guard reach(screen.title, in: app) else { continue }
-                capture(app, name: "\(screen.index)-\(slug(screen.title))-\(label)")
-            }
-        }
-    }
-
-    /// Drags the main window's bottom-right corner.
-    ///
-    /// Normalized offsets rather than absolute points: the window's own frame
-    /// is the origin, so this works wherever the window happens to sit. The
-    /// drag starts just inside the corner because the resize handle is on the
-    /// frame edge itself.
-    private func resizeMainWindow(of app: XCUIApplication, to size: CGSize) {
-        let window = app.windows.firstMatch
-        guard window.exists else { return }
-
-        let frame = window.frame
-        let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
-        let target = window.coordinate(
-            withNormalizedOffset: CGVector(
-                dx: size.width / max(frame.width, 1),
-                dy: size.height / max(frame.height, 1)
+            XCTAssertFalse(
+                app.windows.buttons["Back"].firstMatch.isHittable,
+                "\(contract.title) retained another destination's pushed navigation state."
             )
+            XCTAssertEqual(
+                app.state,
+                .runningForeground,
+                "The app was gone by \(contract.title) at \(mode.label)."
+            )
+            capture(
+                app,
+                name: String(
+                    format: "%02d-%@-%@",
+                    contract.index,
+                    slug(contract.title),
+                    mode.label
+                )
+            )
+        }
+    }
+
+    /// The loose Search root puts the compact screen index before project
+    /// objects. Narrowing to its fixed fictional object makes the loaded anchor
+    /// visible without scrolling a lazy list and also proves that the field is
+    /// wired to the selected screen rather than merely present in the toolbar.
+    private func prepareLoadedAnchor(
+        for contract: DestinationContract,
+        in app: XCUIApplication
+    ) {
+        guard contract.title == "Search" else { return }
+        guard let field = visibleSearchField(
+            prompts: contract.searchPrompts,
+            in: app
+        ) else {
+            return XCTFail("Search exposed no field for its loaded-anchor probe.")
+        }
+        field.click()
+        field.typeText(contract.anchor)
+    }
+
+    /// Search is the one loose root. Every other title comes from the enabled
+    /// items SwiftUI built from `GoMenuLayout.sections()` / `AppTab.sections`.
+    private func authoritativeDestinationOrder(in app: XCUIApplication) -> [String] {
+        var looseSearch = sidebarItem("Search", in: app)
+        var revealedSidebar = false
+        if !looseSearch.exists || !looseSearch.isHittable {
+            app.typeKey("s", modifierFlags: [.command, .control])
+            revealedSidebar = DemoLaunch.wait(timeout: 10, until: {
+                looseSearch = sidebarItem("Search", in: app)
+                return looseSearch.exists && looseSearch.isHittable
+            })
+        }
+        XCTAssertTrue(
+            looseSearch.exists && looseSearch.isHittable,
+            "The loose Search root was absent from the Mac source list."
         )
-        corner.press(forDuration: 0.2, thenDragTo: target)
-        DemoLaunch.settle(app)
+        if revealedSidebar {
+            app.typeKey("s", modifierFlags: [.command, .control])
+            _ = DemoLaunch.wait(timeout: 10, until: { !looseSearch.isHittable })
+        }
+
+        let go = app.menuBars.menuBarItems["Go"]
+        guard go.exists else {
+            XCTFail("The AppTab-derived Go menu was absent.")
+            return []
+        }
+        go.click()
+        guard DemoLaunch.wait(timeout: 5, until: { app.menus.firstMatch.exists }) else {
+            XCTFail("The Go menu never opened.")
+            return []
+        }
+        let menu = app.menus.firstMatch
+        let productTitles = menu.menuItems.allElementsBoundByIndex
+            .filter { $0.isEnabled && !$0.title.isEmpty }
+            .map(\.title)
+        app.typeKey(.escape, modifierFlags: [])
+        return ["Search"] + productTitles
+    }
+
+    /// Only the selected root may own toolbar/search state. Content anchors
+    /// alone cannot prove that: every destination label remains in the sidebar.
+    private func assertSelectedToolbar(
+        for contract: DestinationContract,
+        in app: XCUIApplication
+    ) {
+        let projectControls = app.windows.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label BEGINSWITH %@ OR value BEGINSWITH %@",
+                "Current project:",
+                "Current project:"
+            )
+        ).allElementsBoundByIndex.filter(\.isHittable)
+        XCTAssertEqual(
+            projectControls.count,
+            1,
+            "\(contract.title) did not exclusively own one visible project toolbar."
+        )
+
+        let knownPrompts = Self.contracts.flatMap(\.searchPrompts)
+        let visibleSearchFields = (app.searchFields.allElementsBoundByIndex
+            + app.textFields.allElementsBoundByIndex).filter { element in
+                guard element.isHittable else { return false }
+                let description = [element.label, element.placeholderValue ?? "", "\(element.value ?? "")"]
+                    .joined(separator: " ")
+                return knownPrompts.contains {
+                    description.localizedCaseInsensitiveContains($0)
+                }
+            }
+
+        if !contract.searchPrompts.isEmpty {
+            let owners = visibleSearchFields.filter { element in
+                let description = [
+                    element.label,
+                    element.placeholderValue ?? "",
+                    "\(element.value ?? "")",
+                ]
+                    .joined(separator: " ")
+                return contract.searchPrompts.contains {
+                    description.localizedCaseInsensitiveContains($0)
+                }
+            }
+            XCTAssertEqual(
+                owners.count,
+                1,
+                "\(contract.title) did not exclusively own one of its valid search prompts."
+            )
+            XCTAssertEqual(
+                visibleSearchFields.count,
+                1,
+                "An unselected destination retained a second search field on \(contract.title)."
+            )
+        } else {
+            XCTAssertTrue(
+                visibleSearchFields.isEmpty,
+                "A searchable unselected root retained toolbar ownership on \(contract.title)."
+            )
+        }
+    }
+
+    private func visibleSearchField(
+        prompt: String,
+        in app: XCUIApplication
+    ) -> XCUIElement? {
+        visibleSearchField(prompts: [prompt], in: app)
+    }
+
+    private func visibleSearchField(
+        prompts: [String],
+        in app: XCUIApplication
+    ) -> XCUIElement? {
+        (app.searchFields.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex)
+            .first { element in
+                guard element.isHittable else { return false }
+                let description = [
+                    element.label,
+                    element.placeholderValue ?? "",
+                    "\(element.value ?? "")",
+                ].joined(separator: " ")
+                return prompts.contains {
+                    description.localizedCaseInsensitiveContains($0)
+                }
+            }
+    }
+
+    private func normalize(_ app: XCUIApplication, to mode: Mode) {
+        switch mode {
+        case .fullScreen:
+            enterFullScreen(app)
+        case .window(_, let size):
+            leaveFullScreen(app)
+            resize(app, to: size)
+        }
+    }
+
+    private func leaveFullScreen(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        guard window.exists, window.frame.minY < 50 else { return }
+        app.typeKey("f", modifierFlags: [.command, .control])
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 15, until: { window.frame.minY >= 50 }),
+            "The sweep could not leave persisted full screen."
+        )
+    }
+
+    private func enterFullScreen(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        guard window.exists else { return XCTFail("The sweep had no main window.") }
+        if window.frame.minY >= 50 {
+            app.typeKey("f", modifierFlags: [.command, .control])
+        }
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 15, until: { window.frame.minY < 50 }),
+            "The window never reached native full screen."
+        )
+        XCTAssertGreaterThan(window.frame.width, 1_280)
+        XCTAssertGreaterThan(window.frame.height, 820)
+    }
+
+    /// Moves the title bar away from the display edge, then uses long edge
+    /// grabs. A corner is a few points square and silently misses; each edge is
+    /// hundreds of points long. Completion is observed from frame geometry.
+    private func resize(_ app: XCUIApplication, to size: CGSize) {
+        leaveFullScreen(app)
+        let window = app.windows.firstMatch
+        guard window.exists else { return XCTFail("The sweep had no main window.") }
+        let frame = window.frame
+        window.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: frame.width / 3, dy: 12))
+            .press(
+                forDuration: 0.3,
+                thenDragTo: window.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: frame.width / 3 - frame.minX, dy: 12))
+            )
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10, until: { window.frame.minX < 8 }),
+            "The window could not move to a resize-safe origin."
+        )
+
+        let start = window.frame
+        window.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: start.width - 3, dy: start.height / 2))
+            .press(
+                forDuration: 0.4,
+                thenDragTo: window.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: size.width, dy: start.height / 2))
+            )
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10, until: { abs(window.frame.width - size.width) <= 1 }),
+            "The window missed the requested width \(size.width)."
+        )
+
+        let middle = window.frame
+        window.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: middle.width / 2, dy: middle.height - 3))
+            .press(
+                forDuration: 0.4,
+                thenDragTo: window.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: middle.width / 2, dy: size.height))
+            )
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10, until: { abs(window.frame.height - size.height) <= 1 }),
+            "The window missed the requested height \(size.height)."
+        )
+        XCTAssertEqual(window.frame.width, size.width, accuracy: 1)
+        XCTAssertEqual(window.frame.height, size.height, accuracy: 1)
     }
 
     // MARK: - Helpers
@@ -494,9 +840,29 @@ final class MacSurfaceSweepTests: XCTestCase {
     /// Clicks a sidebar destination, failing the test if it is not there.
     /// The default pass's route: a missing destination is a finding.
     private func open(_ title: String, in app: XCUIApplication) {
-        if !reach(title, in: app) {
+        let reached = title == "Search"
+            ? reachLooseSearch(in: app)
+            : openViaGoMenu(title, in: app)
+        if !reached {
             XCTFail("No sidebar destination labelled \(title).")
         }
+    }
+
+    /// Search deliberately has no Go item. At compact widths the source list is
+    /// collapsed, so reveal it through the native Toggle Sidebar command and
+    /// select the one loose `MacRootView.looseTabs` row.
+    private func reachLooseSearch(in app: XCUIApplication) -> Bool {
+        var item = sidebarItem("Search", in: app)
+        if !item.exists || !item.isHittable {
+            app.typeKey("s", modifierFlags: [.command, .control])
+            guard DemoLaunch.wait(timeout: 10, until: {
+                item = sidebarItem("Search", in: app)
+                return item.exists && item.isHittable
+            }) else { return false }
+        }
+        item.click()
+        DemoLaunch.settle(app)
+        return true
     }
 
     /// Clicks a sidebar destination and says whether it got there, scrolling the
