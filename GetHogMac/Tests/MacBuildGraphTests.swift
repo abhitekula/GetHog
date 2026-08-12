@@ -176,20 +176,24 @@ struct MacBuildGraphTests {
             ("TV", "INFOPLIST_FILE = \"GetHogTV/Support/GetHogTV-Info.plist\";"),
         ]
         for host in hosts {
+            let debugMatches = hostConfigurations.filter {
+                $0.contains(host.marker) && $0.contains("name = Debug;")
+            }
+            #expect(debugMatches.count == 1, "expected one hosted Debug configuration for \(host.name)")
             let debug = try #require(
-                hostConfigurations.first {
-                    $0.contains(host.marker) && $0.contains("name = Debug;")
-                },
+                debugMatches.first,
                 "missing hosted Debug configuration for \(host.name)"
             )
             #expect(debug.contains("ENABLE_TESTABILITY = YES;"))
             #expect(debug.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
             #expect(debug.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;"))
 
+            let releaseMatches = hostConfigurations.filter {
+                $0.contains(host.marker) && $0.contains("name = Release;")
+            }
+            #expect(releaseMatches.count == 1, "expected one hosted Release configuration for \(host.name)")
             let release = try #require(
-                hostConfigurations.first {
-                    $0.contains(host.marker) && $0.contains("name = Release;")
-                },
+                releaseMatches.first,
                 "missing hosted Release configuration for \(host.name)"
             )
             #expect(!release.contains("ENABLE_TESTABILITY = YES;"))
