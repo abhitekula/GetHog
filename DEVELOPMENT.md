@@ -352,13 +352,41 @@ GETHOG_WIDGET_SYSTEM_UI=1 xcodebuild test \
 
 The signed method additionally requires `GETHOG_WIDGET_SIGNED_DISTRIBUTION=1`
 and a Release app/embedded extension pair signed with the matching App Group.
-It launches the committed `DemoTransport` fixture through the signed app. The
-real `AppModel.publish` path writes its deterministic snapshot and calls
-`WidgetCenter.shared.reloadAllTimelines()`; the test then installs Metric,
-requires `Example daily engagement` and freshness `Updated now ago` inside
-that widget, clicks it, and requires dashboard `725101`
-(`Example App metric 33`). Run it only after the Distribution parity test has
-no known issue:
+Before launch it runs `codesign --verify --strict` on the resolved built app and
+embedded extension, reads their resolved signed entitlements, and fails unless
+both signatures are valid, both processes have exactly one matching App Group,
+the app has network client, and the extension does not. Its diagnostic is still
+key/status only; the resolved group value is used transiently for equality and
+is never reported.
+
+Release does not honor the broad `-GetHogDemo` automation flag. Instead, this
+one test launches `-GetHogSignedWidgetAcceptance` through a seam that is inert
+in Debug and ordinary Release launches. Activation requires all of the
+following to agree:
+
+- the exact `xctest-fixed-fiction-v1` gate and a canonical run UUID;
+- that UUID matching the UI runner's `XCTestSessionIdentifier`;
+- the runner's existing `.xctestconfiguration` and loaded
+  `GetHogMacUITests.xctest` bundle paths;
+- exactly one acceptance launch argument; and
+- no credential, demo flag, or other `GETHOG_` input.
+
+The UI test supplies those values directly to the tested process; they are not
+operator-configurable payload fields. The seam can write only one in-source
+fictional fixture and cannot accept JSON, metric values, endpoints, regions,
+or credentials. It first clears every prior project-scoped shared record,
+writes a snapshot whose metric title contains the current test-session tag,
+requests `WidgetCenter.shared.reloadAllTimelines()`, and only after that call
+returns mounts the matching run-specific accessibility completion witness.
+The test waits for that witness before terminating the publisher, so neither a
+prior snapshot nor a prior run's completion state can satisfy acceptance.
+
+The installed Metric must then show `Signed widget acceptance <run-tag>` and
+its fresh timestamp. Its URL carries both authoritative cached identifiers:
+`gethog://project/1001/dashboard/725101`; the UI contract requires the exact
+`gethog.dashboard-detail.725101` destination. Gallery placeholders carry no
+project or dashboard and therefore get no URL. Run this only after source
+parity has no known issue:
 
 ```bash
 GETHOG_WIDGET_SYSTEM_UI=1 GETHOG_WIDGET_SIGNED_DISTRIBUTION=1 \
@@ -368,9 +396,16 @@ GETHOG_WIDGET_SYSTEM_UI=1 GETHOG_WIDGET_SIGNED_DISTRIBUTION=1 \
   DEVELOPMENT_TEAM=<team id>
 ```
 
-Without that valid signed pair the method skips and signed sharing remains
-explicitly unaccepted. Its teardown still removes the authored Metric widget;
-screenshots stay under ignored `build/`.
+The preflight deliberately has no path override: it must inspect the scheme's
+`BUILT_PRODUCTS_DIR/GetHog.app`, the same product the UI-test dependency
+launches, with its extension at `Contents/PlugIns/GetHogWidgets.appex`. This
+prevents proving one signed bundle and exercising another bundle with the same
+identifier. The method skips only when the signed-distribution gate is absent.
+Once opted in, missing products, invalid signatures, entitlement mismatch,
+absent XCTest witnesses, publication failure, or a stale/wrong run tag all
+fail. Cleanup dismisses configuration, menus, and gallery surfaces before
+removing authored widgets, and the generated Mac UI scheme remains
+non-parallel. Screenshots stay under ignored `build/`.
 
 The upload-facing compliance lives in the repository already:
 `GetHog/Resources/PrivacyInfo.xcprivacy` declares the required-reason APIs the

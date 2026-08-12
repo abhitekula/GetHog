@@ -5,6 +5,19 @@ import GetHogUI
 import SwiftUI
 import WidgetKit
 
+/// The only route a cached metric can authoritatively name.
+///
+/// Both identifiers come from the same app-written snapshot. A dashboard id
+/// without its project scope can resolve against whichever project happens to
+/// be selected when the app opens; a project without a dashboard is merely a
+/// home-screen guess. Gallery and legacy entries therefore produce no URL.
+enum WidgetMetricRoute {
+    static func url(projectID: Int?, dashboardID: Int?) -> URL? {
+        guard let projectID, let dashboardID else { return nil }
+        return URL(string: "gethog://project/\(projectID)/dashboard/\(dashboardID)")
+    }
+}
+
 /// The widget extension's entire view of the outside world.
 ///
 /// **This extension never calls the PostHog API.** Rate limits are billed per

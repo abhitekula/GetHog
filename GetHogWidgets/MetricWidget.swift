@@ -81,6 +81,9 @@ struct SelectMetricIntent: WidgetConfigurationIntent {
 
 struct MetricEntry: TimelineEntry {
     let date: Date
+    /// Paired with the metric's dashboard id so a tap cannot resolve the
+    /// cached value against whichever project happens to be selected later.
+    let projectID: Int?
     let projectName: String
     /// `nil` until the app has written its first snapshot.
     let capturedAt: Date?
@@ -112,6 +115,7 @@ struct MetricEntry: TimelineEntry {
     static func sample(at date: Date = Date()) -> MetricEntry {
         MetricEntry(
             date: date,
+            projectID: nil,
             projectName: WidgetCache.sample.projectName,
             capturedAt: date,
             metrics: WidgetCache.sample.metrics,
@@ -121,7 +125,12 @@ struct MetricEntry: TimelineEntry {
 
     static func empty(at date: Date = Date()) -> MetricEntry {
         MetricEntry(
-            date: date, projectName: "GetHog", capturedAt: nil, metrics: [], relevanceScore: 0
+            date: date,
+            projectID: nil,
+            projectName: "GetHog",
+            capturedAt: nil,
+            metrics: [],
+            relevanceScore: 0
         )
     }
 }
@@ -168,6 +177,7 @@ struct MetricProvider: AppIntentTimelineProvider {
         }()
         return MetricEntry(
             date: date,
+            projectID: snapshot.projectID,
             projectName: snapshot.projectName,
             capturedAt: snapshot.capturedAt,
             metrics: ordered,
@@ -196,11 +206,10 @@ struct MetricWidget: Widget {
                 // it. WidgetKit foregrounding alone would land at the generic
                 // shell and could not prove the cached card still names its
                 // source. An empty widget has no invented destination.
-                .widgetURL(entry.primary.flatMap { metric in
-                    metric.dashboardID.flatMap {
-                        URL(string: "gethog://dashboard/\($0)")
-                    }
-                })
+                .widgetURL(WidgetMetricRoute.url(
+                    projectID: entry.projectID,
+                    dashboardID: entry.primary?.dashboardID
+                ))
                 // Required from iOS 17: without it the widget draws its own
                 // background and the system renders it clipped and inset wrong.
                 //

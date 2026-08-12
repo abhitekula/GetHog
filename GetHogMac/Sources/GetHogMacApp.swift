@@ -1,6 +1,7 @@
 import GetHogKit
 import GetHogUI
 import SwiftUI
+import WidgetKit
 
 #if DEBUG
 /// Builds launch-time models for deterministic DEBUG automation.
@@ -54,6 +55,11 @@ enum MacAppModelFactory {
 @main
 struct GetHogMacApp: App {
     @State private var model: AppModel
+    @State private var signedWidgetAcceptanceCompletion: String?
+
+    /// `nil` on every ordinary launch. Release can receive a value only from
+    /// the exact XCTest-witnessed, credential-free policy contract.
+    private let signedWidgetAcceptanceRequest: SignedWidgetAcceptanceRequest?
 
     /// The same single instance both window groups read — see `GetHogApp.nav`
     /// for why a second copy would be a second source of truth.
@@ -72,7 +78,10 @@ struct GetHogMacApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        _model = State(initialValue: GetHogMacApp.makeModel())
+        let request = SignedWidgetAcceptancePolicy.request()
+        signedWidgetAcceptanceRequest = request
+        _model = State(initialValue: GetHogMacApp.makeModel(acceptanceRequest: request))
+        _signedWidgetAcceptanceCompletion = State(initialValue: nil)
     }
 
     var body: some Scene {
@@ -104,6 +113,16 @@ struct GetHogMacApp: App {
                 .environment(nav)
                 .insightCSVExporter()
                 .tint(Theme.accent)
+                .overlay(alignment: .topLeading) {
+                    if let signedWidgetAcceptanceCompletion {
+                        // A run-unique signal, mounted only after the fresh
+                        // snapshot write and WidgetKit reload both return.
+                        Text("Signed widget publication complete")
+                            .frame(width: 1, height: 1)
+                            .opacity(0.01)
+                            .accessibilityIdentifier(signedWidgetAcceptanceCompletion)
+                    }
+                }
                 .onOpenURL { LinkInbox.deliver($0) }
                 // The inbound half of Handoff. An iPhone publishing the console
                 // URL for the screen it is on is continued here, and lands on
@@ -120,6 +139,13 @@ struct GetHogMacApp: App {
                     #endif
                     AppTips.configure()
                     await model.bootstrap()
+                    if let request = signedWidgetAcceptanceRequest,
+                       let completion = try? SignedWidgetAcceptancePublisher.publish(
+                           request: request,
+                           reloadTimelines: { WidgetCenter.shared.reloadAllTimelines() }
+                       ) {
+                        signedWidgetAcceptanceCompletion = completion.accessibilityIdentifier
+                    }
                     menuBar.adoptAuthSession(model.authSessionID)
                     // After bootstrap, because the schedule stands every wake
                     // down while there is no credential and the model only
@@ -210,7 +236,19 @@ struct GetHogMacApp: App {
         .menuBarExtraStyle(.window)
     }
 
-    private static func makeModel() -> AppModel {
+    private static func makeModel(
+        acceptanceRequest: SignedWidgetAcceptanceRequest?
+    ) -> AppModel {
+        if acceptanceRequest != nil {
+            // Fixed fiction only. No environment credential is read and this
+            // branch is unreachable without the exact XCTest policy above.
+            return AppModel(
+                store: InMemoryTokenStore(
+                    credential: StoredCredential(key: "signed-widget-acceptance", region: .usCloud)
+                ),
+                transport: DemoTransport()
+            )
+        }
         #if DEBUG
         return MacAppModelFactory.makeModel()
         #else

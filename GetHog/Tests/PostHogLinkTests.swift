@@ -146,6 +146,13 @@ struct PostHogLinkTests {
         #expect(target?.link == .dashboard(id: 128))
     }
 
+    @Test("the metric widget's authoritative route selects its project before its dashboard")
+    func metricWidgetRoute() {
+        let target = parse("gethog://project/1001/dashboard/725101")
+        #expect(target?.projectID == 1_001)
+        #expect(target?.link == .dashboard(id: 725_101))
+    }
+
     @Test("a custom-scheme link may name no project, meaning the selected one")
     func customSchemeWithoutProject() {
         let target = parse("gethog://error_tracking")

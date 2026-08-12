@@ -240,6 +240,25 @@ struct WidgetNoDataMessageTests {
     }
 }
 
+@Suite("Metric widget route")
+struct MetricWidgetRouteTests {
+
+    @Test("a cached metric route carries both authoritative ids")
+    func projectScopedDashboardURL() {
+        #expect(
+            WidgetMetricRoute.url(projectID: 1_001, dashboardID: 725_101)?.absoluteString
+                == "gethog://project/1001/dashboard/725101"
+        )
+    }
+
+    @Test("gallery and legacy entries invent no partial route")
+    func incompleteScopeHasNoURL() {
+        #expect(WidgetMetricRoute.url(projectID: nil, dashboardID: 725_101) == nil)
+        #expect(WidgetMetricRoute.url(projectID: 1_001, dashboardID: nil) == nil)
+        #expect(WidgetMetricRoute.url(projectID: nil, dashboardID: nil) == nil)
+    }
+}
+
 @Suite("Mac widget Distribution entitlements")
 struct MacWidgetDistributionEntitlementTests {
 

@@ -9,6 +9,27 @@ import XCTest
 /// developer's real widgets.
 final class MacWidgetContractTests: XCTestCase {
 
+    private enum ResolvedEntitlementStatus: String {
+        case signatureValid = "signature-valid"
+        case signatureInvalid = "signature-invalid"
+        case requiredSinglePresent = "required-single-present"
+        case requiredSingleMissing = "required-single-missing-key"
+        case requiredSingleWrongType = "required-single-wrong-type"
+        case requiredSingleEmpty = "required-single-empty"
+        case requiredSingleMultiple = "required-single-multiple"
+        case matching = "matching"
+        case mismatched = "mismatched"
+        case requiredPresent = "required-present"
+        case requiredMissing = "required-missing"
+        case forbiddenAbsent = "forbidden-absent"
+        case forbiddenPresent = "forbidden-present"
+    }
+
+    private struct SignedDistributionPreflight {
+        let isAccepted: Bool
+        let report: String
+    }
+
     private struct Variant {
         let widget: String
         let family: String
@@ -45,8 +66,8 @@ final class MacWidgetContractTests: XCTestCase {
     /// undiscoverable under GetHog.
     @MainActor
     func testGalleryDiscoversAllEightFamilyPreviews() {
-        openGallery()
         defer { closeGalleryIfOpen() }
+        openGallery()
 
         XCTAssertEqual(Self.variants.count, 8)
         var previewFingerprints = Set<String>()
@@ -71,9 +92,8 @@ final class MacWidgetContractTests: XCTestCase {
     /// Debug build, and foreground the host app when opened.
     @MainActor
     func testInstalledDebugWidgetsResizeConfigureAndOpenGetHog() {
-        openNotificationCenter()
-        removeInstalledWidgets()
-        defer { removeInstalledWidgets() }
+        cleanupInstalledWidgets()
+        defer { cleanupInstalledWidgets() }
 
         openGallery()
         install(widget: "Metric")
@@ -88,7 +108,11 @@ final class MacWidgetContractTests: XCTestCase {
         assertConfiguration(widget: "Metric", parameter: "Metric")
         assertConfiguration(widget: "Feature Flag", parameter: "Feature Flag")
 
-        let unshared = text("Open GetHog to connect. This build can't share data with widgets.")
+        let metricWidget = installedWidget(named: "Metric")
+        let unshared = text(
+            "Open GetHog to connect. This build can't share data with widgets.",
+            in: metricWidget
+        )
         XCTAssertTrue(
             DemoLaunch.wait(for: unshared, timeout: 15),
             "The teamless Debug widget did not disclose its unshared container."
@@ -96,7 +120,7 @@ final class MacWidgetContractTests: XCTestCase {
 
         let host = XCUIApplication(bundleIdentifier: "app.gethog.GetHog")
         if host.state != .notRunning { host.terminate() }
-        installedWidget(named: "Metric").click()
+        metricWidget.click()
         XCTAssertTrue(
             DemoLaunch.wait(timeout: 20) { host.state == .runningForeground },
             "Opening the installed widget did not foreground GetHog."
@@ -111,32 +135,50 @@ final class MacWidgetContractTests: XCTestCase {
 
     /// Signed sharing is a distinct acceptance path. It is enabled only when
     /// the runner has a genuinely signed Distribution app/extension pair. The
-    /// method launches that app against committed DemoTransport data; the app's
-    /// real publication path writes the snapshot and reloads WidgetKit before
-    /// the method installs the widget. No live value or screenshot is committed.
+    /// method first inspects the resolved built signatures and entitlements,
+    /// then launches the narrow Release acceptance seam. The seam accepts no
+    /// payload or credential: it replaces stale state with fixed fiction tagged
+    /// by this XCTest session and signals only after write + reload completes.
     @MainActor
     func testSignedDistributionWidgetShowsTheAppSnapshotWhenAvailable() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["GETHOG_WIDGET_SIGNED_DISTRIBUTION"] == "1" else {
             throw XCTSkip("No signed Distribution app/extension pair was supplied.")
         }
-        let expectedMetric = "Example daily engagement"
+        let preflight = try signedDistributionPreflight(environment: environment)
+        XCTAssertTrue(preflight.isAccepted, preflight.report)
+
+        let sessionID = try XCTUnwrap(
+            environment["XCTestSessionIdentifier"],
+            "XCTestSessionIdentifier is required by the signed acceptance policy."
+        )
+        let parsedSession = try XCTUnwrap(
+            UUID(uuidString: sessionID),
+            "The XCTest session witness is not a UUID."
+        )
+        let normalizedSession = parsedSession.uuidString.lowercased()
+        let expectedMetric = "Signed widget acceptance \(normalizedSession.prefix(8))"
         let expectedFreshness = "Updated now ago"
         let expectedDashboard = "Example App metric 33"
 
         let writer = XCUIApplication(bundleIdentifier: "app.gethog.GetHog")
-        writer.launchArguments = ["-GetHogDemo"]
-        writer.launchEnvironment["GETHOG_DEMO"] = "1"
-        writer.launch()
-        XCTAssertNotNil(
-            DemoLaunch.waitForContent(containing: expectedDashboard, in: writer, timeout: 30),
-            "The signed app did not finish the deterministic publication path before widget installation."
+        writer.launchArguments = ["-GetHogSignedWidgetAcceptance"]
+        writer.launchEnvironment = try acceptanceLaunchEnvironment(
+            runnerEnvironment: environment,
+            normalizedSession: normalizedSession
         )
-        writer.terminate()
+        writer.launch()
+        defer { writer.terminate() }
+        let completion = writer.descendants(matching: .any)
+            .matching(identifier: "gethog.widget-acceptance.complete.\(normalizedSession)")
+            .firstMatch
+        XCTAssertTrue(
+            DemoLaunch.wait(for: completion, timeout: 30),
+            "The signed app emitted no matching post-write, post-reload completion witness."
+        )
 
-        openNotificationCenter()
-        removeInstalledWidgets(named: ["Metric"])
-        defer { removeInstalledWidgets(named: ["Metric"]) }
+        cleanupInstalledWidgets(named: ["Metric"])
+        defer { cleanupInstalledWidgets(named: ["Metric"]) }
 
         openGallery()
         install(widget: "Metric")
@@ -157,14 +199,12 @@ final class MacWidgetContractTests: XCTestCase {
             "A signed shared-container widget rendered the Debug-only unshared state."
         )
 
-        let host = XCUIApplication(bundleIdentifier: "app.gethog.GetHog")
-        if host.state != .notRunning { host.terminate() }
         metricWidget.click()
         XCTAssertTrue(
-            DemoLaunch.wait(timeout: 20) { host.state == .runningForeground },
+            DemoLaunch.wait(timeout: 20) { writer.state == .runningForeground },
             "Opening the populated signed widget did not foreground GetHog."
         )
-        let dashboardDetail = host.descendants(matching: .any)
+        let dashboardDetail = writer.descendants(matching: .any)
             .matching(identifier: "gethog.dashboard-detail.725101")
             .firstMatch
         XCTAssertTrue(
@@ -265,6 +305,22 @@ final class MacWidgetContractTests: XCTestCase {
 
     @MainActor
     private func assertResizeFamilies(widget name: String, expected: [String]) {
+        let nativeSizes = ["Small", "Medium", "Large", "Extra Large"]
+        installedWidget(named: name).rightClick()
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 5) {
+                nativeSizes.contains { notificationCenter.menuItems[$0].exists }
+            },
+            "The installed \(name) widget opened no native resize menu."
+        )
+        let actual = Set(nativeSizes.filter { notificationCenter.menuItems[$0].exists })
+        XCTAssertEqual(
+            actual,
+            Set(expected),
+            "The installed \(name) widget's complete native resize set was \(actual.sorted())."
+        )
+        notificationCenter.typeKey(.escape, modifierFlags: [])
+
         for family in expected {
             let widget = installedWidget(named: name)
             XCTAssertTrue(DemoLaunch.wait(for: widget, timeout: 10), "The \(name) widget was not installed.")
@@ -277,14 +333,6 @@ final class MacWidgetContractTests: XCTestCase {
             size.click()
         }
 
-        if expected == ["Small", "Medium"] {
-            installedWidget(named: name).rightClick()
-            XCTAssertFalse(
-                notificationCenter.menuItems["Large"].exists,
-                "The Feature Flag widget offered its unsupported Large family."
-            )
-            notificationCenter.typeKey(.escape, modifierFlags: [])
-        }
     }
 
     @MainActor
@@ -319,7 +367,18 @@ final class MacWidgetContractTests: XCTestCase {
 
     @MainActor
     private func installedWidget(named name: String) -> XCUIElement {
-        firstElement(containingAny: [name], in: notificationCenter)
+        let containers = notificationCenter.scrollViews.allElementsBoundByIndex
+        if let installed = containers.lazy
+            .map({ firstElement(containingAny: [name], in: $0) })
+            .first(where: { $0.exists }) {
+            return installed
+        }
+        // A query rooted in the installed-widget surface even when no match
+        // exists; never fall back to gallery/search/configuration descendants.
+        return firstElement(
+            containingAny: [name],
+            in: notificationCenter.scrollViews.firstMatch
+        )
     }
 
     @MainActor
@@ -353,6 +412,145 @@ final class MacWidgetContractTests: XCTestCase {
                 let confirm = firstElement(containingAny: ["Remove"], in: notificationCenter)
                 if DemoLaunch.wait(for: confirm, timeout: 2), confirm.isHittable { confirm.click() }
             }
+        }
+    }
+
+    @MainActor
+    private func cleanupInstalledWidgets(
+        named names: [String] = ["Metric", "Project Health", "Feature Flag"]
+    ) {
+        closeTransientSurfaces()
+        removeInstalledWidgets(named: names)
+        closeTransientSurfaces()
+    }
+
+    @MainActor
+    private func closeTransientSurfaces() {
+        for _ in 0..<6 {
+            let hasEditor = notificationCenter.popovers.firstMatch.exists
+                || notificationCenter.sheets.firstMatch.exists
+                || notificationCenter.menus.firstMatch.exists
+            guard hasEditor else { break }
+            notificationCenter.typeKey(.escape, modifierFlags: [])
+        }
+        closeGalleryIfOpen()
+    }
+
+    // MARK: - Signed build preflight
+
+    @MainActor
+    private func acceptanceLaunchEnvironment(
+        runnerEnvironment: [String: String],
+        normalizedSession: String
+    ) throws -> [String: String] {
+        let configuration = try XCTUnwrap(runnerEnvironment["XCTestConfigurationFilePath"])
+        let bundle = Bundle(for: Self.self).bundlePath
+        return [
+            "GETHOG_SIGNED_WIDGET_ACCEPTANCE": "xctest-fixed-fiction-v1",
+            "GETHOG_SIGNED_WIDGET_ACCEPTANCE_RUN_ID": normalizedSession,
+            "XCTestSessionIdentifier": normalizedSession,
+            "XCTestConfigurationFilePath": configuration,
+            "XCTestBundlePath": bundle,
+        ]
+    }
+
+    /// Reads entitlements from the actual signed build products, not source
+    /// plists. Only key/status pairs leave this function; group values are used
+    /// transiently for equality and are never interpolated into diagnostics.
+    @MainActor
+    private func signedDistributionPreflight(
+        environment: [String: String]
+    ) throws -> SignedDistributionPreflight {
+        // This is the application product the UI-test target depends on and
+        // launches. No path override may inspect one signed bundle and then
+        // exercise a different installed bundle with the same identifier.
+        let appPath = try XCTUnwrap(environment["BUILT_PRODUCTS_DIR"])
+            + "/GetHog.app"
+        let widgetPath = appPath + "/Contents/PlugIns/GetHogWidgets.appex"
+        let appSignature = signatureIsValid(at: appPath)
+        let widgetSignature = signatureIsValid(at: widgetPath)
+        let app = try resolvedEntitlements(at: appPath)
+        let widget = try resolvedEntitlements(at: widgetPath)
+        let key = "com.apple.security.application-groups"
+        let network = "com.apple.security.network.client"
+        let appGroups = groupState(app[key])
+        let widgetGroups = groupState(widget[key])
+        let parity: ResolvedEntitlementStatus = appGroups.value != nil
+            && appGroups.value == widgetGroups.value ? .matching : .mismatched
+        let appNetwork: ResolvedEntitlementStatus = app[network] as? Bool == true
+            ? .requiredPresent : .requiredMissing
+        let widgetNetwork: ResolvedEntitlementStatus = widget[network] == nil
+            ? .forbiddenAbsent : .forbiddenPresent
+        let checks: [(String, String, ResolvedEntitlementStatus)] = [
+            ("app", "signature", appSignature ? .signatureValid : .signatureInvalid),
+            ("extension", "signature", widgetSignature ? .signatureValid : .signatureInvalid),
+            ("app", key, appGroups.status),
+            ("extension", key, widgetGroups.status),
+            ("parity", key, parity),
+            ("app", network, appNetwork),
+            ("extension", network, widgetNetwork),
+        ]
+        let accepted = appSignature
+            && widgetSignature
+            && appGroups.status == .requiredSinglePresent
+            && widgetGroups.status == .requiredSinglePresent
+            && parity == .matching
+            && appNetwork == .requiredPresent
+            && widgetNetwork == .forbiddenAbsent
+        return SignedDistributionPreflight(
+            isAccepted: accepted,
+            report: checks.map { "\($0.0).\($0.1): \($0.2.rawValue)" }.joined(separator: "; ")
+        )
+    }
+
+    @MainActor
+    private func groupState(_ raw: Any?) -> (status: ResolvedEntitlementStatus, value: String?) {
+        guard let raw else { return (.requiredSingleMissing, nil) }
+        guard let groups = raw as? [String] else { return (.requiredSingleWrongType, nil) }
+        switch groups.count {
+        case 0: return (.requiredSingleEmpty, nil)
+        case 1: return (.requiredSinglePresent, groups[0])
+        default: return (.requiredSingleMultiple, nil)
+        }
+    }
+
+    @MainActor
+    private func signatureIsValid(at path: String) -> Bool {
+        run("/usr/bin/codesign", arguments: ["--verify", "--strict", path]).status == 0
+    }
+
+    @MainActor
+    private func resolvedEntitlements(at path: String) throws -> [String: Any] {
+        let result = run(
+            "/usr/bin/codesign",
+            arguments: ["--display", "--entitlements", ":-", path]
+        )
+        guard result.status == 0 else {
+            XCTFail("codesign could not inspect the signed acceptance product.")
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let propertyList = try PropertyListSerialization.propertyList(
+            from: result.output,
+            options: [],
+            format: nil
+        )
+        return try XCTUnwrap(propertyList as? [String: Any])
+    }
+
+    @MainActor
+    private func run(_ executable: String, arguments: [String]) -> (status: Int32, output: Data) {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = output
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return (process.terminationStatus, output.fileHandleForReading.readDataToEndOfFile())
+        } catch {
+            return (-1, Data())
         }
     }
 
