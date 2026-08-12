@@ -74,10 +74,22 @@ struct KeyboardAction: Identifiable {
     let action: () -> Void
 }
 
+/// Motion policy for the shared Mac pointer highlight.
+///
+/// The outline itself remains useful feedback with Reduce Motion enabled; only
+/// its transition disappears, so hover state updates immediately rather than
+/// fading in or out.
+enum PointerHighlightMotion {
+    static func transitionDuration(reduceMotion: Bool) -> Double? {
+        reduceMotion ? nil : 0.12
+    }
+}
+
 private struct PointerHighlightModifier: ViewModifier {
     let cornerRadius: CGFloat
 
     #if os(macOS)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
     #endif
 
@@ -93,7 +105,7 @@ private struct PointerHighlightModifier: ViewModifier {
                     )
                     .allowsHitTesting(false)
             }
-            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(pointerHighlightAnimation, value: isHovered)
             .onHover { isHovered = $0 }
         #elseif os(iOS) || os(visionOS)
         content
@@ -103,6 +115,17 @@ private struct PointerHighlightModifier: ViewModifier {
         content
         #endif
     }
+
+    #if os(macOS)
+    private var pointerHighlightAnimation: Animation? {
+        guard let duration = PointerHighlightMotion.transitionDuration(
+            reduceMotion: reduceMotion
+        ) else {
+            return nil
+        }
+        return .easeOut(duration: duration)
+    }
+    #endif
 }
 
 extension View {
