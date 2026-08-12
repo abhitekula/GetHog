@@ -409,6 +409,14 @@ public struct PendingOpen: Codable, Sendable, Equatable {
 /// app, and the tests each construct their own and point it at a directory.
 public struct SharedSnapshotStore: Sendable {
 
+    public struct ProjectDataClearError: Error, Equatable, Sendable {
+        public let failedArtifacts: [String]
+
+        public init(failedArtifacts: [String]) {
+            self.failedArtifacts = failedArtifacts
+        }
+    }
+
     /// Posted in-process after the snapshot file is replaced or cleared.
     ///
     /// Widgets and other processes still discover changes on their own
@@ -786,6 +794,57 @@ public struct SharedSnapshotStore: Sendable {
         clearPendingOpen()
         try? FileManager.default.removeItem(at: metricWatchesURL)
         clearBreachingWatchIDs()
+    }
+
+    /// Strict variant for boundaries that must prove no previous project's
+    /// artifact survived before publishing replacement state.
+    ///
+    /// Every artifact is attempted even when an earlier deletion fails. The
+    /// caller receives the complete set of failed artifact *kinds* and can
+    /// refuse the subsequent write instead of accepting a partially cleared
+    /// container.
+    public func clearProjectDataStrict() throws {
+        try clearProjectDataStrict(
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) },
+            removeItem: { try FileManager.default.removeItem(at: $0) }
+        )
+    }
+
+    func clearProjectDataStrict(
+        fileExists: (URL) -> Bool,
+        removeItem: (URL) throws -> Void
+    ) throws {
+        let artifacts: [(name: String, url: URL)] = [
+            ("snapshot", fileURL),
+            ("pending-flag", pendingFlagURL),
+            ("pending-open", pendingOpenURL),
+            ("metric-watches", metricWatchesURL),
+            ("metric-watch-breaches", breachingWatchIDsURL),
+        ]
+        var failedArtifacts: [String] = []
+        var snapshotRemoved = false
+
+        for artifact in artifacts {
+            guard fileExists(artifact.url) else { continue }
+            do {
+                try removeItem(artifact.url)
+                if artifact.name == "snapshot" {
+                    snapshotRemoved = true
+                }
+            } catch {
+                failedArtifacts.append(artifact.name)
+            }
+        }
+
+        if snapshotRemoved {
+            NotificationCenter.default.post(
+                name: Self.snapshotDidChangeNotification,
+                object: fileURL
+            )
+        }
+        guard failedArtifacts.isEmpty else {
+            throw ProjectDataClearError(failedArtifacts: failedArtifacts)
+        }
     }
 
     // MARK: Plumbing

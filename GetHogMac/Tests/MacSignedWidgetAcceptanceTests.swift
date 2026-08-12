@@ -1,3 +1,5 @@
+#if os(macOS) && GETHOG_WIDGET_ACCEPTANCE
+
 import Foundation
 import GetHogKit
 import Testing
@@ -8,18 +10,13 @@ import Testing
 @MainActor
 struct MacSignedWidgetAcceptanceTests {
 
-    private let sessionID = "11111111-2222-3333-4444-555555555555"
-    private let configurationPath = "/tmp/GetHogMacUITests.xctestconfiguration"
-    private let bundlePath = "/tmp/GetHogMacUITests.xctest"
-
-    @Test("only the exact credential-free XCTest contract enables the Release seam")
+    private let sessionID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    @Test("only the exact credential-free acceptance contract enables the test binary seam")
     func exactPolicyGate() throws {
         let environment = acceptedEnvironment()
         let request = try #require(SignedWidgetAcceptancePolicy.request(
             environment: environment,
-            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument],
-            fileExists: { [configurationPath, bundlePath].contains($0) },
-            releaseBuild: true
+            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument]
         ))
 
         #expect(request.runID.uuidString.lowercased() == sessionID)
@@ -29,11 +26,11 @@ struct MacSignedWidgetAcceptanceTests {
         mutations.append(environment.merging([
             SignedWidgetAcceptancePolicy.gateKey: "wrong-version"
         ]) { _, new in new })
-        mutations.append(environment.filter { $0.key != "XCTestConfigurationFilePath" })
-        mutations.append(environment.filter { $0.key != "XCTestBundlePath" })
-        mutations.append(environment.filter { $0.key != "XCTestSessionIdentifier" })
         mutations.append(environment.merging([
-            SignedWidgetAcceptancePolicy.runIDKey: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            SignedWidgetAcceptancePolicy.runIDKey: sessionID.uppercased()
+        ]) { _, new in new })
+        mutations.append(environment.merging([
+            SignedWidgetAcceptancePolicy.runIDKey: "not-a-uuid"
         ]) { _, new in new })
         mutations.append(environment.merging(["GETHOG_API_KEY": "must-be-rejected"]) { _, new in new })
         mutations.append(environment.merging(["GETHOG_ACCEPTANCE_PAYLOAD": "must-be-rejected"]) { _, new in new })
@@ -41,34 +38,24 @@ struct MacSignedWidgetAcceptanceTests {
         for mutation in mutations {
             #expect(SignedWidgetAcceptancePolicy.request(
                 environment: mutation,
-                arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument],
-                fileExists: { [configurationPath, bundlePath].contains($0) },
-                releaseBuild: true
+                arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument]
             ) == nil)
         }
         #expect(SignedWidgetAcceptancePolicy.request(
             environment: environment,
-            arguments: ["GetHog"],
-            fileExists: { [configurationPath, bundlePath].contains($0) },
-            releaseBuild: true
+            arguments: ["GetHog"]
         ) == nil)
         #expect(SignedWidgetAcceptancePolicy.request(
             environment: environment,
-            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument, "-GetHogDemo"],
-            fileExists: { [configurationPath, bundlePath].contains($0) },
-            releaseBuild: true
+            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument, "-GetHogDemo"]
         ) == nil)
         #expect(SignedWidgetAcceptancePolicy.request(
             environment: environment,
-            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument],
-            fileExists: { _ in false },
-            releaseBuild: true
-        ) == nil)
-        #expect(SignedWidgetAcceptancePolicy.request(
-            environment: environment,
-            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument],
-            fileExists: { [configurationPath, bundlePath].contains($0) },
-            releaseBuild: false
+            arguments: [
+                "GetHog",
+                SignedWidgetAcceptancePolicy.launchArgument,
+                SignedWidgetAcceptancePolicy.launchArgument,
+            ]
         ) == nil)
     }
 
@@ -94,9 +81,7 @@ struct MacSignedWidgetAcceptanceTests {
         try store.enqueue(PendingOpen(metricID: "stale-fictional-metric"))
         let request = try #require(SignedWidgetAcceptancePolicy.request(
             environment: acceptedEnvironment(),
-            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument],
-            fileExists: { [configurationPath, bundlePath].contains($0) },
-            releaseBuild: true
+            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument]
         ))
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         var snapshotObservedDuringReload: SharedSnapshot?
@@ -111,7 +96,7 @@ struct MacSignedWidgetAcceptanceTests {
         let snapshot = try #require(snapshotObservedDuringReload)
         #expect(snapshot.capturedAt == now)
         #expect(snapshot.projectID == SignedWidgetAcceptanceFixture.projectID)
-        #expect(snapshot.metrics.first?.title == "Signed widget acceptance 11111111")
+        #expect(snapshot.metrics.first?.title == "Signed widget acceptance aaaaaaaa")
         #expect(snapshot.metrics.first?.dashboardID == SignedWidgetAcceptanceFixture.dashboardID)
         #expect(completion.accessibilityIdentifier == "gethog.widget-acceptance.complete.\(sessionID)")
         #expect(store.pendingFlagWrite() == nil)
@@ -122,9 +107,7 @@ struct MacSignedWidgetAcceptanceTests {
     func publicationRequiresResolvedSharedContainer() throws {
         let request = try #require(SignedWidgetAcceptancePolicy.request(
             environment: acceptedEnvironment(),
-            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument],
-            fileExists: { [configurationPath, bundlePath].contains($0) },
-            releaseBuild: true
+            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument]
         ))
         let store = SharedSnapshotStore(
             directory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString),
@@ -143,13 +126,46 @@ struct MacSignedWidgetAcceptanceTests {
         #expect(!reloaded)
     }
 
+    @Test("a strict-clear failure prevents snapshot write, reload, and completion")
+    func strictClearFailureShortCircuitsPublication() throws {
+        struct SyntheticFailure: Error {}
+        let request = try #require(SignedWidgetAcceptancePolicy.request(
+            environment: acceptedEnvironment(),
+            arguments: ["GetHog", SignedWidgetAcceptancePolicy.launchArgument]
+        ))
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedSnapshotStore(directory: directory, isSharedContainer: true)
+        let stale = SharedSnapshot(
+            projectID: 9,
+            projectName: "Stale fictional project",
+            metrics: [],
+            flags: [],
+            capturedAt: Date(timeIntervalSinceReferenceDate: 1)
+        )
+        try store.write(stale)
+        var reloaded = false
+
+        #expect(throws: SyntheticFailure.self) {
+            try SignedWidgetAcceptancePublisher.publish(
+                request: request,
+                store: store,
+                capturedAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
+                clearProjectData: { _ in throw SyntheticFailure() },
+                reloadTimelines: { reloaded = true }
+            )
+        }
+
+        #expect(store.loadOrNil() == stale)
+        #expect(!reloaded)
+    }
+
     private func acceptedEnvironment() -> [String: String] {
         [
             SignedWidgetAcceptancePolicy.gateKey: SignedWidgetAcceptancePolicy.gateValue,
             SignedWidgetAcceptancePolicy.runIDKey: sessionID,
-            "XCTestConfigurationFilePath": configurationPath,
-            "XCTestBundlePath": bundlePath,
-            "XCTestSessionIdentifier": sessionID,
         ]
     }
 }
+
+#endif

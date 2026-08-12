@@ -1,15 +1,13 @@
-#if os(macOS)
+#if os(macOS) && GETHOG_WIDGET_ACCEPTANCE
 
 import Foundation
 import GetHogKit
 
 /// A narrowly scoped request to prove the signed app-to-widget container.
 ///
-/// This is compiled in Release because an unsigned or Debug build cannot prove
-/// App Group sharing. It is not a demo-mode switch: the policy requires the
-/// UI-test runner's own session/configuration witnesses, accepts no payload or
-/// credential, and the publisher below can write only its fixed fictional
-/// fixture. A normal launch cannot construct a request from product input.
+/// This exists only in the dedicated, test-built Release acceptance slice. An
+/// ordinary Debug/Release/archive compilation omits the entire file because
+/// the project never defines `GETHOG_WIDGET_ACCEPTANCE`.
 struct SignedWidgetAcceptanceRequest: Equatable, Sendable {
     let runID: UUID
 
@@ -28,46 +26,25 @@ enum SignedWidgetAcceptancePolicy {
     static let gateValue = "xctest-fixed-fiction-v1"
     static let runIDKey = "GETHOG_SIGNED_WIDGET_ACCEPTANCE_RUN_ID"
 
-    static var isReleaseBuild: Bool {
-        #if DEBUG
-        false
-        #else
-        true
-        #endif
-    }
-
-    /// Returns a request only for the exact XCUITest contract.
-    ///
-    /// The run id must be the test session id, not an arbitrary payload. Both
-    /// XCTest paths must exist and have the expected bundle/configuration
-    /// shapes. Credential-bearing and broad demo launches are refused even if
-    /// every other field is present.
+    /// Returns a request only for the exact credential-free XCUITest contract.
+    /// The compilation condition is the primary boundary; these checks keep
+    /// the test-only binary deterministic and prevent payload injection.
     static func request(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        arguments: [String] = ProcessInfo.processInfo.arguments,
-        fileExists: (String) -> Bool = FileManager.default.fileExists(atPath:),
-        releaseBuild: Bool = isReleaseBuild
+        arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> SignedWidgetAcceptanceRequest? {
         let allowedGetHogKeys: Set<String> = [gateKey, runIDKey]
         let hasUnexpectedGetHogInput = environment.keys.contains {
             $0.hasPrefix("GETHOG_") && !allowedGetHogKeys.contains($0)
         }
-        guard releaseBuild,
-              environment[gateKey] == gateValue,
+        guard environment[gateKey] == gateValue,
               !hasUnexpectedGetHogInput,
               arguments.filter({ $0 == launchArgument }).count == 1,
+              arguments.filter({ $0.hasPrefix("-GetHog") }).count == 1,
               !arguments.contains(DemoTransport.launchArgument),
               let runIDValue = environment[runIDKey],
-              let sessionValue = environment["XCTestSessionIdentifier"],
-              runIDValue.caseInsensitiveCompare(sessionValue) == .orderedSame,
               let runID = UUID(uuidString: runIDValue),
-              runID.uuidString.caseInsensitiveCompare(runIDValue) == .orderedSame,
-              let configurationPath = environment["XCTestConfigurationFilePath"],
-              configurationPath.hasSuffix(".xctestconfiguration"),
-              fileExists(configurationPath),
-              let bundlePath = environment["XCTestBundlePath"],
-              bundlePath.hasSuffix("GetHogMacUITests.xctest"),
-              fileExists(bundlePath)
+              runID.uuidString.lowercased() == runIDValue
         else { return nil }
 
         return SignedWidgetAcceptanceRequest(runID: runID)
@@ -127,12 +104,15 @@ enum SignedWidgetAcceptancePublisher {
         request: SignedWidgetAcceptanceRequest,
         store: SharedSnapshotStore = .shared,
         capturedAt: Date = Date(),
+        clearProjectData: (SharedSnapshotStore) throws -> Void = {
+            try $0.clearProjectDataStrict()
+        },
         reloadTimelines: () -> Void
     ) throws -> SignedWidgetAcceptanceCompletion {
         guard store.isSharedContainer else {
             throw SignedWidgetAcceptanceError.unsharedContainer
         }
-        store.clearProjectData()
+        try clearProjectData(store)
         try store.write(SignedWidgetAcceptanceFixture.snapshot(for: request, capturedAt: capturedAt))
         reloadTimelines()
         return SignedWidgetAcceptanceCompletion(runID: request.runID)

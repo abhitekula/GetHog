@@ -624,6 +624,7 @@ targets:
     platform: macOS
     sources:
       - GetHogMac/Tests
+      - GetHogMac/WidgetAcceptanceSupport
       # Compiled in, not imported: the widget extension is an appex, not a
       # framework, so this is the only route a test has to its pure logic. One
       # file on purpose — WidgetCache.swift holds the refresh cadence, the
@@ -657,6 +658,7 @@ targets:
     platform: macOS
     sources:
       - path: GetHogMac/UITests
+      - path: GetHogMac/WidgetAcceptanceSupport
       - path: GetHogUITests/DemoLaunch.swift
       - path: GetHogUITests/Screenshots/LiveCredentials.swift
     dependencies:

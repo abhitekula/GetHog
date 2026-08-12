@@ -1,7 +1,9 @@
 import GetHogKit
 import GetHogUI
 import SwiftUI
+#if GETHOG_WIDGET_ACCEPTANCE
 import WidgetKit
+#endif
 
 #if DEBUG
 /// Builds launch-time models for deterministic DEBUG automation.
@@ -55,11 +57,13 @@ enum MacAppModelFactory {
 @main
 struct GetHogMacApp: App {
     @State private var model: AppModel
+#if GETHOG_WIDGET_ACCEPTANCE
     @State private var signedWidgetAcceptanceCompletion: String?
 
-    /// `nil` on every ordinary launch. Release can receive a value only from
-    /// the exact XCTest-witnessed, credential-free policy contract.
+    /// `nil` unless the dedicated acceptance-only build receives its exact,
+    /// credential-free UI-test policy contract.
     private let signedWidgetAcceptanceRequest: SignedWidgetAcceptanceRequest?
+#endif
 
     /// The same single instance both window groups read — see `GetHogApp.nav`
     /// for why a second copy would be a second source of truth.
@@ -78,10 +82,14 @@ struct GetHogMacApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+#if GETHOG_WIDGET_ACCEPTANCE
         let request = SignedWidgetAcceptancePolicy.request()
         signedWidgetAcceptanceRequest = request
         _model = State(initialValue: GetHogMacApp.makeModel(acceptanceRequest: request))
         _signedWidgetAcceptanceCompletion = State(initialValue: nil)
+#else
+        _model = State(initialValue: GetHogMacApp.makeModel())
+#endif
     }
 
     var body: some Scene {
@@ -113,6 +121,7 @@ struct GetHogMacApp: App {
                 .environment(nav)
                 .insightCSVExporter()
                 .tint(Theme.accent)
+                #if GETHOG_WIDGET_ACCEPTANCE
                 .overlay(alignment: .topLeading) {
                     if let signedWidgetAcceptanceCompletion {
                         // A run-unique signal, mounted only after the fresh
@@ -123,6 +132,7 @@ struct GetHogMacApp: App {
                             .accessibilityIdentifier(signedWidgetAcceptanceCompletion)
                     }
                 }
+                #endif
                 .onOpenURL { LinkInbox.deliver($0) }
                 // The inbound half of Handoff. An iPhone publishing the console
                 // URL for the screen it is on is continued here, and lands on
@@ -139,6 +149,7 @@ struct GetHogMacApp: App {
                     #endif
                     AppTips.configure()
                     await model.bootstrap()
+                    #if GETHOG_WIDGET_ACCEPTANCE
                     if let request = signedWidgetAcceptanceRequest,
                        let completion = try? SignedWidgetAcceptancePublisher.publish(
                            request: request,
@@ -146,6 +157,7 @@ struct GetHogMacApp: App {
                        ) {
                         signedWidgetAcceptanceCompletion = completion.accessibilityIdentifier
                     }
+                    #endif
                     menuBar.adoptAuthSession(model.authSessionID)
                     // After bootstrap, because the schedule stands every wake
                     // down while there is no credential and the model only
@@ -236,6 +248,17 @@ struct GetHogMacApp: App {
         .menuBarExtraStyle(.window)
     }
 
+    private static func makeModel() -> AppModel {
+        #if DEBUG
+        MacAppModelFactory.makeModel()
+        #else
+        // DEBUG and acceptance launch seams do not exist in an ordinary
+        // shipped binary.
+        AppModel()
+        #endif
+    }
+
+    #if GETHOG_WIDGET_ACCEPTANCE
     private static func makeModel(
         acceptanceRequest: SignedWidgetAcceptanceRequest?
     ) -> AppModel {
@@ -249,11 +272,7 @@ struct GetHogMacApp: App {
                 transport: DemoTransport()
             )
         }
-        #if DEBUG
-        return MacAppModelFactory.makeModel()
-        #else
-        // DEBUG launch environment seams do not exist in the shipped binary.
-        return AppModel()
-        #endif
+        return makeModel()
     }
+    #endif
 }

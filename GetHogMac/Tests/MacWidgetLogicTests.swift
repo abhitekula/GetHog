@@ -259,6 +259,57 @@ struct MetricWidgetRouteTests {
     }
 }
 
+@Suite("Signed widget acceptance build boundary")
+struct SignedWidgetAcceptanceBuildBoundaryTests {
+
+    @Test("ordinary project configurations never define the acceptance condition")
+    func ordinaryConfigurationsExcludeAcceptanceCode() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let project = try String(
+            contentsOf: repository.appending(path: "project.yml"),
+            encoding: .utf8
+        )
+        let acceptance = try String(
+            contentsOf: repository.appending(path: "GetHog/Sources/App/SignedWidgetAcceptance.swift"),
+            encoding: .utf8
+        )
+        let app = try String(
+            contentsOf: repository.appending(path: "GetHogMac/Sources/GetHogMacApp.swift"),
+            encoding: .utf8
+        )
+
+        #expect(!project.contains("GETHOG_WIDGET_ACCEPTANCE"))
+        #expect(acceptance.hasPrefix("#if os(macOS) && GETHOG_WIDGET_ACCEPTANCE\n"))
+
+        var acceptanceDepth = 0
+        var conditionalDepth = 0
+        for rawLine in app.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#if") {
+                conditionalDepth += 1
+                if line.contains("GETHOG_WIDGET_ACCEPTANCE") {
+                    acceptanceDepth = conditionalDepth
+                }
+                continue
+            }
+            if line.hasPrefix("#endif") {
+                if conditionalDepth == acceptanceDepth {
+                    acceptanceDepth = 0
+                }
+                conditionalDepth -= 1
+                continue
+            }
+            if !line.hasPrefix("///"),
+               line.range(of: "signedWidgetAcceptance", options: .caseInsensitive) != nil {
+                #expect(acceptanceDepth > 0, "Acceptance reference escaped its compilation guard: \(line)")
+            }
+        }
+    }
+}
+
 @Suite("Mac widget Distribution entitlements")
 struct MacWidgetDistributionEntitlementTests {
 

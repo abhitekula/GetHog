@@ -563,4 +563,63 @@ struct SharedSnapshotTests {
         #expect(store.metricWatches().isEmpty)
         #expect(store.breachingWatchIDs().isEmpty)
     }
+
+    @Test("strict clearing removes every project artifact")
+    func strictProjectDataClear() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try store.write(sample())
+        try store.enqueue(PendingFlagWrite(flagID: 7, key: "synthetic-flag", desiredActive: true))
+        try store.enqueue(PendingOpen(metricID: "42"))
+        try store.writeMetricWatches([
+            MetricWatch(
+                id: "synthetic-watch",
+                metricID: "42",
+                title: "Example metric",
+                condition: .above(100)
+            )
+        ])
+        try store.writeBreachingWatchIDs(["synthetic-watch"])
+
+        try store.clearProjectDataStrict()
+
+        #expect(store.loadOrNil() == nil)
+        #expect(store.pendingFlagWrite() == nil)
+        #expect(store.pendingOpen() == nil)
+        #expect(store.metricWatches().isEmpty)
+        #expect(store.breachingWatchIDs().isEmpty)
+    }
+
+    @Test("strict clearing attempts every artifact and reports every failed deletion")
+    func strictProjectDataClearReportsAllFailures() throws {
+        let (store, dir) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let expected = [
+            "snapshot.json",
+            "pending-flag.json",
+            "pending-open.json",
+            "metric-watches.json",
+            "metric-watch-breaches.json",
+        ]
+        var attempted: [String] = []
+        enum SyntheticDeletionFailure: Error { case refused }
+
+        do {
+            try store.clearProjectDataStrict(
+                fileExists: { _ in true },
+                removeItem: { url in
+                    attempted.append(url.lastPathComponent)
+                    if ["pending-open.json", "metric-watches.json"].contains(url.lastPathComponent) {
+                        throw SyntheticDeletionFailure.refused
+                    }
+                }
+            )
+            Issue.record("Strict clear accepted failed deletions.")
+        } catch let error as SharedSnapshotStore.ProjectDataClearError {
+            #expect(error.failedArtifacts == ["pending-open", "metric-watches"])
+        }
+
+        #expect(attempted == expected)
+    }
 }

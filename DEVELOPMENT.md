@@ -359,27 +359,30 @@ the app has network client, and the extension does not. Its diagnostic is still
 key/status only; the resolved group value is used transiently for equality and
 is never reported.
 
-Release does not honor the broad `-GetHogDemo` automation flag. Instead, this
-one test launches `-GetHogSignedWidgetAcceptance` through a seam that is inert
-in Debug and ordinary Release launches. Activation requires all of the
-following to agree:
+Release does not honor the broad `-GetHogDemo` automation flag. The signed test
+uses a dedicated acceptance binary compiled with
+`GETHOG_WIDGET_ACCEPTANCE`. `project.yml` deliberately defines that condition
+nowhere: ordinary Debug, ordinary Release, Archive, notarized, and distributed
+products contain no acceptance policy, fixture factory, publisher, or UI
+completion marker. Never archive, export, notarize, or publish a build made
+with this condition; build it only as the disposable XCUITest product below.
+
+Within that test-only binary, activation still requires all of the following:
 
 - the exact `xctest-fixed-fiction-v1` gate and a canonical run UUID;
-- that UUID matching the UI runner's `XCTestSessionIdentifier`;
-- the runner's existing `.xctestconfiguration` and loaded
-  `GetHogMacUITests.xctest` bundle paths;
 - exactly one acceptance launch argument; and
 - no credential, demo flag, or other `GETHOG_` input.
 
-The UI test supplies those values directly to the tested process; they are not
-operator-configurable payload fields. The seam can write only one in-source
-fictional fixture and cannot accept JSON, metric values, endpoints, regions,
-or credentials. It first clears every prior project-scoped shared record,
-writes a snapshot whose metric title contains the current test-session tag,
-requests `WidgetCenter.shared.reloadAllTimelines()`, and only after that call
-returns mounts the matching run-specific accessibility completion witness.
-The test waits for that witness before terminating the publisher, so neither a
-prior snapshot nor a prior run's completion state can satisfy acceptance.
+The UI runner creates a new UUID for every method invocation and supplies only
+that UUID and the exact gate. These are not payload fields. The test-only seam
+can write only one in-source fictional fixture and cannot accept JSON, metric
+values, endpoints, regions, or credentials. Its strict clear attempts every
+project-scoped artifact and throws with artifact-kind statuses if any deletion
+fails; snapshot write, timeline reload, and completion are all skipped on that
+failure. Only after a complete clear does it write the newly tagged snapshot,
+call `WidgetCenter.shared.reloadAllTimelines()`, and mount the matching
+run-specific completion witness. Waiting for that witness means neither a
+prior fixed snapshot nor a prior run's completion state can satisfy acceptance.
 
 The installed Metric must then show `Signed widget acceptance <run-tag>` and
 its fresh timestamp. Its URL carries both authoritative cached identifiers:
@@ -392,20 +395,24 @@ parity has no known issue:
 GETHOG_WIDGET_SYSTEM_UI=1 GETHOG_WIDGET_SIGNED_DISTRIBUTION=1 \
   xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac \
   -configuration Release -destination 'platform=macOS' \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) GETHOG_WIDGET_ACCEPTANCE' \
   -only-testing:GetHogMacUITests/MacWidgetContractTests/testSignedDistributionWidgetShowsTheAppSnapshotWhenAvailable \
   DEVELOPMENT_TEAM=<team id>
 ```
 
-The preflight deliberately has no path override: it must inspect the scheme's
-`BUILT_PRODUCTS_DIR/GetHog.app`, the same product the UI-test dependency
-launches, with its extension at `Contents/PlugIns/GetHogWidgets.appex`. This
-prevents proving one signed bundle and exercising another bundle with the same
-identifier. The method skips only when the signed-distribution gate is absent.
-Once opted in, missing products, invalid signatures, entitlement mismatch,
-absent XCTest witnesses, publication failure, or a stale/wrong run tag all
-fail. Cleanup dismisses configuration, menus, and gallery surfaces before
-removing authored widgets, and the generated Mac UI scheme remains
-non-parallel. Screenshots stay under ignored `build/`.
+The preflight deliberately has no path override. The UI runner starts at its
+own loaded test-bundle URL, walks its real build-product ancestors, and requires
+exactly one `GetHog.app` containing `Contents/PlugIns/GetHogWidgets.appex`.
+Only then does it run `codesign --verify --strict` and inspect resolved
+entitlements. This prevents app-supplied environment or filesystem witnesses
+from proving one bundle while exercising another. The method skips only when
+the signed-distribution gate is absent. Once opted in, missing or ambiguous
+products, invalid signatures, entitlement mismatch, publication failure, or a
+stale/wrong run tag all fail. Cleanup dismisses configuration, menus, and
+gallery surfaces before removing authored widgets; installed-widget lookup
+requires one unique non-gallery scroll region whose descendant exposes the
+native `Remove Widget` menu. The generated Mac UI scheme remains non-parallel.
+Screenshots stay under ignored `build/`.
 
 The upload-facing compliance lives in the repository already:
 `GetHog/Resources/PrivacyInfo.xcprivacy` declares the required-reason APIs the
