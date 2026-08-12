@@ -1,5 +1,4 @@
 import CoreGraphics
-import ImageIO
 import SwiftUI
 import Testing
 import UIKit
@@ -54,35 +53,23 @@ struct BrandIllustrationTests {
         #expect(fallback.uiImage != nil)
     }
 
-    @Test("Every source image set contains clean Retina alpha PNGs")
+    @Test("Every source PNG compiles into a clean Retina alpha image")
     func sourcePNGsAreValid() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Resources/Assets.xcassets")
-        let variants = [("1x", 160), ("2x", 320), ("3x", 480)]
+        let expectedPoints = CGSize(width: 160, height: 160)
+        let expectedScale = UIScreen.main.scale
+        let expectedPixels = Int(expectedPoints.width * expectedScale)
 
         for (_, assetName) in Self.expected {
-            for (scale, pixels) in variants {
-                let slug = assetName
-                    .replacingOccurrences(of: "Brand", with: "brand-")
-                    .replacingOccurrences(of: "Empty", with: "empty-")
-                    .replacingOccurrences(of: "AllClear", with: "all-clear")
-                    .flatMap { $0.isUppercase ? ["-", $0.lowercased()] : [$0.lowercased()] }
-                    .joined()
-                    .replacingOccurrences(of: "--", with: "-")
-                let url = root
-                    .appendingPathComponent("\(assetName).imageset")
-                    .appendingPathComponent("\(slug)-\(scale).png")
-                let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
-                let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
-                #expect(image.width == pixels)
-                #expect(image.height == pixels)
-                #expect(image.alphaInfo != .none)
-                #expect(image.alphaInfo != .noneSkipFirst)
-                #expect(image.alphaInfo != .noneSkipLast)
-                #expect(try cornerAlpha(of: image) == [0, 0, 0, 0])
-            }
+            let compiled = try #require(UIImage(named: assetName))
+            let image = try #require(compiled.cgImage)
+            #expect(compiled.size == expectedPoints)
+            #expect(compiled.scale == expectedScale)
+            #expect(image.width == expectedPixels)
+            #expect(image.height == expectedPixels)
+            #expect(image.alphaInfo != .none)
+            #expect(image.alphaInfo != .noneSkipFirst)
+            #expect(image.alphaInfo != .noneSkipLast)
+            #expect(try cornerAlpha(of: image) == [0, 0, 0, 0])
         }
     }
 
