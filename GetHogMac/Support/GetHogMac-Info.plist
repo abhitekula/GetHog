@@ -10,6 +10,15 @@
      on macOS prompts through its own mechanism). -->
 <plist version="1.0">
 <dict>
+	<!-- PRODUCT_NAME is intentionally GetHogMac so this build artifact cannot
+	     collide with the iOS GetHog.app in Xcode's hosted-test graph. Xcode 26.6
+	     derives CFBundleName from that product even when an INFOPLIST_KEY override
+	     says otherwise, so the native app menu and About name are owned here at
+	     the processed-plist merge boundary. CFBundleDisplayName remains generated
+	     as GetHog by project.yml. -->
+	<key>CFBundleName</key>
+	<string>GetHog</string>
+
 	<!-- The Mac App Store shelf, and an upload requirement rather than a
 	     nicety: a macOS build without this key is rejected on submission, and
 	     the rejection arrives after the archive. iOS needs no counterpart —

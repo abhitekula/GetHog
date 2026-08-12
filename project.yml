@@ -221,9 +221,6 @@ targets:
         PRODUCT_MODULE_NAME: GetHog
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: GetHogMac/Support/GetHogMac-Info.plist
-        # PRODUCT_NAME is an internal artifact identity; native menus, About,
-        # and the Finder-visible short name remain the product's GetHog name.
-        INFOPLIST_KEY_CFBundleName: GetHog
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         ENABLE_PREVIEWS: YES

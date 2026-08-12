@@ -97,9 +97,27 @@ struct MacBuildGraphTests {
         for configuration in macConfigurations {
             #expect(configuration.contains("PRODUCT_NAME = GetHogMac;"))
             #expect(configuration.contains("PRODUCT_MODULE_NAME = GetHog;"))
-            #expect(configuration.contains("INFOPLIST_KEY_CFBundleName = GetHog;"))
             #expect(configuration.contains("INFOPLIST_KEY_CFBundleDisplayName = GetHog;"))
         }
+    }
+
+    @Test("source and processed Mac plists keep the native GetHog short name")
+    func macNativeShortName() throws {
+        let checkout = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceData = try Data(
+            contentsOf: checkout.appending(path: "GetHogMac/Support/GetHogMac-Info.plist")
+        )
+        let source = try #require(
+            PropertyListSerialization.propertyList(from: sourceData, format: nil)
+                as? [String: Any]
+        )
+
+        #expect(source["CFBundleName"] as? String == "GetHog")
+        #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String == "GetHog")
+        #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String == "GetHog")
     }
 
     /// Xcode 26.6 can collapse test-bundle module outputs to the generic

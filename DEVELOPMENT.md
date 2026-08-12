@@ -138,6 +138,12 @@ artifact unique, list its app and test bundles in `project.yml`, keep
 `buildImplicitDependencies: false`, and express extension and package
 relationships as target dependencies.
 
+The Mac source Info.plist owns `CFBundleName=GetHog`. Keep that source key even
+though the target also generates plist values: Xcode 26.6 derives the processed
+short name from the unique `GetHogMac` product and ignores an
+`INFOPLIST_KEY_CFBundleName` override at this merge boundary. The source key is
+what keeps the native app menu and About name user-facing `GetHog`.
+
 Every test bundle also pins distinct `PRODUCT_NAME` and `PRODUCT_MODULE_NAME`
 values. Do not replace them with inherited project defaults: Xcode 26.6 can
 otherwise plan two bundles under the generic `.swiftmodule/Project` output and
