@@ -99,12 +99,13 @@ final class MacWidgetContractTests: XCTestCase {
         XCTAssertEqual(previewFingerprints.count, 8)
     }
 
-    /// Catches a gallery-only implementation: each widget must install, expose
-    /// exactly its supported native resize choices, offer configuration where
-    /// the WidgetConfigurationIntent declares it, tell the truth in a teamless
-    /// Debug build, and foreground the host app when opened.
+    /// Catches a gallery-only implementation: each teamless Debug widget must
+    /// install, expose exactly its supported native resize choices, keep its
+    /// static configuration free of Edit/Configure actions, tell the truth
+    /// about its unshared container, and foreground the host app when opened.
+    /// App-Intent editor coverage belongs to the signed Distribution contract.
     @MainActor
-    func testInstalledDebugWidgetsResizeConfigureAndOpenGetHog() {
+    func testInstalledDebugWidgetsResizeDiscloseAndOpenGetHog() {
         cleanupInstalledWidgets()
         defer { cleanupInstalledWidgets() }
 
@@ -134,8 +135,9 @@ final class MacWidgetContractTests: XCTestCase {
             expected: ["Small", "Medium"]
         )
 
-        assertConfiguration(metricWidget, named: "Metric", parameter: "Metric")
-        assertConfiguration(flagWidget, named: "Feature Flag", parameter: "Feature Flag")
+        assertNoConfigurationAction(metricWidget, named: "Metric")
+        assertNoConfigurationAction(healthWidget, named: "Project Health")
+        assertNoConfigurationAction(flagWidget, named: "Feature Flag")
 
         let unshared = text(
             "Open GetHog to connect. This build can't share data with widgets.",
@@ -357,37 +359,43 @@ final class MacWidgetContractTests: XCTestCase {
     }
 
     @MainActor
-    private func assertConfiguration(
+    private func assertNoConfigurationAction(
         _ widget: XCUIElement,
-        named name: String,
-        parameter: String
+        named name: String
     ) {
         let menu = installedWidgetMenu(for: widget, named: name)
+        defer {
+            XCTAssertTrue(closeMenus(), "The \(name) static-widget menu did not close after inspection.")
+        }
         let edit = firstElement(containingAny: ["Edit Widget", "Configure Widget"], in: menu)
-        XCTAssertTrue(DemoLaunch.wait(for: edit, timeout: 5), "The \(name) widget was not configurable.")
-        edit.click()
-
-        let popover = notificationCenter.popovers.firstMatch
-        let sheet = notificationCenter.sheets.firstMatch
-        XCTAssertTrue(
-            DemoLaunch.wait(timeout: 5) { popover.exists || sheet.exists },
-            "The \(name) Edit Widget action opened no configuration container."
-        )
-        let editor = popover.exists ? popover : sheet
-        let field = editor.descendants(matching: .any).matching(NSPredicate(
-            format: "(label CONTAINS[c] %@ OR value CONTAINS[c] %@) "
-                + "AND (elementType == %@ OR elementType == %@ OR elementType == %@)",
-            parameter,
-            parameter,
-            NSNumber(value: XCUIElement.ElementType.button.rawValue),
-            NSNumber(value: XCUIElement.ElementType.popUpButton.rawValue),
-            NSNumber(value: XCUIElement.ElementType.comboBox.rawValue)
-        )).firstMatch
-        XCTAssertTrue(
-            DemoLaunch.wait(for: field, timeout: 5),
-            "The \(name) configuration UI did not expose an interactive \(parameter) control."
-        )
-        notificationCenter.typeKey(.escape, modifierFlags: [])
+        var witness = InstalledWidgetStaticMenuAbsenceWitness(minimumStableDuration: 1)
+        var resolution = InstalledWidgetStaticMenuAbsenceResolution.pending
+        _ = DemoLaunch.wait(timeout: 2.5) {
+            resolution = witness.observe(
+                InstalledWidgetStaticMenuSample(
+                    menuVisible: menu.exists && menu.isHittable,
+                    removeActionVisible: self.firstHittableElement(
+                        containingAny: ["Remove Widget"],
+                        in: menu
+                    ) != nil,
+                    configurationActionVisible: edit.exists
+                ),
+                at: ProcessInfo.processInfo.systemUptime
+            )
+            return resolution != .pending
+        }
+        switch resolution {
+        case .witnessed:
+            break
+        case .blocked(.configurationActionVisible):
+            XCTFail(
+                "The teamless Debug \(name) widget exposed Edit/Configure despite its static configuration."
+            )
+        case .pending:
+            XCTFail(
+                "The \(name) menu and its Remove Widget action did not remain stable long enough to prove configuration absent."
+            )
+        }
     }
 
     @MainActor

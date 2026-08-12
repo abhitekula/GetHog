@@ -365,12 +365,17 @@ that claim.
 
 The system-widget UI contract is intentionally opt-in because it changes the
 desktop's installed widgets. Run `MacWidgetContractTests` only on the
-disposable macOS CUA VM with `GETHOG_WIDGET_SYSTEM_UI=1`. It covers the eight
-gallery variants, installation and every supported native resize family,
-Metric and Feature Flag configuration, the honest Debug copy, and opening the
-host app. Each method closes the gallery and removes the widgets it authored;
-the Mac UI target is non-parallel in the generated scheme, so the stateful
-system surface is serialized.
+disposable macOS CUA VM with `GETHOG_WIDGET_SYSTEM_UI=1`. The teamless Debug
+path covers the eight gallery variants, installation, every supported native
+resize family, the absence of an Edit/Configure action on all three static
+widgets, the honest unshared-container copy, and opening the host app. Metric
+and Feature Flag editor requirements belong only to the signed Distribution
+path and have source/compile coverage; do not claim their live editor
+acceptance unless the signed app/extension pair has accepted entitlement parity
+and its deterministic fixture exposes choices for both editors. Each method
+closes the gallery and removes the widgets it authored; the Mac UI target is
+non-parallel in the generated scheme, so the stateful system surface is
+serialized.
 
 For the teamless Debug contract on the disposable VM:
 
@@ -379,7 +384,7 @@ GETHOG_WIDGET_SYSTEM_UI=1 xcodebuild test \
   -project GetHog.xcodeproj -scheme GetHogMac \
   -destination 'platform=macOS' \
   -only-testing:GetHogMacUITests/MacWidgetContractTests/testGalleryDiscoversAllEightFamilyPreviews \
-  -only-testing:GetHogMacUITests/MacWidgetContractTests/testInstalledDebugWidgetsResizeConfigureAndOpenGetHog
+  -only-testing:GetHogMacUITests/MacWidgetContractTests/testInstalledDebugWidgetsResizeDiscloseAndOpenGetHog
 ```
 
 The signed method additionally requires `GETHOG_WIDGET_SIGNED_DISTRIBUTION=1`

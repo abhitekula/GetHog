@@ -1,6 +1,52 @@
 import Foundation
 import Testing
 
+@Suite("Static installed-widget menu absence")
+struct InstalledWidgetStaticMenuAbsenceTests {
+
+    private let ready = InstalledWidgetStaticMenuSample(
+        menuVisible: true,
+        removeActionVisible: true,
+        configurationActionVisible: false
+    )
+
+    @Test("a static menu cannot pass before one full stable second")
+    func stableDurationCannotPassEarly() {
+        var witness = InstalledWidgetStaticMenuAbsenceWitness(minimumStableDuration: 1)
+
+        #expect(witness.observe(ready, at: 10) == .pending)
+        #expect(witness.observe(ready, at: 10.99) == .pending)
+        #expect(witness.observe(ready, at: 11) == .witnessed)
+    }
+
+    @Test("a late configuration action blocks the witness immediately")
+    func lateConfigurationActionBlocks() {
+        var witness = InstalledWidgetStaticMenuAbsenceWitness(minimumStableDuration: 1)
+
+        #expect(witness.observe(ready, at: 20) == .pending)
+        #expect(witness.observe(.init(
+            menuVisible: false,
+            removeActionVisible: false,
+            configurationActionVisible: true
+        ), at: 20.75) == .blocked(.configurationActionVisible))
+    }
+
+    @Test("an unstable Remove Widget witness restarts the stable interval")
+    func unstableMenuRestartsStableInterval() {
+        var witness = InstalledWidgetStaticMenuAbsenceWitness(minimumStableDuration: 1)
+
+        #expect(witness.observe(ready, at: 30) == .pending)
+        #expect(witness.observe(.init(
+            menuVisible: true,
+            removeActionVisible: false,
+            configurationActionVisible: false
+        ), at: 30.75) == .pending)
+        #expect(witness.observe(ready, at: 31) == .pending)
+        #expect(witness.observe(ready, at: 31.99) == .pending)
+        #expect(witness.observe(ready, at: 32) == .witnessed)
+    }
+}
+
 @Suite("Installed widget query preflight")
 struct InstalledWidgetPreflightTests {
 

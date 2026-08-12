@@ -375,9 +375,17 @@ struct MacDebugWidgetConfigurationTests {
             encoding: .utf8
         )
         #expect(metric.contains("static let kind = \"app.gethog.widget.metric\""))
-        #expect(metric.contains("AppIntentConfiguration"))
+        #expect(metric.contains("struct SelectMetricIntent: WidgetConfigurationIntent"))
+        #expect(metric.contains("@Parameter(title: \"Metric\")"))
+        #expect(metric.contains(
+            "AppIntentConfiguration(kind: Self.kind, intent: SelectMetricIntent.self"
+        ))
         #expect(flag.contains("static let kind = \"app.gethog.widget.flag\""))
-        #expect(flag.contains("AppIntentConfiguration"))
+        #expect(flag.contains("struct SelectFlagIntent: WidgetConfigurationIntent"))
+        #expect(flag.contains("@Parameter(title: \"Feature Flag\")"))
+        #expect(flag.contains(
+            "AppIntentConfiguration(kind: Self.kind, intent: SelectFlagIntent.self"
+        ))
     }
 
     private func sourceSlice(named start: String, before end: String, in source: String) throws -> Substring {
