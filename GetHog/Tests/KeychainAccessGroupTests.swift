@@ -23,9 +23,10 @@ import Testing
 /// invisible and destructive: adding a second group *ahead* of the shared one in
 /// the entitlement would move where new credentials are written, and every
 /// existing user would be silently signed out with a keychain item still sitting
-/// in the old group. This suite is what turns that into a red build.
+/// in the old group. This runtime suite and the host-side entitlement source
+/// suite are what turn that into a red build.
 ///
-/// These tests run in the app's process — a unit-test bundle is injected into
+/// The tests below run in the app's process — a unit-test bundle is injected into
 /// `GetHog.app`, so the entitlements in force are the app's own.
 @Suite("Keychain access group", .serialized)
 struct KeychainAccessGroupTests {
@@ -134,28 +135,5 @@ struct KeychainAccessGroupTests {
         // Absent, not false: the item was never marked synchronisable, so the
         // attribute simply isn't there.
         #expect(attributes?[kSecAttrSynchronizable as String] as? Bool != true)
-    }
-
-    /// The app and the widget extension must declare the *same* first group, or
-    /// the paragraph above stops being true for one of them. Read out of the
-    /// source entitlements because the built `.xcent` differs per signing
-    /// identity, and this is the file a change would land in.
-    @Test("both targets declare the same single keychain access group")
-    func entitlementsAgree() throws {
-        func groups(_ path: String) throws -> [String] {
-            let url = URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()  // Tests
-                .deletingLastPathComponent()  // GetHog
-                .appending(path: "Support/\(path)")
-            let data = try Data(contentsOf: url)
-            let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
-            return (plist as? [String: Any])?["keychain-access-groups"] as? [String] ?? []
-        }
-
-        let app = try groups("GetHog.entitlements")
-        let widgets = try groups("GetHogWidgets.entitlements")
-
-        #expect(app == ["$(AppIdentifierPrefix)app.gethog.shared"])
-        #expect(app == widgets)
     }
 }
