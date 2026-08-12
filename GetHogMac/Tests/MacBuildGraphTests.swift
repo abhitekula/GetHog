@@ -4,9 +4,9 @@ import Testing
 @Suite("Mac build graph")
 struct MacBuildGraphTests {
 
-    /// The storefront identity is shared, but each non-Mac SDK uses a unique
-    /// build product. Letting an explicit scheme infer dependencies can still
-    /// widen a graph, so schemes remain closed over declared dependencies too.
+    /// The storefront identity is shared, but Vision and TV use unique build
+    /// products. Letting an explicit scheme infer dependencies can still widen
+    /// a graph, so schemes remain closed over declared dependencies too.
     /// Parse the generated artifact—not project.yml text—so this also catches
     /// a generator schema change that silently drops the isolation setting.
     @Test("generated schemes build only their declared platform graph")
@@ -75,6 +75,13 @@ struct MacBuildGraphTests {
             #expect(
                 project.contains("TEST_HOST = \"$(BUILT_PRODUCTS_DIR)/\(host)\";"),
                 "generated hosted-test path does not follow unique product \(host)"
+            )
+        }
+
+        for product in ["GetHogTV.app", "GetHogVision.app"] {
+            #expect(
+                project.contains("path = \(product);"),
+                "generated product reference lost unique path \(product)"
             )
         }
     }
