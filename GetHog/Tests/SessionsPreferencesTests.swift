@@ -52,6 +52,24 @@ struct SessionsPreferencesTests {
         #expect(us.storageKeyComponent != eu.storageKeyComponent)
     }
 
+    @Test("equivalent self-hosted endpoint spellings reuse one project value")
+    func normalizesEquivalentSelfHostedEndpoints() {
+        let preferences = SessionsPreferences(defaults: storage())
+        let withoutTrailingSlash = ProjectPreferenceScope(
+            projectID: 71,
+            region: .selfHosted(URL(string: "https://posthog.example.test")!)
+        )
+        let withTrailingSlash = ProjectPreferenceScope(
+            projectID: 71,
+            region: .selfHosted(URL(string: "https://posthog.example.test/")!)
+        )
+
+        preferences.set(.init(playableOnly: true), for: withoutTrailingSlash)
+
+        #expect(withoutTrailingSlash.storageKeyComponent == withTrailingSlash.storageKeyComponent)
+        #expect(preferences.value(for: withTrailingSlash).playableOnly)
+    }
+
     @Test("missing fields default independently and an unknown order does not erase booleans")
     func toleratesVersionSkew() throws {
         let defaults = storage()

@@ -8,9 +8,24 @@ struct ProjectPreferenceScope: Equatable, Hashable, Sendable {
     let region: PostHogRegion
 
     var storageKeyComponent: String {
-        let host = region.host.absoluteString
+        let host = normalizedHost
             .addingPercentEncoding(withAllowedCharacters: .alphanumerics)
             ?? "invalid-host"
         return "\(host).\(projectID)"
+    }
+
+    private var normalizedHost: String {
+        guard var components = URLComponents(url: region.host, resolvingAgainstBaseURL: false) else {
+            return region.host.absoluteString
+        }
+
+        components.query = nil
+        components.fragment = nil
+        var path = components.percentEncodedPath
+        while path.count > 1, path.hasSuffix("/") {
+            path.removeLast()
+        }
+        components.percentEncodedPath = path == "/" ? "" : path
+        return components.url?.absoluteString ?? region.host.absoluteString
     }
 }
