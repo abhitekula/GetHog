@@ -56,7 +56,7 @@ struct MacBuildGraphTests {
             contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
             encoding: .utf8
         )
-        let configurations = project.components(separatedBy: "isa = XCBuildConfiguration;")
+        let configurations = buildConfigurations(in: project)
 
         for sdk in ["appletvos", "xros"] {
             let colliding = configurations.filter {
@@ -117,7 +117,7 @@ struct MacBuildGraphTests {
             contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
             encoding: .utf8
         )
-        let configurations = project.components(separatedBy: "isa = XCBuildConfiguration;")
+        let configurations = buildConfigurations(in: project)
 
         let targets = [
             "GetHogTests",
@@ -157,7 +157,7 @@ struct MacBuildGraphTests {
             contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
             encoding: .utf8
         )
-        let configurations = project.components(separatedBy: "isa = XCBuildConfiguration;")
+        let configurations = buildConfigurations(in: project)
         let bundleIDs = [
             "app.gethog.GetHog;",
             "app.gethog.GetHog.watchkitapp;",
@@ -192,5 +192,37 @@ struct MacBuildGraphTests {
         }
         #expect(hostConfigurations.filter { $0.contains("name = Debug;") }.count == 5)
         #expect(hostConfigurations.filter { $0.contains("name = Release;") }.count == 5)
+    }
+
+    /// Returns complete XCBuildConfiguration objects. Splitting on the `isa`
+    /// line loses the object header and leaves the next object's header on the
+    /// previous chunk, so predicates can accidentally classify adjacent
+    /// configurations. Brace balancing keeps each generated object isolated.
+    private func buildConfigurations(in project: String) -> [String] {
+        let lines = project.split(separator: "\n", omittingEmptySubsequences: false)
+        var configurations: [String] = []
+        var current: [Substring] = []
+        var depth = 0
+
+        for index in lines.indices {
+            let line = lines[index]
+            if current.isEmpty {
+                guard (line.contains("/* Debug */ = {") || line.contains("/* Release */ = {")),
+                      lines.indices.contains(index + 1),
+                      lines[index + 1].contains("isa = XCBuildConfiguration;") else {
+                    continue
+                }
+            }
+
+            current.append(line)
+            depth += line.count(where: { $0 == "{" })
+            depth -= line.count(where: { $0 == "}" })
+            if depth == 0 {
+                configurations.append(current.joined(separator: "\n"))
+                current.removeAll(keepingCapacity: true)
+            }
+        }
+
+        return configurations
     }
 }
