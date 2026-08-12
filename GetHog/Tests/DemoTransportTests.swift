@@ -804,8 +804,8 @@ struct DemoTransportTests {
             "Comparing synthetic meteor report paths",
         ])
         #expect(page.results.map(\.id) == [
-            "018f3000-0000-7000-8000-000000000701",
-            "018f3000-0000-7000-8000-000000000702",
+            "018f2000-0000-7000-8000-000000000601",
+            "018f2000-0000-7000-8000-000000000602",
         ])
         #expect(page.results.map(\.lastActivityAt) == [
             try Date("2026-02-12T14:30:00.000Z", strategy: .iso8601),

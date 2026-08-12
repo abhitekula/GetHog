@@ -88,7 +88,7 @@ struct SessionsPreferencesTests {
     @Test("two project ids on one host do not share a value")
     func separatesProjects() {
         let preferences = SessionsPreferences(defaults: storage())
-        let first = ProjectPreferenceScope(projectID: 41, region: .usCloud)
+        let first = ProjectPreferenceScope(projectID: 8, region: .usCloud)
         let second = ProjectPreferenceScope(projectID: 42, region: .usCloud)
 
         preferences.set(.init(filterTestAccounts: true), for: first)
@@ -99,8 +99,8 @@ struct SessionsPreferencesTests {
     @Test("the same project id on two hosts does not share a value")
     func separatesHosts() {
         let preferences = SessionsPreferences(defaults: storage())
-        let us = ProjectPreferenceScope(projectID: 7, region: .usCloud)
-        let eu = ProjectPreferenceScope(projectID: 7, region: .euCloud)
+        let us = ProjectPreferenceScope(projectID: 77, region: .usCloud)
+        let eu = ProjectPreferenceScope(projectID: 77, region: .euCloud)
 
         preferences.set(.init(playableOnly: true), for: us)
         #expect(preferences.value(for: us).playableOnly)
@@ -113,7 +113,7 @@ struct SessionsPreferencesTests {
         let defaults = storage()
         let scope = ProjectPreferenceScope(
             projectID: 9,
-            region: .selfHosted(URL(string: "https://posthog.example.test")!)
+            region: .selfHosted(URL(string: "https://app.example.com")!)
         )
         let data = try JSONSerialization.data(withJSONObject: [
             "filterTestAccounts": true,
@@ -130,7 +130,7 @@ struct SessionsPreferencesTests {
     @Test("an unreadable record safely returns all defaults")
     func corruptRecordDefaults() {
         let defaults = storage()
-        let scope = ProjectPreferenceScope(projectID: 11, region: .euCloud)
+        let scope = ProjectPreferenceScope(projectID: 77, region: .euCloud)
         defaults.set(Data([0xFF, 0x00]), forKey: SessionsPreferences.defaultsKey(for: scope))
 
         #expect(SessionsPreferences(defaults: defaults).value(for: scope) == .init())
@@ -365,7 +365,7 @@ func projectSwitchResetsTransientState() async {
     let store = SessionsStore(preferences: preferences)
 
     await store.load(client: client(RecordingsTransport(total: 1)), projectID: first.projectID)
-    store.filter.personSearch = "synthetic@example.test"
+    store.filter.personSearch = "synthetic@example.com"
     store.filter.signal = .exception
     store.filter.minimumDuration = 120
     store.filter.filterTestAccounts = true
@@ -383,18 +383,18 @@ func projectSwitchResetsTransientState() async {
 @Test("the same numeric project on another host has independent state and rejects the old response")
 func hostSwitchIsADataBoundary() async {
     let preferences = sessionPreferences()
-    let eu = ProjectPreferenceScope(projectID: 5, region: .euCloud)
+    let eu = ProjectPreferenceScope(projectID: 77, region: .euCloud)
     preferences.set(.init(filterTestAccounts: true), for: eu)
     let store = SessionsStore(preferences: preferences)
     let heldUS = RecordingsTransport(total: 9, gated: true)
     let slow = Task {
-        await store.load(client: client(heldUS, region: .usCloud), projectID: 5)
+        await store.load(client: client(heldUS, region: .usCloud), projectID: 77)
     }
     while await heldUS.urls().isEmpty { await Task.yield() }
 
     await store.load(
         client: client(RecordingsTransport(total: 3), region: .euCloud),
-        projectID: 5
+        projectID: 77
     )
     await heldUS.release()
     await slow.value
@@ -410,7 +410,7 @@ func writesDurableProjection() async {
     let store = SessionsStore(preferences: preferences)
     await store.load(client: client(RecordingsTransport(total: 1)), projectID: 8)
 
-    store.filter.personSearch = "memory-only@example.test"
+    store.filter.personSearch = "memory-only@example.com"
     #expect(preferences.value(for: scope) == .init())
 
     store.filter.filterTestAccounts = true
@@ -438,14 +438,14 @@ func writesDurableProjection() async {
 @Test("clearing removes every constraint and stored narrowing but preserves sort")
 func clearPreservesSort() async {
     let preferences = sessionPreferences()
-    let scope = ProjectPreferenceScope(projectID: 12, region: .usCloud)
+    let scope = ProjectPreferenceScope(projectID: 77, region: .usCloud)
     let store = SessionsStore(preferences: preferences)
-    await store.load(client: client(RecordingsTransport(total: 1)), projectID: 12)
+    await store.load(client: client(RecordingsTransport(total: 1)), projectID: 77)
     var filter = SessionRecordingFilter()
     filter.filterTestAccounts = true
     filter.source = .web
     filter.order = .consoleErrorCount
-    filter.urlSearch = "example.test/dashboard"
+    filter.urlSearch = "example.com/dashboard"
     filter.inheritedProperties = [
         .init(key: "plan", type: "person", value: .string("synthetic"), op: "exact"),
     ]

@@ -10,7 +10,7 @@ import Testing
 @MainActor
 struct MacSignedWidgetAcceptanceTests {
 
-    private let sessionID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    private let sessionID = "018f1000-0000-7000-8000-000000000099"
     @Test("only the exact credential-free acceptance contract enables the test binary seam")
     func exactPolicyGate() throws {
         let environment = acceptedEnvironment()
@@ -96,7 +96,7 @@ struct MacSignedWidgetAcceptanceTests {
         let snapshot = try #require(snapshotObservedDuringReload)
         #expect(snapshot.capturedAt == now)
         #expect(snapshot.projectID == SignedWidgetAcceptanceFixture.projectID)
-        #expect(snapshot.metrics.first?.title == "Signed widget acceptance aaaaaaaa")
+        #expect(snapshot.metrics.first?.title == "Signed widget acceptance 018f1000")
         #expect(snapshot.metrics.first?.dashboardID == SignedWidgetAcceptanceFixture.dashboardID)
         #expect(completion.accessibilityIdentifier == "gethog.widget-acceptance.complete.\(sessionID)")
         #expect(store.pendingFlagWrite() == nil)

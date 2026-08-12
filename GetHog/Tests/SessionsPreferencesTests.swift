@@ -32,7 +32,7 @@ struct SessionsPreferencesTests {
     @Test("two project ids on one host do not share a value")
     func separatesProjects() {
         let preferences = SessionsPreferences(defaults: storage())
-        let first = ProjectPreferenceScope(projectID: 41, region: .usCloud)
+        let first = ProjectPreferenceScope(projectID: 8, region: .usCloud)
         let second = ProjectPreferenceScope(projectID: 42, region: .usCloud)
 
         preferences.set(.init(filterTestAccounts: true), for: first)
@@ -43,8 +43,8 @@ struct SessionsPreferencesTests {
     @Test("the same project id on two hosts does not share a value")
     func separatesHosts() {
         let preferences = SessionsPreferences(defaults: storage())
-        let us = ProjectPreferenceScope(projectID: 7, region: .usCloud)
-        let eu = ProjectPreferenceScope(projectID: 7, region: .euCloud)
+        let us = ProjectPreferenceScope(projectID: 77, region: .usCloud)
+        let eu = ProjectPreferenceScope(projectID: 77, region: .euCloud)
 
         preferences.set(.init(playableOnly: true), for: us)
         #expect(preferences.value(for: us).playableOnly)
@@ -56,12 +56,12 @@ struct SessionsPreferencesTests {
     func normalizesEquivalentSelfHostedEndpoints() {
         let preferences = SessionsPreferences(defaults: storage())
         let withoutTrailingSlash = ProjectPreferenceScope(
-            projectID: 71,
-            region: .selfHosted(URL(string: "https://posthog.example.test")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com")!)
         )
         let withTrailingSlash = ProjectPreferenceScope(
-            projectID: 71,
-            region: .selfHosted(URL(string: "https://posthog.example.test/")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com/")!)
         )
 
         preferences.set(.init(playableOnly: true), for: withoutTrailingSlash)
@@ -74,16 +74,16 @@ struct SessionsPreferencesTests {
     func normalizesSelfHostedHostSpellingAndDefaultPorts() {
         let preferences = SessionsPreferences(defaults: storage())
         let canonical = ProjectPreferenceScope(
-            projectID: 72,
-            region: .selfHosted(URL(string: "https://posthog.example.test")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com")!)
         )
         let mixedCase = ProjectPreferenceScope(
-            projectID: 72,
-            region: .selfHosted(URL(string: "HTTPS://POSTHOG.example.test")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "HTTPS://APP.example.com")!)
         )
         let explicitDefaultPort = ProjectPreferenceScope(
-            projectID: 72,
-            region: .selfHosted(URL(string: "https://posthog.example.test:443")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com:443")!)
         )
 
         preferences.set(.init(filterTestAccounts: true), for: canonical)
@@ -97,13 +97,13 @@ struct SessionsPreferencesTests {
     @Test("equivalent self-hosted endpoints are one equality and hash identity")
     func equivalentSelfHostedScopesShareIdentity() {
         let scopes = [
-            "https://posthog.example.test",
-            "https://posthog.example.test/",
-            "HTTPS://POSTHOG.example.test",
-            "https://posthog.example.test:443",
+            "https://app.example.com",
+            "https://app.example.com/",
+            "HTTPS://APP.example.com",
+            "https://app.example.com:443",
         ].map {
             ProjectPreferenceScope(
-                projectID: 81,
+                projectID: 77,
                 region: .selfHosted(URL(string: $0)!)
             )
         }
@@ -114,9 +114,9 @@ struct SessionsPreferencesTests {
 
     @Test("a cloud endpoint and its exact self-hosted URL are one scope identity")
     func cloudAndEquivalentSelfHostedScopesShareIdentity() {
-        let cloud = ProjectPreferenceScope(projectID: 82, region: .usCloud)
+        let cloud = ProjectPreferenceScope(projectID: 77, region: .usCloud)
         let equivalent = ProjectPreferenceScope(
-            projectID: 82,
+            projectID: 77,
             region: .selfHosted(PostHogRegion.usCloud.host)
         )
 
@@ -128,20 +128,20 @@ struct SessionsPreferencesTests {
     func canonicalIdentityRetainsBoundaries() {
         let scopes = [
             ProjectPreferenceScope(
-                projectID: 83,
-                region: .selfHosted(URL(string: "https://posthog.example.test")!)
+                projectID: 77,
+                region: .selfHosted(URL(string: "https://app.example.com")!)
             ),
             ProjectPreferenceScope(
-                projectID: 84,
-                region: .selfHosted(URL(string: "https://posthog.example.test")!)
+                projectID: 42,
+                region: .selfHosted(URL(string: "https://app.example.com")!)
             ),
             ProjectPreferenceScope(
-                projectID: 83,
-                region: .selfHosted(URL(string: "https://posthog.example.test/analytics")!)
+                projectID: 77,
+                region: .selfHosted(URL(string: "https://app.example.com/analytics")!)
             ),
             ProjectPreferenceScope(
-                projectID: 83,
-                region: .selfHosted(URL(string: "https://posthog.example.test:8443")!)
+                projectID: 77,
+                region: .selfHosted(URL(string: "https://app.example.com:8443")!)
             ),
         ]
 
@@ -151,16 +151,16 @@ struct SessionsPreferencesTests {
     @Test("self-hosted path prefixes and non-default ports remain isolated")
     func separatesSelfHostedPathPrefixesAndNonDefaultPorts() {
         let base = ProjectPreferenceScope(
-            projectID: 73,
-            region: .selfHosted(URL(string: "https://posthog.example.test/posthog")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com/posthog")!)
         )
         let otherPath = ProjectPreferenceScope(
-            projectID: 73,
-            region: .selfHosted(URL(string: "https://posthog.example.test/analytics")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com/analytics")!)
         )
         let nonDefaultPort = ProjectPreferenceScope(
-            projectID: 73,
-            region: .selfHosted(URL(string: "https://posthog.example.test:8443/posthog")!)
+            projectID: 77,
+            region: .selfHosted(URL(string: "https://app.example.com:8443/posthog")!)
         )
 
         #expect(base.storageKeyComponent != otherPath.storageKeyComponent)
@@ -172,7 +172,7 @@ struct SessionsPreferencesTests {
         let defaults = storage()
         let scope = ProjectPreferenceScope(
             projectID: 9,
-            region: .selfHosted(URL(string: "https://posthog.example.test")!)
+            region: .selfHosted(URL(string: "https://app.example.com")!)
         )
         let data = try JSONSerialization.data(withJSONObject: [
             "filterTestAccounts": true,
@@ -189,7 +189,7 @@ struct SessionsPreferencesTests {
     @Test("an unreadable record safely returns all defaults")
     func corruptRecordDefaults() {
         let defaults = storage()
-        let scope = ProjectPreferenceScope(projectID: 11, region: .euCloud)
+        let scope = ProjectPreferenceScope(projectID: 77, region: .euCloud)
         defaults.set(Data([0xFF, 0x00]), forKey: SessionsPreferences.defaultsKey(for: scope))
 
         #expect(SessionsPreferences(defaults: defaults).value(for: scope) == .init())
