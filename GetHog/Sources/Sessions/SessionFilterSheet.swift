@@ -50,6 +50,7 @@ import SwiftUI
 ///   somebody to guess a number.
 struct SessionFilterSheet: View {
     @Binding var filter: SessionRecordingFilter
+    var onClear: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showsMore = false
 
@@ -98,7 +99,7 @@ struct SessionFilterSheet: View {
                 // clear", so the honest rendering of `false` is no button.
                 ToolbarItem(placement: .topBarLeading) {
                     if filter.isNarrowed {
-                        Button("Clear", role: .destructive) { filter.clear() }
+                        Button("Clear", role: .destructive, action: onClear)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {

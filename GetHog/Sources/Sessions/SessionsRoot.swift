@@ -213,6 +213,16 @@ struct SessionsRoot: View {
         sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    private var preferenceScope: ProjectPreferenceScope? {
+        guard let client = model.client, let projectID = model.projectID else { return nil }
+        return ProjectPreferenceScope(projectID: projectID, region: client.region)
+    }
+
+    private var loadTaskID: String {
+        guard let scope = preferenceScope else { return "sessions.none" }
+        return "\(scope.storageKeyComponent)|\(store.requestSignature(for: scope))"
+    }
+
     var body: some View {
         Group {
             if usesHostNavigation {
@@ -298,7 +308,7 @@ struct SessionsRoot: View {
                 // the filter sheet. `.task(id:)` cancels the previous one, so a
                 // burst of keystrokes costs one request, and a filter change
                 // always *replaces* the paging state rather than extending it.
-                .task(id: "\(model.projectID ?? 0)|\(store.requestSignature)") {
+                .task(id: loadTaskID) {
                     if store.filter.trimmedPersonSearch != nil
                         || store.filter.trimmedURLSearch != nil {
                         try? await Task.sleep(for: .milliseconds(400))
@@ -317,7 +327,7 @@ struct SessionsRoot: View {
                 // view added a second, identical one beside it.
                 .toolbar(removing: .sidebarToggle)
                 .sheet(isPresented: $showsFilters) {
-                    SessionFilterSheet(filter: $store.filter)
+                    SessionFilterSheet(filter: $store.filter, onClear: store.clearFilters)
                         .presentationDetents([.medium, .large])
                 }
     }
@@ -385,7 +395,7 @@ struct SessionsRoot: View {
                     systemImage: "line.3.horizontal.decrease.circle",
                     message: "No recordings match \(store.filter.activeCount) active filter\(store.filter.activeCount == 1 ? "" : "s").",
                     actionTitle: "Clear filters",
-                    action: { store.filter.clear() }
+                    action: store.clearFilters
                 )
             } else {
                 EmptyStateView(
@@ -435,7 +445,7 @@ struct SessionsRoot: View {
     /// a copy in each would be two controls to keep in step.
     private var playlistsLink: some View {
         NavigationLink {
-            PlaylistsView { store.filter = $0 }
+            PlaylistsView { store.replaceFilter($0) }
         } label: {
             #if os(tvOS)
             Label("Playlists", systemImage: "list.star")
@@ -472,7 +482,7 @@ struct SessionsRoot: View {
     private var list: some View {
         List(selection: selectedID) {
             if store.filter.isNarrowed {
-                ActiveFilterSummary(filter: store.filter) { store.filter.clear() }
+                ActiveFilterSummary(filter: store.filter, onClear: store.clearFilters)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -605,7 +615,7 @@ struct ActiveFilterSummary: View {
                     clearButton
                 }
             } else {
-                HStack(alignment: .top, spacing: Theme.Space.s) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
                     sentence
                     Spacer(minLength: Theme.Space.s)
                     clearButton
