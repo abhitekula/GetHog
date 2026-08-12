@@ -786,8 +786,16 @@ targets:
         TEST_TARGET_NAME: GetHogTV
 
 schemes:
+  # Every scheme below declares its complete platform graph: app, test bundles,
+  # embedded extensions, and package dependencies are all explicit target
+  # dependencies. Keep implicit inference off. Xcode otherwise matches the
+  # shared `GetHog.app` product name across iOS, macOS, visionOS, and tvOS and
+  # can pull a second platform app into a Mac test build. Which wrong app it
+  # selects varies with ARCHS, but both then write GetHog.app to the same build
+  # directory and Xcode stops before executing a test.
   GetHog:
     build:
+      buildImplicitDependencies: false
       targets:
         GetHog: all
         GetHogTests: [test]
@@ -799,6 +807,7 @@ schemes:
 
   GetHogMac:
     build:
+      buildImplicitDependencies: false
       targets:
         GetHogMac: all
         GetHogMacTests: [test]
@@ -810,6 +819,7 @@ schemes:
 
   GetHogVision:
     build:
+      buildImplicitDependencies: false
       targets:
         GetHogVision: all
         GetHogVisionTests: [test]
@@ -821,6 +831,7 @@ schemes:
 
   GetHogWatch:
     build:
+      buildImplicitDependencies: false
       targets:
         GetHogWatch: all
         GetHogWatchTests: [test]
@@ -832,6 +843,7 @@ schemes:
 
   GetHogTV:
     build:
+      buildImplicitDependencies: false
       targets:
         GetHogTV: all
         GetHogTVTests: [test]
@@ -848,6 +860,7 @@ schemes:
   # with an iPad destination for the iPad half; nothing else changes.
   GetHogScreenshots:
     build:
+      buildImplicitDependencies: false
       targets:
         GetHog: all
         GetHogScreenshots: [test]

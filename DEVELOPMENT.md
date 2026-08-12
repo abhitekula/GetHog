@@ -127,6 +127,15 @@ bundles, just like `GetHogMacTests`. Their nonzero count is the
 `Test run with N tests in M suites passed` line; an `Executed 0 tests` line is
 the empty XCTest shell and is not the target's count.
 
+Every shared scheme enumerates its complete build graph and disables Xcode's
+implicit dependency inference. This is load-bearing: the iOS, Mac, Vision, and
+TV targets intentionally share the `GetHog.app` product name, so inference can
+mistake another platform's app for a dependency and schedule two producers for
+the same output path. When adding a scheme, list its app and test bundles in
+`project.yml`, keep `buildImplicitDependencies: false`, and express extension
+and package relationships as target dependencies rather than relying on
+product-name matching.
+
 Do not run these `xcodebuild` commands concurrently in one checkout. They share
 Xcode's default DerivedData database, and overlapping builds can fail with a
 database lock before testing the app. This is why the final matrix is serial.
