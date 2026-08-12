@@ -131,7 +131,7 @@ struct EventsOverview: View {
                         systemImage: "info.circle"
                     )
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                 }
             } else {
                 VStack(spacing: Theme.Space.s) {

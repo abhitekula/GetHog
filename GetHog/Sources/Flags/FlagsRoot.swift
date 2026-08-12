@@ -23,7 +23,7 @@ enum FlagStatusGroup: String, CaseIterable, Identifiable, Hashable {
     var tint: Color {
         switch self {
         case .enabled: Theme.Status.good
-        case .disabled, .archived: Color.secondary
+        case .disabled, .archived: Theme.neutralMark
         }
     }
 
@@ -385,7 +385,7 @@ struct FlagRowView: View {
     }
 
     private var tint: Color {
-        if group == .archived { return .secondary }
+        if group == .archived { return Theme.neutralMark }
         return flag.isMultivariate ? Theme.accentWarm : Theme.accent
     }
 

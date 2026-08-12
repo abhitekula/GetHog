@@ -196,7 +196,7 @@ struct PlaylistRowView: View {
                 // The section heading now carries the kind, so the pill is free
                 // to carry the thing the heading cannot: whether this row is
                 // PostHog's or the team's. Rows with no pill are the team's.
-                accessory: playlist.isSynthetic ? .pill("PostHog", .secondary) : .none
+                accessory: playlist.isSynthetic ? .pill("PostHog", Theme.neutralMark) : .none
             )
 
             if let progress = playlist.watchedProgress {

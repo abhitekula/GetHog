@@ -536,7 +536,7 @@ struct PersonRowView: View {
             // Whether PostHog knows who this is changes how the row should be
             // read, so it is the distinction the glyph carries.
             glyph: person.isIdentified ? "person.fill" : "person.fill.questionmark",
-            tint: person.isIdentified ? Theme.accent : .secondary,
+            tint: person.isIdentified ? Theme.accent : Theme.neutralMark,
             title: person.displayName,
             // The distinct ID is the identifier everything else joins on, so it
             // takes the monospaced line — unless it is already the title, which
@@ -557,7 +557,7 @@ struct PersonRowView: View {
             titleTruncatesMiddle: true,
             accessory: .pill(
                 person.isIdentified ? "Identified" : "Anonymous",
-                person.isIdentified ? Theme.accent : .secondary
+                person.isIdentified ? Theme.accent : Theme.neutralMark
             )
         )
         // Nothing in this row is prose, and typesetting it as if it were put a
@@ -599,13 +599,13 @@ struct CohortRowView: View {
             // A dynamic cohort re-evaluates itself, so it takes the app accent;
             // a static snapshot recedes. The pill says which in words — the
             // footer below the list explains why the difference matters.
-            tint: cohort.isStatic ? .secondary : Theme.accent,
+            tint: cohort.isStatic ? Theme.neutralMark : Theme.accent,
             title: cohort.name,
             subtitle: cohort.description,
             footnote: countText,
             accessory: .pill(
                 cohort.isStatic ? "Static" : "Dynamic",
-                cohort.isStatic ? .secondary : Theme.accent
+                cohort.isStatic ? Theme.neutralMark : Theme.accent
             )
         )
     }

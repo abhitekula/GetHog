@@ -111,7 +111,7 @@ struct EarlyAccessRoot: View {
             if filteredGroups.isEmpty {
                 Text("No features matched “\(search)”.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -173,7 +173,7 @@ struct EarlyAccessRowView: View {
                     if feature.flagActive == false {
                         Text("Flag off")
                             .font(Theme.Typography.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Theme.Ink.tertiary)
                     }
                     if let flagURL, let key = feature.flagKey {
                         Link(destination: flagURL) {
@@ -234,7 +234,7 @@ private func stageTint(_ stage: EarlyAccessStage) -> Color {
     switch stage {
     case .generalAvailability: Theme.Status.good
     case .beta, .alpha: Theme.accent
-    case .draft, .concept: .secondary
-    case .archived, .unknown: .secondary
+    case .draft, .concept: Theme.neutralMark
+    case .archived, .unknown: Theme.neutralMark
     }
 }

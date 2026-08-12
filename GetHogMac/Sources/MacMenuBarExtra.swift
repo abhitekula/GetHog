@@ -811,7 +811,7 @@ struct MacMenuBarPopover: View {
     private func trendTint(_ direction: SharedSnapshot.Metric.Direction) -> Color {
         switch direction {
         case .up, .down: Theme.Status.accentInk
-        case .flat, .unknown: .secondary
+        case .flat, .unknown: Theme.neutralMark
         }
     }
 
@@ -824,7 +824,7 @@ struct MacMenuBarPopover: View {
         case .critical: Theme.Status.criticalInk
         case .attention: Theme.Status.accentInk
         case .clear: Theme.Status.goodInk
-        case .unchecked: Color.secondary
+        case .unchecked: Theme.neutralMark
         }
     }
 

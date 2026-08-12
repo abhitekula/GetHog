@@ -187,13 +187,13 @@ struct PersonDetailView: View {
 
                 StatusPill(
                     text: person.isIdentified ? "Identified" : "Anonymous",
-                    tint: person.isIdentified ? Theme.accent : .secondary
+                    tint: person.isIdentified ? Theme.accent : Theme.neutralMark
                 )
 
                 if let created = person.createdAt {
                     Text("First seen \(created, format: .dateTime.year().month().day().hour().minute())")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         }
@@ -240,19 +240,19 @@ struct PersonDetailView: View {
             if !model.isAvailable(.events) {
                 Text("Recent events need the query:read scope on your API key.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else if let error = eventsStore.error, eventsStore.events.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(error)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                     Button("Try again") { Task { await loadEvents() } }
                         .font(.caption)
                 }
             } else if eventsStore.events.isEmpty && !eventsStore.isLoading {
                 Text("No events recorded for this distinct ID.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(eventsStore.events) { event in
                     PersonEventRowView(event: event)
@@ -313,7 +313,7 @@ struct PersonDetailView: View {
             Section {
                 Text("This person has no properties set.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } header: {
                 SectionLabel(text: "Properties", systemImage: "tag")
             }

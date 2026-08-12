@@ -392,7 +392,7 @@ struct ProjectSearchView: View {
                 // only ever searched the app's own screens.
                 Text("No object name or folder in this project matched “\(query)”.")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             } else {
@@ -458,7 +458,7 @@ struct ProjectSearchView: View {
                 Link(destination: url) {
                     // The word, not the arrow: the row leaves the app, and a
                     // reader should be able to know that without decoding a glyph.
-                    dataRow(entry, route: route, accessory: .pill("Web", .secondary))
+                    dataRow(entry, route: route, accessory: .pill("Web", Theme.neutralMark))
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens in the PostHog web console")
@@ -500,7 +500,7 @@ struct ProjectSearchView: View {
             // to a browser recedes, the way generated dashboards and PostHog's
             // own playlists do. The "Web" pill carries the same fact in words, so
             // nothing here rests on the tint alone.
-            tint: route.opensInApp ? Theme.accent : .secondary,
+            tint: route.opensInApp ? Theme.accent : Theme.neutralMark,
             title: entry.name,
             // The folders are the context that separates two objects with the
             // same name, which on this endpoint is common: every product files
@@ -524,7 +524,7 @@ struct ProjectSearchView: View {
             if let coverage = store.coverageSummary {
                 Text(coverage)
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
             FreshnessLabel(date: store.loadedAt)
         }

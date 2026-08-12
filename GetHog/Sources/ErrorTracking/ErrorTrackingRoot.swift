@@ -68,13 +68,13 @@ extension ErrorIssue {
 
     var statusTint: Color {
         if isResolved { return Theme.Status.good }
-        if isSuppressed { return .secondary }
+        if isSuppressed { return Theme.neutralMark }
         // Archived and pending-release are neither active nor done. Grey rather
         // than red: they are not asking for attention, and colouring them
         // critical would put two issues nobody can act on at the top of a
         // glance-scan.
         if let readStatus, readStatus == .archived || readStatus == .pendingRelease {
-            return .secondary
+            return Theme.neutralMark
         }
         return Theme.Status.critical
     }

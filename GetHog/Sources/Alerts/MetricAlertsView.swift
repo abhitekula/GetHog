@@ -135,13 +135,13 @@ struct MetricAlertsView: View {
             // Paused state is carried by the glyph, the word in the pill and the
             // muted tint together, never by colour alone.
             glyph: watch.isEnabled ? "bell.badge.fill" : "bell.slash.fill",
-            tint: watch.isEnabled ? Theme.accent : .secondary,
+            tint: watch.isEnabled ? Theme.accent : Theme.neutralMark,
             title: watch.title,
             subtitle: watch.condition.summary,
             footnote: currentValue(for: watch),
             accessory: .pill(
                 watch.isEnabled ? "On" : "Paused",
-                watch.isEnabled ? Theme.Status.good : .secondary
+                watch.isEnabled ? Theme.Status.good : Theme.neutralMark
             )
         )
         .listRowBackground(cardRowBackground)
@@ -196,7 +196,7 @@ struct MetricAlertsView: View {
                     .font(Theme.Typography.title)
                 Text("These watches still evaluate, but nothing can reach you until GetHog is allowed to notify you.")
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 // visionOS joins iOS here rather than falling to the else:
                 // `openSettingsURLString` is real and functional there, while
@@ -228,7 +228,7 @@ struct MetricAlertsView: View {
                     .font(Theme.Typography.title)
                 Text("Without permission a watch can notice a crossing but has nowhere to say so.")
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Allow notifications") {
                     Task { await controller.requestAuthorizationIfNeeded() }
@@ -391,7 +391,7 @@ private struct MetricWatchEditor: View {
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.accentWarm)
+                .foregroundStyle(Theme.Status.warningInk)
                 .fixedSize(horizontal: false, vertical: true)
             }
         } header: {

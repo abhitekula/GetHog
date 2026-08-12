@@ -117,7 +117,7 @@ struct CohortDetailView: View {
             HStack(spacing: Theme.Space.s) {
                 StatusPill(
                     text: cohort.isStatic ? "Static" : "Dynamic",
-                    tint: cohort.isStatic ? .secondary : Theme.accent
+                    tint: cohort.isStatic ? Theme.neutralMark : Theme.accent
                 )
                 if cohort.isRecalculating {
                     StatusPill(text: "Calculating", tint: Theme.accentWarm)

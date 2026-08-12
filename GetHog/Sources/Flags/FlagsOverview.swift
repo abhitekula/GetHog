@@ -117,12 +117,12 @@ struct FlagsOverview: View {
                         systemImage: "checkmark.circle"
                     )
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                 }
             } else {
                 Text("Enabled, but not released to everyone yet. Lowest first.")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 VStack(spacing: Theme.Space.s) {
                     ForEach(partialRollouts) { flag in
@@ -145,7 +145,7 @@ struct FlagsOverview: View {
 
                 Text("These serve a variant, not an on/off answer.")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 VStack(spacing: Theme.Space.s) {
                     ForEach(multivariate) { flag in

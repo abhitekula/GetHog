@@ -152,7 +152,7 @@ struct ReplayNetworkCard: View {
                     .typesettingLanguage(Locale.Language(identifier: "zxx"))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
+                    .foregroundStyle(filter == option ? Theme.accent : Theme.Ink.secondary)
                     .warmGlass(active: filter == option)
                     .minimumHitTarget()
                 }
@@ -346,7 +346,7 @@ struct ReplayNetworkRow: View {
             let barWidth = max(width * bar.width, Self.barHeight)
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.secondary.opacity(0.12))
+                    .fill(Theme.neutralMark.opacity(0.12))
                     .frame(height: Self.barHeight)
 
                 // The whole request.

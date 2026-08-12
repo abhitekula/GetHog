@@ -29,7 +29,7 @@ struct RateLimitUsageView: View {
             // spending should be the easiest number in the app to find.
             Text(backgroundCost)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .accessibilityLabel("Background refresh. \(backgroundCost)")
         }
         .padding(.vertical, 4)
@@ -50,7 +50,7 @@ struct RateLimitUsageView: View {
                 // the meter still reads correctly in greyscale.
                 Text(percentage)
                     .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(tint)
+                    .foregroundStyle(Theme.Status.ink(for: tint))
             }
 
             ProgressView(value: fraction)
@@ -59,7 +59,7 @@ struct RateLimitUsageView: View {
 
             Text(limits)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Self.title(for: category)) request budget")

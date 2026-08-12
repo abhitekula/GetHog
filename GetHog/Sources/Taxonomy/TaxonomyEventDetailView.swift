@@ -121,7 +121,7 @@ struct TaxonomyEventDetailView: View {
                         systemImage: "info.circle"
                     )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                 }
             } header: {
                 SectionLabel(text: "Event", systemImage: "bolt", productMark: .event)
@@ -200,7 +200,7 @@ struct TaxonomyEventDetailView: View {
             } else if filtered.isEmpty {
                 Text("No properties matched “\(search)”.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(filtered) { property in
                     Button {
@@ -320,7 +320,7 @@ struct TaxonomyPropertyRowView: View {
     /// trailing slot. Losing the chevron on a curated row is the cheaper loss —
     /// the row is still a `Button` and still opens.
     private var curationAccessory: RowAccessory {
-        if definition?.isHidden == true { return .pill("Hidden", .secondary) }
+        if definition?.isHidden == true { return .pill("Hidden", Theme.neutralMark) }
         if definition?.isVerified == true { return .pill("Verified", Theme.Status.good) }
         return isNavigable ? .chevron : .none
     }

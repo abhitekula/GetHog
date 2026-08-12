@@ -135,7 +135,7 @@ struct InsightNarrowSheet: View {
                             .font(.subheadline)
                         Text(filter.scope.title.lowercased() + " property")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                     Spacer(minLength: 0)
                     // A labelled button, not a swipe: this sheet's other controls
@@ -207,7 +207,7 @@ struct InsightNarrowSheet: View {
                     ProgressView().controlSize(.small)
                     Text("Reading this project's property names…")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             } else if let failure = store.failure(.event) {
                 Label(failure, systemImage: "exclamationmark.circle")
@@ -240,7 +240,7 @@ struct InsightNarrowSheet: View {
         Section {
             Text("Applying runs the insight once — one query against a rate limit your whole organization shares. Nothing runs while you're editing.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -371,7 +371,7 @@ private struct InsightFilterPicker: View {
                             ProgressView().controlSize(.small)
                             Text("Reading property names…")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                         }
                     } else if let failure = store.failure(propertyScope) {
                         Label(failure, systemImage: "exclamationmark.circle")
@@ -388,7 +388,7 @@ private struct InsightFilterPicker: View {
                                 : "No \(scope.title.lowercased()) property matches “\(search)”."
                         )
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                     } else {
                         ForEach(names.prefix(60), id: \.self) { name in
                             Button {
@@ -411,7 +411,7 @@ private struct InsightFilterPicker: View {
                         if names.count > 60 {
                             Text("\(names.count - 60) more — narrow the search to reach them.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                         }
                     }
                 } header: {
@@ -460,7 +460,7 @@ private struct InsightFilterPicker: View {
                         ProgressView().controlSize(.small)
                         Text("Reading the values PostHog has seen…")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                 } else if let failure = store.valueFailure(key) {
                     // Three absences, three sentences. This one is *the lookup
@@ -479,7 +479,7 @@ private struct InsightFilterPicker: View {
                     // project-wide can genuinely have no values on this event.
                     Text("PostHog recorded no values for \(key) on \(eventName ?? "this event") in the last 30 days. Type one if you know it.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                     TextField("Value", text: $value)
                 } else {
                     ForEach(store.values(for: key) ?? [], id: \.self) { candidate in

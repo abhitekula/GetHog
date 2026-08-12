@@ -183,7 +183,7 @@ struct ExperimentComparisonRow: View {
             if comparison.isUsable {
                 StatusPill(
                     text: comparison.isSignificant ? "Significant" : "Not significant",
-                    tint: comparison.isSignificant ? Theme.accent : Color.secondary
+                    tint: comparison.isSignificant ? Theme.accent : Theme.neutralMark
                 )
             }
 

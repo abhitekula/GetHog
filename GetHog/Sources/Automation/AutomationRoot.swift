@@ -436,7 +436,7 @@ struct AutomationFailureBanner: View {
                 ForEach(sections) { section in
                     Text("\(section.title): \(store.errors[section] ?? "failed to load")")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .lineLimit(3)
                 }
             }
@@ -481,7 +481,7 @@ struct EndpointUsagePanel: View {
 
                 Text(store.usageReading.summary)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let error = store.usageError {
@@ -509,7 +509,7 @@ struct EndpointUsagePanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(metric.title)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .lineLimit(1)
                     Text(metric.formattedValue)
                         .font(.title3.weight(.semibold).monospacedDigit())
@@ -522,7 +522,7 @@ struct EndpointUsagePanel: View {
                     } else {
                         Text("No prior period")
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Theme.Ink.tertiary)
                     }
                 }
                 .accessibilityElement(children: .combine)
@@ -545,7 +545,7 @@ struct EndpointUsagePanel: View {
             if store.usageBreakdown.isEmpty {
                 Text("Nothing to break down by \(store.usageDimension.title.lowercased()) in this window.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(store.usageBreakdown) { row in
                     VStack(alignment: .leading, spacing: 2) {
@@ -568,7 +568,7 @@ struct EndpointUsagePanel: View {
                                 .joined(separator: " · ")
                         )
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -593,7 +593,7 @@ struct WorkflowRowView: View {
     var body: some View {
         DataRow(
             glyph: "arrow.triangle.branch",
-            tint: workflow.status == .active ? Theme.accent : .secondary,
+            tint: workflow.status == .active ? Theme.accent : Theme.neutralMark,
             title: workflow.name,
             subtitle: workflow.triggerSummary,
             footnote: workflow.description,
@@ -624,7 +624,7 @@ struct QueryEndpointRowView: View {
             isSubtitleMonospaced: endpoint.description == nil,
             accessory: .pill(
                 endpoint.statusText,
-                endpoint.isActive ? Theme.Status.good : .secondary
+                endpoint.isActive ? Theme.Status.good : Theme.neutralMark
             )
         )
         .accessibilityElement(children: .combine)
@@ -702,13 +702,13 @@ struct SubscriptionRowView: View {
             // The destination is the row's kind — an email digest and a webhook
             // post are different things to go looking for.
             glyph: subscription.target.systemImage,
-            tint: subscription.enabled ? Theme.accent : .secondary,
+            tint: subscription.enabled ? Theme.accent : Theme.neutralMark,
             title: subscription.displayTitle,
             subtitle: detailLine,
             footnote: nextDeliveryText,
             accessory: .pill(
                 subscription.statusText,
-                subscription.enabled ? Theme.Status.good : .secondary
+                subscription.enabled ? Theme.Status.good : Theme.neutralMark
             )
         )
         .accessibilityElement(children: .combine)
@@ -753,14 +753,14 @@ struct BatchExportRowView: View {
     /// alone would say it is. A paused export is the exception: it has no
     /// current run to report on.
     private var accessory: RowAccessory {
-        if export.paused { return .pill("Paused", .secondary) }
+        if export.paused { return .pill("Paused", Theme.neutralMark) }
         switch export.lastRunHealth {
         case .healthy: return .pill("Succeeded", Theme.Status.good)
         case .failed: return .pill("Failed", Theme.Status.critical)
         case .running: return .pill("Running", Theme.accent)
-        case .paused: return .pill("Cancelled", .secondary)
+        case .paused: return .pill("Cancelled", Theme.neutralMark)
         // `latest_runs` was empty, which is not a run that reported nothing.
-        case .unknown: return .pill("Never run", .secondary)
+        case .unknown: return .pill("Never run", Theme.neutralMark)
         }
     }
 
@@ -815,9 +815,9 @@ private extension View {
 private func automationTint(_ status: WorkflowStatus) -> Color {
     switch status {
     case .active: Theme.Status.good
-    case .draft: .secondary
-    case .archived: .secondary
-    case .unknown: .secondary
+    case .draft: Theme.neutralMark
+    case .archived: Theme.neutralMark
+    case .unknown: Theme.neutralMark
     }
 }
 
@@ -827,7 +827,7 @@ private func alertTint(_ state: AlertState) -> Color {
     case .firing: Theme.Status.critical
     case .errored: Theme.Status.critical
     case .notFiring: Theme.Status.good
-    case .snoozed: .secondary
-    case .unknown: .secondary
+    case .snoozed: Theme.neutralMark
+    case .unknown: Theme.neutralMark
     }
 }

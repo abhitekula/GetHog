@@ -225,7 +225,7 @@ struct TaxonomyPropertyDetailView: View {
                 // say, not a property of type unknown. Measured: 57 of this
                 // project's 386 definitions come back untyped.
                 Text(definition?.propertyType ?? "Not typed by PostHog")
-                    .foregroundStyle(definition?.propertyType == nil ? .secondary : .primary)
+                    .foregroundStyle(definition?.propertyType == nil ? Theme.Ink.secondary : Color.primary)
             }
             LabeledContent("State") { Text(stateText) }
             if definition == nil {
@@ -238,7 +238,7 @@ struct TaxonomyPropertyDetailView: View {
                     systemImage: "info.circle"
                 )
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             }
             if definition?.isHidden == true {
                 // The one curation state that changes what the rest of PostHog
@@ -248,7 +248,7 @@ struct TaxonomyPropertyDetailView: View {
                     systemImage: "eye.slash"
                 )
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             }
             if let tags = definition?.tags, !tags.isEmpty {
                 LabeledContent("Tags") { Text(tags.joined(separator: ", ")) }
@@ -297,7 +297,7 @@ struct TaxonomyPropertyDetailView: View {
                 // table holds no value for this key in the window".
                 Text("No values were recorded for this property in the last 30 days.\(event.map { " Narrowed to “\($0)”." } ?? "")")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(store.values) { share in
                     PropertyValueRow(share: share)
@@ -307,7 +307,7 @@ struct TaxonomyPropertyDetailView: View {
                 if hidden > 0 {
                     Text("\(hidden.formatted()) more distinct value\(hidden == 1 ? "" : "s") not shown.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         } header: {
@@ -344,7 +344,7 @@ struct TaxonomyPropertyDetailView: View {
             } else if !store.hasLoaded {
                 Text("Loading…")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .skeleton(true)
             } else if let sample = store.actorSample, !sample.sampleValues.isEmpty {
                 ForEach(Array(sample.sampleValues.enumerated()), id: \.offset) { _, value in
@@ -358,7 +358,7 @@ struct TaxonomyPropertyDetailView: View {
             } else {
                 Text("No values are recorded for this property.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         } header: {
             SectionLabel(text: actorValuesHeader, systemImage: "list.bullet")
@@ -388,7 +388,7 @@ struct TaxonomyPropertyDetailView: View {
             } else if store.carriers.isEmpty {
                 Text("No event carried this property in the last 30 days.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(store.carriers) { carrier in
                     PropertyCarrierRow(carrier: carrier)
@@ -398,7 +398,7 @@ struct TaxonomyPropertyDetailView: View {
                 if hidden > 0 {
                     Text("\(hidden.formatted()) more event name\(hidden == 1 ? "" : "s") not shown.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         } header: {
@@ -472,7 +472,7 @@ struct PropertyValueRow: View {
 
             Text(footnote)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .padding(.vertical, Theme.Space.xs)
         .typesettingLanguage(Locale.Language(identifier: "zxx"))
@@ -490,12 +490,12 @@ struct PropertyValueRow: View {
     private var header: some View {
         let name = Text(label)
             .font(.subheadline.monospaced())
-            .foregroundStyle(share.value == nil ? .secondary : .primary)
+            .foregroundStyle(share.value == nil ? Theme.Ink.secondary : Color.primary)
             .lineLimit(2)
             .truncationMode(.middle)
         let count = Text(Double(share.occurrences).compactFormatted)
             .font(.subheadline.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
 
         if typeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 2) {

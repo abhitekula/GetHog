@@ -115,7 +115,7 @@ struct WebVitalsSection: View {
     private var claimLine: some View {
         Text(claimText)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(spokenClaim)
     }
@@ -185,7 +185,7 @@ struct WebVitalsSection: View {
                     .monospacedDigit()
                 Text(band.title)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,7 +213,7 @@ struct WebVitalsSection: View {
             if entries.count > visibleEntries.count {
                 Text("Showing the \(visibleEntries.count) worst of \(entries.count) pages.")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Ink.tertiary)
             }
         }
     }

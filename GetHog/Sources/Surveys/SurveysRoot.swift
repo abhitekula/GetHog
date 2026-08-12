@@ -273,7 +273,7 @@ struct SurveyDetailSheet: View {
                     if survey.questions.isEmpty {
                         Text("This survey has no questions defined.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     } else {
                         ForEach(Array(survey.questions.enumerated()), id: \.offset) { index, question in
                             SurveyQuestionRowView(
@@ -441,7 +441,7 @@ struct SurveyDetailSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(tint)
+        .foregroundStyle(Theme.Status.ink(for: tint))
         .disabled(lifecycle.isBusy(survey))
     }
 
@@ -536,7 +536,7 @@ struct SurveyQuestionRowView: View {
                 .font(.callout)
 
             if let type = question.type {
-                StatusPill(text: questionTypeLabel(type), tint: .secondary)
+                StatusPill(text: questionTypeLabel(type), tint: Theme.neutralMark)
             }
 
             if let results {
@@ -551,7 +551,7 @@ struct SurveyQuestionRowView: View {
                     ForEach(choices, id: \.self) { choice in
                         Text(choice)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                 }
                 .padding(.leading, 12)
@@ -599,7 +599,7 @@ private func surveyStatusTint(_ status: String) -> Color {
     switch status {
     case "Running": Theme.Status.good
     case "Draft": Theme.accentWarm
-    default: Color.secondary
+    default: Theme.neutralMark
     }
 }
 

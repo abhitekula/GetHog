@@ -102,7 +102,7 @@ struct ConversationsRoot: View {
                 if filtered.isEmpty {
                     Text("No conversations matched “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 } else {
                     ForEach(filtered) { conversation in
@@ -310,7 +310,7 @@ struct MaxMessageRowView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(message.role.title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(roleTint(message.role))
+                .foregroundStyle(Theme.Status.ink(for: roleTint(message.role)))
 
             if let text = message.text {
                 // Max writes markdown; printing it raw put literal backticks
@@ -323,7 +323,7 @@ struct MaxMessageRowView: View {
                 Text(placeholder)
                     .font(.callout)
                     .italic()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -356,6 +356,6 @@ private func roleTint(_ role: MaxMessageRole) -> Color {
     switch role {
     case .person: Theme.accent
     case .failure: Theme.Status.critical
-    default: .secondary
+    default: Theme.neutralMark
     }
 }

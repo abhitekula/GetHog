@@ -908,7 +908,7 @@ struct WebAnalyticsRoot: View {
                 systemImage: "list.number"
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -946,7 +946,7 @@ struct WebAnalyticsRoot: View {
                 if let note = comparisonNote {
                     Label(note, systemImage: "info.circle")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
 
@@ -1038,7 +1038,7 @@ struct WebAnalyticsRoot: View {
                 systemImage: "list.number"
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -1085,7 +1085,7 @@ struct WebAnalyticsRoot: View {
             SectionLabel(text: title, systemImage: systemImage)
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(subtitle)")
@@ -1146,7 +1146,7 @@ struct WebAnalyticsRoot: View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Label(text, systemImage: "exclamationmark.circle")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             if let detail {
                 FailureDetail(text: detail)
             }

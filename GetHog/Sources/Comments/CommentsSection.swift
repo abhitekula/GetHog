@@ -143,7 +143,7 @@ private struct CommentRow: View {
                     if let created = comment.createdAt {
                         Text(created, format: .relative(presentation: .named))
                             .font(Theme.Typography.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Theme.Ink.tertiary)
                             .lineLimit(1)
                     }
                 }
@@ -157,7 +157,7 @@ private struct CommentRow: View {
                     // have to be distinguishable in greyscale.
                     Label(badge.text, systemImage: badge.glyph)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(badge.tint)
+                        .foregroundStyle(Theme.Status.ink(for: badge.tint))
                 }
             }
         }
@@ -177,7 +177,7 @@ private struct CommentRow: View {
         if case .unknown = comment.type {
             // A type this client has not learned still says what it is, rather
             // than being rendered as a plain comment it may not be.
-            return (comment.type.title, "sparkles", .secondary)
+            return (comment.type.title, "sparkles", Theme.neutralMark)
         }
         if comment.type == .review {
             return ("Review", "text.magnifyingglass", Theme.accent)

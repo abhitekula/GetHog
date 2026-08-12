@@ -224,7 +224,7 @@ func experimentStatusTint(_ status: String) -> Color {
     switch status {
     case "Running": Theme.Status.good
     case "Draft", "Paused", "Exposure frozen": Theme.accentWarm
-    default: Color.secondary
+    default: Theme.neutralMark
     }
 }
 

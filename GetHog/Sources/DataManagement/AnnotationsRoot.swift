@@ -196,7 +196,7 @@ struct AnnotationsRoot: View {
             if filtered.isEmpty {
                 Text("No annotations matched “\(search)”.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -281,7 +281,7 @@ struct AnnotationRowView: View {
     /// anything, so every other row ends without an accessory rather than with a
     /// chevron that leads nowhere.
     private var accessory: RowAccessory {
-        if annotation.isHidden { return .pill("Hidden", .secondary) }
+        if annotation.isHidden { return .pill("Hidden", Theme.neutralMark) }
         return .none
     }
 

@@ -72,7 +72,7 @@ struct PeopleOverview: View {
             if isSearching {
                 Text("Matching “\(search)”.")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
     }
@@ -95,7 +95,7 @@ struct PeopleOverview: View {
                     // The pill carries the word; the tint only reinforces it,
                     // the same way the rows in the list beside this do.
                     countTile("Identified", identified, Theme.accent)
-                    countTile("Anonymous", persons.count - identified, .secondary)
+                    countTile("Anonymous", persons.count - identified, Theme.neutralMark)
                 }
             }
             .accessibilityIdentifier("gethog.people-overview-summary")
@@ -125,7 +125,7 @@ struct PeopleOverview: View {
                         Card(padding: Theme.Space.m) {
                             DataRow(
                                 glyph: "person.3.fill",
-                                tint: cohort.isStatic ? .secondary : Theme.accent,
+                                tint: cohort.isStatic ? Theme.neutralMark : Theme.accent,
                                 title: cohort.name,
                                 subtitle: cohort.description,
                                 // A static count is a snapshot and a dynamic one
@@ -167,7 +167,7 @@ struct PeopleOverview: View {
             Card(padding: Theme.Space.m) {
                 DataRow(
                     glyph: person.isIdentified ? "person.fill" : "person.fill.questionmark",
-                    tint: person.isIdentified ? Theme.accent : .secondary,
+                    tint: person.isIdentified ? Theme.accent : Theme.neutralMark,
                     title: person.displayName,
                     subtitle: distinctID(person),
                     footnote: person.createdAt.map {

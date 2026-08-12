@@ -123,7 +123,7 @@ struct PipelinesRoot: View {
             if filteredGroups.isEmpty {
                 Text("No pipelines matched “\(search)”.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -181,7 +181,7 @@ struct PipelineRowView: View {
             footnote: isTroubled ? function.state.title : nil,
             accessory: .pill(
                 function.statusText,
-                function.enabled ? Theme.Status.good : .secondary
+                function.enabled ? Theme.Status.good : Theme.neutralMark
             )
         )
         .contentShape(.rect)
@@ -199,7 +199,7 @@ struct PipelineRowView: View {
         switch function.kind {
         case .transformation: Theme.accent
         case .destination: Theme.accentWarm
-        case .other: .secondary
+        case .other: Theme.neutralMark
         }
     }
 

@@ -141,7 +141,7 @@ struct ErrorIssueDetailView: View {
                 if let description = issue.issueDescription, !description.isEmpty {
                     Text(description)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .textSelection(.enabled)
                 }
 
@@ -178,7 +178,7 @@ struct ErrorIssueDetailView: View {
             } label: {
                 Text(title)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
@@ -261,7 +261,7 @@ struct ErrorIssueDetailView: View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Text("Status")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
 
             // Wraps at accessibility sizes and on narrow columns rather than
             // squeezing three labelled buttons into one row.
@@ -311,7 +311,7 @@ struct ErrorIssueDetailView: View {
             } label: {
                 Text("Assignee")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Assignee, \(assigneeDescription(assignee))")
@@ -454,7 +454,7 @@ struct ErrorIssueDetailView: View {
         } label: {
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(value)")
@@ -570,7 +570,7 @@ private struct TriageMessageView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: isFailure ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                .foregroundStyle(isFailure ? Theme.Status.critical : Color.secondary)
+                .foregroundStyle(isFailure ? Theme.Status.critical : Theme.neutralMark)
                 .accessibilityHidden(true)
 
             Text(message.text)
@@ -583,7 +583,7 @@ private struct TriageMessageView: View {
                     .minimumHitTarget()
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.neutralMark)
             .accessibilityLabel("Dismiss message")
         }
         .padding(.vertical, 2)

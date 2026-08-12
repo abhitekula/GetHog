@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 /// Version, attribution, and trademark distance.
@@ -32,7 +33,7 @@ struct AboutView: View {
                         .font(.title2.bold())
                     Text("Version \(Self.version) (\(Self.build))")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 8)

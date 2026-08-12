@@ -680,7 +680,7 @@ struct ActivityStrip: View {
     /// than the thing it keys, over a band too faint to find. At full strength
     /// the band clears the 3:1 floor for a graphical object while the active
     /// stretches, at 6.00:1, stay the louder of the two.
-    static let idleTone = Color.secondary
+    static let idleTone = Theme.neutralMark
 
     let periods: [ExportInactivityPeriod]
 

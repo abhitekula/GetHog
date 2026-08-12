@@ -301,13 +301,13 @@ struct TaxonomyRoot: View {
             if !search.isEmpty && filtered.isEmpty {
                 Text("No events matched “\(search)”.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
 
             if let error = store.error, !store.isEmpty {
                 Label("Part of this screen is missing. \(error)", systemImage: "exclamationmark.circle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
             }
 
@@ -364,7 +364,7 @@ struct TaxonomyRoot: View {
                     ForEach(events) { event in
                         Text(event.name)
                             .font(.subheadline.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                             // PostHog's own well-known event names — tokens, and
                             // the ones most likely to be broken here are the long
                             // camel-cased ones. `zxx` is the ISO code for "no
@@ -423,7 +423,7 @@ struct TaxonomyRoot: View {
                 if filteredProperties.isEmpty {
                     Text("No properties matched “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 } else {
                     ForEach(filteredProperties) { definition in
@@ -447,7 +447,7 @@ struct TaxonomyRoot: View {
             if let error = store.propertiesError, !store.properties.isEmpty {
                 Label("Part of this list may be stale. \(error.summary)", systemImage: "exclamationmark.circle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
             }
 
@@ -528,7 +528,7 @@ struct TaxonomySummaryCard: View {
 
                 Text("These count different things: one is what arrived recently, the other is every event name this project has ever registered.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -575,7 +575,7 @@ struct TaxonomySummaryCard: View {
             // folded into the label.
             Text(detail)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -611,7 +611,7 @@ struct TaxonomyEventRowView: View {
     /// one state rather than two flags — and an ordinary event gets no pill at
     /// all, because "not verified" on every row is noise.
     private var curationAccessory: RowAccessory {
-        if event.isHidden { return .pill("Hidden", .secondary) }
+        if event.isHidden { return .pill("Hidden", Theme.neutralMark) }
         if event.isVerified { return .pill("Verified", Theme.Status.good) }
         return .none
     }
@@ -662,7 +662,7 @@ struct TaxonomyPropertyDefinitionRowView: View {
     /// Verified and hidden are mutually exclusive in PostHog, so this reads as
     /// one state rather than two flags; ordinary properties get no noisy pill.
     private var curationAccessory: RowAccessory {
-        if definition.isHidden { return .pill("Hidden", .secondary) }
+        if definition.isHidden { return .pill("Hidden", Theme.neutralMark) }
         if definition.isVerified { return .pill("Verified", Theme.Status.good) }
         return .none
     }

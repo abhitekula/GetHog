@@ -88,7 +88,7 @@ struct StickinessChart: View {
 
             Text("Days active in the period")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
 
             if legendBelowChart {
                 InsightLegend(
@@ -152,7 +152,7 @@ struct PathsFlowView: View {
             if graph.edges.count > visible.count {
                 Text("+\(graph.edges.count - visible.count) more transitions")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Ink.tertiary)
             }
         }
     }
@@ -177,7 +177,7 @@ struct PathsFlowView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.neutralMark)
                     node(edge.target)
                 }
             }
@@ -187,7 +187,7 @@ struct PathsFlowView: View {
                 node(edge.source)
                 Image(systemName: "arrow.right")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.neutralMark)
                 node(edge.target)
                 Spacer(minLength: 6)
                 total(edge)
@@ -200,7 +200,7 @@ struct PathsFlowView: View {
         if let step = edge.step {
             Text("\(step)")
                 .font(.caption2.weight(.bold).monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .frame(minWidth: 14)
         }
     }

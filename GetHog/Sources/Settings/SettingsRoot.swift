@@ -227,7 +227,7 @@ struct SettingsNavigationSection: View {
             if UIDevice.current.userInterfaceIdiom == .pad {
                 Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 NavigationLink {
                     TabBarSettingsView()
@@ -238,11 +238,11 @@ struct SettingsNavigationSection: View {
             #elseif os(visionOS)
             Text("Rearrange the sidebar with Edit, at the top of the sidebar.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             #elseif os(macOS)
             Text("Drag sidebar rows to reorder them, and hide a row from its own context menu.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             #endif
         } header: {
             SectionLabel(text: "Navigation", systemImage: "square.grid.2x2")
@@ -344,7 +344,7 @@ struct SettingsAPIKeySection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Personal API key")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                 Text(revealedKey ?? maskedKey)
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
@@ -597,7 +597,7 @@ private struct PermissionRow: View {
         case .available: Theme.Status.good
         case .locked: Theme.accentWarm
         case .failed: Theme.Status.critical
-        case nil: .secondary
+        case nil: Theme.neutralMark
         }
     }
 
@@ -630,7 +630,7 @@ private struct PermissionRow: View {
                 // that says what to fix.
                 Text(detail)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }

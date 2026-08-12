@@ -366,7 +366,7 @@ struct LifecycleChart: View {
                 // Dormant is drawn below zero, so the axis line is the reference
                 // between growth and churn rather than decoration.
                 RuleMark(y: .value("Zero", 0))
-                    .foregroundStyle(.secondary.opacity(0.4))
+                    .foregroundStyle(Theme.neutralMark.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
             .chartForegroundStyleScale(
@@ -502,12 +502,12 @@ struct RetentionGridView: View {
             HStack(spacing: 2) {
                 Text("Cohort")
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .frame(width: cohortColumn, alignment: .leading)
                 ForEach(0..<visibleIntervals, id: \.self) { index in
                     Text("\(index)")
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -553,7 +553,7 @@ struct RetentionGridView: View {
                         HStack(spacing: Theme.Space.s) {
                             Text("Interval \(index)")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                             Spacer(minLength: Theme.Space.s)
                             Text(cohort.rate(at: index), format: .percent.precision(.fractionLength(0)))
                                 .font(.caption2.monospacedDigit())
@@ -1026,7 +1026,7 @@ struct TimeSeriesChart: View {
 
             if let selectedDate {
                 RuleMark(x: .value("Date", selectedDate))
-                    .foregroundStyle(.secondary.opacity(0.35))
+                    .foregroundStyle(Theme.neutralMark.opacity(0.35))
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
         }
@@ -1164,7 +1164,7 @@ struct TimeSeriesChart: View {
         HStack(spacing: 10) {
             Text(selectedLabel)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             ForEach(selectedPoints, id: \.index) { entry in
                 HStack(spacing: 4) {
                     // The swatch is what ties a figure to its series, so it
@@ -1328,7 +1328,7 @@ struct BarValueChart: View {
             if bars.count > visible.count {
                 Text("+\(bars.count - visible.count) more")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Ink.tertiary)
             }
         }
     }
@@ -1346,7 +1346,7 @@ struct BarValueChart: View {
                 // requires, and faster to read than a value axis.
                 Text(bar.value.compactFormatted)
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         .chartXAxis(.hidden)
@@ -1443,7 +1443,7 @@ struct BigNumberView: View {
             if !number.label.isEmpty {
                 Text(number.label)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

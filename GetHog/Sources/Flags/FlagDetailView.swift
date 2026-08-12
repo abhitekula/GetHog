@@ -193,12 +193,12 @@ struct FlagDetailView: View {
                 HStack(spacing: 8) {
                     StatusPill(
                         text: isActive ? "Enabled" : "Disabled",
-                        tint: isActive ? Theme.Status.good : Color.secondary
+                        tint: isActive ? Theme.Status.good : Theme.neutralMark
                     )
                     // Archived is orthogonal to on/off, and an archived flag
                     // that is still enabled is exactly the case worth naming.
                     if flag.archived {
-                        StatusPill(text: "Archived", tint: Color.secondary)
+                        StatusPill(text: "Archived", tint: Theme.neutralMark)
                     }
                 }
 
@@ -208,7 +208,7 @@ struct FlagDetailView: View {
                 if let name = flag.name, !name.isEmpty, name != flag.key {
                     Text(name)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .textSelection(.enabled)
                 }
             }
@@ -302,7 +302,7 @@ struct FlagDetailView: View {
             if groups.isEmpty {
                 Text("No conditions set. This flag applies to everyone it's evaluated for.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
                     ReleaseConditionRow(
@@ -382,9 +382,9 @@ struct FlagDetailView: View {
                 Slider(value: $draftRollout, in: 0...100, step: 1) {
                     Text("Rollout percentage for set \(editedGroup + 1)")
                 } minimumValueLabel: {
-                    Text("0%").font(.caption2).foregroundStyle(.secondary)
+                    Text("0%").font(.caption2).foregroundStyle(Theme.Ink.secondary)
                 } maximumValueLabel: {
-                    Text("100%").font(.caption2).foregroundStyle(.secondary)
+                    Text("100%").font(.caption2).foregroundStyle(Theme.Ink.secondary)
                 }
                 .disabled(isBusy)
 
@@ -561,12 +561,12 @@ private struct ReleaseConditionRow: View {
             if properties.isEmpty {
                 Text("Matches everyone")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(Array(properties.enumerated()), id: \.offset) { _, property in
                     Label(property.summary, systemImage: "line.3.horizontal.decrease")
                         .font(.footnote.monospaced())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         }
@@ -624,7 +624,7 @@ private struct VariantRow: View {
                 if let name = variant.name, !name.isEmpty, name != variant.key {
                     Text(name)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
 
@@ -632,7 +632,7 @@ private struct VariantRow: View {
 
             Text(FlagFormat.percent(variant.rolloutPercentage ?? 0))
                 .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(

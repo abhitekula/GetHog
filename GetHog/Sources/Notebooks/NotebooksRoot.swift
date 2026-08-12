@@ -105,7 +105,7 @@ struct NotebooksRoot: View {
                 if filtered.isEmpty {
                     Text("No notebooks matched “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 } else {

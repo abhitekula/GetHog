@@ -92,7 +92,7 @@ struct GroupListView: View {
                 if filtered.isEmpty {
                     Text("No \(groupType.pluralName.lowercased()) matched “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 } else {
                     ForEach(filtered) { group in

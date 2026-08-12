@@ -377,7 +377,7 @@ struct SQLConsoleRoot: View {
 
                 Text(statusText)
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .lineLimit(1)
             }
         }
@@ -440,7 +440,7 @@ struct SQLConsoleRoot: View {
                 Image(systemName: "scissors")
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -540,7 +540,7 @@ struct SQLConsoleRoot: View {
                         .font(.headline)
                     Text(detail)
                         .font(monospacedDetail ? .caption.monospaced() : .callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }

@@ -308,7 +308,7 @@ struct SessionTimelineView: View {
                     // fired while recording was still spinning up.
                     Text("Events before +0:00 had already fired when the recording's first frame was captured.")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                 }
 
                 if store.didHitLimit {
@@ -321,7 +321,7 @@ struct SessionTimelineView: View {
                     // the defect this whole notice exists to prevent.
                     Text("Showing the first \(store.rowsReturned) events of this session.")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                 }
             }
         }
@@ -333,7 +333,7 @@ struct SessionTimelineView: View {
             Spacer()
             Text("\(visible.count) of \(entries.count)")
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .accessibilityLabel("Showing \(visible.count) of \(entries.count) events")
         }
     }
@@ -358,7 +358,7 @@ struct SessionTimelineView: View {
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .foregroundStyle(filter == option ? Theme.accent : Color.secondary)
+                        .foregroundStyle(filter == option ? Theme.accent : Theme.Ink.secondary)
                         // Glass rather than a drawn capsule, so the chips read as
                         // chrome over the card instead of as four small tiles.
                         // The active tint is the app accent, which is what makes
@@ -446,7 +446,7 @@ struct SessionTimelineView: View {
     private func empty(_ message: String) -> some View {
         Text(message)
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 16)
     }
@@ -458,7 +458,7 @@ struct SessionTimelineView: View {
                 .foregroundStyle(Theme.Status.criticalInk)
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -525,7 +525,7 @@ struct TimelineRunRowView: View {
     private var offsetLabel: some View {
         Text(SessionClock.offset(first.offset))
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
     }
 
     /// A stack of three dots rather than one: the rail's way of saying this
@@ -534,13 +534,13 @@ struct TimelineRunRowView: View {
         VStack(spacing: 2) {
             ForEach(0..<3, id: \.self) { _ in
                 Circle()
-                    .fill(Color.secondary)
+                    .fill(Theme.neutralMark)
                     .frame(width: 5, height: 5)
             }
             .padding(.top, 1)
             if !isLast {
                 Rectangle()
-                    .fill(Color.secondary.opacity(0.25))
+                    .fill(Theme.neutralMark.opacity(0.25))
                     .frame(width: 1)
                     .frame(maxHeight: .infinity)
             }
@@ -557,7 +557,7 @@ struct TimelineRunRowView: View {
                 if let subtitle = first.subtitle {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .typesettingLanguage(Locale.Language(identifier: "zxx"))
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
@@ -584,7 +584,7 @@ struct TimelineRunRowView: View {
             if !dynamicTypeSize.isAccessibilitySize {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.neutralMark)
                     .accessibilityHidden(true)
             }
         }
@@ -614,7 +614,7 @@ struct TimelineRowView: View {
     private var tint: Color {
         if entry.isError { return Theme.Status.critical }
         if entry.isCustom { return Theme.accent }
-        return Color.secondary
+        return Theme.neutralMark
     }
 
     /// A gutter, a rail and the event — until the gutter costs more than the
@@ -667,7 +667,7 @@ struct TimelineRowView: View {
     private var offsetLabel: some View {
         Text(SessionClock.offset(entry.offset))
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
     }
 
     private var rail: some View {
@@ -678,7 +678,7 @@ struct TimelineRowView: View {
                 .padding(.top, 5)
             if !isLast {
                 Rectangle()
-                    .fill(Color.secondary.opacity(0.25))
+                    .fill(Theme.neutralMark.opacity(0.25))
                     .frame(width: 1)
                     .frame(maxHeight: .infinity)
             }
@@ -710,7 +710,7 @@ struct TimelineRowView: View {
 
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.neutralMark)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .accessibilityHidden(true)
                 }
@@ -734,7 +734,7 @@ struct TimelineRowView: View {
             if let subtitle = entry.subtitle {
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .typesettingLanguage(Locale.Language(identifier: "zxx"))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             }
@@ -804,7 +804,7 @@ struct TimelineRowView: View {
         } else {
             Text("No properties recorded.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
         }
     }
 

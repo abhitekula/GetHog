@@ -53,7 +53,7 @@ extension LogSeverity {
         case .fatal, .error: Theme.Status.critical
         case .warn: Theme.accentWarm
         case .info, .debug: Theme.accent
-        case .trace, .unknown: .secondary
+        case .trace, .unknown: Theme.neutralMark
         }
     }
 

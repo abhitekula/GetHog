@@ -172,7 +172,7 @@ struct LLMAnalyticsRoot: View {
             if store.response?.hasMore == true {
                 Text("Showing the first \(store.traces.count) traces in this window.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .listRowBackground(Color.clear)
             }
 
@@ -252,7 +252,7 @@ struct LLMSummaryHeader: View {
                 if let response, response.hasMore {
                     Text("Totals cover the traces on this page, not the whole period.")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                 }
             }
         }
@@ -437,7 +437,7 @@ struct LLMTraceDetailSheet: View {
                         // reads as a loading bug rather than as real data.
                         Text("This trace has no child events. PostHog recorded the trace totals, but no individual generations or spans were attached to it.")
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                             .cardRow()
                     } else {
                         ForEach(trace.events) { event in
@@ -499,7 +499,7 @@ struct LLMTraceDetailSheet: View {
                     .monospacedDigit()
                 Text(tokens.map { "\(Int($0).formatted()) tokens" } ?? "No tokens")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .monospacedDigit()
             }
         }

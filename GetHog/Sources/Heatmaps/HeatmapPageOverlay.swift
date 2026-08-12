@@ -357,14 +357,14 @@ struct HeatmapPageOverlay: View {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(saved.url)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .truncationMode(.middle)
                     .lineLimit(1)
 
                 if let width = renderWidth {
                     Text(scopeExplanation(width: width))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -475,13 +475,13 @@ struct HeatmapPageOverlay: View {
 
             Text(placementNote)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(caveats, id: \.self) { caveat in
                 Label(caveat, systemImage: "circle.fill")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Ink.tertiary)
                     .labelStyle(BulletLabelStyle())
                     .fixedSize(horizontal: false, vertical: true)
             }

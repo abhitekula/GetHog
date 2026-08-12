@@ -308,7 +308,7 @@ struct WarehouseRoot: View {
                     // and a wrong one.
                     Text("Showing the first page of views. PostHog reports more.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -354,7 +354,7 @@ struct WarehouseRoot: View {
                     systemImage: "exclamationmark.circle"
                 )
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .listRowBackground(Color.clear)
             }
 
@@ -378,7 +378,7 @@ struct WarehouseRoot: View {
     private func sectionNote(_ text: String) -> some View {
         Text(text)
             .font(.callout)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
     }
@@ -454,7 +454,7 @@ struct WarehouseAlertBanner: View {
                 ForEach(sources) { source in
                     Text("\(source.displayName): \(source.latestError ?? source.health.title.lowercased()) · \(source.syncSummary)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .lineLimit(3)
                 }
             }
@@ -613,7 +613,7 @@ struct WarehouseTableDetailView: View {
                 if filteredColumns.isEmpty {
                     Text(table.columns.isEmpty ? "No columns reported." : "No matching columns.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 } else {
                     ForEach(filteredColumns) { column in
                         HStack(alignment: .firstTextBaseline) {
@@ -622,7 +622,7 @@ struct WarehouseTableDetailView: View {
                             Spacer(minLength: 12)
                             Text(column.type)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                             if !column.schemaValid {
                                 StatusPill(text: "Invalid", tint: Theme.Status.critical)
                             }
@@ -676,8 +676,8 @@ private func warehouseTint(_ health: SyncHealth) -> Color {
     switch health {
     case .healthy: Theme.Status.good
     case .running: Theme.accent
-    case .paused: .secondary
+    case .paused: Theme.neutralMark
     case .failed: Theme.Status.critical
-    case .unknown: .secondary
+    case .unknown: Theme.neutralMark
     }
 }

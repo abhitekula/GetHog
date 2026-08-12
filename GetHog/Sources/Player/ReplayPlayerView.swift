@@ -1117,7 +1117,7 @@ struct ReplayPlayerView: View {
                  ? "Loading replay \(loader.loadedRangeCount) of \(loader.rangeCount)…"
                  : "Looking for replay data…")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 24)
@@ -1134,7 +1134,7 @@ struct ReplayPlayerView: View {
                 """
             )
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             if let onOpenInPostHog {
                 Button(action: onOpenInPostHog) {
                     Label("Watch in PostHog", systemImage: "arrow.up.forward.square")
@@ -1154,10 +1154,10 @@ struct ReplayPlayerView: View {
                 .foregroundStyle(Theme.Status.criticalInk)
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             Text("The event timeline below is unaffected.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
             HStack(spacing: 12) {
                 if let onRetry {
                     Button("Try again", action: onRetry)
@@ -1181,7 +1181,7 @@ struct ReplayPlayerView: View {
                 .font(.footnote.weight(.medium))
             Text(detail)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             if let onOpenInPostHog {
                 Button(action: onOpenInPostHog) {
                     Label("Watch in PostHog", systemImage: "arrow.up.forward.square")
@@ -1533,7 +1533,7 @@ struct PlayerTransportBar: View {
                 Text(SessionClock.clock(duration))
             }
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
             .accessibilityHidden(true)
         }
     }

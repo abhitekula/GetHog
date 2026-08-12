@@ -97,6 +97,16 @@ public enum Theme {
         )
     }
 
+    /// A quiet neutral for glyphs, rules, rails, and other non-text marks.
+    ///
+    /// This deliberately preserves the system semantic colour instead of
+    /// freezing another palette value: marks need a 3:1 boundary, which the
+    /// system secondary colour clears on both GetHog surfaces, and Increase
+    /// Contrast should remain free to strengthen it. It is not supporting
+    /// word ink. App-controlled words use `Theme.Ink`; words derived from a
+    /// status tint use `Theme.Status.ink(for:)`.
+    public static let neutralMark = Color.secondary
+
     /// The label on top of a slab painted `Theme.accent`.
     ///
     /// **The accent is an ink colour, not a fill colour, and this is the bill

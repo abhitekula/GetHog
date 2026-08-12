@@ -327,12 +327,12 @@ struct SessionDetailView: View {
                                 .font(.subheadline.weight(.semibold))
                             Text("Full replay with console and network panes")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                         }
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Theme.neutralMark)
                     }
                 }
                 .buttonStyle(.plain)
@@ -612,7 +612,7 @@ struct SessionHeaderCard: View {
 
             timings
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -656,7 +656,7 @@ struct SessionHeaderCard: View {
             )
         }
         if !recording.isReplayable {
-            StatusPill(text: "Mobile", tint: .secondary)
+            StatusPill(text: "Mobile", tint: Theme.neutralMark)
         }
         if recording.ongoing {
             StatusPill(text: "Live", tint: Theme.Status.good)
@@ -721,11 +721,11 @@ struct SessionHeaderCard: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: row.icon)
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.neutralMark)
                 .frame(width: 16)
             Text(row.label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
     }
 

@@ -80,7 +80,7 @@ struct WriteOutcomeMessageView: View {
     private var tint: Color {
         switch message.kind {
         case .failure: Theme.Status.critical
-        case .notice: Color.secondary
+        case .notice: Theme.neutralMark
         case .filed: Theme.Status.warningInk
         }
     }
@@ -101,7 +101,7 @@ struct WriteOutcomeMessageView: View {
                     .minimumHitTarget()
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.neutralMark)
             .accessibilityLabel("Dismiss message")
         }
         .padding(.vertical, 2)

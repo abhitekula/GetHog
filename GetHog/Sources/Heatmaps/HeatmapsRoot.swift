@@ -378,7 +378,7 @@ struct HeatmapsRoot: View {
 
             Text(depthFootnote)
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
         }
         .skeleton(store.isLoadingHeatmap && store.profile.isEmpty)
     }
@@ -415,7 +415,7 @@ struct HeatmapsRoot: View {
 
                     Text(store.profile.coverageNote)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
 
                     if let fold = store.profile.fold {
                         // "positions", not "clicks", and taken from `fold` rather
@@ -424,7 +424,7 @@ struct HeatmapsRoot: View {
                         // is about a third of the truth.
                         Text("\(fold.belowFoldShare.formatted(.percent.precision(.fractionLength(0...1)))) of click positions are below the fold — reaching them meant scrolling.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                 }
             }
@@ -460,7 +460,7 @@ struct HeatmapsRoot: View {
 
                     Text("\(store.profile.fixedShare.formatted(.percent.precision(.fractionLength(0)))) of the charted clicks landed on sticky navigation, floating buttons or pinned footers. Their vertical position is a screen position, not a scroll depth, so they are counted here and left out of the chart above.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -494,12 +494,12 @@ struct HeatmapsRoot: View {
                 // observation, and a failed request made none.
                 Text("No clicks were recorded in this period.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
 
             Text("Horizontal position is a fraction of the viewport width, so it is comparable across every screen size — and unlike depth it means something for fixed elements too, which are included here.")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.Ink.tertiary)
         }
         .skeleton(store.isLoadingHeatmap && store.profile.isEmpty)
     }
@@ -546,7 +546,7 @@ struct HeatmapsRoot: View {
             if let kindFilter {
                 Text(kindFilter.explanation)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
 
             if let error = store.elementsError {
@@ -624,7 +624,7 @@ struct HeatmapsRoot: View {
                 systemImage: "ellipsis.rectangle"
             )
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
         }
     }
 
@@ -658,7 +658,7 @@ struct HeatmapsRoot: View {
             SectionLabel(text: title, systemImage: systemImage)
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(subtitle)")
@@ -677,7 +677,7 @@ struct HeatmapsRoot: View {
     private var screenshotNote: some View {
         Text(screenshotNoteText)
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.Ink.tertiary)
     }
 
     /// Both places that quote a failure splice it into the middle of a
@@ -776,7 +776,7 @@ struct HeatmapsRoot: View {
             systemImage: "exclamationmark.circle"
         )
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.Ink.secondary)
     }
 
     private func load() async {
@@ -811,7 +811,7 @@ struct HeatmapDepthChart: View {
                 // one 300px slice, so it is drawn as a different thing rather
                 // than as one more equal step down the page.
                 .foregroundStyle(
-                    band.isOverflow ? Color.secondary : SeriesPalette.color(at: 0)
+                    band.isOverflow ? Theme.neutralMark : SeriesPalette.color(at: 0)
                 )
                 .annotation(position: .trailing, alignment: .leading, spacing: 4) {
                     // Direct labels: on a phone the x-axis is too coarse to read
@@ -819,7 +819,7 @@ struct HeatmapDepthChart: View {
                     // hairline with no number attached to it.
                     Text(band.clicks.formatted())
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
                 .accessibilityLabel(band.spokenLabel)
                 .accessibilityValue(spokenValue(for: band))
@@ -830,12 +830,12 @@ struct HeatmapDepthChart: View {
             // line that is only true for the middle visitor.
             if let foldBand = profile.foldBandLabel {
                 RuleMark(y: .value("Depth", foldBand))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.neutralMark)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     .annotation(position: .top, alignment: .trailing, spacing: 1) {
                         Text("Median fold")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                     .accessibilityLabel("Median fold line")
                     .accessibilityValue(foldSpokenValue)
@@ -1087,6 +1087,6 @@ private func clickKindTint(_ kind: ElementClickKind) -> Color {
     case .autocapture: Theme.accent
     case .rageClick: Theme.Status.critical
     case .deadClick: Theme.accentWarm
-    case .other: .secondary
+    case .other: Theme.neutralMark
     }
 }

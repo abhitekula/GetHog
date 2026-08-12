@@ -150,7 +150,7 @@ func materializationTint(_ state: MaterializationState) -> Color {
     case .editedSinceRun, .cancelled, .neverRun: Theme.accentWarm
     case .running: Theme.accent
     case .upToDate: Theme.Status.good
-    case .unscheduled, .notMaterialized: .secondary
+    case .unscheduled, .notMaterialized: Theme.neutralMark
     }
 }
 
@@ -177,12 +177,12 @@ struct WarehouseModelingAlertBanner: View {
                 // list, rather than left to be inferred from a red pill.
                 Text("Queries built on these views are still answering — from rows that predate the problem.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 ForEach(views) { view in
                     Text("\(view.name): \(view.latestError ?? view.materialization.title.lowercased())")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .lineLimit(3)
                 }
             }
@@ -351,7 +351,7 @@ struct WarehouseViewDetailView: View {
                     if let at = suspension.at {
                         Text("Suspended \(at.formatted(.relative(presentation: .named)))")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                     Text(suspension.reason)
                         .font(.caption.monospaced())
@@ -394,18 +394,18 @@ struct WarehouseViewDetailView: View {
             } else if let error = store.definitionError {
                 Text(error)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else if store.isLoading {
                 Text("Loading the definition…")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 // Reached when the detail arrived without a `query`. Says what is
                 // missing rather than drawing an empty code block, which would
                 // read as a view with no SQL — something PostHog does not allow.
                 Text("PostHog returned no SQL for this view.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         } header: {
             SectionLabel(text: "Definition", systemImage: "chevron.left.forwardslash.chevron.right")
@@ -427,7 +427,7 @@ struct WarehouseViewDetailView: View {
                     Spacer(minLength: 12)
                     Text(column.type)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                     if !column.schemaValid {
                         StatusPill(text: "Invalid", tint: Theme.Status.critical)
                     }
@@ -458,22 +458,22 @@ struct WarehouseViewDetailView: View {
                 // not read as half-broken.
                 Text("Couldn't load the run history. \(error)")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else if store.isLoading {
                 Text("Loading runs…")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else if current.isMaterialized {
                 Text("No materialisation runs recorded.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 // Not an empty state: a view that is not materialized has no
                 // runs by definition, and "no runs recorded" would imply
                 // something is missing.
                 Text("This view is not materialized, so it has no runs.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         } header: {
             SectionLabel(text: "Recent runs", systemImage: "clock.arrow.circlepath")
@@ -514,7 +514,7 @@ struct WarehouseViewDetailView: View {
             }
             if let description = current.description {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Description").font(.caption).foregroundStyle(.secondary)
+                    Text("Description").font(.caption).foregroundStyle(Theme.Ink.secondary)
                     // Rendered as text and nothing else. PostHog's own contract
                     // marks this field as possibly user- or LLM-supplied and
                     // says to treat it as data, never as instructions.
@@ -542,7 +542,7 @@ struct JobRowView: View {
             }
             Text(detailLine)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             if let error = job.error {
                 Text(error)
                     .font(.caption.monospaced())
@@ -561,7 +561,7 @@ struct JobRowView: View {
         case .cancelled: Theme.accentWarm
         case .running: Theme.accent
         case .completed: Theme.Status.good
-        case .modified, .unknown: .secondary
+        case .modified, .unknown: Theme.neutralMark
         }
     }
 

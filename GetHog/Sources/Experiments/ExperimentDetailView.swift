@@ -169,7 +169,7 @@ struct ExperimentDetailSheet: View {
                         lifecycleButton(
                             "End experiment",
                             systemImage: "flag.checkered",
-                            tint: Color.secondary,
+                            tint: Theme.neutralMark,
                             hint: "Records a conclusion and closes the results window. Does not change the feature flag."
                         ) {
                             conclusion = current.conclusion ?? .won
@@ -211,7 +211,7 @@ struct ExperimentDetailSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(tint)
+        .foregroundStyle(Theme.Status.ink(for: tint))
         .disabled(lifecycle.isBusy(current))
         .accessibilityHint(hint)
     }
@@ -261,13 +261,13 @@ struct ExperimentDetailSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Theme.accentWarm)
+        .foregroundStyle(Theme.Status.warningInk)
         .disabled(lifecycle.isBusy(current))
 
         Button("Cancel") { isChoosingConclusion = false }
             .font(.subheadline)
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
     }
 
     /// States the distinction once, where the controls are, so it is not only in
@@ -581,7 +581,7 @@ struct ExperimentDetailSheet: View {
         switch conclusion {
         case .won: Theme.Status.good
         case .lost, .invalid: Theme.Status.critical
-        case .inconclusive, .stoppedEarly: Color.secondary
+        case .inconclusive, .stoppedEarly: Theme.neutralMark
         }
     }
 

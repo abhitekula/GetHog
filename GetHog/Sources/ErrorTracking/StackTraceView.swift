@@ -118,7 +118,7 @@ struct ExceptionEntryView: View {
                 if let handled = entry.mechanism?.handled {
                     StatusPill(
                         text: handled ? "Handled" : "Unhandled",
-                        tint: handled ? .secondary : Theme.Status.critical
+                        tint: handled ? Theme.neutralMark : Theme.Status.critical
                     )
                 }
             }
@@ -314,7 +314,7 @@ struct StackFrameRow: View {
 
     private var tint: Color {
         if frame.isMinified { return Theme.accentWarm }
-        return frame.isInApp ? Theme.accent : .secondary
+        return frame.isInApp ? Theme.accent : Theme.neutralMark
     }
 
     var body: some View {
@@ -337,7 +337,7 @@ struct StackFrameRow: View {
                 if frame.isMinified {
                     StatusPill(text: "Minified", tint: Theme.accentWarm)
                 } else if !frame.isInApp {
-                    StatusPill(text: "Library", tint: .secondary)
+                    StatusPill(text: "Library", tint: Theme.neutralMark)
                 }
             }
 

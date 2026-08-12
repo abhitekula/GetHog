@@ -215,7 +215,7 @@ struct SchemaBrowserSheet: View {
                 Section {
                     Text("No table name or description matches “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 }
             }
@@ -240,7 +240,7 @@ struct SchemaBrowserSheet: View {
                 Section {
                     Text("This project has at least \(store.tables.count) tables and the list may be incomplete. Use the search field, or query `system.information_schema.tables` directly.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 }
             }
@@ -285,7 +285,7 @@ private struct SchemaTableRow: View {
             if let summary = table.summary {
                 Text(summary)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .lineLimit(2)
             }
         }
@@ -399,7 +399,7 @@ struct SchemaTableDetail: View {
                 Section {
                     Text(summary)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 }
             }
@@ -408,7 +408,7 @@ struct SchemaTableDetail: View {
                 if matches.isEmpty {
                     Text("No column name or description matches “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                 }
 
@@ -472,7 +472,7 @@ private struct SchemaColumnRow: View {
                 // through `accessibilityValue`, where a reader expects it.
                 Image(systemName: mark)
                     .font(.body)
-                    .foregroundStyle(isPicked ? Theme.accent : Color.secondary)
+                    .foregroundStyle(isPicked ? Theme.accent : Theme.neutralMark)
                     .frame(width: 28, height: 28)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -482,7 +482,7 @@ private struct SchemaColumnRow: View {
 
                     Text(typeLine)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
 
                     // **No line limit, deliberately**: column descriptions can
                     // contain the detail needed to select a field correctly.
@@ -499,7 +499,7 @@ private struct SchemaColumnRow: View {
                     if let summary = column.summary {
                         Text(summary)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

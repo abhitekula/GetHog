@@ -210,7 +210,7 @@ struct SignalsRoot: View {
     /// sorting them last would invent a ranking PostHog never gave.
     private func priorityAccessory(_ report: SignalReport) -> RowAccessory {
         guard let priority = report.priority, !priority.isEmpty else {
-            return .pill("Untriaged", .secondary)
+            return .pill("Untriaged", Theme.neutralMark)
         }
         let tint: Color = switch priority.uppercased() {
         case "P0", "P1": Theme.Status.critical
@@ -223,7 +223,7 @@ struct SignalsRoot: View {
     private func tint(_ report: SignalReport) -> Color {
         switch report.status {
         case .failed: Theme.Status.critical
-        case .resolved: .secondary
+        case .resolved: Theme.neutralMark
         case .ready: Theme.accentWarm
         default: Theme.accent
         }
@@ -313,7 +313,7 @@ struct HealthRoot: View {
     private func card(_ issue: HealthIssue) -> some View {
         DataRow(
             glyph: Self.glyph(issue.kind),
-            tint: issue.status == .active ? tint(issue.severity) : .secondary,
+            tint: issue.status == .active ? tint(issue.severity) : Theme.neutralMark,
             title: title(issue.kind),
             subtitle: subtitle(issue),
             footnote: issue.resolvedAt.map {
@@ -401,7 +401,7 @@ struct HealthRoot: View {
         case .critical: Theme.Status.critical
         case .warning: Theme.accentWarm
         case .info: Theme.accent
-        case .unknown: .secondary
+        case .unknown: Theme.neutralMark
         }
     }
 

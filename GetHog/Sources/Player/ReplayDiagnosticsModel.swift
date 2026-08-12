@@ -53,7 +53,7 @@ extension ReplayConsoleLevel {
         switch self {
         case .error: Theme.Status.critical
         case .warn: Theme.accentWarm
-        case .log: Color.secondary
+        case .log: Theme.neutralMark
         }
     }
 

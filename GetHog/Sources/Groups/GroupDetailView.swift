@@ -231,7 +231,7 @@ struct GroupDetailView: View {
         Section {
             LabeledContent("Name") {
                 Text(group.hasDisplayName ? group.displayName : "Not set")
-                    .foregroundStyle(group.hasDisplayName ? .primary : .secondary)
+                    .foregroundStyle(group.hasDisplayName ? Color.primary : Theme.Ink.secondary)
             }
             LabeledContent("Key") {
                 Text(group.key)
@@ -270,7 +270,7 @@ struct GroupDetailView: View {
                 // spring looks exactly like this.
                 Text("No events carried this \(groupType.singularName.lowercased())'s key in the last 30 days.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(store.breakdown) { row in
                     Button {
@@ -329,7 +329,7 @@ struct GroupDetailView: View {
             } else if store.people.isEmpty {
                 Text("Nobody sent an event for this \(groupType.singularName.lowercased()) in the last 30 days.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(store.people) { person in
                     GroupPersonRowView(person: person)
@@ -339,7 +339,7 @@ struct GroupDetailView: View {
                 if hidden > 0 {
                     Text("\(hidden) more person\(hidden == 1 ? "" : "s") not shown.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         } header: {
@@ -372,7 +372,7 @@ struct GroupDetailView: View {
             } else if store.recordings.isEmpty {
                 Text("No recordings from sessions that touched this \(groupType.singularName.lowercased()) in the last 30 days.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } else {
                 ForEach(store.recordings) { recording in
                     Button {
@@ -389,7 +389,7 @@ struct GroupDetailView: View {
                     // number here would be invented.
                     Text("More recordings matched than are shown here.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
             }
         } header: {
@@ -426,7 +426,7 @@ struct GroupDetailView: View {
             Section {
                 Text("This \(groupType.singularName.lowercased()) has no properties set.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } header: {
                 SectionLabel(text: "Properties", systemImage: "tag")
             }
@@ -499,7 +499,7 @@ struct GroupEventShareRow: View {
 
             Text(footnote)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .padding(.vertical, Theme.Space.xs)
         .typesettingLanguage(Locale.Language(identifier: "zxx"))
@@ -519,7 +519,7 @@ struct GroupEventShareRow: View {
             .truncationMode(.middle)
         let count = Text(Double(row.occurrences).compactFormatted)
             .font(.subheadline.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Ink.secondary)
 
         if typeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 2) {
@@ -696,7 +696,7 @@ struct SectionFailure: View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Label(failure.summary, systemImage: "exclamationmark.triangle")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
             // The verbatim fault stays behind a disclosure for the same reason
             // `LoadFailureState` keeps it there: the sentence is what the screen
             // says, and a `DecodingError` dump is one tap away for whoever can

@@ -136,7 +136,7 @@ struct PropertyRow: View {
             LabeledContent {
                 Text(displayValue)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .textSelection(.enabled)
                     .lineLimit(3)
             } label: {
@@ -159,7 +159,7 @@ struct PropertyRow: View {
         HStack {
             Text(key).font(.caption)
             Spacer()
-            Text(detail).font(.caption2).foregroundStyle(.tertiary)
+            Text(detail).font(.caption2).foregroundStyle(Theme.Ink.tertiary)
         }
     }
 

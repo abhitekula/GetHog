@@ -96,7 +96,7 @@ struct ErrorsOverview: View {
         if let coverage, !issues.isEmpty {
             Text(coverage.note(shown: issues.count, window: window.spokenTitle.lowercased()))
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 // Wraps to whatever AX5 needs: the sentence names the scope of
                 // every number on the screen, and half of that scope is not a
                 // scope. Rendered and looked at at AX5 — it reflows to nine
@@ -113,7 +113,7 @@ struct ErrorsOverview: View {
                 HStack(alignment: .top, spacing: Theme.Space.l) {
                     statusCount("Active", active.count, Theme.Status.critical)
                     statusCount("Resolved", resolved.count, Theme.Status.good)
-                    statusCount("Suppressed", suppressed.count, .secondary)
+                    statusCount("Suppressed", suppressed.count, Theme.neutralMark)
                 }
             }
             .accessibilityIdentifier("gethog.errors-overview-summary")
@@ -140,7 +140,7 @@ struct ErrorsOverview: View {
 
             Text("Ranked by people affected, the same way the list is.")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
 
             VStack(spacing: Theme.Space.s) {
                 ForEach(mostImpacted) { issue in
@@ -172,7 +172,7 @@ struct ErrorsOverview: View {
 
                 Text("Most occurrences. Different from the list above, so volume and impact are not the same story here.")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
 
                 VStack(spacing: Theme.Space.s) {
                     ForEach(noisiest) { issue in

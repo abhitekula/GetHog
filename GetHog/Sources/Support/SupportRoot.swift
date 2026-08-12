@@ -188,7 +188,7 @@ struct SupportRoot: View {
                             + "team has read yet."
                     )
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                     // Named rather than summarised: "various channels" tells a
@@ -220,7 +220,7 @@ struct SupportRoot: View {
                             + "of an empty inbox."
                     )
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -344,7 +344,7 @@ struct SupportReplyNote: View {
                         + "doesn't offer one."
                 )
                 .font(Theme.Typography.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
                 if let url {
@@ -478,7 +478,7 @@ struct SupportBadgeStrip: View {
             )
         }
         if ticket.isSnoozed() {
-            SupportBadge(text: "Snoozed", systemImage: "moon.zzz", tint: .secondary)
+            SupportBadge(text: "Snoozed", systemImage: "moon.zzz", tint: Theme.neutralMark)
         }
     }
 
@@ -517,9 +517,9 @@ enum SupportTint {
         case .new: Theme.accentWarm
         case .open: Theme.accent
         case .pending: Theme.accent
-        case .onHold: .secondary
+        case .onHold: Theme.neutralMark
         case .resolved: Theme.Status.good
-        case .unknown: .secondary
+        case .unknown: Theme.neutralMark
         }
     }
 
@@ -528,10 +528,10 @@ enum SupportTint {
         case .critical: Theme.Status.critical
         case .high: Theme.accentWarm
         case .medium: Theme.accent
-        case .low: .secondary
+        case .low: Theme.neutralMark
         // Untriaged and unrecognised both read as "no claim made", which is what
         // a neutral tint says. Colouring them would assert a severity nobody set.
-        case .unset, .unknown: .secondary
+        case .unset, .unknown: Theme.neutralMark
         }
     }
 
@@ -540,7 +540,7 @@ enum SupportTint {
         case .breached: Theme.Status.critical
         case .atRisk: Theme.accentWarm
         case .onTrack: Theme.Status.good
-        case .none: .secondary
+        case .none: Theme.neutralMark
         }
     }
 }
@@ -832,7 +832,7 @@ struct SupportMessageRow: View {
                     .foregroundStyle(tint)
                 Text(message.authorName ?? message.author.title)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(Theme.Status.ink(for: tint))
                 if message.isPrivate {
                     // A word, never the tint alone: whether a line went to the
                     // customer is the single most consequential thing about it.
@@ -842,7 +842,7 @@ struct SupportMessageRow: View {
                 if let created = message.createdAt {
                     Text(created, format: .relative(presentation: .named))
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.Ink.tertiary)
                 }
             }
 
@@ -856,7 +856,7 @@ struct SupportMessageRow: View {
                 Text(placeholder)
                     .font(.callout)
                     .italic()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -874,7 +874,7 @@ struct SupportMessageRow: View {
         case .customer: Theme.accentWarm
         case .support: Theme.accent
         case .ai: Theme.accent
-        case .unknown: .secondary
+        case .unknown: Theme.neutralMark
         }
     }
 

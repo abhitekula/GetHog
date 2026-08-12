@@ -229,7 +229,7 @@ struct InsightAlertsView: View {
             if let snoozeLine = snoozeLine(alert) {
                 Text(snoozeLine)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -338,11 +338,11 @@ struct InsightAlertsView: View {
     }
 
     private func tint(for alert: InsightAlert) -> Color {
-        if !controller.effectiveEnabled(alert) || controller.isSnoozed(alert) { return .secondary }
+        if !controller.effectiveEnabled(alert) || controller.isSnoozed(alert) { return Theme.neutralMark }
         switch alert.state {
         case .firing, .errored: return Theme.Status.critical
         case .notFiring: return Theme.Status.good
-        case .snoozed, .unknown: return .secondary
+        case .snoozed, .unknown: return Theme.neutralMark
         }
     }
 

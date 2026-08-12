@@ -45,7 +45,7 @@ extension RecordingExportState {
     var tint: Color {
         switch self {
         case .ready: Theme.accent
-        case .pending: .secondary
+        case .pending: Theme.neutralMark
         case .failed: Theme.Status.critical
         case .expired: Theme.accentWarm
         }

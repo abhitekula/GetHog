@@ -35,7 +35,7 @@ struct TabBarSettingsView: View {
 
             Section {
                 Label(AppTab.search.title, systemImage: AppTab.search.systemImage)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             } footer: {
                 Text("Search is always last. It's the only way to reach every screen that isn't in the bar, so it can't be moved out of it.")
             }
@@ -88,7 +88,7 @@ struct TabBarSettingsView: View {
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.neutralMark)
             }
             .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             .contentShape(.rect)

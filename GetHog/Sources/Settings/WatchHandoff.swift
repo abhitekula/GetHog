@@ -389,7 +389,7 @@ struct SettingsWatchSection: View {
         case .delivered:
             Label("Delivered to your Apple Watch", systemImage: "checkmark.circle.fill")
                 .font(.footnote)
-                .foregroundStyle(Theme.Status.good)
+                .foregroundStyle(Theme.Status.goodInk)
         case .failed(let reason):
             Label(reason, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)

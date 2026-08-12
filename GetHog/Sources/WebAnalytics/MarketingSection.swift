@@ -110,7 +110,7 @@ struct MarketingSection: View {
                     ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
                         Text(column)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                             .frame(minWidth: 90, alignment: .leading)
                     }
                 }

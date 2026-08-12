@@ -581,7 +581,7 @@ struct DataRow: View {
         case .chevron:
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.neutralMark)
                 .accessibilityHidden(true)
         case .metric(let value):
             Text(value)

@@ -249,7 +249,7 @@ struct SessionSummaryCard: View {
                     .accessibilityHidden(true)
                 Text(SessionOutcomeStyle.title(outcome))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(SessionOutcomeStyle.tint(outcome))
+                    .foregroundStyle(Theme.Status.ink(for: SessionOutcomeStyle.tint(outcome)))
             }
             if let narrative = outcome?.detail, !narrative.isEmpty {
                 // The paragraph is the whole point of the feature and gets no
@@ -377,11 +377,11 @@ struct SentimentRow: View {
                 .foregroundStyle(Theme.Ink.secondary)
             Text(score.formatted(.number.precision(.fractionLength(1))))
                 .font(.caption.monospacedDigit().weight(.medium))
-                .foregroundStyle(FrustrationBand.tint(score))
+                .foregroundStyle(Theme.Status.ink(for: FrustrationBand.tint(score)))
             // Clip the fill to the track: an independently rounded capsule can
             // paint past the leading cap at very low scores.
             Capsule()
-                .fill(Color.secondary.opacity(0.2))
+                .fill(Theme.neutralMark.opacity(0.2))
                 .frame(width: meterWidth, height: meterHeight)
                 .overlay(alignment: .leading) {
                     Capsule()
@@ -516,7 +516,7 @@ struct SessionChapterRow: View {
     private var numberBadge: some View {
         Text("\(number)")
             .font(.caption2.weight(.bold).monospacedDigit())
-            .foregroundStyle(tint)
+            .foregroundStyle(Theme.Status.ink(for: tint))
             .frame(width: railSize, height: railSize)
             .background(tint.opacity(0.15), in: .circle)
             .accessibilityHidden(true)
@@ -527,7 +527,7 @@ struct SessionChapterRow: View {
             numberBadge
             if !isLast {
                 Rectangle()
-                    .fill(Color.secondary.opacity(0.25))
+                    .fill(Theme.neutralMark.opacity(0.25))
                     .frame(width: 1)
                     .frame(maxHeight: .infinity)
             }
@@ -579,10 +579,12 @@ struct SessionChapterRow: View {
                 HStack(spacing: Theme.Space.xs) {
                     Image(systemName: SessionOutcomeStyle.systemImage(chapter.outcome))
                         .font(.caption2)
+                        .foregroundStyle(tint)
                         .accessibilityHidden(true)
-                    Text(outcomeWord).font(.caption.weight(.medium))
+                    Text(outcomeWord)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.Status.ink(for: tint))
                 }
-                .foregroundStyle(tint)
             }
         }
     }

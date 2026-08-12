@@ -136,7 +136,7 @@ struct QuotaSpendCard: View {
                     } label: {
                         Text(Self.quietLabel(count: quiet.count, hasFeatured: !featured.isEmpty))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Ink.secondary)
                     }
                     .tint(Theme.accent)
                 }
@@ -203,7 +203,7 @@ struct QuotaSpendCard: View {
                 // recomputing the headline.
                 Text("Costs are PostHog's, rounded to the cent for display.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
             .padding(.horizontal, Theme.Space.l)
         }
@@ -246,7 +246,7 @@ private struct QuotaMeter: View {
                 Spacer(minLength: Theme.Space.s)
                 Text(QuotaSpendCard.percentText(resource))
                     .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(tint)
+                    .foregroundStyle(Theme.Status.ink(for: tint))
                 StatusPill(text: resource.stateWord, tint: tint)
             }
 
@@ -261,7 +261,7 @@ private struct QuotaMeter: View {
 
             Text(resource.usageDescription())
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(resource.title) quota")
@@ -305,7 +305,7 @@ struct SDKHealthCard: View {
                 if report.flagged.isEmpty {
                     Text("Nothing is flagged. PostHog re-runs this check roughly daily, so a version you have just deployed can take a day to clear.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else if !store.isLoading {
@@ -336,7 +336,7 @@ struct SDKHealthCard: View {
                         .font(Theme.Typography.title)
                     Text(Self.updatingText(report.needsUpdatingCount))
                         .font(Theme.Typography.body)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
 
                 Spacer(minLength: Theme.Space.s)
@@ -346,7 +346,7 @@ struct SDKHealthCard: View {
             if let reason = report.reason, !reason.isEmpty {
                 Text(reason)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
@@ -367,7 +367,7 @@ struct SDKHealthCard: View {
     static func tint(for level: SDKHealthLevel) -> Color {
         switch level {
         case .healthy: Theme.Status.good
-        case .info: .secondary
+        case .info: Theme.neutralMark
         case .warning: Theme.accentWarm
         case .danger, .critical: Theme.Status.critical
         // Concerning, but not quantified — the warm secondary says "look at
@@ -411,7 +411,7 @@ private struct SDKHealthRow: View {
             if let versions {
                 Text(versions)
                     .font(Theme.Typography.body.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
             }
 
             // Verbatim. PostHog wrote the sentence that explains why this row
@@ -420,7 +420,7 @@ private struct SDKHealthRow: View {
             if let reason = entry.reason, !reason.isEmpty {
                 Text(reason)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
@@ -430,7 +430,7 @@ private struct SDKHealthRow: View {
             ForEach(entry.banners, id: \.self) { banner in
                 Label(banner, systemImage: "megaphone")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

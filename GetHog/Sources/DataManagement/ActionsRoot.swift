@@ -114,7 +114,7 @@ struct ActionsRoot: View {
                 if filtered.isEmpty {
                     Text("No actions matched “\(search)”.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 } else {
@@ -239,7 +239,7 @@ struct ActionDetailView: View {
                 if action.isCalculating {
                     Label("PostHog is recalculating this action now", systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                 }
                 if let created = action.createdAt {
                     LabeledContent("Created") {
@@ -266,7 +266,7 @@ struct ActionDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Step \(index + 1)")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(Theme.Ink.tertiary)
                             Text(step.summary)
                                 .font(.subheadline)
                                 .textSelection(.enabled)

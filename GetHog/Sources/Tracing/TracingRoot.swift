@@ -862,7 +862,7 @@ struct SpanRowView: View {
                     .frame(width: max(proxy.size.width * share, 2))
             }
             .frame(height: 4)
-            .background(Color.secondary.opacity(0.15), in: .rect(cornerRadius: 2))
+            .background(Theme.neutralMark.opacity(0.15), in: .rect(cornerRadius: 2))
             .clipShape(.rect(cornerRadius: 2))
             .accessibilityHidden(true)
         }
@@ -942,14 +942,14 @@ struct SpanDetailView: View {
                 if sortedAttributes.isEmpty {
                     Text("This span carries no attributes.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Ink.secondary)
                         .cardRow()
                 } else {
                     ForEach(sortedAttributes, id: \.key) { attribute in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(attribute.key)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Ink.secondary)
                             Text(attribute.value)
                                 .font(.footnote)
                                 .textSelection(.enabled)

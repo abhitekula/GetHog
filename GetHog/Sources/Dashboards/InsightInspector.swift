@@ -99,7 +99,7 @@ struct InsightSidePanel: View {
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.neutralMark)
                     .frame(
                         width: PlatformControlMetrics.minimumInteractiveLength,
                         height: PlatformControlMetrics.minimumInteractiveLength
