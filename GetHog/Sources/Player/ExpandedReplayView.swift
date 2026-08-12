@@ -10,6 +10,12 @@ enum ExpandedReplayHandoff {
     ) -> TimeInterval {
         didRestorePosition ? currentTime : initialPosition
     }
+
+    static func finishOnce(didFinish: inout Bool, perform: () -> Void) {
+        guard !didFinish else { return }
+        didFinish = true
+        perform()
+    }
 }
 
 @MainActor
@@ -31,6 +37,9 @@ struct ExpandedReplayView: View {
     /// Reports where the playhead ended up and whether it was playing, so the
     /// inline player can pick up mid-motion exactly where this view left off.
     let onClose: (TimeInterval, Bool) -> Void
+    /// Native hosts can close their own window after the replay handoff. The
+    /// iOS and iPadOS cover continues to dismiss through SwiftUI.
+    var closeAction: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -135,6 +144,9 @@ struct ExpandedReplayView: View {
                 else { return }
                 controller.seek(to: target, resume: resume)
             }
+            .onDisappear {
+                finishOnce()
+            }
         }
         .interactiveDismissDisabled()
         #if os(macOS)
@@ -224,22 +236,30 @@ struct ExpandedReplayView: View {
 
     private func close() {
         finishOnce()
+        #if os(macOS)
+        if let closeAction {
+            closeAction()
+        } else {
+            dismiss()
+        }
+        #else
         dismiss()
+        #endif
     }
 
     private func finishOnce() {
-        guard !didClose else { return }
-        didClose = true
-        onClose(
-            ExpandedReplayHandoff.dismissalPosition(
-                initialPosition: initialPosition,
-                didRestorePosition: controller.didRestorePreparedPlayback,
-                currentTime: controller.expansionHandoffPosition
-            ),
-            // Read before dismissal tears the controller down: if the show was
-            // running in here, it keeps running inline. Closing a bigger
-            // window is not a pause gesture.
-            controller.isPlaying
-        )
+        ExpandedReplayHandoff.finishOnce(didFinish: &didClose) {
+            onClose(
+                ExpandedReplayHandoff.dismissalPosition(
+                    initialPosition: initialPosition,
+                    didRestorePosition: controller.didRestorePreparedPlayback,
+                    currentTime: controller.expansionHandoffPosition
+                ),
+                // Read before dismissal tears the controller down: if the show was
+                // running in here, it keeps running inline. Closing a bigger
+                // window is not a pause gesture.
+                controller.isPlaying
+            )
+        }
     }
 }

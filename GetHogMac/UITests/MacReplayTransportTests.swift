@@ -81,6 +81,60 @@ final class MacReplayTransportTests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "The solo recording window took the app down.")
     }
 
+    /// Expansion is a second native window, including the native full-screen
+    /// cycle, and closing that window returns ownership to the inline player.
+    func testExpandedReplayUsesANativeWindowAndReturnsInline() {
+        let app = openSessionDetail()
+        let inlineStage = app.windows.buttons["Session replay"]
+        guard inlineStage.exists else {
+            XCTFail("The session detail rendered no inline replay stage.")
+            return
+        }
+
+        app.windows.buttons["Expand replay"].click()
+        let expandedStage = app.windows.descendants(matching: .any)["Full-screen session replay"]
+        XCTAssertTrue(
+            expandedStage.waitForExistence(timeout: 15),
+            "Expansion rendered no replay stage in a native window."
+        )
+        let expandedTransport = app.windows.sliders["Full-screen playback position"]
+        XCTAssertTrue(
+            expandedTransport.waitForExistence(timeout: 10),
+            "The expanded replay window rendered no transport."
+        )
+
+        let expandedWindow = app.windows.matching(
+            NSPredicate(format: "label CONTAINS %@", "Alex Example")
+        ).firstMatch
+        XCTAssertTrue(expandedWindow.exists, "Expansion created no person-titled replay window.")
+        XCTAssertGreaterThanOrEqual(expandedWindow.frame.width, 640)
+        XCTAssertGreaterThanOrEqual(expandedWindow.frame.height, 480)
+        XCTAssertGreaterThanOrEqual(app.windows.count, 2)
+        capture("b10-expanded-native-window")
+
+        let beforeFullScreen = expandedWindow.frame
+        app.typeKey("f", modifierFlags: [.control, .command])
+        DemoLaunch.pause(2)
+        XCTAssertNotEqual(
+            expandedWindow.frame, beforeFullScreen,
+            "The replay window did not enter native full screen."
+        )
+        app.typeKey("f", modifierFlags: [.control, .command])
+        DemoLaunch.pause(2)
+        XCTAssertEqual(app.state, .runningForeground)
+
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(
+            inlineStage.waitForExistence(timeout: 10),
+            "The inline replay stage did not return after Command-W."
+        )
+        XCTAssertTrue(
+            expandedStage.waitForNonExistence(timeout: 10),
+            "The expanded replay stage survived Command-W."
+        )
+        XCTAssertEqual(app.windows.count, 1)
+    }
+
     /// The shell's own session detail, which is where a person meets the
     /// player.
     ///

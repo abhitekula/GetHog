@@ -899,6 +899,9 @@ struct ReplayPlayerView: View {
     @State private var seekArbiter = ReplaySeekArbiter()
     @State private var isExpanded = false
     @State private var resumeAfterExpansion = false
+    #if os(macOS)
+    @State private var macReplayWindowController: MacReplayWindowController?
+    #endif
 
     /// The recording's own duration is the honest total. The other two are
     /// fallbacks for the rare recording that reports no duration: the player and
@@ -947,6 +950,7 @@ struct ReplayPlayerView: View {
             else { return }
             controller.seek(to: target, resume: resume)
         }
+        #if !os(macOS)
         .fullScreenCover(isPresented: $isExpanded) {
             ExpandedReplayView(
                 recording: recording,
@@ -968,8 +972,12 @@ struct ReplayPlayerView: View {
                 }
             )
         }
+        #endif
         #if os(macOS)
         .macReplayKeyboardTransport(controller: controller, duration: duration)
+        .onDisappear {
+            macReplayWindowController?.close()
+        }
         #endif
     }
 
@@ -1222,10 +1230,46 @@ struct ReplayPlayerView: View {
     }
 
     private func expand() {
+        #if os(macOS)
+        guard controller.isReady else { return }
+        if let macReplayWindowController {
+            macReplayWindowController.show()
+            return
+        }
+
+        resumeAfterExpansion = controller.isPlaying
+        controller.pause()
+
+        let replayWindow = MacReplayWindowController(
+            title: "Replay — \(recording.personDisplayName)",
+            onFinish: {
+                macReplayWindowController = nil
+            }
+        )
+        macReplayWindowController = replayWindow
+        replayWindow.present(
+            ExpandedReplayView(
+                recording: recording,
+                loader: loader,
+                initialPosition: controller.expansionHandoffPosition,
+                initialSpeed: controller.speed,
+                initialResume: resumeAfterExpansion,
+                markers: markers,
+                onClose: { position, wasPlaying in
+                    seek(to: position, resume: wasPlaying)
+                    controller.refit()
+                },
+                closeAction: { [weak replayWindow] in
+                    replayWindow?.close()
+                }
+            )
+        )
+        #else
         guard controller.isReady, !isExpanded else { return }
         resumeAfterExpansion = controller.isPlaying
         controller.pause()
         isExpanded = true
+        #endif
     }
 
     /// Seeks within the buffer immediately and pulls the rest in behind it.

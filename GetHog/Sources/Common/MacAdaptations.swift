@@ -176,17 +176,65 @@ extension SearchFieldPlacement {
     }
 }
 
-// MARK: - Presentation
+// MARK: - Replay window
 
-extension View {
-    /// macOS has no full-screen cover; the expanded replay presents as a sheet
-    /// until Task 5 gives it a real window.
-    func fullScreenCover<Content: View>(
-        isPresented: Binding<Bool>,
-        onDismiss: (() -> Void)? = nil,
-        @ViewBuilder content: @escaping () -> Content
-    ) -> some View {
-        sheet(isPresented: isPresented, onDismiss: onDismiss, content: content)
+enum MacReplayWindowMetrics {
+    static let defaultSize = CGSize(width: 1_100, height: 760)
+    static let minimumSize = CGSize(width: 640, height: 480)
+}
+
+/// One native owner for one expanded replay window.
+///
+/// The hosted view receives the existing replay loader from its caller. This
+/// controller owns presentation only: it creates no API client and performs no
+/// fetch, so expanding cannot fork the replay's networking path.
+@MainActor
+final class MacReplayWindowController: NSObject, NSWindowDelegate {
+    let window: NSWindow
+
+    private let onFinish: () -> Void
+    private var didFinish = false
+
+    init(title: String, onFinish: @escaping () -> Void) {
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: MacReplayWindowMetrics.defaultSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = title
+        window.minSize = MacReplayWindowMetrics.minimumSize
+        window.isReleasedWhenClosed = false
+
+        self.window = window
+        self.onFinish = onFinish
+        super.init()
+        window.delegate = self
+    }
+
+    func present<Content: View>(_ content: Content) {
+        window.contentViewController = NSHostingController(rootView: content)
+        show()
+    }
+
+    func show() {
+        MacMenuBar.activateRegular()
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func close() {
+        window.performClose(nil)
+    }
+
+    func finishOnce() {
+        guard !didFinish else { return }
+        didFinish = true
+        onFinish()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        finishOnce()
     }
 }
 
