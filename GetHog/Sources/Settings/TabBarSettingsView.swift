@@ -1,3 +1,4 @@
+import GetHogUI
 import SwiftUI
 
 /// Which four product screens sit in the phone's tab bar.
@@ -78,7 +79,7 @@ struct TabBarSettingsView: View {
                 }
             }
         } label: {
-            // **The 44pt floor goes inside the label closure.** A borderless
+            // **The platform floor goes inside the label closure.** A borderless
             // `Menu`'s tap region is its *label's* bounds, so the same modifier
             // outside would silently just recentre the label and leave the
             // target undersized — measured, and recorded in `CLAUDE.md`.
@@ -89,7 +90,7 @@ struct TabBarSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             .contentShape(.rect)
         }
         // The slot number is spoken because the order *is* the setting: four

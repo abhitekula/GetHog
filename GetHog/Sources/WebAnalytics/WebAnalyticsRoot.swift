@@ -730,9 +730,9 @@ struct WebAnalyticsRoot: View {
                 // menu's tap region is its *label's* bounds, so a frame applied
                 // outside would silently just recentre the text and leave the
                 // target the size it was. Kept even though the style below is
-                // bordered — it is what makes the 44pt true by construction
+                // bordered — it enforces the platform floor by construction
                 // rather than by whatever height the style happens to pick.
-                .frame(minHeight: 44)
+                .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
         }
         // Bordered, so it reads as something to press. The segmented control it
         // replaces was unmistakably a control; a bare label under a section

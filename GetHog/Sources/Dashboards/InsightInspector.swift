@@ -100,14 +100,17 @@ struct InsightSidePanel: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.tertiary)
-                    .frame(width: 44, height: 44)
+                    .frame(
+                        width: PlatformControlMetrics.minimumInteractiveLength,
+                        height: PlatformControlMetrics.minimumInteractiveLength
+                    )
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close insight")
         }
         .padding(.horizontal, 16)
-        // The controls bring their own 44pt height now, so the padding only has
+        // The controls bring their own platform-sized height now, so the padding only has
         // to keep the row off the title bar above and the divider below.
         .padding(.vertical, 6)
     }

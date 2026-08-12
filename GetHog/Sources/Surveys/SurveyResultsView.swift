@@ -421,7 +421,7 @@ struct SurveyTextAnswersView: View {
                     )
                     .font(.caption)
                 }
-                .frame(minHeight: 44)
+                .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             }
         }
     }

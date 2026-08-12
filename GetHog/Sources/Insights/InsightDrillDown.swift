@@ -334,8 +334,8 @@ struct InsightPeopleSheet: View {
                 }
                 Spacer()
             }
-            // A 44pt target, because a list row's natural height is not one.
-            .frame(minHeight: 44)
+            // A platform-sized target, because a list row's natural height is not one.
+            .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

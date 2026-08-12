@@ -142,7 +142,7 @@ struct InsightNarrowSheet: View {
                     // are all buttons and a hidden gesture on one row of a form is
                     // the affordance nobody finds.
                     //
-                    // The 44pt floor is **inside** the label, like every other one
+                    // The platform floor is **inside** the label, like every other one
                     // in this pair of features — measured on the alerts sheet, a
                     // `.frame` outside a styled `Button` recentres the label and
                     // leaves the hit region at the label's intrinsic 29.67pt. See
@@ -151,7 +151,10 @@ struct InsightNarrowSheet: View {
                         draftFilters.removeAll { $0.id == filter.id }
                     } label: {
                         Image(systemName: "minus.circle")
-                            .frame(minWidth: 44, minHeight: 44)
+                            .frame(
+                                minWidth: PlatformControlMetrics.minimumInteractiveLength,
+                                minHeight: PlatformControlMetrics.minimumInteractiveLength
+                            )
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.Status.criticalInk)
@@ -164,7 +167,7 @@ struct InsightNarrowSheet: View {
                 isAddingFilter = true
             } label: {
                 Label("Add a filter", systemImage: "plus")
-                    .frame(minHeight: 44)
+                    .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             }
         } header: {
             SectionLabel(text: "Narrow to", systemImage: "line.3.horizontal.decrease.circle")
@@ -401,7 +404,7 @@ private struct InsightFilterPicker: View {
                                             .foregroundStyle(Theme.accent)
                                     }
                                 }
-                                .frame(minHeight: 44)
+                                .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                             }
                             .buttonStyle(.plain)
                         }
@@ -490,7 +493,7 @@ private struct InsightFilterPicker: View {
                                     Image(systemName: "checkmark").foregroundStyle(Theme.accent)
                                 }
                             }
-                            .frame(minHeight: 44)
+                            .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                         }
                         .buttonStyle(.plain)
                     }

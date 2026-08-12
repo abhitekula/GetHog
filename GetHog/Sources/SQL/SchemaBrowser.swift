@@ -507,7 +507,7 @@ private struct SchemaColumnRow: View {
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 2)
-            .frame(minHeight: 44)
+            .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

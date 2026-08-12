@@ -409,7 +409,7 @@ private struct NotebookRecordingBlock: View {
                             systemImage: "play.fill"
                         )
                         .font(.footnote.weight(.medium))
-                        .frame(minHeight: 44)
+                        .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                     }
                     .buttonStyle(.bordered)
                     .disabled(isLoading)
@@ -417,7 +417,10 @@ private struct NotebookRecordingBlock: View {
                     Link(destination: url) {
                         Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                             .font(.footnote.weight(.medium))
-                            .frame(minHeight: 44, alignment: .leading)
+                            .frame(
+                                minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                                alignment: .leading
+                            )
                     }
                 }
             }
@@ -635,8 +638,11 @@ struct NotebookReferenceCard: View {
                         Label("Open in PostHog", systemImage: "arrow.up.forward.square")
                             .font(.footnote.weight(.medium))
                             // The tap region of a `Link` is its label, so the
-                            // 44pt floor goes inside the closure.
-                            .frame(minHeight: 44, alignment: .leading)
+                            // platform floor goes inside the closure.
+                            .frame(
+                                minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                                alignment: .leading
+                            )
                     }
                 }
             }
@@ -701,7 +707,7 @@ struct NotebookBlockNotice: View {
                 Button(actionTitle, action: action)
                     .font(.footnote.weight(.medium))
                     .buttonStyle(.bordered)
-                    .frame(minHeight: 44)
+                    .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             }
         }
         .frame(maxWidth: .infinity)

@@ -198,9 +198,12 @@ struct InsightLegend: View {
             )
         } label: {
             row(entry)
-                // A legend row is two lines of `.caption`; the hit target is
-                // built here rather than inherited.
-                .frame(minHeight: 44, alignment: .center)
+                // A legend row is two lines of `.caption`; its platform-sized
+                // hit target is built here rather than inherited.
+                .frame(
+                    minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                    alignment: .center
+                )
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -1209,7 +1212,10 @@ struct TimeSeriesChart: View {
             )
         } label: {
             scrubReadout
-                .frame(minHeight: 44, alignment: .center)
+                .frame(
+                    minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                    alignment: .center
+                )
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -1287,7 +1293,10 @@ struct BarValueChart: View {
                     )
                 } label: {
                     BarValueRow(bar: bar, maxValue: visible.map(\.value).max() ?? 1)
-                        .frame(minHeight: 44, alignment: .center)
+                        .frame(
+                            minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                            alignment: .center
+                        )
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
@@ -1557,8 +1566,12 @@ struct FunnelChart: View {
             )
         } label: {
             label()
-                // The row is text and a 6pt bar — nowhere near 44pt on its own.
-                .frame(minHeight: 44, alignment: .center)
+                // The row is text and a 6pt bar — below either platform's
+                // interaction floor on its own.
+                .frame(
+                    minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                    alignment: .center
+                )
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

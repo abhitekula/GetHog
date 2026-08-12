@@ -248,7 +248,7 @@ struct InsightAlertsView: View {
     /// rule: a swipe hides the action behind a gesture nobody discovers, and every
     /// mutating call here is supposed to name what it changes before it happens.
     ///
-    /// **Every 44pt floor here is inside a label closure, and that is a
+    /// **Every platform floor here is inside a label closure, and that is a
     /// measurement rather than a style.** `CLAUDE.md` records the rule for a
     /// borderless `Menu` — its tap region is its label's bounds — and notes that a
     /// bordered `.toggleStyle(.button)` fills its offered frame instead. A
@@ -267,7 +267,7 @@ struct InsightAlertsView: View {
                     pendingSnooze = PendingSnooze(alert: alert, snooze: nil)
                 } label: {
                     Label("Wake it up", systemImage: "bell")
-                        .frame(minHeight: 44)
+                        .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                 }
                 .buttonStyle(.bordered)
             } else {
@@ -279,7 +279,7 @@ struct InsightAlertsView: View {
                     }
                 } label: {
                     Label("Snooze", systemImage: "bell.slash")
-                        .frame(minHeight: 44)
+                        .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                 }
                 // Bordered, to match the button beside it. Captured before this
                 // was here: a borderless Snooze next to a bordered Pause read as
@@ -300,7 +300,7 @@ struct InsightAlertsView: View {
                     controller.effectiveEnabled(alert) ? "Pause" : "Start",
                     systemImage: controller.effectiveEnabled(alert) ? "pause" : "play"
                 )
-                .frame(minHeight: 44)
+                .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
             }
             .buttonStyle(.bordered)
 

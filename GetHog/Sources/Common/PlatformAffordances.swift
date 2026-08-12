@@ -30,11 +30,11 @@ enum Platform {
 /// reason: `listRowSpacing` is unavailable on macOS, so the clipped background
 /// itself has to provide the desktop rhythm without changing iPhone or iPad.
 enum PlatformPresentationMetrics {
+    static let minimumInteractiveLength = PlatformControlMetrics.minimumInteractiveLength
+
     #if os(macOS)
-    static let minimumInteractiveLength: CGFloat = 28
     static let listCardVerticalInset: CGFloat = 3
     #else
-    static let minimumInteractiveLength: CGFloat = 44
     static let listCardVerticalInset: CGFloat = 1
     #endif
 }

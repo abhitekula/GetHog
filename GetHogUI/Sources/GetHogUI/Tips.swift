@@ -106,7 +106,7 @@ struct AppTipViewStyle: TipViewStyle {
 
                         // TipKit's own close control, rebuilt: 2.66:1 in light as
                         // it shipped, and a tap target the framework does not
-                        // state. The 44pt frame is inside the label closure
+                        // state. The platform-sized frame is inside the label closure
                         // because that is where a `.plain` button's tap region
                         // comes from.
                         //
@@ -121,7 +121,10 @@ struct AppTipViewStyle: TipViewStyle {
                             Image(systemName: "xmark")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(Theme.Ink.secondary)
-                                .frame(width: 44, height: 44)
+                                .frame(
+                                    width: PlatformControlMetrics.minimumInteractiveLength,
+                                    height: PlatformControlMetrics.minimumInteractiveLength
+                                )
                                 .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
@@ -141,7 +144,7 @@ struct AppTipViewStyle: TipViewStyle {
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(Theme.Status.accentInk)
-                                .frame(minHeight: 44)
+                                .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                             }
                         }
                     }

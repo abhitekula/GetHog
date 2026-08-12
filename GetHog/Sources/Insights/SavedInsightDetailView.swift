@@ -281,7 +281,7 @@ struct SavedInsightDetailView: View {
                     .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                // The 44pt floor inside the label, not around the button — see
+                // The platform floor inside the label, not around the button — see
                 // `InsightAlertsView.controls` for the measurement. A caption-sized
                 // label is the worst case for this: its intrinsic height is well
                 // under half a fingertip.
@@ -292,7 +292,7 @@ struct SavedInsightDetailView: View {
                 } label: {
                     Text("Clear")
                         .font(Theme.Typography.caption)
-                        .frame(minHeight: 44)
+                        .frame(minHeight: PlatformControlMetrics.minimumInteractiveLength)
                 }
             }
             .accessibilityElement(children: .combine)

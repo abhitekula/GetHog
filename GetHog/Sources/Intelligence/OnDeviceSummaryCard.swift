@@ -206,7 +206,7 @@ struct OnDeviceSummaryCard: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Summary generated on this device. \(text)")
 
-            // The 44pt floor goes *inside* the label, not on the button. A
+            // The platform floor goes *inside* the label, not on the button. A
             // borderless button's tap region is its label's bounds, so the
             // modifier on the outside would only recentre the text and leave the
             // target the height of one line of `.footnote` — the measured trap
@@ -215,7 +215,10 @@ struct OnDeviceSummaryCard: View {
             Button { start() } label: {
                 Text("Write it again")
                     .font(.footnote.weight(.medium))
-                    .frame(minHeight: 44, alignment: .leading)
+                    .frame(
+                        minHeight: PlatformControlMetrics.minimumInteractiveLength,
+                        alignment: .leading
+                    )
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.accent)

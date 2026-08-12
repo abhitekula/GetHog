@@ -527,7 +527,10 @@ struct InsightShareMenu: View {
                 // against a 44 × 44 HIG minimum. Inside the `if` so a model with
                 // nothing to export still reserves no space at all.
                 Image(systemName: "square.and.arrow.up")
-                    .frame(width: 44, height: 44)
+                    .frame(
+                        width: PlatformControlMetrics.minimumInteractiveLength,
+                        height: PlatformControlMetrics.minimumInteractiveLength
+                    )
                     .contentShape(.rect)
             }
             .accessibilityLabel("Share \(title)")
