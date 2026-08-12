@@ -18,11 +18,11 @@ enum MacSharedSnapshotPolicy {
         #endif
     }()
 
-    static let sharedDefaults: UserDefaults? = {
+    static var sharedDefaults: UserDefaults? {
         #if GETHOG_UNSHARED_MAC_APP
         nil
         #else
         UserDefaults(suiteName: SharedSnapshotStore.bundleAppGroupIdentifier)
         #endif
-    }()
+    }
 }

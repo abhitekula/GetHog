@@ -46,7 +46,9 @@ struct MacSharedSnapshotPolicyTests {
         #expect(!debugPolicy.contains(".shared"))
         #expect(releasePolicy.contains("SharedSnapshotStore.shared"))
 
-        let defaultsGuard = try suffix(policy, after: "static let sharedDefaults: UserDefaults?")
+        #expect(policy.contains("static var sharedDefaults: UserDefaults?"))
+        #expect(!policy.contains("static let sharedDefaults: UserDefaults?"))
+        let defaultsGuard = try suffix(policy, after: "static var sharedDefaults: UserDefaults?")
         let defaultsDebug = try slice(
             defaultsGuard,
             after: "#if GETHOG_UNSHARED_MAC_APP",
