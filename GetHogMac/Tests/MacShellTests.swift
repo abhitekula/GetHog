@@ -147,6 +147,31 @@ struct MacShellStructureTests {
         #expect(!AppTab.dashboards.ownsRegularNestedSplit)
     }
 
+    /// Balanced split allocation belongs to the six roots that render an
+    /// inner list-detail split inside the regular Mac shell. Compact roots
+    /// drill into one pane, while Dashboard and the remaining destinations do
+    /// not own a nested split that needs balancing.
+    @Test("only regular nested roots balance their inner split")
+    func nestedSplitStyleFollowsRenderedTopology() {
+        let balancedAtRegularWidth = Set(AppTab.allCases.filter {
+            MacNestedSplitStylePolicy.style(for: $0, compact: false) == .balanced
+        })
+
+        #expect(balancedAtRegularWidth == Set([
+            AppTab.events,
+            .sessions,
+            .insights,
+            .people,
+            .errorTracking,
+            .flags,
+        ]))
+        #expect(AppTab.allCases.allSatisfy {
+            MacNestedSplitStylePolicy.style(for: $0, compact: true) == .automatic
+        })
+        #expect(MacNestedSplitStylePolicy.style(for: .dashboards, compact: false) == .automatic)
+        #expect(MacNestedSplitStylePolicy.style(for: .warehouse, compact: false) == .automatic)
+    }
+
     @Test("every grouped destination knows its one owning sidebar section")
     func sidebarSectionOwnershipComesFromTheSharedSections() {
         for section in AppTab.sections {

@@ -485,14 +485,19 @@ final class MacWindowSizeTests: XCTestCase {
             "The window missed the required regular-height geometry oracle."
         )
 
-        let destinations: [(title: String, root: String, anchor: String)] = [
-            ("Dashboards", "dashboards", "gethog.dashboard-project-summary"),
-            ("Events", "events", "gethog.signal-summary.events"),
-            ("Sessions", "sessions", "gethog.signal-summary.sessions"),
-            ("Insights", "insights", "gethog.signal-summary.insights"),
-            ("People", "people", "gethog.people-overview-summary"),
-            ("Errors", "errorTracking", "gethog.errors-overview-summary"),
-            ("Flags", "flags", "gethog.signal-summary.flags"),
+        let destinations: [(
+            title: String,
+            root: String,
+            anchor: String,
+            minimumInnerListWidth: CGFloat?
+        )] = [
+            ("Dashboards", "dashboards", "gethog.dashboard-project-summary", nil),
+            ("Events", "events", "gethog.signal-summary.events", 300),
+            ("Sessions", "sessions", "gethog.signal-summary.sessions", 300),
+            ("Insights", "insights", "gethog.signal-summary.insights", 300),
+            ("People", "people", "gethog.people-overview-summary", 300),
+            ("Errors", "errorTracking", "gethog.errors-overview-summary", 320),
+            ("Flags", "flags", "gethog.signal-summary.flags", 280),
         ]
 
         for layout in ["1280x820", "full-screen"] {
@@ -540,6 +545,19 @@ final class MacWindowSizeTests: XCTestCase {
                                 + "\(window.outlines.allElementsBoundByIndex.map { $0.frame })."
                         )
                         continue
+                    }
+
+                    if let minimumInnerListWidth = destination.minimumInnerListWidth,
+                       let list
+                    {
+                        XCTAssertGreaterThanOrEqual(
+                            list.frame.width,
+                            minimumInnerListWidth - 1,
+                            "\(destination.title) compressed its inner outline below its "
+                                + "declared \(minimumInnerListWidth)-point minimum at \(layout), "
+                                + "sidebar \(sidebarVisible ? "shown" : "hidden"): "
+                                + "\(list.frame)."
+                        )
                     }
 
                     let leadingBoundary = list?.frame.maxX ?? window.frame.minX
