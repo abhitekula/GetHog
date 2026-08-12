@@ -20,9 +20,21 @@ final class MacWidgetContractTests: XCTestCase {
         let frame: CGRect
     }
 
+    private struct InstalledRawMatch {
+        let id: Int
+        let element: XCUIElement
+        let excludedType: Bool
+    }
+
     private enum InstalledResolution {
         case absent
         case resolved([InstalledCandidate])
+        case blocked(String)
+    }
+
+    private enum InstalledPreflightResolution {
+        case absent
+        case probeReady([InstalledRawMatch])
         case blocked(String)
     }
 
@@ -401,36 +413,79 @@ final class MacWidgetContractTests: XCTestCase {
         guard closeMenus() else {
             return .blocked("could not close pre-existing menus")
         }
-        let predicate = NSPredicate(
-            format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
-            name,
-            name
-        )
-        let excludedTypes: Set<XCUIElement.ElementType> = [
-            .application, .window, .sheet, .popover, .scrollView,
-            .searchField, .menu, .menuItem,
-        ]
-        // Bind each proxy to the witnessed accessibility object itself. An
-        // index-bound query can silently retarget after a resize reorders the
-        // tree, defeating the promise that later actions reuse this widget.
-        let elements = notificationCenter.descendants(matching: .any)
-            .matching(predicate).allElementsBoundByAccessibilityElement
-        var witnessed: [InstalledCandidate] = []
+        let preflight = installedWidgetPreflight(named: name)
+        let rawMatches: [InstalledRawMatch]
+        switch preflight {
+        case .absent:
+            return .absent
+        case let .blocked(reason):
+            return .blocked(reason)
+        case let .probeReady(matches):
+            rawMatches = matches
+        }
 
-        for (id, element) in elements.enumerated()
-        where element.exists && element.isHittable && !excludedTypes.contains(element.elementType) {
-            let frame = element.frame
-            let candidate = InstalledCandidate(
-                id: id,
-                element: element,
-                frame: frame
-            )
-            switch witnessesInstalledWidgetMenu(for: element) {
-            case .witnessed:
-                witnessed.append(candidate)
+        for rawMatch in rawMatches {
+            switch waitForProbeReady(
+                [rawMatch],
+                timeout: 2,
+                context: "candidate \(rawMatch.id) before menu witnessing"
+            ) {
+            case .absent:
+                return .blocked("candidate \(rawMatch.id) lost its authored-match identity")
             case let .blocked(reason):
-                return .blocked("candidate \(id) menu probe failed: \(reason)")
+                return .blocked(reason)
+            case .probeReady:
+                break
             }
+
+            switch witnessesInstalledWidgetMenu(for: rawMatch.element) {
+            case .witnessed:
+                break
+            case let .blocked(reason):
+                return .blocked("candidate \(rawMatch.id) menu probe failed: \(reason)")
+            }
+
+            switch waitForProbeReady(
+                [rawMatch],
+                timeout: 2,
+                context: "candidate \(rawMatch.id) after menu witnessing"
+            ) {
+            case .absent:
+                return .blocked("candidate \(rawMatch.id) became stale during menu witnessing")
+            case let .blocked(reason):
+                return .blocked(reason)
+            case .probeReady:
+                break
+            }
+        }
+
+        let finalMatches: [InstalledRawMatch]
+        switch waitForProbeReady(
+            rawMatches,
+            timeout: 2,
+            context: "menu-witnessed candidates before geometry resolution"
+        ) {
+        case .absent:
+            return .blocked("menu-witnessed candidates lost their authored-match identities")
+        case let .blocked(reason):
+            return .blocked(reason)
+        case let .probeReady(matches):
+            finalMatches = matches
+        }
+
+        var witnessed: [InstalledCandidate] = []
+        for rawMatch in finalMatches {
+            let frame = rawMatch.element.frame
+            guard rawMatch.element.exists,
+                  rawMatch.element.isHittable,
+                  InstalledWidgetFrameValidity(frame: frame) == .valid else {
+                return .blocked("candidate \(rawMatch.id) became stale while binding witnessed geometry")
+            }
+            witnessed.append(InstalledCandidate(
+                id: rawMatch.id,
+                element: rawMatch.element,
+                frame: frame
+            ))
         }
 
         let geometry = InstalledWidgetGeometryResolver.resolve(witnessed.map {
@@ -438,7 +493,7 @@ final class MacWidgetContractTests: XCTestCase {
         })
         switch geometry {
         case .absent:
-            return .absent
+            return .blocked("geometry returned absent after authored candidates were witnessed")
         case let .blocked(reason):
             return .blocked(reason.description)
         case let .resolved(clusters):
@@ -452,6 +507,189 @@ final class MacWidgetContractTests: XCTestCase {
             }
             return .resolved(canonicals)
         }
+    }
+
+    @MainActor
+    private func installedWidgetPreflight(named name: String) -> InstalledPreflightResolution {
+        let predicate = NSPredicate(
+            format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
+            name,
+            name
+        )
+        let excludedTypes: Set<XCUIElement.ElementType> = [
+            .application, .window, .sheet, .popover, .scrollView,
+            .searchField, .menu, .menuItem,
+        ]
+        let initial = rawInstalledWidgetMatches(
+            matching: predicate,
+            excluding: excludedTypes
+        )
+
+        switch classifyPreflight(initial) {
+        case .absent:
+            return waitForSettledAbsence(
+                matching: predicate,
+                excluding: excludedTypes
+            )
+        case .probeReady, .blocked:
+            return waitForProbeReady(
+                initial,
+                timeout: 2,
+                context: "raw name-matched accessibility candidates",
+                allowHittableSettling: true
+            )
+        }
+    }
+
+    @MainActor
+    private func waitForSettledAbsence(
+        matching predicate: NSPredicate,
+        excluding excludedTypes: Set<XCUIElement.ElementType>
+    ) -> InstalledPreflightResolution {
+        var previous: [InstalledWidgetPreflightMatch]?
+        var stableSamples = 0
+        var nonAbsentMatches: [InstalledRawMatch]?
+        let settled = DemoLaunch.wait(timeout: 2) {
+            let rawMatches = self.rawInstalledWidgetMatches(
+                matching: predicate,
+                excluding: excludedTypes
+            )
+            let snapshots = rawMatches.map(self.preflightSnapshot)
+            guard InstalledWidgetPreflightClassifier.classify(snapshots) == .absent else {
+                nonAbsentMatches = rawMatches
+                return true
+            }
+            guard self.installedWidgetSystemUIIsSettled() else {
+                previous = nil
+                stableSamples = 0
+                return false
+            }
+
+            if snapshots == previous {
+                stableSamples += 1
+            } else {
+                previous = snapshots
+                stableSamples = 1
+            }
+            return stableSamples >= 3
+        }
+
+        if let nonAbsentMatches {
+            return waitForProbeReady(
+                nonAbsentMatches,
+                timeout: 2,
+                context: "candidate observed while settling an empty authored query",
+                allowHittableSettling: true
+            )
+        }
+        guard settled else {
+            return .blocked("system UI did not settle before authored-widget absence was verified")
+        }
+        return .absent
+    }
+
+    @MainActor
+    private func waitForProbeReady(
+        _ rawMatches: [InstalledRawMatch],
+        timeout: TimeInterval,
+        context: String,
+        allowHittableSettling: Bool = false
+    ) -> InstalledPreflightResolution {
+        var resolution = classifyPreflight(rawMatches)
+        if allowHittableSettling,
+           case let .blocked(block) = resolution,
+           case .notHittable = block {
+            let settled = DemoLaunch.wait(timeout: timeout) {
+                resolution = self.classifyPreflight(rawMatches)
+                switch resolution {
+                case .probeReady, .absent:
+                    return true
+                case let .blocked(currentBlock):
+                    if case .notHittable = currentBlock { return false }
+                    return true
+                }
+            }
+            if !settled,
+               case let .blocked(currentBlock) = resolution,
+               case .notHittable = currentBlock {
+                return .blocked(
+                    "\(context) did not become probe-ready before timeout: \(currentBlock)"
+                )
+            }
+        }
+
+        switch resolution {
+        case .absent:
+            return .absent
+        case let .blocked(block):
+            return .blocked("\(context) was blocked: \(block)")
+        case let .probeReady(candidateIDs):
+            let byID = Dictionary(uniqueKeysWithValues: rawMatches.map { ($0.id, $0) })
+            let matches = candidateIDs.compactMap { byID[$0] }
+            guard matches.count == candidateIDs.count else {
+                return .blocked("\(context) could not bind every probe-ready AX handle")
+            }
+            return .probeReady(matches)
+        }
+    }
+
+    @MainActor
+    private func classifyPreflight(
+        _ rawMatches: [InstalledRawMatch]
+    ) -> InstalledWidgetPreflightResolution {
+        InstalledWidgetPreflightClassifier.classify(
+            rawMatches.map(preflightSnapshot)
+        )
+    }
+
+    @MainActor
+    private func preflightSnapshot(
+        _ rawMatch: InstalledRawMatch
+    ) -> InstalledWidgetPreflightMatch {
+        let exists = rawMatch.element.exists
+        let frameValidity = exists
+            ? InstalledWidgetFrameValidity(frame: rawMatch.element.frame)
+            : .invalid
+        return InstalledWidgetPreflightMatch(
+            id: rawMatch.id,
+            excludedType: rawMatch.excludedType,
+            exists: exists,
+            hittable: exists && rawMatch.element.isHittable,
+            frameValidity: frameValidity
+        )
+    }
+
+    @MainActor
+    private func rawInstalledWidgetMatches(
+        matching predicate: NSPredicate,
+        excluding excludedTypes: Set<XCUIElement.ElementType>
+    ) -> [InstalledRawMatch] {
+        // Bind every raw match to its accessibility object before deciding
+        // whether it is authored or probe-ready. Index-bound proxies can
+        // retarget while Notification Center lays out or removes a widget.
+        notificationCenter.descendants(matching: .any)
+            .matching(predicate)
+            .allElementsBoundByAccessibilityElement
+            .enumerated()
+            .map { id, element in
+                InstalledRawMatch(
+                    id: id,
+                    element: element,
+                    excludedType: excludedTypes.contains(element.elementType)
+                )
+            }
+    }
+
+    @MainActor
+    private func installedWidgetSystemUIIsSettled() -> Bool {
+        let hasVisibleMenu = notificationCenter.menus.allElementsBoundByIndex.contains {
+            $0.exists && $0.isHittable
+        }
+        return !hasVisibleMenu
+            && hittableRemoveWidget() == nil
+            && !notificationCenter.popovers.firstMatch.exists
+            && !notificationCenter.sheets.firstMatch.exists
+            && !notificationCenter.searchFields.firstMatch.exists
     }
 
     @MainActor

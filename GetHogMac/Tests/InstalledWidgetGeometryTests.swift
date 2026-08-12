@@ -1,6 +1,116 @@
 import Foundation
 import Testing
 
+@Suite("Installed widget query preflight")
+struct InstalledWidgetPreflightTests {
+
+    @Test("zero raw name matches is absent")
+    func noRawMatchesIsAbsent() {
+        #expect(InstalledWidgetPreflightClassifier.classify([]) == .absent)
+    }
+
+    @Test("excluded system surface matches do not impersonate authored widgets")
+    func onlyExcludedMatchesIsAbsent() {
+        let excluded = [
+            InstalledWidgetPreflightMatch(
+                id: 10,
+                excludedType: true,
+                exists: false,
+                hittable: false,
+                frameValidity: .invalid
+            ),
+            InstalledWidgetPreflightMatch(
+                id: 20,
+                excludedType: true,
+                exists: true,
+                hittable: true,
+                frameValidity: .valid
+            ),
+        ]
+
+        #expect(InstalledWidgetPreflightClassifier.classify(excluded) == .absent)
+    }
+
+    @Test("any eligible unprobeable or invalid raw match blocks preflight")
+    func eligibleFailuresAreBlocked() {
+        let ready = InstalledWidgetPreflightMatch(
+            id: 10,
+            excludedType: false,
+            exists: true,
+            hittable: true,
+            frameValidity: .valid
+        )
+        let cases: [(InstalledWidgetPreflightMatch, InstalledWidgetPreflightBlock)] = [
+            (
+                .init(
+                    id: 20,
+                    excludedType: false,
+                    exists: false,
+                    hittable: false,
+                    frameValidity: .invalid
+                ),
+                .missing(candidateID: 20)
+            ),
+            (
+                .init(
+                    id: 30,
+                    excludedType: false,
+                    exists: true,
+                    hittable: false,
+                    frameValidity: .valid
+                ),
+                .notHittable(candidateID: 30)
+            ),
+            (
+                .init(
+                    id: 40,
+                    excludedType: false,
+                    exists: true,
+                    hittable: true,
+                    frameValidity: .invalid
+                ),
+                .invalidFrame(candidateID: 40)
+            ),
+        ]
+
+        for (failure, expected) in cases {
+            #expect(InstalledWidgetPreflightClassifier.classify([
+                ready,
+                failure,
+            ]) == .blocked(expected))
+        }
+    }
+
+    @Test("all eligible probe-ready matches proceed in stable id order")
+    func probeReadyMatchesProceed() {
+        let resolution = InstalledWidgetPreflightClassifier.classify([
+            .init(
+                id: 30,
+                excludedType: false,
+                exists: true,
+                hittable: true,
+                frameValidity: .valid
+            ),
+            .init(
+                id: 10,
+                excludedType: true,
+                exists: false,
+                hittable: false,
+                frameValidity: .invalid
+            ),
+            .init(
+                id: 20,
+                excludedType: false,
+                exists: true,
+                hittable: true,
+                frameValidity: .valid
+            ),
+        ])
+
+        #expect(resolution == .probeReady(candidateIDs: [20, 30]))
+    }
+}
+
 @Suite("Installed widget geometry")
 struct InstalledWidgetGeometryTests {
 

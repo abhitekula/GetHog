@@ -1,5 +1,78 @@
 import Foundation
 
+enum InstalledWidgetFrameValidity: Equatable {
+    case valid
+    case invalid
+
+    init(frame: CGRect) {
+        let components = [frame.origin.x, frame.origin.y, frame.width, frame.height]
+        self = components.allSatisfy(\.isFinite)
+            && frame.width > 0
+            && frame.height > 0
+            && !frame.isNull
+            && !frame.isInfinite
+            ? .valid
+            : .invalid
+    }
+}
+
+/// One raw name-matched accessibility result before any menu probing.
+struct InstalledWidgetPreflightMatch: Equatable {
+    let id: Int
+    let excludedType: Bool
+    let exists: Bool
+    let hittable: Bool
+    let frameValidity: InstalledWidgetFrameValidity
+}
+
+enum InstalledWidgetPreflightBlock: Equatable, CustomStringConvertible {
+    case missing(candidateID: Int)
+    case notHittable(candidateID: Int)
+    case invalidFrame(candidateID: Int)
+
+    var description: String {
+        switch self {
+        case let .missing(candidateID):
+            return "candidate \(candidateID) no longer exists"
+        case let .notHittable(candidateID):
+            return "candidate \(candidateID) is not hittable"
+        case let .invalidFrame(candidateID):
+            return "candidate \(candidateID) has invalid geometry"
+        }
+    }
+}
+
+enum InstalledWidgetPreflightResolution: Equatable {
+    case absent
+    case probeReady(candidateIDs: [Int])
+    case blocked(InstalledWidgetPreflightBlock)
+}
+
+enum InstalledWidgetPreflightClassifier {
+    static func classify(
+        _ rawMatches: [InstalledWidgetPreflightMatch]
+    ) -> InstalledWidgetPreflightResolution {
+        let eligible = rawMatches
+            .filter { !$0.excludedType }
+            .sorted { $0.id < $1.id }
+        guard !eligible.isEmpty else { return .absent }
+
+        for candidate in eligible {
+            guard candidate.exists else {
+                return .blocked(.missing(candidateID: candidate.id))
+            }
+            guard candidate.frameValidity == .valid else {
+                return .blocked(.invalidFrame(candidateID: candidate.id))
+            }
+            guard candidate.hittable else {
+                return .blocked(.notHittable(candidateID: candidate.id))
+            }
+        }
+
+        return .probeReady(candidateIDs: eligible.map(\.id))
+    }
+}
+
 /// A menu-witnessed accessibility descendant that may represent all or part
 /// of one installed widget.
 struct InstalledWidgetGeometryCandidate: Equatable {
@@ -46,7 +119,7 @@ enum InstalledWidgetGeometryResolver {
         guard !candidates.isEmpty else { return .absent }
 
         for candidate in candidates.sorted(by: { $0.id < $1.id }) {
-            guard isValid(candidate.frame) else {
+            guard InstalledWidgetFrameValidity(frame: candidate.frame) == .valid else {
                 return .blocked(.invalidFrame(candidateID: candidate.id))
             }
         }
@@ -102,15 +175,6 @@ enum InstalledWidgetGeometryResolver {
         }
 
         return .resolved(resolved.sorted(by: clusterOrder).map { $0.cluster })
-    }
-
-    private static func isValid(_ frame: CGRect) -> Bool {
-        let components = [frame.origin.x, frame.origin.y, frame.width, frame.height]
-        return components.allSatisfy(\.isFinite)
-            && frame.width > 0
-            && frame.height > 0
-            && !frame.isNull
-            && !frame.isInfinite
     }
 
     private static func contains(
