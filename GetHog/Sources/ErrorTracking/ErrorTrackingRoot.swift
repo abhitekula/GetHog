@@ -118,12 +118,13 @@ final class ErrorTrackingStore {
     /// be had from this query and what is done instead.
     var coverage: ErrorIssueCoverage?
 
+    @discardableResult
     func load(
         client: PostHogClient,
         projectID: Int,
         window: AnalyticsWindow,
         order: ErrorIssueOrder
-    ) async {
+    ) async -> Bool {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -139,8 +140,10 @@ final class ErrorTrackingStore {
             coverage = response.coverage(requestedLimit: Self.limit)
             loadedAt = Date()
             error = nil
+            return true
         } catch {
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
+            return false
         }
     }
 }
@@ -188,70 +191,67 @@ struct ErrorTrackingRoot: View {
     // In compact width the enclosing navigation stack owns navigation. A nested
     // split view would add a redundant navigation bar without a second column.
     var body: some View {
-        if usesHostNavigation {
-            issueList
-                // Bound to `selection`, not registered `for: ErrorIssue.self`.
-                // A `for:` destination is driven by values the `NavigationLink`
-                // appends to the *container's* path, which this screen can
-                // neither read nor write — so the issue open at 834pt could not
-                // be put back on the stack at 375pt, and the issue open at
-                // 375pt was invisible to the detail column at 834pt. Bound to
-                // the selection, one piece of state serves both: it pushes here
-                // and fills the detail column there.
-                .navigationDestination(item: selection) { issue in
-                    ErrorIssueDetailView(issue: issue, triage: triage)
-                        .id(issue.id)
-                }
-        } else {
-            NavigationSplitView {
+        Group {
+            if usesHostNavigation {
                 issueList
-                    // This list needs sufficient width for status, message, and
-                    // impact information to remain readable.
-                    .navigationSplitViewColumnWidth(min: 320, ideal: 400, max: 460)
-                    // The tab sidebar already puts a toggle in this bar; the
-                    // split view added a second one beside it, two identical
-                    // buttons doing almost the same thing above the list.
-                    .toolbar(removing: .sidebarToggle)
-            } detail: {
-                detailPane
+                    // Bound to `selection`, not registered `for: ErrorIssue.self`.
+                    // A `for:` destination is driven by values the `NavigationLink`
+                    // appends to the *container's* path, which this screen can
+                    // neither read nor write — so the issue open at 834pt could not
+                    // be put back on the stack at 375pt, and the issue open at
+                    // 375pt was invisible to the detail column at 834pt. Bound to
+                    // the selection, one piece of state serves both: it pushes here
+                    // and fills the detail column there.
+                    .navigationDestination(item: selection) { issue in
+                        ErrorIssueDetailView(issue: issue, triage: triage)
+                            .id(issue.id)
+                    }
+            } else if !hasRegularMasterRows {
+                // A split has meaning only when its master can navigate. Initial
+                // loading, locked, failed and successful-empty results all have
+                // no issue rows, so they get one complete screen instead of two
+                // columns restating the same outcome. This stack replaces the
+                // one MacAdaptiveNavigationHost intentionally withholds from a
+                // regular root that normally owns NavigationSplitView.
+                NavigationStack { issueList }
+            } else {
+                NavigationSplitView {
+                    issueList
+                        // This list needs sufficient width for status, message, and
+                        // impact information to remain readable.
+                        .navigationSplitViewColumnWidth(min: 320, ideal: 400, max: 460)
+                        // The tab sidebar already puts a toggle in this bar; the
+                        // split view added a second one beside it, two identical
+                        // buttons doing almost the same thing above the list.
+                        .toolbar(removing: .sidebarToggle)
+                } detail: {
+                    detailPane
+                }
             }
+        }
+        // Kept above the topology boundary. An empty result and a populated
+        // result choose different containers; putting the task on `issueList`
+        // lets that swap cancel and restart the request that caused it.
+        .task(id: LoadKey(projectID: model.projectID, window: window, order: order)) {
+            await load()
         }
     }
 
-    /// The detail column: the chosen issue, or a summary of the product when
-    /// nothing is chosen yet.
+    private var hasRegularMasterRows: Bool {
+        model.isAvailable(.events) && !store.issues.isEmpty
+    }
+
+    /// The populated collection's detail column: the chosen issue, or a summary
+    /// assembled from the same rows as the master.
     ///
-    /// The no-selection branch mirrors the list's own states rather than summarising thin air: a locked
-    /// key and a genuinely quiet week are both normal outcomes on this screen,
-    /// and a grid of zeroes would misreport either one.
+    /// No-row outcomes never reach this column. `body` gives loading, locked,
+    /// failed and successful-empty states one complete screen instead of
+    /// duplicating them across a master that has nothing to navigate.
     @ViewBuilder
     private var detailPane: some View {
         if let issue = selection.wrappedValue {
             ErrorIssueDetailView(issue: issue, triage: triage)
                 .id(issue.id)
-        } else if !model.isAvailable(.events) {
-            LockedCapabilityView(capability: .events, scope: model.lockedScope(for: .events)) {
-                Task { await model.refreshCapabilities() }
-            }
-        } else if let error = store.error, store.issues.isEmpty {
-            EmptyStateView(
-                title: "Couldn't load errors",
-                systemImage: "exclamationmark.triangle",
-                message: error,
-                actionTitle: "Try again",
-                action: { Task { await load() } }
-            )
-        } else if store.issues.isEmpty {
-            if store.isLoading {
-                ProgressView().controlSize(.large)
-            } else {
-                EmptyStateView(
-                    title: "No errors in this period",
-                    systemImage: "checkmark.circle",
-                    illustration: .allClear,
-                    message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
-                )
-            }
         } else {
             ErrorsOverview(
                 issues: store.issues,
@@ -272,9 +272,6 @@ struct ErrorTrackingRoot: View {
             }
             .projectSubtitle()
             .screenRefreshable { await load() }
-            .task(id: LoadKey(projectID: model.projectID, window: window, order: order)) {
-                await load()
-            }
     }
 
     private struct LoadKey: Hashable {
@@ -319,18 +316,30 @@ struct ErrorTrackingRoot: View {
                 actionTitle: "Try again",
                 action: { Task { await load() } }
             )
-        } else if store.issues.isEmpty && !store.isLoading {
-            // A quiet period is the outcome everyone wants, so it gets a tick
-            // rather than the warning triangle used for genuine failures.
-            EmptyStateView(
-                title: "No errors in this period",
-                systemImage: "checkmark.circle",
-                illustration: .allClear,
-                message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
-            )
+        } else if store.issues.isEmpty {
+            if store.isLoading || store.loadedAt == nil {
+                ProgressView("Loading errors…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.pageBackground)
+            } else {
+                completeEmptyState
+            }
         } else {
             list
         }
+    }
+
+    /// The one complete account of a successful empty result.
+    ///
+    /// It fills compact width and every regular no-row state. The regular split
+    /// is reserved for a collection whose master can actually navigate.
+    private var completeEmptyState: some View {
+        EmptyStateView(
+            title: "No errors in this period",
+            systemImage: "checkmark.circle",
+            illustration: .allClear,
+            message: "Nothing was reported in the \(window.spokenTitle.lowercased())."
+        )
     }
 
     /// The issue list, selection-driven at *both* widths.
@@ -467,10 +476,26 @@ struct ErrorTrackingRoot: View {
 
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID, window: window, order: order)
+        guard await store.load(
+            client: client,
+            projectID: projectID,
+            window: window,
+            order: order
+        ) else { return }
         // The fresh page is the server's word. Whoever changed an issue in the
         // web console wins over a local override that has already been written.
         triage.reconcile(with: store.issues)
+
+        // Selection belongs to the returned page's project/window authority.
+        // Keeping an issue the replacement result no longer contains can push a
+        // stale compact detail or resurrect it when a regular split remounts.
+        if let selected = selection.wrappedValue {
+            // Replace as well as remove. The same id can return with a new
+            // status, assignment or count after triage or a web-console edit;
+            // keeping the old value in OpenDetails would make the detail column
+            // disagree with the freshly loaded row beside it.
+            selection.wrappedValue = store.issues.first { $0.id == selected.id }
+        }
     }
 }
 
