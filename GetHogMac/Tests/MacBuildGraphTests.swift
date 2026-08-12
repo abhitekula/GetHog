@@ -97,6 +97,8 @@ struct MacBuildGraphTests {
         for configuration in macConfigurations {
             #expect(configuration.contains("PRODUCT_NAME = GetHogMac;"))
             #expect(configuration.contains("PRODUCT_MODULE_NAME = GetHog;"))
+            #expect(configuration.contains("INFOPLIST_KEY_CFBundleName = GetHog;"))
+            #expect(configuration.contains("INFOPLIST_KEY_CFBundleDisplayName = GetHog;"))
         }
     }
 

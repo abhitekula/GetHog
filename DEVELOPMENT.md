@@ -130,7 +130,7 @@ the empty XCTest shell and is not the target's count.
 Every shared scheme enumerates its complete build graph and disables Xcode's
 implicit dependency inference. iOS builds `GetHog.app`; Mac, Vision, and TV use
 target-specific artifact names while retaining the same GetHog bundle identity,
-user-facing display name, and (on Mac) Swift module name. This distinction is
+native short/display name, and (on Mac) Swift module name. This distinction is
 load-bearing: hosted tests resolve `TEST_HOST` from output paths through a
 separate mechanism that can add a same-named product from another SDK even when
 scheme inference is disabled. When adding a scheme or platform, keep its build
