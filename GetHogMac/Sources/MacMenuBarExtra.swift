@@ -1042,7 +1042,32 @@ enum MacWindowPlacement {
 @MainActor
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
 
+    typealias MainTurnScheduler = @MainActor @Sendable (@escaping @MainActor () -> Void) -> Void
+
+    private let notificationCenter: NotificationCenter
+    private let scheduleOnNextMainTurn: MainTurnScheduler
+    private let scanVisibleWindows: @MainActor () -> Void
     private var observerTokens: [NSObjectProtocol] = []
+
+    override init() {
+        notificationCenter = .default
+        scheduleOnNextMainTurn = Self.scheduleOnNextMainTurn
+        scanVisibleWindows = Self.clampVisibleWindows
+        super.init()
+    }
+
+    init(
+        notificationCenter: NotificationCenter,
+        scheduleOnNextMainTurn: @escaping MainTurnScheduler,
+        scanVisibleWindows: @escaping @MainActor () -> Void
+    ) {
+        self.notificationCenter = notificationCenter
+        self.scheduleOnNextMainTurn = scheduleOnNextMainTurn
+        self.scanVisibleWindows = scanVisibleWindows
+        super.init()
+    }
+
+    var registeredObserverCount: Int { observerTokens.count }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: Self.keepInMenuBar)
@@ -1050,7 +1075,12 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard observerTokens.isEmpty else { return }
-        let center = NotificationCenter.default
+        let center = notificationCenter
+        // Capture the values, not this delegate. NotificationCenter retains
+        // each block until its token is removed, so a block capturing `self`
+        // would turn the owned token array into a retain cycle.
+        let scheduleOnNextMainTurn = scheduleOnNextMainTurn
+        let scanVisibleWindows = scanVisibleWindows
 
         observerTokens.append(center.addObserver(
             forName: NSWindow.willCloseNotification,
@@ -1060,8 +1090,8 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
             let closing = note.object as? NSWindow
             // After the close lands rather than during it: the closing window
             // still counts itself until the next turn of the loop.
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
+            MainActor.assumeIsolated {
+                scheduleOnNextMainTurn {
                     Self.dropToAccessoryIfAsked(excluding: closing)
                 }
             }
@@ -1081,14 +1111,27 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         ) { _ in
             // AppKit updates `NSScreen.screens` as part of this notification.
             // Move on the next main turn so every visible frame is settled.
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { Self.clampVisibleWindows() }
+            MainActor.assumeIsolated {
+                scheduleOnNextMainTurn(scanVisibleWindows)
+            }
+        })
+        observerTokens.append(center.addObserver(
+            forName: NSApplication.didFinishRestoringWindowsNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // SwiftUI may materialise secondary and tear-off windows during
+            // restoration itself. The notification says restoration finished;
+            // the following run-loop turn is when all eligible windows are
+            // visible and can be selected against the settled screen list.
+            MainActor.assumeIsolated {
+                scheduleOnNextMainTurn(scanVisibleWindows)
             }
         })
 
         // Covers a restored window that became main before the app delegate's
         // finish callback; later windows take the did-become-main path above.
-        Self.clampVisibleWindows()
+        scanVisibleWindows()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -1096,9 +1139,15 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func removeObservers() {
-        let center = NotificationCenter.default
+        let center = notificationCenter
         observerTokens.forEach(center.removeObserver)
         observerTokens.removeAll()
+    }
+
+    private static func scheduleOnNextMainTurn(_ action: @escaping @MainActor () -> Void) {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { action() }
+        }
     }
 
     /// Leaves the Dock once nothing is left on screen and the user asked to be

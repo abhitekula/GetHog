@@ -419,6 +419,7 @@ struct MenuBarContractTests {
     /// Spec §4 calls the popover a mini-dashboard, not a flags screen. The
     /// ceiling is what stops a project with forty opted-in flags from turning a
     /// glance into a scroll.
+    @MainActor
     @Test("the quick-toggle list has a ceiling")
     func quickToggleCeiling() {
         #expect(MacMenuBarPopover.maximumQuickToggles == 5)
@@ -553,6 +554,77 @@ struct MacWindowPlacementTests {
         #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.hudWindow)) == false)
         #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.docModalWindow)) == false)
         #expect(MacWindowPlacement.shouldClamp(styleMask: .borderless) == false)
+    }
+}
+
+@MainActor
+@Suite("Mac window observer lifecycle")
+struct MacWindowObserverLifecycleTests {
+
+    @MainActor
+    private final class Recorder {
+        var scanCount = 0
+        var scheduled: [@MainActor () -> Void] = []
+
+        func scan() {
+            scanCount += 1
+        }
+
+        func schedule(_ action: @escaping @MainActor () -> Void) {
+            scheduled.append(action)
+        }
+
+        func runNext() {
+            scheduled.removeFirst()()
+        }
+    }
+
+    @Test("restoration schedules one later scan and registration is idempotent")
+    func restorationSchedulesOneScan() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan
+        )
+        let launched = Notification(name: NSApplication.didFinishLaunchingNotification)
+
+        delegate.applicationDidFinishLaunching(launched)
+        delegate.applicationDidFinishLaunching(launched)
+
+        #expect(delegate.registeredObserverCount == 4)
+        #expect(recorder.scanCount == 1)
+
+        center.post(name: NSApplication.didFinishRestoringWindowsNotification, object: nil)
+
+        #expect(recorder.scanCount == 1)
+        #expect(recorder.scheduled.count == 1)
+        recorder.runNext()
+        #expect(recorder.scanCount == 2)
+    }
+
+    @Test("termination removes restoration with every other owned observer")
+    func terminationRemovesObservers() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan
+        )
+        delegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification)
+        )
+
+        delegate.applicationWillTerminate(
+            Notification(name: NSApplication.willTerminateNotification)
+        )
+        #expect(delegate.registeredObserverCount == 0)
+
+        center.post(name: NSApplication.didFinishRestoringWindowsNotification, object: nil)
+        #expect(recorder.scheduled.isEmpty)
+        #expect(recorder.scanCount == 1)
     }
 }
 

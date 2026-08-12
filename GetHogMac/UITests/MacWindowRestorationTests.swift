@@ -8,8 +8,60 @@ import XCTest
 @MainActor
 final class MacWindowRestorationTests: XCTestCase {
 
+    private static let isolatedLaunchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    /// Every scenario starts from state restoration disabled and leaves one
+    /// ordinary default-size main window behind. Terminate/relaunch is the only
+    /// teardown that can recover every native state after an assertion aborts:
+    /// a minimized window is not in `app.windows`, a full-screen transition may
+    /// still own its Space, and an About panel can be frontmost without being a
+    /// SwiftUI scene. The clean relaunch removes all of them at once.
+    private func launchIsolated() -> XCUIApplication {
+        let app = DemoLaunch.launch(extraArguments: Self.isolatedLaunchArguments)
+        let sidebarWasVisible = sidebarIsVisible(in: app)
+
+        addTeardownBlock { @MainActor in
+            app.terminate()
+            let reset = DemoLaunch.launch(extraArguments: Self.isolatedLaunchArguments)
+            self.setSidebarVisible(sidebarWasVisible, in: reset)
+
+            XCTAssertEqual(reset.windows.count, 1, "Teardown did not leave one ordinary main window.")
+            let main = reset.windows.firstMatch
+            XCTAssertEqual(main.frame.width, 1_200, accuracy: 3)
+            XCTAssertEqual(main.frame.height, 780, accuracy: 3)
+            XCTAssertGreaterThan(main.frame.minY, 0, "Teardown left the main window in full screen.")
+            XCTAssertEqual(
+                self.sidebarIsVisible(in: reset),
+                sidebarWasVisible,
+                "Teardown did not restore the scenario's initial sidebar visibility."
+            )
+        }
+        return app
+    }
+
+    private func sidebarIsVisible(in app: XCUIApplication) -> Bool {
+        let window = app.windows.firstMatch
+        let outline = window.outlines.firstMatch
+        let dashboards = outline.descendants(matching: .any)
+            .matching(DemoLaunch.macTextPredicate("Dashboards")).firstMatch
+        return outline.exists && outline.frame.width > 100 && dashboards.exists
+    }
+
+    private func setSidebarVisible(_ visible: Bool, in app: XCUIApplication) {
+        guard sidebarIsVisible(in: app) != visible else { return }
+        openMenu("View", in: app)
+        let title = visible ? "Show Sidebar" : "Hide Sidebar"
+        let item = app.menuItems[title]
+        XCTAssertTrue(DemoLaunch.wait(for: item, timeout: 5), "View has no \(title) command.")
+        item.click()
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { self.sidebarIsVisible(in: app) == visible }),
+            "View ▸ \(title) did not reach the requested sidebar state."
+        )
     }
 
     private func openMenu(_ title: String, in app: XCUIApplication) {
@@ -57,9 +109,7 @@ final class MacWindowRestorationTests: XCTestCase {
     // MARK: - Standard File and Window commands
 
     func testNewCloseAndMinimizeChangeVisibleWindowCounts() {
-        let app = DemoLaunch.launch(
-            extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
-        )
+        let app = launchIsolated()
         let initialCount = app.windows.count
         XCTAssertEqual(initialCount, 1, "A clean demo launch did not start with one main window.")
         XCTAssertEqual(app.windows.firstMatch.frame.width, 1_200, accuracy: 3)
@@ -77,20 +127,19 @@ final class MacWindowRestorationTests: XCTestCase {
             "File ▸ Close did not remove the frontmost new window."
         )
 
-        invoke("New Window", from: "File", in: app)
-        XCTAssertTrue(DemoLaunch.wait(until: { app.windows.count == initialCount + 1 }))
+        // Minimize the only main window. There is then no hidden extra window
+        // for the next scenario to inherit; the common teardown relaunches it
+        // into the ordinary known state after proving it left the visible set.
         invoke("Minimize", from: "Window", in: app)
         XCTAssertTrue(
-            DemoLaunch.wait(until: { app.windows.count == initialCount }),
-            "Window ▸ Minimize left the minimized window in the visible window set."
+            DemoLaunch.wait(until: { app.windows.count == 0 }),
+            "Window ▸ Minimize left the only main window in the visible window set."
         )
-        XCTAssertTrue(app.windows.firstMatch.isHittable, "Minimizing the front window stranded the app.")
+        XCTAssertNotEqual(app.state, .notRunning, "Minimizing the main window terminated the app.")
     }
 
     func testZoomFullScreenAndMoveResizeCommandsAchieveNativeBounds() {
-        let app = DemoLaunch.launch(
-            extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
-        )
+        let app = launchIsolated()
         let window = app.windows.firstMatch
         let original = window.frame
 
@@ -148,34 +197,26 @@ final class MacWindowRestorationTests: XCTestCase {
             }),
             "Move & Resize ▸ Right did not place the window in the display's right half."
         )
+        invokeMoveAndResize("Return to Previous Size", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { self.framesMatch(window.frame, original) }),
+            "Final Return to Previous Size did not leave the main window in its initial frame."
+        )
     }
 
     // MARK: - Application and View commands
 
     func testSettingsAboutAndSidebarCommandsChangeRenderedSurfaces() {
-        let app = DemoLaunch.launch()
-        let mainWindow = app.windows.firstMatch
+        let app = launchIsolated()
+        let sidebarWasVisible = sidebarIsVisible(in: app)
 
-        func sidebarIsVisible() -> Bool {
-            let outline = mainWindow.outlines.firstMatch
-            let dashboards = outline.descendants(matching: .any)
-                .matching(DemoLaunch.macTextPredicate("Dashboards")).firstMatch
-            return outline.exists && outline.frame.width > 100 && dashboards.exists
-        }
-
-        if !sidebarIsVisible() {
-            openMenu("View", in: app)
-            let show = app.menuItems["Show Sidebar"]
-            XCTAssertTrue(DemoLaunch.wait(for: show, timeout: 5))
-            show.click()
-            XCTAssertTrue(DemoLaunch.wait(until: sidebarIsVisible))
-        }
+        setSidebarVisible(true, in: app)
         openMenu("View", in: app)
         let hide = app.menuItems["Hide Sidebar"]
         XCTAssertTrue(DemoLaunch.wait(for: hide, timeout: 5))
         hide.click()
         XCTAssertTrue(
-            DemoLaunch.wait(until: { !sidebarIsVisible() }),
+            DemoLaunch.wait(until: { !self.sidebarIsVisible(in: app) }),
             "View ▸ Hide Sidebar left the source list visible."
         )
         openMenu("View", in: app)
@@ -183,7 +224,7 @@ final class MacWindowRestorationTests: XCTestCase {
         XCTAssertTrue(DemoLaunch.wait(for: show, timeout: 5))
         show.click()
         XCTAssertTrue(
-            DemoLaunch.wait(until: sidebarIsVisible),
+            DemoLaunch.wait(until: { self.sidebarIsVisible(in: app) }),
             "View ▸ Show Sidebar did not restore the source list."
         )
 
@@ -212,12 +253,18 @@ final class MacWindowRestorationTests: XCTestCase {
             DemoLaunch.wait(for: aboutWindow, timeout: 5),
             "The additional window was not the native About GetHog surface."
         )
+        invoke("Close", from: "File", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { app.windows.count == initialCount }),
+            "File ▸ Close did not dismiss the About window."
+        )
+        setSidebarVisible(sidebarWasVisible, in: app)
     }
 
     // MARK: - Product tear-offs
 
     func testDashboardAndRecordingTearOffsCreateRenderedWindows() {
-        let app = DemoLaunch.launch()
+        let app = launchIsolated()
         let initialCount = app.windows.count
 
         app.typeKey("1", modifierFlags: .command)
@@ -281,5 +328,10 @@ final class MacWindowRestorationTests: XCTestCase {
         )
         XCTAssertEqual(personWindow.frame.width, 1_000, accuracy: 3)
         XCTAssertEqual(personWindow.frame.height, 700, accuracy: 3)
+        invoke("Close", from: "File", in: app)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { app.windows.count == initialCount }),
+            "File ▸ Close did not dismiss the recording tear-off."
+        )
     }
 }
