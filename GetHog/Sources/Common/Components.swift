@@ -884,16 +884,91 @@ extension View {
     }
 
     /// Applies a redacted skeleton while loading, so layout never jumps.
+    ///
+    /// Redaction changes pixels, not meaning: without an explicit accessibility
+    /// boundary VoiceOver still walks every placeholder descendant and reads its
+    /// empty or fabricated value. The skeleton is therefore one loading outcome
+    /// whose children are ignored. A screen can also provide a visible label;
+    /// it is drawn as an overlay so naming slow work never changes the geometry
+    /// the placeholder exists to preserve.
     @ViewBuilder
-    func skeleton(_ isLoading: Bool) -> some View {
+    func skeleton(_ isLoading: Bool, label: String? = nil) -> some View {
         if isLoading {
-            redacted(reason: .placeholder)
-                .animation(.default, value: isLoading)
-                .accessibilityIdentifier("gethog.load-state.loading")
+            let presentation = SkeletonLoadingPresentation(label: label)
+            ZStack {
+                redacted(reason: .placeholder)
+                    .accessibilityHidden(true)
+
+                // The clear sibling adopts the redacted view's proposal; its
+                // overlay is deliberately excluded from ZStack measurement.
+                // A long visible status therefore cannot enlarge a compact
+                // placeholder while remaining a distinct AX element.
+                Color.clear
+                    .overlay {
+                        SkeletonLoadingStatus(presentation: presentation)
+                    }
+            }
+            .animation(.default, value: isLoading)
         } else {
             redacted(reason: [])
                 .animation(.default, value: isLoading)
         }
+    }
+}
+
+/// The semantic half of a skeleton, kept independent of SwiftUI so a sandboxed
+/// test does not have to ask the process server for another task's AX port.
+enum SkeletonLoadingPresentation: Equatable, Sendable {
+    case accessibilityOnly(label: String)
+    case visible(label: String)
+
+    init(label: String?) {
+        self = label.map(Self.visible(label:)) ?? .accessibilityOnly(label: "Loading")
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .accessibilityOnly(let label), .visible(let label): label
+        }
+    }
+
+    var showsVisibleStatus: Bool {
+        if case .visible = self { true } else { false }
+    }
+}
+
+/// The skeleton's one accessibility element. Redacted content is explicitly
+/// hidden beside it rather than combined into a parent whose descendant
+/// suppression varies across SwiftUI's platform accessibility bridges.
+private struct SkeletonLoadingStatus: View {
+    let presentation: SkeletonLoadingPresentation
+
+    var body: some View {
+        Group {
+            switch presentation {
+            case .visible(let label):
+                HStack(spacing: Theme.Space.s) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(label)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.Ink.secondary)
+                }
+                .padding(.horizontal, Theme.Space.m)
+                .padding(.vertical, Theme.Space.s)
+                .background(Theme.cardBackground, in: .capsule)
+            case .accessibilityOnly:
+                // Generic skeletons have always been redaction-only. This
+                // clear element adds the missing spoken state without adding a
+                // spinner to every loading collection in the app.
+                Color.clear
+                    .frame(width: 1, height: 1)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .accessibilityIdentifier("gethog.load-state.loading")
     }
 }
 

@@ -129,6 +129,22 @@ struct WarehouseRoot: View {
     @State private var views = SavedQueryStore()
     @State private var search = ""
 
+    static let loadingLabel = "Loading warehouse…"
+    static let emptyPolicy = EmptyOutcomePolicy(
+        title: "Nothing in the warehouse",
+        systemImage: "cylinder.split.1x2",
+        message: "The warehouse holds tables imported from outside PostHog — a Stripe account, a Postgres replica, files in an S3 bucket — and the views a team defines on top of them. This project has none of the three, which is where every project starts."
+    )
+
+    static func failurePolicy(message: String) -> EmptyOutcomePolicy {
+        EmptyOutcomePolicy(
+            title: "Couldn't load the warehouse",
+            systemImage: "exclamationmark.triangle",
+            message: message,
+            actionTitle: "Try again"
+        )
+    }
+
     /// The open table or view, held in `OpenDetails` rather than pushed as a
     /// value onto the container's path.
     ///
@@ -169,11 +185,23 @@ struct WarehouseRoot: View {
     /// advertising the empty composition as final.
     private var surfaceIdentifier: String {
         if !model.isAvailable(.dashboards) { return "gethog.warehouse-terminal" }
-        let hasOutcome = store.loadedAt != nil || store.error != nil
-            || views.loadedAt != nil || views.error != nil
         return !store.isLoading && !views.isLoading && hasOutcome
             ? "gethog.warehouse-terminal"
             : "gethog.warehouse-loading"
+    }
+
+    private var hasOutcome: Bool {
+        store.loadedAt != nil || store.error != nil
+            || views.loadedAt != nil || views.error != nil
+    }
+
+    /// No placeholder collection is allowed to announce itself as an empty
+    /// result before either endpoint family answers. Once any rows exist, they
+    /// remain useful while a sibling request finishes and no skeleton obscures
+    /// them; this state is only for a wholly empty initial composition.
+    private var isInitialLoading: Bool {
+        store.isEmpty && views.views.isEmpty
+            && (!hasOutcome || store.isLoading || views.isLoading)
     }
 
     // MARK: - States
@@ -187,6 +215,8 @@ struct WarehouseRoot: View {
             ) {
                 Task { await model.refreshCapabilities() }
             }
+        } else if isInitialLoading {
+            list
         } else if let error = store.error, store.isEmpty, views.views.isEmpty {
             // Takes the screen only when there is *nothing* to show. The views
             // list can succeed while sources and tables fail — they are three
@@ -195,19 +225,14 @@ struct WarehouseRoot: View {
             // partial one. The inline notice at the foot of `list` covers that
             // case instead.
             EmptyStateView(
-                title: "Couldn't load the warehouse",
-                systemImage: "exclamationmark.triangle",
-                message: [error, views.error].compactMap { $0 }.joined(separator: " "),
-                actionTitle: "Try again",
+                policy: Self.failurePolicy(
+                    message: [error, views.error].compactMap { $0 }.joined(separator: " ")
+                ),
                 action: { Task { await load() } }
             )
         } else if store.isEmpty && views.views.isEmpty && views.error == nil
             && !store.isLoading && !views.isLoading {
-            EmptyStateView(
-                title: "Nothing in the warehouse",
-                systemImage: "cylinder.split.1x2",
-                message: "The warehouse holds tables imported from outside PostHog — a Stripe account, a Postgres replica, files in an S3 bucket — and the views a team defines on top of them. This project has none of the three, which is where every project starts."
-            )
+            EmptyStateView(policy: Self.emptyPolicy)
         } else {
             list
         }
@@ -368,7 +393,7 @@ struct WarehouseRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .sparseCollectionSurface()
-        .skeleton(store.isLoading && store.isEmpty)
+        .skeleton(isInitialLoading, label: Self.loadingLabel)
     }
 
     /// The one-line note a section writes in place of its rows.
