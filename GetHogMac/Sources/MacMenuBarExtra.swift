@@ -1047,6 +1047,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     private let notificationCenter: NotificationCenter
     private let scheduleOnNextMainTurn: MainTurnScheduler
     private let scanVisibleWindows: @MainActor () -> Void
+    private let placeWindow: @MainActor (NSWindow) -> Void
     private var observerTokens: [NSObjectProtocol] = []
     private var didRunInitialWindowScan = false
 
@@ -1054,17 +1055,20 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         notificationCenter = .default
         scheduleOnNextMainTurn = Self.scheduleOnNextMainTurn
         scanVisibleWindows = Self.clampVisibleWindows
+        placeWindow = Self.clamp
         super.init()
     }
 
     init(
         notificationCenter: NotificationCenter,
         scheduleOnNextMainTurn: @escaping MainTurnScheduler,
-        scanVisibleWindows: @escaping @MainActor () -> Void
+        scanVisibleWindows: @escaping @MainActor () -> Void,
+        placeWindow: @escaping @MainActor (NSWindow) -> Void = { _ in }
     ) {
         self.notificationCenter = notificationCenter
         self.scheduleOnNextMainTurn = scheduleOnNextMainTurn
         self.scanVisibleWindows = scanVisibleWindows
+        self.placeWindow = placeWindow
         super.init()
     }
 
@@ -1084,6 +1088,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // would turn the owned token array into a retain cycle.
         let scheduleOnNextMainTurn = scheduleOnNextMainTurn
         let scanVisibleWindows = scanVisibleWindows
+        let placeWindow = placeWindow
 
         observerTokens.append(center.addObserver(
             forName: NSWindow.willCloseNotification,
@@ -1098,14 +1103,6 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
                     Self.dropToAccessoryIfAsked(excluding: closing)
                 }
             }
-        })
-        observerTokens.append(center.addObserver(
-            forName: NSWindow.didBecomeMainNotification,
-            object: nil,
-            queue: .main
-        ) { note in
-            guard let window = note.object as? NSWindow else { return }
-            MainActor.assumeIsolated { Self.clamp(window) }
         })
         observerTokens.append(center.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -1131,13 +1128,29 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
                 scheduleOnNextMainTurn(scanVisibleWindows)
             }
         })
+        for name in [NSWindow.didDeminiaturizeNotification, NSWindow.didExitFullScreenNotification] {
+            observerTokens.append(center.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let window = note.object as? NSWindow else { return }
+                MainActor.assumeIsolated {
+                    scheduleOnNextMainTurn { [weak self, weak window] in
+                        guard let self, !self.observerTokens.isEmpty, let window else { return }
+                        placeWindow(window)
+                    }
+                }
+            })
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !didRunInitialWindowScan else { return }
         didRunInitialWindowScan = true
-        // Covers a restored window that became main before the app delegate's
-        // finish callback; later windows take the did-become-main path above.
+        // Covers restored windows that materialised before the app delegate's
+        // finish callback. New windows use AppKit's placement rather than being
+        // rewritten merely because they became main.
         scanVisibleWindows()
     }
 
