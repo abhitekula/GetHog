@@ -237,6 +237,9 @@ struct SessionsRoot: View {
                 } detail: {
                     detailPane
                 }
+                #if os(macOS)
+                .navigationSplitViewStyle(.balanced)
+                #endif
             }
         }
     }

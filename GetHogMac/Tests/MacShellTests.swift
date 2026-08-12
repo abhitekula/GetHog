@@ -147,29 +147,67 @@ struct MacShellStructureTests {
         #expect(!AppTab.dashboards.ownsRegularNestedSplit)
     }
 
-    /// Balanced split allocation belongs to the six roots that render an
-    /// inner list-detail split inside the regular Mac shell. Compact roots
-    /// drill into one pane, while Dashboard and the remaining destinations do
-    /// not own a nested split that needs balancing.
-    @Test("only regular nested roots balance their inner split")
-    func nestedSplitStyleFollowsRenderedTopology() {
-        let balancedAtRegularWidth = Set(AppTab.allCases.filter {
-            MacNestedSplitStylePolicy.style(for: $0, compact: false) == .balanced
-        })
+    /// A split-view style is consumed by the `NavigationSplitView` it modifies;
+    /// attaching it to the shell outside a descendant root does not constrain
+    /// that root's columns. Keep the style on every constructor that owns the
+    /// regular nested split. `MacWindowSizeTests` is the rendered counterpart:
+    /// it measures each real outline against its declared minimum width.
+    @Test("each regular nested root styles its owned split directly")
+    func nestedSplitStyleLivesOnOwningConstructors() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // GetHogMac
+            .deletingLastPathComponent()  // repository
+        let roots = [
+            "GetHog/Sources/Events/EventsRoot.swift",
+            "GetHog/Sources/Sessions/SessionsRoot.swift",
+            "GetHog/Sources/Insights/InsightsRoot.swift",
+            "GetHog/Sources/People/PeopleRoot.swift",
+            "GetHog/Sources/ErrorTracking/ErrorTrackingRoot.swift",
+            "GetHog/Sources/Flags/FlagsRoot.swift",
+        ]
 
-        #expect(balancedAtRegularWidth == Set([
-            AppTab.events,
-            .sessions,
-            .insights,
-            .people,
-            .errorTracking,
-            .flags,
-        ]))
-        #expect(AppTab.allCases.allSatisfy {
-            MacNestedSplitStylePolicy.style(for: $0, compact: true) == .automatic
-        })
-        #expect(MacNestedSplitStylePolicy.style(for: .dashboards, compact: false) == .automatic)
-        #expect(MacNestedSplitStylePolicy.style(for: .warehouse, compact: false) == .automatic)
+        for path in roots {
+            let source = try String(
+                contentsOf: repository.appending(path: path),
+                encoding: .utf8
+            )
+            #expect(
+                source.components(separatedBy: "NavigationSplitView {").count == 2,
+                "Expected exactly one owned split constructor in \(path)"
+            )
+            let lines = source.components(separatedBy: .newlines)
+            let styleLines = lines.indices.filter {
+                lines[$0].contains(".navigationSplitViewStyle(.balanced)")
+            }
+            #expect(
+                styleLines.count == 1,
+                "Expected one balanced style on the owned split in \(path)"
+            )
+            if let styleLine = styleLines.first, styleLine > lines.startIndex,
+               lines.index(after: styleLine) < lines.endIndex
+            {
+                #expect(
+                    lines[lines.index(before: styleLine)].trimmingCharacters(in: .whitespaces)
+                        == "#if os(macOS)",
+                    "The balanced style in \(path) was not Mac-only"
+                )
+                #expect(
+                    lines[lines.index(after: styleLine)].trimmingCharacters(in: .whitespaces)
+                        == "#endif",
+                    "The balanced style in \(path) was not closed by its Mac-only guard"
+                )
+            }
+        }
+
+        let shell = try String(
+            contentsOf: repository.appending(path: "GetHogMac/Sources/MacRootView.swift"),
+            encoding: .utf8
+        )
+        #expect(
+            !shell.contains("hostedRoot.navigationSplitViewStyle"),
+            "The shell still assumes a style propagates into a descendant split constructor"
+        )
     }
 
     @Test("every grouped destination knows its one owning sidebar section")

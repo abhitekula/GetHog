@@ -438,18 +438,6 @@ struct MacRootView: View {
     }
 }
 
-/// Only regular roots that bring a second list-detail split need balanced
-/// allocation. Compact roots drill into one pane, while Dashboard and the
-/// remaining destinations do not own a nested split to balance.
-enum MacNestedSplitStylePolicy: Equatable {
-    case automatic
-    case balanced
-
-    static func style(for tab: AppTab, compact: Bool) -> Self {
-        !compact && tab.ownsRegularNestedSplit ? .balanced : .automatic
-    }
-}
-
 /// Keeps the compact/regular navigation boundary explicit and testable. The
 /// shell chooses `compact` from its visibility-independent adaptive width, so
 /// hiding a source list never swaps these branches underneath a selected root.
@@ -470,16 +458,6 @@ struct MacAdaptiveNavigationHost<Root: View>: View {
 
     @ViewBuilder
     var body: some View {
-        switch MacNestedSplitStylePolicy.style(for: tab, compact: compact) {
-        case .automatic:
-            hostedRoot
-        case .balanced:
-            hostedRoot.navigationSplitViewStyle(.balanced)
-        }
-    }
-
-    @ViewBuilder
-    private var hostedRoot: some View {
         if tab.ownsNavigationContainer(compact: compact) {
             root
         } else {

@@ -227,6 +227,9 @@ struct ErrorTrackingRoot: View {
                 } detail: {
                     detailPane
                 }
+                #if os(macOS)
+                .navigationSplitViewStyle(.balanced)
+                #endif
             }
         }
         // Kept above the topology boundary. An empty result and a populated

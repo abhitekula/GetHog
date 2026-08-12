@@ -130,6 +130,9 @@ struct InsightsRoot: View {
                     detailPane
                 }
             }
+            #if os(macOS)
+            .navigationSplitViewStyle(.balanced)
+            #endif
         }
     }
 

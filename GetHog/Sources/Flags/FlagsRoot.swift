@@ -178,6 +178,9 @@ struct FlagsRoot: View {
             } detail: {
                 detailPane
             }
+            #if os(macOS)
+            .navigationSplitViewStyle(.balanced)
+            #endif
         }
     }
 
