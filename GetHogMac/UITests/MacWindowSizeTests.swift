@@ -171,12 +171,14 @@ final class MacWindowSizeTests: XCTestCase {
         )
     }
 
-    /// The selected lens is the reason someone opens Clickmap. Saved renders
-    /// remain useful navigation, but at the compact floor they must not spend
-    /// the whole initial viewport before the lens can answer its question.
-    func testCompactClickmapRevealsSelectedOutcomeBeforeScrolling() {
+    /// The selected lens is the reason someone opens Clickmap, but it must not
+    /// become an unbounded wall in front of saved-render navigation. The
+    /// populated Elements fixture is deliberately longer than three compact
+    /// viewports: an uninterrupted list cannot satisfy the bounded open below.
+    func testCompactClickmapPrioritizesOutcomeAndKeepsSavedRenderReachable() {
         let app = DemoLaunch.launch(
             tab: "clickmap",
+            environment: ["GETHOG_DEMO_POPULATED_CLICKMAP_ELEMENTS": "1"],
             extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
         )
         DemoLaunch.settle(app)
@@ -220,6 +222,42 @@ final class MacWindowSizeTests: XCTestCase {
             window.frame.contains(outcomeExplanation.frame),
             "The compact initial viewport clipped the selected depth outcome explanation: "
                 + "window=\(window.frame), explanation=\(outcomeExplanation.frame)."
+        )
+
+        let elementsLens = DemoLaunch.elements(labelled: "Elements", in: app).firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: elementsLens), "The Clickmap did not expose its Elements lens.")
+        elementsLens.click()
+
+        let populatedOutcome = DemoLaunch.waitForContent(
+            containing: "Example interaction target 01",
+            in: app
+        )
+        XCTAssertNotNil(populatedOutcome, "The populated Elements outcome never rendered.")
+
+        let report = app.scrollViews["gethog.clickmap-report"].firstMatch
+        XCTAssertTrue(DemoLaunch.wait(for: report), "The Clickmap did not expose its report scroll view.")
+        let savedRender = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "Example App metric 1831")
+        ).firstMatch
+
+        var scrollCount = 0
+        while !savedRender.isHittable && scrollCount < 3 {
+            report.swipeUp(velocity: .slow)
+            scrollCount += 1
+        }
+
+        XCTAssertTrue(
+            savedRender.isHittable && window.frame.intersects(savedRender.frame),
+            "Saved-render navigation stayed behind the populated Elements list after "
+                + "\(scrollCount) compact report scrolls: window=\(window.frame), "
+                + "render=\(savedRender.frame)."
+        )
+        guard savedRender.isHittable else { return }
+        savedRender.click()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: DemoLaunch.elements(labelled: "Viewports", in: app).firstMatch),
+            "Activating the reachable saved-render row did not open its page overlay."
         )
     }
 

@@ -65,6 +65,8 @@ struct DemoTransport: HTTPTransport {
     static let dashboardDetailFailureEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
     static let populatedMaxConversationsEnvironment = "GETHOG_DEMO_MAX_CONVERSATIONS"
+    static let populatedClickmapElementsEnvironment =
+        "GETHOG_DEMO_POPULATED_CLICKMAP_ELEMENTS"
     static let rendersStateEnvironment = "GETHOG_DEMO_RENDERS_STATE"
     static let rendersLoadingDelayEnvironment = "GETHOG_DEMO_RENDERS_LOADING_DELAY_MS"
     static let surfaceNoMatchEnvironment = "GETHOG_DEMO_SURFACE_NO_MATCH"
@@ -115,6 +117,7 @@ struct DemoTransport: HTTPTransport {
     private let dashboardDetailFailure: Bool
     private let dashboardRecomputeFailure: Bool
     private let populatedMaxConversations: Bool
+    private let populatedClickmapElements: Bool
     private let rendersState: RendersState?
     private let rendersLoadingDelayMilliseconds: Int
     private let rendersRequests: DemoRendersScenarioState
@@ -131,6 +134,7 @@ struct DemoTransport: HTTPTransport {
         replaySourceFailures: Int? = nil,
         deniedResource: String? = nil,
         populatedMaxConversations: Bool? = nil,
+        populatedClickmapElements: Bool? = nil,
         rendersState: RendersState? = nil,
         rendersLoadingDelayMilliseconds: Int? = nil,
         surfaceNoMatchProbeEnabled: Bool? = nil
@@ -168,6 +172,10 @@ struct DemoTransport: HTTPTransport {
         self.populatedMaxConversations = populatedMaxConversations
             ?? (ProcessInfo.processInfo.environment[
                 Self.populatedMaxConversationsEnvironment
+            ] == "1")
+        self.populatedClickmapElements = populatedClickmapElements
+            ?? (ProcessInfo.processInfo.environment[
+                Self.populatedClickmapElementsEnvironment
             ] == "1")
         self.rendersState = rendersState
             ?? ProcessInfo.processInfo.environment[Self.rendersStateEnvironment]
@@ -357,7 +365,8 @@ struct DemoTransport: HTTPTransport {
                 method: request.httpMethod ?? "GET",
                 body: body,
                 query: query,
-                populatedMaxConversations: populatedMaxConversations
+                populatedMaxConversations: populatedMaxConversations,
+                populatedClickmapElements: populatedClickmapElements
             )
         }
         // A touch of latency so loading states actually render rather than
@@ -888,8 +897,13 @@ struct DemoTransport: HTTPTransport {
         method: String,
         body: String,
         query: String,
-        populatedMaxConversations: Bool = false
+        populatedMaxConversations: Bool = false,
+        populatedClickmapElements: Bool = false
     ) -> Reply {
+        if path.hasSuffix("/elements/stats/"), populatedClickmapElements {
+            return populatedClickmapElementStats()
+        }
+
         // Deterministic fixture routing preserves the response shape and status for this case.
         if path.hasSuffix("/query/") {
             // Web analytics: six sections, six kinds, one screen.
@@ -1404,6 +1418,40 @@ struct DemoTransport: HTTPTransport {
                 ),
                 status: 500
             )
+        }
+        return Reply(data)
+    }
+
+    /// A deliberately long, deterministic Elements answer for compact-layout
+    /// acceptance. Ordinary demo mode keeps its authored empty outcome; this
+    /// opt-in list exists to prove navigation below an endpoint-sized result is
+    /// reachable without using customer traffic or a copied payload.
+    private static func populatedClickmapElementStats() -> Reply {
+        let rows: [[String: Any]] = (1...24).map { index in
+            [
+                "count": 250 - index,
+                "hash": String(format: "synthetic-clickmap-element-%02d", index),
+                "type": "$autocapture",
+                "elements": [[
+                    "order": 0,
+                    "tag_name": "button",
+                    "text": String(format: "Example interaction target %02d", index),
+                    "attributes": [
+                        "attr__aria-label": String(
+                            format: "Example interaction target %02d", index
+                        ),
+                    ],
+                ]],
+            ]
+        }
+        let page: [String: Any] = [
+            "count": rows.count,
+            "next": NSNull(),
+            "previous": NSNull(),
+            "results": rows,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: page) else {
+            return Reply(emptyPage)
         }
         return Reply(data)
     }

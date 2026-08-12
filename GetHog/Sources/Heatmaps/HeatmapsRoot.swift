@@ -287,8 +287,12 @@ struct HeatmapsRoot: View {
                 Group {
                     #if os(macOS)
                     if horizontalSizeClass == .compact {
-                        selectedLensSection
-                        overlayLinks
+                        if lens == .elements {
+                            compactElementsSection
+                        } else {
+                            selectedLensSection
+                            overlayLinks
+                        }
                     } else {
                         overlayLinks
                         selectedLensSection
@@ -307,6 +311,7 @@ struct HeatmapsRoot: View {
             }
             .padding(.vertical, Theme.Space.l)
         }
+        .accessibilityIdentifier("gethog.clickmap-report")
         .pageSurface()
     }
 
@@ -503,6 +508,25 @@ struct HeatmapsRoot: View {
 
     @ViewBuilder
     private var elementsSection: some View {
+        elementsComposition(interleavingSavedRenders: false)
+    }
+
+    /// Elements is the only selected lens whose primary result can grow to the
+    /// endpoint's 100-row limit. Compact Mac composition shows a useful ranked
+    /// preview, then the saved pages, then every remaining element. Nothing is
+    /// collapsed or nested in another scroll, and render navigation is bounded
+    /// independently of the response length.
+    @ViewBuilder
+    private var compactElementsSection: some View {
+        elementsComposition(interleavingSavedRenders: !store.renderablePages.isEmpty)
+    }
+
+    @ViewBuilder
+    private func elementsComposition(interleavingSavedRenders: Bool) -> some View {
+        let previewCount = interleavingSavedRenders ? 3 : rankedElements.count
+        let preview = Array(rankedElements.prefix(previewCount))
+        let remaining = Array(rankedElements.dropFirst(previewCount))
+
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             sectionHeader(
                 "Most clicked elements",
@@ -539,21 +563,34 @@ struct HeatmapsRoot: View {
                 )
                 .frame(maxWidth: .infinity)
             } else {
-                elementList
+                elementList(preview, startingRank: 1)
 
                 // The endpoint reports only that more exists, never how much, so
                 // the note stops exactly where the evidence does.
-                if store.elementsTruncated {
-                    Label(
-                        "Showing the \(store.elementStats.count) most-clicked elements. PostHog has more than it returned.",
-                        systemImage: "ellipsis.rectangle"
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                if !interleavingSavedRenders {
+                    elementsTruncationNote
                 }
             }
         }
         .skeleton(store.isLoadingElements && store.elementStats.isEmpty)
+
+        if interleavingSavedRenders {
+            overlayLinks
+
+            if !remaining.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Space.m) {
+                    SectionLabel(
+                        text: "More clicked elements",
+                        systemImage: "list.number"
+                    )
+                    elementList(remaining, startingRank: previewCount + 1)
+                    elementsTruncationNote
+                }
+                .skeleton(store.isLoadingElements && store.elementStats.isEmpty)
+            } else if !rankedElements.isEmpty {
+                elementsTruncationNote
+            }
+        }
     }
 
     /// Hand-rolled container rather than `Card`: the proportional bars need to
@@ -562,13 +599,13 @@ struct HeatmapsRoot: View {
     /// Reaching the edge is also why the container must *clip* rather than only
     /// draw a rounded background. The top row is full width because the scale is
     /// pinned to it.
-    private var elementList: some View {
+    private func elementList(_ stats: [ElementStat], startingRank: Int) -> some View {
         VStack(spacing: 0) {
-            ForEach(Array(rankedElements.enumerated()), id: \.offset) { index, stat in
+            ForEach(Array(stats.enumerated()), id: \.offset) { index, stat in
                 if index > 0 { Divider().padding(.leading, Theme.Space.m) }
                 ElementStatRowView(
                     stat: stat,
-                    rank: index + 1,
+                    rank: startingRank + index,
                     fraction: peakElementCount > 0
                         ? Double(stat.count) / Double(peakElementCount)
                         : 0
@@ -577,6 +614,18 @@ struct HeatmapsRoot: View {
         }
         .background(Theme.cardBackground)
         .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var elementsTruncationNote: some View {
+        if store.elementsTruncated {
+            Label(
+                "Showing the \(store.elementStats.count) most-clicked elements. PostHog has more than it returned.",
+                systemImage: "ellipsis.rectangle"
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
     }
 
     /// The bar scale is pinned to the top row of the *current* filter, so
