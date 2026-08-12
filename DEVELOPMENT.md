@@ -128,13 +128,15 @@ bundles, just like `GetHogMacTests`. Their nonzero count is the
 the empty XCTest shell and is not the target's count.
 
 Every shared scheme enumerates its complete build graph and disables Xcode's
-implicit dependency inference. This is load-bearing: the iOS, Mac, Vision, and
-TV targets intentionally share the `GetHog.app` product name, so inference can
-mistake another platform's app for a dependency and schedule two producers for
-the same output path. When adding a scheme, list its app and test bundles in
-`project.yml`, keep `buildImplicitDependencies: false`, and express extension
-and package relationships as target dependencies rather than relying on
-product-name matching.
+implicit dependency inference. The Mac and iOS build products are `GetHog.app`;
+Vision and TV use target-specific artifact names while retaining the same
+GetHog bundle identity and user-facing display name. This distinction is
+load-bearing: hosted tests resolve `TEST_HOST` from output paths through a
+separate mechanism that can add a same-named product from another SDK even when
+scheme inference is disabled. When adding a scheme or platform, keep its build
+artifact unique, list its app and test bundles in `project.yml`, keep
+`buildImplicitDependencies: false`, and express extension and package
+relationships as target dependencies.
 
 Do not run these `xcodebuild` commands concurrently in one checkout. They share
 Xcode's default DerivedData database, and overlapping builds can fail with a

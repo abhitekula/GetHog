@@ -324,7 +324,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
-        PRODUCT_NAME: GetHog
+        # The user-facing name and cross-platform bundle identity stay GetHog,
+        # but the build product follows the target name. Hosted tests resolve a
+        # TEST_HOST from output paths; if Vision and Mac both produce
+        # GetHog.app, Xcode can select the Vision producer while preparing a
+        # Mac test graph even when scheme-level implicit dependencies are off.
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: GetHogVision/Support/GetHogVision-Info.plist
         CODE_SIGN_ENTITLEMENTS: GetHogVision/Support/GetHogVision.entitlements
@@ -501,7 +505,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
-        PRODUCT_NAME: GetHog
+        # Keep the build artifact unique for the same TEST_HOST reason recorded
+        # on GetHogVision. CFBundleDisplayName below remains the product name a
+        # person sees on Apple TV.
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: GetHogTV/Support/GetHogTV-Info.plist
         CODE_SIGN_ENTITLEMENTS: GetHogTV/Support/GetHogTV.entitlements
@@ -688,12 +694,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogVisionTests
         GENERATE_INFOPLIST_FILE: YES
-        # Spelled out for the reason GetHogMacTests documents: XcodeGen
-        # derives the host path from the *target* name, and GetHogVision's
-        # product is GetHog.app. iOS-style bundles are flat — no
-        # Contents/MacOS.
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/GetHog"
-        BUNDLE_LOADER: "$(TEST_HOST)"
 
   GetHogVisionUITests:
     type: bundle.ui-testing
@@ -762,10 +762,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHogTVTests
         GENERATE_INFOPLIST_FILE: YES
-        # Same derived-host defect as GetHogVisionTests: the product is
-        # GetHog.app, not GetHogTV.app.
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/GetHog"
-        BUNDLE_LOADER: "$(TEST_HOST)"
 
   GetHogTVUITests:
     type: bundle.ui-testing
@@ -788,11 +784,10 @@ targets:
 schemes:
   # Every scheme below declares its complete platform graph: app, test bundles,
   # embedded extensions, and package dependencies are all explicit target
-  # dependencies. Keep implicit inference off. Xcode otherwise matches the
-  # shared `GetHog.app` product name across iOS, macOS, visionOS, and tvOS and
-  # can pull a second platform app into a Mac test build. Which wrong app it
-  # selects varies with ARCHS, but both then write GetHog.app to the same build
-  # directory and Xcode stops before executing a test.
+  # dependencies. Keep implicit inference off as a second boundary around the
+  # explicit target graph. Build artifacts are platform-unique too: TEST_HOST
+  # output resolution is a separate Xcode mechanism that is not governed by
+  # this switch (see the Vision and TV PRODUCT_NAME comments above).
   GetHog:
     build:
       buildImplicitDependencies: false
