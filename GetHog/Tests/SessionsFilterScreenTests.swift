@@ -384,6 +384,82 @@ struct SessionsFilterScreenTests {
         #expect(store.recordings.allSatisfy { $0.id.hasPrefix("f-") })
     }
 
+    @Test("mismatched paging cannot take ownership from a held first-page load")
+    func mismatchedLoadMorePreservesHeldFirstPageOwner() async {
+        let scope = ProjectPreferenceScope(projectID: 21, region: .usCloud)
+        let store = sessionsStore()
+        store.activate(scope: scope)
+        store.filter.personSearch = "held-first-page@example.test"
+        store.filter.signal = .rageClick
+        let expectedSignature = store.requestSignature
+
+        let heldFirstPage = RecordingsTransport(total: 3, gated: true)
+        let loading = Task {
+            await store.load(client: client(heldFirstPage), projectID: scope.projectID)
+        }
+        while await heldFirstPage.urls().isEmpty { await Task.yield() }
+        #expect(store.isLoading)
+
+        let mismatched = RecordingsTransport(total: 100)
+        await store.loadMore(
+            client: client(mismatched, region: .euCloud),
+            projectID: scope.projectID
+        )
+
+        #expect(await mismatched.urls().isEmpty)
+        #expect(store.filter.personSearch == "held-first-page@example.test")
+        #expect(store.filter.signal == .rageClick)
+        #expect(store.requestSignature == expectedSignature)
+        #expect(store.requestSignature(for: scope) == expectedSignature)
+        #expect(store.isLoading)
+        #expect(!store.isLoadingMore)
+
+        await heldFirstPage.release()
+        await loading.value
+
+        #expect(store.recordings.count == 3)
+        #expect(store.requestSignature == expectedSignature)
+        #expect(!store.isLoading)
+        #expect(!store.isLoadingMore)
+    }
+
+    @Test("mismatched paging cannot take ownership from a held same-scope page")
+    func mismatchedLoadMorePreservesHeldPageOwner() async {
+        let scope = ProjectPreferenceScope(projectID: 31, region: .usCloud)
+        let store = sessionsStore()
+        await store.load(
+            client: client(RecordingsTransport(total: 120)),
+            projectID: scope.projectID
+        )
+        store.filter.urlSearch = "example.test/held-page"
+        let expectedSignature = store.requestSignature
+
+        let heldPage = RecordingsTransport(total: 120, gated: true)
+        let paging = Task {
+            await store.loadMore(client: client(heldPage), projectID: scope.projectID)
+        }
+        while await heldPage.urls().isEmpty { await Task.yield() }
+        #expect(store.isLoadingMore)
+
+        let mismatched = RecordingsTransport(total: 100)
+        await store.loadMore(client: client(mismatched), projectID: 32)
+
+        #expect(await mismatched.urls().isEmpty)
+        #expect(store.filter.urlSearch == "example.test/held-page")
+        #expect(store.requestSignature == expectedSignature)
+        #expect(store.requestSignature(for: scope) == expectedSignature)
+        #expect(!store.isLoading)
+        #expect(store.isLoadingMore)
+
+        await heldPage.release()
+        await paging.value
+
+        #expect(store.recordings.count == 100)
+        #expect(store.requestSignature == expectedSignature)
+        #expect(!store.isLoading)
+        #expect(!store.isLoadingMore)
+    }
+
     @Test("switching projects clears old recordings before the replacement arrives")
     func projectSwitchClearsRowsSynchronously() async {
         let store = sessionsStore()
@@ -478,6 +554,24 @@ struct SessionsFilterScreenTests {
         let includesTestUsers = testAccountsStore.requestSignature
         testAccountsStore.filter.filterTestAccounts = true
         #expect(testAccountsStore.requestSignature != includesTestUsers)
+    }
+
+    @Test("a canonical-equivalent scope keeps transient fields in the request signature")
+    func canonicalEquivalentScopeKeepsTransientSignature() {
+        let active = ProjectPreferenceScope(projectID: 91, region: .usCloud)
+        let equivalent = ProjectPreferenceScope(
+            projectID: 91,
+            region: .selfHosted(PostHogRegion.usCloud.host)
+        )
+        let store = sessionsStore()
+        store.activate(scope: active)
+        store.filter.personSearch = "signature@example.test"
+        store.filter.signal = .exception
+
+        let current = store.requestSignature
+        #expect(current.contains("signature@example.test"))
+        #expect(current.contains("$exception"))
+        #expect(store.requestSignature(for: equivalent) == current)
     }
 
     // MARK: - What the list says about itself

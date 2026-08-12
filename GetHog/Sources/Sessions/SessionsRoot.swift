@@ -124,7 +124,6 @@ final class SessionsStore {
     /// discards its result if the filter changed underneath it.
     func loadMore(client: PostHogClient, projectID: Int) async {
         let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
-        activate(scope: scope)
         guard loadedScope == scope,
               activeScope == scope,
               hasMore,

@@ -94,6 +94,60 @@ struct SessionsPreferencesTests {
         #expect(preferences.value(for: explicitDefaultPort).filterTestAccounts)
     }
 
+    @Test("equivalent self-hosted endpoints are one equality and hash identity")
+    func equivalentSelfHostedScopesShareIdentity() {
+        let scopes = [
+            "https://posthog.example.test",
+            "https://posthog.example.test/",
+            "HTTPS://POSTHOG.example.test",
+            "https://posthog.example.test:443",
+        ].map {
+            ProjectPreferenceScope(
+                projectID: 81,
+                region: .selfHosted(URL(string: $0)!)
+            )
+        }
+
+        #expect(scopes.allSatisfy { $0 == scopes[0] })
+        #expect(Set(scopes).count == 1)
+    }
+
+    @Test("a cloud endpoint and its exact self-hosted URL are one scope identity")
+    func cloudAndEquivalentSelfHostedScopesShareIdentity() {
+        let cloud = ProjectPreferenceScope(projectID: 82, region: .usCloud)
+        let equivalent = ProjectPreferenceScope(
+            projectID: 82,
+            region: .selfHosted(PostHogRegion.usCloud.host)
+        )
+
+        #expect(cloud == equivalent)
+        #expect(Set([cloud, equivalent]).count == 1)
+    }
+
+    @Test("canonical identity retains project path and non-default-port boundaries")
+    func canonicalIdentityRetainsBoundaries() {
+        let scopes = [
+            ProjectPreferenceScope(
+                projectID: 83,
+                region: .selfHosted(URL(string: "https://posthog.example.test")!)
+            ),
+            ProjectPreferenceScope(
+                projectID: 84,
+                region: .selfHosted(URL(string: "https://posthog.example.test")!)
+            ),
+            ProjectPreferenceScope(
+                projectID: 83,
+                region: .selfHosted(URL(string: "https://posthog.example.test/analytics")!)
+            ),
+            ProjectPreferenceScope(
+                projectID: 83,
+                region: .selfHosted(URL(string: "https://posthog.example.test:8443")!)
+            ),
+        ]
+
+        #expect(Set(scopes).count == 4)
+    }
+
     @Test("self-hosted path prefixes and non-default ports remain isolated")
     func separatesSelfHostedPathPrefixesAndNonDefaultPorts() {
         let base = ProjectPreferenceScope(

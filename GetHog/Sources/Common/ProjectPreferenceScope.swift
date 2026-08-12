@@ -7,6 +7,14 @@ struct ProjectPreferenceScope: Equatable, Hashable, Sendable {
     let projectID: Int
     let region: PostHogRegion
 
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.storageKeyComponent == rhs.storageKeyComponent
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(storageKeyComponent)
+    }
+
     var storageKeyComponent: String {
         let host = normalizedHost
             .addingPercentEncoding(withAllowedCharacters: .alphanumerics)
