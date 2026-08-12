@@ -143,6 +143,13 @@ values. Do not replace them with inherited project defaults: Xcode 26.6 can
 otherwise plan two bundles under the generic `.swiftmodule/Project` output and
 stop on duplicate Swift module artifacts before executing either suite.
 
+Every hosted app target applies the `hostedAppDebug` setting group. It pins
+`ENABLE_TESTABILITY=YES`, `-Onone`, and `DEBUG` on the target configuration
+itself because Xcode 26.6 does not inherit this generated project's project
+Debug defaults there. Those settings are the contract behind every unit suite's
+`@testable import`; changing only the project-level Debug configuration is not
+enough.
+
 Do not run these `xcodebuild` commands concurrently in one checkout. They share
 Xcode's default DerivedData database, and overlapping builds can fail with a
 database lock before testing the app. This is why the final matrix is serial.

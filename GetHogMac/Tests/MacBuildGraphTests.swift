@@ -126,4 +126,38 @@ struct MacBuildGraphTests {
             }
         }
     }
+
+    /// Xcode 26.6 does not carry this generated project's project-level Debug
+    /// defaults into application target configurations. Unit tests use
+    /// `@testable import`, so every hosted app's Debug target must explicitly
+    /// emit a testable, unoptimized module with the DEBUG condition.
+    @Test("hosted app Debug configurations are explicitly testable")
+    func hostedAppDebugConfigurationsAreTestable() throws {
+        let checkout = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let project = try String(
+            contentsOf: checkout.appending(path: "GetHog.xcodeproj/project.pbxproj"),
+            encoding: .utf8
+        )
+        let configurations = project.components(separatedBy: "isa = XCBuildConfiguration;")
+        let bundleIDs = [
+            "app.gethog.GetHog;",
+            "app.gethog.GetHog.watchkitapp;",
+        ]
+
+        let appDebugConfigurations = configurations.filter { configuration in
+            bundleIDs.contains(where: configuration.contains)
+                && configuration.contains("name = Debug;")
+                && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.Widgets;")
+                && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.TopShelf;")
+        }
+        #expect(appDebugConfigurations.count == 5)
+        for configuration in appDebugConfigurations {
+            #expect(configuration.contains("ENABLE_TESTABILITY = YES;"))
+            #expect(configuration.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
+            #expect(configuration.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;"))
+        }
+    }
 }
