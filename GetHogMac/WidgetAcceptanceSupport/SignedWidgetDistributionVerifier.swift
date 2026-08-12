@@ -51,7 +51,7 @@ enum SignedWidgetDistributionVerifier {
         var candidates: Set<URL> = []
 
         while directory.path != "/" {
-            let app = directory.appending(path: "GetHog.app")
+            let app = directory.appending(path: "GetHogMac.app")
             let widget = app.appending(path: extensionRelativePath)
             if isDirectory(app), isDirectory(widget) {
                 candidates.insert(app.standardizedFileURL)

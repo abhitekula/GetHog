@@ -212,7 +212,13 @@ targets:
         - hostedAppDebug
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
-        PRODUCT_NAME: GetHog
+        # The bundle id and visible name remain the cross-platform GetHog
+        # identity, while the build artifact is unique. Xcode resolves hosted
+        # unit tests by output path even with scheme inference disabled; sharing
+        # GetHog.app with iOS makes that iOS target a second Mac TEST_HOST.
+        PRODUCT_NAME: GetHogMac
+        # Shared sources and Mac tests import the product module as GetHog.
+        PRODUCT_MODULE_NAME: GetHog
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: GetHogMac/Support/GetHogMac-Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: GetHog
@@ -677,14 +683,7 @@ targets:
         PRODUCT_NAME: GetHogMacTests
         PRODUCT_MODULE_NAME: GetHogMacTests
         GENERATE_INFOPLIST_FILE: YES
-        # Spelled out because the derived one is wrong here, and wrong in a way
-        # that only shows up at launch. XcodeGen builds a test host path out of
-        # the *target* name — `GetHogMac.app/Contents/MacOS/GetHogMac` — while
-        # `GetHogMac` above sets `PRODUCT_NAME: GetHog`, so the bundle it
-        # actually produces is `GetHog.app/Contents/MacOS/GetHog` and the
-        # derived path names a binary nothing builds. iOS never met this:
-        # `GetHog`'s target and product names agree.
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHog.app/Contents/MacOS/GetHog"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GetHogMac.app/Contents/MacOS/GetHogMac"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
   # Demo-mode XCUITests on the macOS destination. `DemoLaunch.swift` is shared

@@ -72,7 +72,7 @@ misregistration. Re-register the built product and it goes away:
 
 ```bash
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-  -f /path/to/Build/Products/Debug/GetHog.app
+  -f /path/to/Build/Products/Debug/GetHogMac.app
 ```
 
 The same cache is why a freshly-changed app icon can keep showing the old one
@@ -128,9 +128,9 @@ bundles, just like `GetHogMacTests`. Their nonzero count is the
 the empty XCTest shell and is not the target's count.
 
 Every shared scheme enumerates its complete build graph and disables Xcode's
-implicit dependency inference. The Mac and iOS build products are `GetHog.app`;
-Vision and TV use target-specific artifact names while retaining the same
-GetHog bundle identity and user-facing display name. This distinction is
+implicit dependency inference. iOS builds `GetHog.app`; Mac, Vision, and TV use
+target-specific artifact names while retaining the same GetHog bundle identity,
+user-facing display name, and (on Mac) Swift module name. This distinction is
 load-bearing: hosted tests resolve `TEST_HOST` from output paths through a
 separate mechanism that can add a same-named product from another SDK even when
 scheme inference is disabled. When adding a scheme or platform, keep its build
@@ -425,7 +425,7 @@ GETHOG_WIDGET_SYSTEM_UI=1 GETHOG_WIDGET_SIGNED_DISTRIBUTION=1 \
 
 The preflight deliberately has no path override. The UI runner starts at its
 own loaded test-bundle URL, walks its real build-product ancestors, and requires
-exactly one `GetHog.app` containing `Contents/PlugIns/GetHogWidgets.appex`.
+exactly one `GetHogMac.app` containing `Contents/PlugIns/GetHogWidgets.appex`.
 Only then does it run `codesign --verify --strict` and inspect resolved
 entitlements. This prevents app-supplied environment or filesystem witnesses
 from proving one bundle while exercising another. The method skips only when

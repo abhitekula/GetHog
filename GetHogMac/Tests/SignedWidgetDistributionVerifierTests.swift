@@ -10,7 +10,7 @@ struct SignedWidgetDistributionVerifierTests {
         let testBundle = products.appending(
             path: "GetHogMacUITests-Runner.app/Contents/PlugIns/GetHogMacUITests.xctest"
         )
-        let expected = products.appending(path: "GetHog.app")
+        let expected = products.appending(path: "GetHogMac.app")
         let extensionURL = expected.appending(path: "Contents/PlugIns/GetHogWidgets.appex")
 
         let actual = try SignedWidgetDistributionVerifier.applicationURL(
@@ -25,7 +25,7 @@ struct SignedWidgetDistributionVerifierTests {
     func reportsOnlyKeysAndStatuses() throws {
         let products = URL(fileURLWithPath: "/tmp/FictionalBuild/Products/Release")
         let testBundle = products.appending(path: "GetHogMacUITests.xctest")
-        let app = products.appending(path: "GetHog.app")
+        let app = products.appending(path: "GetHogMac.app")
         let widget = app.appending(path: "Contents/PlugIns/GetHogWidgets.appex")
         let group = "fictional-team.group.app.gethog"
 
@@ -63,7 +63,7 @@ struct SignedWidgetDistributionVerifierTests {
     func mismatchIsStatusOnly() throws {
         let products = URL(fileURLWithPath: "/tmp/FictionalBuild/Products/Release")
         let testBundle = products.appending(path: "GetHogMacUITests.xctest")
-        let app = products.appending(path: "GetHog.app")
+        let app = products.appending(path: "GetHogMac.app")
         let widget = app.appending(path: "Contents/PlugIns/GetHogWidgets.appex")
         let appGroup = "fictional-app-group"
         let widgetGroup = "fictional-widget-group"

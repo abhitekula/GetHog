@@ -78,11 +78,25 @@ struct MacBuildGraphTests {
             )
         }
 
-        for product in ["GetHogTV.app", "GetHogVision.app"] {
+        for product in ["GetHogMac.app", "GetHogTV.app", "GetHogVision.app"] {
             #expect(
                 project.contains("path = \(product);"),
                 "generated product reference lost unique path \(product)"
             )
+        }
+
+        #expect(
+            project.contains("TEST_HOST = \"$(BUILT_PRODUCTS_DIR)/GetHogMac.app/Contents/MacOS/GetHogMac\";")
+        )
+
+        let macConfigurations = configurations.filter {
+            $0.contains("SDKROOT = macosx;")
+                && $0.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog;")
+        }
+        #expect(macConfigurations.count == 2)
+        for configuration in macConfigurations {
+            #expect(configuration.contains("PRODUCT_NAME = GetHogMac;"))
+            #expect(configuration.contains("PRODUCT_MODULE_NAME = GetHog;"))
         }
     }
 
