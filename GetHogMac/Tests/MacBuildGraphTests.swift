@@ -90,8 +90,8 @@ struct MacBuildGraphTests {
         )
 
         let macConfigurations = configurations.filter {
-            $0.contains("SDKROOT = macosx;")
-                && $0.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog;")
+            $0.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog;")
+                && $0.contains("PRODUCT_NAME = GetHogMac;")
         }
         #expect(macConfigurations.count == 2)
         for configuration in macConfigurations {
@@ -168,13 +168,19 @@ struct MacBuildGraphTests {
                 && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.Widgets;")
                 && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.TopShelf;")
         }
-        let sdkRoots = ["iphoneos", "macosx", "xros", "watchos", "appletvos"]
-        for sdkRoot in sdkRoots {
+        let hosts: [(name: String, marker: String)] = [
+            ("iOS", "PRODUCT_NAME = GetHog;"),
+            ("Mac", "PRODUCT_NAME = GetHogMac;"),
+            ("Vision", "INFOPLIST_FILE = \"GetHogVision/Support/GetHogVision-Info.plist\";"),
+            ("Watch", "PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.watchkitapp;"),
+            ("TV", "INFOPLIST_FILE = \"GetHogTV/Support/GetHogTV-Info.plist\";"),
+        ]
+        for host in hosts {
             let debug = try #require(
                 hostConfigurations.first {
-                    $0.contains("SDKROOT = \(sdkRoot);") && $0.contains("name = Debug;")
+                    $0.contains(host.marker) && $0.contains("name = Debug;")
                 },
-                "missing hosted Debug configuration for \(sdkRoot)"
+                "missing hosted Debug configuration for \(host.name)"
             )
             #expect(debug.contains("ENABLE_TESTABILITY = YES;"))
             #expect(debug.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
@@ -182,9 +188,9 @@ struct MacBuildGraphTests {
 
             let release = try #require(
                 hostConfigurations.first {
-                    $0.contains("SDKROOT = \(sdkRoot);") && $0.contains("name = Release;")
+                    $0.contains(host.marker) && $0.contains("name = Release;")
                 },
-                "missing hosted Release configuration for \(sdkRoot)"
+                "missing hosted Release configuration for \(host.name)"
             )
             #expect(!release.contains("ENABLE_TESTABILITY = YES;"))
             #expect(!release.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
