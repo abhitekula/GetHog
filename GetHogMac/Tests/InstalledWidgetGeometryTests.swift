@@ -214,8 +214,9 @@ struct InstalledWidgetGeometryTests {
         #expect(InstalledWidgetGeometryResolver.resolve([]) == .absent)
     }
 
-    @Test("non-finite and non-positive frames block geometry resolution")
+    @Test("non-finite and zero-area frames block geometry resolution")
     func invalidFramesAreBlocked() {
+        // CGRect standardizes negative extents before this boundary, erasing their original sign.
         let invalidFrames: [(Int, CGRect)] = [
             (1, CGRect(x: CGFloat.nan, y: 0, width: 100, height: 100)),
             (2, CGRect(x: 0, y: CGFloat.infinity, width: 100, height: 100)),
@@ -223,10 +224,8 @@ struct InstalledWidgetGeometryTests {
             (4, CGRect(x: 0, y: 0, width: 100, height: CGFloat.infinity)),
             (5, CGRect(x: 0, y: 0, width: 0, height: 100)),
             (6, CGRect(x: 0, y: 0, width: 100, height: 0)),
-            (7, CGRect(x: 0, y: 0, width: -1, height: 100)),
-            (8, CGRect(x: 0, y: 0, width: 100, height: -1)),
-            (9, .null),
-            (10, .infinite),
+            (7, .null),
+            (8, .infinite),
         ]
 
         for (id, frame) in invalidFrames {
