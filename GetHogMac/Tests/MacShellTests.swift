@@ -81,6 +81,50 @@ struct MacShellStructureTests {
     func sectionsAreTheSharedOnes() {
         #expect(MacRootView.sections.map(\.id) == AppTab.sections.map(\.id))
     }
+
+    @Test("every selected Mac root has one stable acceptance identity")
+    func selectedRootAcceptanceIdentities() {
+        let roots = MacRootView.looseTabs + MacRootView.sections.flatMap(\.tabs)
+        let identifiers = roots.map(\.selectedRootAccessibilityIdentifier)
+
+        #expect(identifiers == [
+            "gethog.root.search",
+            "gethog.root.dashboards",
+            "gethog.root.events",
+            "gethog.root.sessions",
+            "gethog.root.insights",
+            "gethog.root.webAnalytics",
+            "gethog.root.clickmap",
+            "gethog.root.people",
+            "gethog.root.groups",
+            "gethog.root.sql",
+            "gethog.root.errorTracking",
+            "gethog.root.sessionSummaries",
+            "gethog.root.llm",
+            "gethog.root.tracing",
+            "gethog.root.logs",
+            "gethog.root.support",
+            "gethog.root.inbox",
+            "gethog.root.signals",
+            "gethog.root.health",
+            "gethog.root.ingestion",
+            "gethog.root.warehouse",
+            "gethog.root.pipelines",
+            "gethog.root.automation",
+            "gethog.root.actions",
+            "gethog.root.annotations",
+            "gethog.root.taxonomy",
+            "gethog.root.flags",
+            "gethog.root.experiments",
+            "gethog.root.surveys",
+            "gethog.root.earlyAccess",
+            "gethog.root.notebooks",
+            "gethog.root.max",
+            "gethog.root.renders",
+            "gethog.root.templates",
+        ])
+        #expect(Set(identifiers).count == identifiers.count)
+    }
 }
 
 @Suite("Mac settings regrouping")

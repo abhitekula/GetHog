@@ -4,9 +4,10 @@ import XCTest
 ///
 /// Destination order is read from the running Go menu, whose production layout
 /// is derived from `AppTab.sections`, after the loose Search row is verified.
-/// The table below is metadata — anchors and ownership — rather than a second
-/// navigation list. A missing/extra/reordered menu item fails before the sweep,
-/// so adding an `AppTab` cannot silently leave a green 34-item copied array.
+/// The table below is audited metadata — root identifiers, anchors, and search
+/// ownership — rather than a second navigation list. A missing/extra/reordered
+/// menu item fails before the sweep, while `MacShellStructureTests` pins every
+/// identifier to the same production `AppTab` order.
 ///
 /// Each cell proves terminal content, the selected root's sole project toolbar,
 /// and its exact search ownership. A sidebar label is never accepted as a
@@ -26,6 +27,7 @@ final class MacSurfaceSweepTests: XCTestCase {
 
     /// Assertions layered onto the code-derived destination order.
     private struct DestinationContract {
+        let tabRawValue: String
         let title: String
         let anchor: String
         let searchPrompt: String?
@@ -34,12 +36,14 @@ final class MacSurfaceSweepTests: XCTestCase {
 
         init(
             _ index: Int,
+            _ tabRawValue: String,
             _ title: String,
             _ anchor: String,
             search: String? = nil,
             alternateSearch: String? = nil
         ) {
             self.index = index
+            self.tabRawValue = tabRawValue
             self.title = title
             self.anchor = anchor
             self.searchPrompt = search
@@ -54,49 +58,104 @@ final class MacSurfaceSweepTests: XCTestCase {
     private static let contracts: [DestinationContract] = [
         .init(
             1,
+            "search",
             "Search",
             "Orbital operations",
             search: "Search names and folders",
             alternateSearch: "Search screens, names and folders"
         ),
-        .init(2, "Dashboards", "Project signal", search: "Search dashboards"),
-        .init(3, "Events", "meteor_report_opened", search: "Filter events"),
-        .init(4, "Sessions", "Alex Example", search: "Search person email"),
-        .init(5, "Insights", "Example meteor report", search: "Search insight names"),
-        .init(6, "Web", "sample visitors", search: "Filter pages"),
-        .init(7, "Clickmap", "Pages with a render"),
-        .init(8, "People", "Sable Okafor", search: "Search persons"),
-        .init(9, "Groups", "example-team"),
-        .init(10, "SQL", "Browse tables and columns"),
-        .init(11, "Errors", "HarborRenderFault"),
-        .init(12, "Summaries", "1 summarized session", search: "Search the narrative or person"),
-        .init(13, "LLM", "synthetic-id-0099", search: "Search traces"),
-        .init(14, "Tracing", "No spans", search: "Filter by span name"),
-        .init(15, "Logs", "No log lines", search: "Search log messages"),
+        .init(
+            2,
+            "dashboards",
+            "Dashboards",
+            "Project signal",
+            search: "Search dashboards"
+        ),
+        .init(3, "events", "Events", "meteor_report_opened", search: "Filter events"),
+        .init(4, "sessions", "Sessions", "Alex Example", search: "Search person email"),
+        .init(5, "insights", "Insights", "Example meteor report", search: "Search insight names"),
+        .init(6, "webAnalytics", "Web", "sample visitors", search: "Filter pages"),
+        .init(7, "clickmap", "Clickmap", "Pages with a render"),
+        .init(8, "people", "People", "Sable Okafor", search: "Search persons"),
+        .init(9, "groups", "Groups", "example-team"),
+        .init(10, "sql", "SQL", "Browse tables and columns"),
+        .init(11, "errorTracking", "Errors", "HarborRenderFault"),
+        .init(
+            12,
+            "sessionSummaries",
+            "Summaries",
+            "1 summarized session",
+            search: "Search the narrative or person"
+        ),
+        .init(13, "llm", "LLM", "synthetic-id-0099", search: "Search traces"),
+        .init(14, "tracing", "Tracing", "No spans", search: "Filter by span name"),
+        .init(15, "logs", "Logs", "No log lines", search: "Search log messages"),
         .init(
             16,
+            "support",
             "Support",
             "Scheduled report attachments are unreadable",
             search: "Search tickets"
         ),
-        .init(17, "Inbox", "Nothing to triage", search: "Search tasks"),
-        .init(18, "Signals", "No reports yet"),
-        .init(19, "Health", "SDK out of date"),
-        .init(20, "Ingestion", "Cannot merge already identified", search: "Search warnings"),
-        .init(21, "Warehouse", "gethog.warehouse-terminal", search: "Search sources, tables and views"),
-        .init(22, "Pipelines", "No pipelines", search: "Search pipelines"),
-        .init(23, "Automation", "Workflows chain messaging and automation steps behind a trigger"),
-        .init(24, "Actions", "No actions", search: "Search actions"),
-        .init(25, "Annotations", "No annotations", search: "Search annotations"),
-        .init(26, "Taxonomy", "feature_used", search: "Search events"),
-        .init(27, "Flags", "example-navigation", search: "Search flag key or name"),
-        .init(28, "Experiments", "Example cache strategy trial"),
-        .init(29, "Surveys", "Example App metric 829"),
-        .init(30, "Early access", "No early access features", search: "Search features"),
-        .init(31, "Notebooks", "Orbit field log", search: "Search notebooks"),
-        .init(32, "Max", "No Max conversations", search: "Search conversations"),
-        .init(33, "Renders", "Example filename 0312", search: "Search filename or session"),
-        .init(34, "Templates", "Example App metric 125", search: "Search templates"),
+        .init(17, "inbox", "Inbox", "Nothing to triage", search: "Search tasks"),
+        .init(18, "signals", "Signals", "No reports yet"),
+        .init(19, "health", "Health", "SDK out of date"),
+        .init(
+            20,
+            "ingestion",
+            "Ingestion",
+            "Cannot merge already identified",
+            search: "Search warnings"
+        ),
+        .init(
+            21,
+            "warehouse",
+            "Warehouse",
+            "gethog.warehouse-terminal",
+            search: "Search sources, tables and views"
+        ),
+        .init(22, "pipelines", "Pipelines", "No pipelines", search: "Search pipelines"),
+        .init(
+            23,
+            "automation",
+            "Automation",
+            "Workflows chain messaging and automation steps behind a trigger"
+        ),
+        .init(24, "actions", "Actions", "No actions", search: "Search actions"),
+        .init(25, "annotations", "Annotations", "No annotations", search: "Search annotations"),
+        .init(26, "taxonomy", "Taxonomy", "feature_used", search: "Search events"),
+        .init(
+            27,
+            "flags",
+            "Flags",
+            "example-navigation",
+            search: "Search flag key or name"
+        ),
+        .init(28, "experiments", "Experiments", "Example cache strategy trial"),
+        .init(29, "surveys", "Surveys", "Example App metric 829"),
+        .init(
+            30,
+            "earlyAccess",
+            "Early access",
+            "No early access features",
+            search: "Search features"
+        ),
+        .init(31, "notebooks", "Notebooks", "Orbit field log", search: "Search notebooks"),
+        .init(32, "max", "Max", "No Max conversations", search: "Search conversations"),
+        .init(
+            33,
+            "renders",
+            "Renders",
+            "Example filename 0312",
+            search: "Search filename or session"
+        ),
+        .init(
+            34,
+            "templates",
+            "Templates",
+            "Example App metric 125",
+            search: "Search templates"
+        ),
     ]
 
     private enum Mode {
@@ -282,17 +341,24 @@ final class MacSurfaceSweepTests: XCTestCase {
         app.launchEnvironment["GETHOG_TAB"] = "dashboards"
         app.launch()
 
-        let dashboardDestination = app.windows.descendants(matching: .any)
-            .matching(DemoLaunch.macTextPredicate("Dashboards"))
-            .firstMatch
-        XCTAssertTrue(
-            DemoLaunch.wait(for: dashboardDestination, timeout: 60),
-            "The authenticated Mac shell never rendered its dashboard destination."
-        )
+        guard let dashboardContract = Self.contracts.first(where: {
+            $0.tabRawValue == "dashboards"
+        }) else {
+            XCTFail("The live contract omitted Dashboards.")
+            return
+        }
+        guard waitForSelectedRoot(dashboardContract, in: app, timeout: 60) else {
+            XCTFail("The authenticated Mac shell never selected its dashboard root.")
+            return
+        }
 
         let roots = Self.contracts
         for screen in roots {
             open(screen.title, in: app)
+            guard waitForSelectedRoot(screen, in: app, timeout: 60) else {
+                XCTFail("Live navigation never selected the \(screen.title) root.")
+                continue
+            }
             // Observe the screen settling instead of sleeping through an
             // assumed request duration.
             DemoLaunch.settle(app, timeout: 20)
@@ -314,6 +380,10 @@ final class MacSurfaceSweepTests: XCTestCase {
         }
 
         open("Dashboards", in: app)
+        guard waitForSelectedRoot(dashboardContract, in: app, timeout: 60) else {
+            XCTFail("The live detail probe never returned to the dashboard root.")
+            return
+        }
         let dashboardCards = app.buttons.matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
@@ -552,6 +622,12 @@ final class MacSurfaceSweepTests: XCTestCase {
 
         for contract in Self.contracts {
             open(contract.title, in: app)
+            guard waitForSelectedRoot(contract, in: app, timeout: 60) else {
+                XCTFail(
+                    "\(mode.label) navigation never selected the \(contract.title) root."
+                )
+                continue
+            }
             assertSelectedToolbar(for: contract, in: app)
             prepareLoadedAnchor(for: contract, in: app)
             if contract.anchor.hasPrefix("gethog.") {
@@ -845,6 +921,21 @@ final class MacSurfaceSweepTests: XCTestCase {
             : openViaGoMenu(title, in: app)
         if !reached {
             XCTFail("No sidebar destination labelled \(title).")
+        }
+    }
+
+    /// Proves the mounted content root changed before any loading or content
+    /// descendant is attributed to a destination. Sidebar labels stay mounted,
+    /// so neither their existence nor a successful menu click is this oracle.
+    private func waitForSelectedRoot(
+        _ contract: DestinationContract,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 15
+    ) -> Bool {
+        let identifier = "gethog.root.\(contract.tabRawValue)"
+        let witness = app.windows.descendants(matching: .any)[identifier]
+        return DemoLaunch.wait(timeout: timeout) {
+            witness.exists && witness.frame.width > 0 && witness.frame.height > 0
         }
     }
 

@@ -52,6 +52,13 @@ enum AppTab: String, Hashable, CaseIterable {
     /// object half is shown there.
     case search
 
+    /// A stable, non-sensitive witness for the root the active shell mounted.
+    /// Acceptance automation waits for this exact value before it treats a
+    /// loading, empty, or rendered descendant as belonging to a destination.
+    var selectedRootAccessibilityIdentifier: String {
+        "gethog.root.\(rawValue)"
+    }
+
     var title: String {
         switch self {
         case .dashboards: "Dashboards"

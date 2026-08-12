@@ -71,6 +71,9 @@ struct MacRootView: View {
 
                 container(for: selectedTab, compact: sizeClass == .compact)
                     .id(selectedTab)
+                    .accessibilityIdentifier(
+                        selectedTab.selectedRootAccessibilityIdentifier
+                    )
                     .environment(\.horizontalSizeClass, sizeClass)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
