@@ -95,9 +95,12 @@ private actor RecordingsTransport: HTTPTransport {
     }
 }
 
-private func client(_ transport: some HTTPTransport) -> PostHogClient {
+private func client(
+    _ transport: some HTTPTransport,
+    region: PostHogRegion = .usCloud
+) -> PostHogClient {
     PostHogClient(
-        auth: PersonalKeyAuthProvider(key: "phx_test", region: .usCloud),
+        auth: PersonalKeyAuthProvider(key: "phx_test", region: region),
         transport: transport
     )
 }
@@ -106,12 +109,23 @@ private func client(_ transport: some HTTPTransport) -> PostHogClient {
 @MainActor
 struct SessionsFilterScreenTests {
 
+    private func sessionPreferences(_ name: String = #function) -> SessionsPreferences {
+        let suite = "SessionsFilterScreenTests.\(name)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return SessionsPreferences(defaults: defaults)
+    }
+
+    private func sessionsStore(_ name: String = #function) -> SessionsStore {
+        SessionsStore(preferences: sessionPreferences(name))
+    }
+
     // MARK: - What actually goes on the wire
 
     @Test("an unfiltered load asks for exactly what it always did")
     func unfilteredRequestIsUnchanged() async throws {
         let transport = RecordingsTransport(total: 10)
-        let store = SessionsStore()
+        let store = sessionsStore()
         await store.load(client: client(transport), projectID: 1)
 
         let items = await transport.items(0)
@@ -123,7 +137,8 @@ struct SessionsFilterScreenTests {
     @Test("the filter reaches the wire rather than being applied after the page lands")
     func filterIsSentToTheServer() async throws {
         let transport = RecordingsTransport(total: 10)
-        let store = SessionsStore()
+        let store = sessionsStore()
+        store.activate(scope: ProjectPreferenceScope(projectID: 1, region: .usCloud))
         store.filter.signal = .rageClick
         store.filter.minimumDuration = 60
         store.filter.dateWindow = .last7Days
@@ -137,12 +152,133 @@ struct SessionsFilterScreenTests {
         #expect(items["filter_test_accounts"] == "true")
     }
 
+    @Test("stored choices are active before the destination request is constructed")
+    func restoresBeforeRequest() async {
+        let preferences = sessionPreferences()
+        let scope = ProjectPreferenceScope(projectID: 77, region: .euCloud)
+        preferences.set(
+            .init(filterTestAccounts: true, playableOnly: true, order: .clickCount),
+            for: scope
+        )
+        let transport = RecordingsTransport(total: 2)
+        let store = SessionsStore(preferences: preferences)
+
+        await store.load(client: client(transport, region: .euCloud), projectID: 77)
+
+        let items = await transport.items(0)
+        #expect(items["filter_test_accounts"] == "true")
+        #expect(items["having_predicates"]?.contains("snapshot_source") == true)
+        #expect(items["order"] == "click_count")
+    }
+
+    @Test("a project switch clears transient investigation state and applies only destination choices")
+    func projectSwitchResetsTransientState() async {
+        let preferences = sessionPreferences()
+        let first = ProjectPreferenceScope(projectID: 1, region: .usCloud)
+        let second = ProjectPreferenceScope(projectID: 2, region: .usCloud)
+        preferences.set(.init(playableOnly: true, order: .duration), for: second)
+        let store = SessionsStore(preferences: preferences)
+
+        await store.load(client: client(RecordingsTransport(total: 1)), projectID: first.projectID)
+        store.filter.personSearch = "synthetic@example.test"
+        store.filter.signal = .exception
+        store.filter.minimumDuration = 120
+        store.filter.filterTestAccounts = true
+
+        await store.load(client: client(RecordingsTransport(total: 1)), projectID: second.projectID)
+
+        #expect(store.filter.personSearch == nil)
+        #expect(store.filter.signal == nil)
+        #expect(store.filter.minimumDuration == nil)
+        #expect(!store.filter.filterTestAccounts)
+        #expect(store.filter.source == .web)
+        #expect(store.filter.order == .duration)
+    }
+
+    @Test("the same numeric project on another host has independent state and rejects the old response")
+    func hostSwitchIsADataBoundary() async {
+        let preferences = sessionPreferences()
+        let eu = ProjectPreferenceScope(projectID: 5, region: .euCloud)
+        preferences.set(.init(filterTestAccounts: true), for: eu)
+        let store = SessionsStore(preferences: preferences)
+        let heldUS = RecordingsTransport(total: 9, gated: true)
+        let slow = Task {
+            await store.load(client: client(heldUS, region: .usCloud), projectID: 5)
+        }
+        while await heldUS.urls().isEmpty { await Task.yield() }
+
+        await store.load(
+            client: client(RecordingsTransport(total: 3), region: .euCloud),
+            projectID: 5
+        )
+        await heldUS.release()
+        await slow.value
+
+        #expect(store.recordings.count == 3)
+        #expect(store.filter.filterTestAccounts)
+    }
+
+    @Test("durable edits and a saved-filter replacement update only the active scope")
+    func writesDurableProjection() async {
+        let preferences = sessionPreferences()
+        let scope = ProjectPreferenceScope(projectID: 8, region: .usCloud)
+        let store = SessionsStore(preferences: preferences)
+        await store.load(client: client(RecordingsTransport(total: 1)), projectID: 8)
+
+        store.filter.personSearch = "memory-only@example.test"
+        #expect(preferences.value(for: scope) == .init())
+
+        store.filter.filterTestAccounts = true
+        #expect(preferences.value(for: scope).filterTestAccounts)
+        store.filter.source = .web
+        #expect(preferences.value(for: scope).playableOnly)
+        store.filter.order = .clickCount
+        #expect(preferences.value(for: scope).order == .clickCount)
+
+        var saved = SessionRecordingFilter()
+        saved.filterTestAccounts = true
+        saved.source = .web
+        saved.order = .activityScore
+        saved.signal = .rageClick
+        store.replaceFilter(saved)
+
+        #expect(preferences.value(for: scope) == .init(
+            filterTestAccounts: true,
+            playableOnly: true,
+            order: .activityScore
+        ))
+        #expect(store.filter.signal == .rageClick)
+    }
+
+    @Test("clearing removes every constraint and stored narrowing but preserves sort")
+    func clearPreservesSort() async {
+        let preferences = sessionPreferences()
+        let scope = ProjectPreferenceScope(projectID: 12, region: .usCloud)
+        let store = SessionsStore(preferences: preferences)
+        await store.load(client: client(RecordingsTransport(total: 1)), projectID: 12)
+        var filter = SessionRecordingFilter()
+        filter.filterTestAccounts = true
+        filter.source = .web
+        filter.order = .consoleErrorCount
+        filter.urlSearch = "example.test/dashboard"
+        filter.inheritedProperties = [
+            .init(key: "plan", type: "person", value: .string("synthetic"), op: "exact"),
+        ]
+        store.replaceFilter(filter)
+
+        store.clearFilters()
+
+        #expect(!store.filter.isNarrowed)
+        #expect(store.filter.order == .consoleErrorCount)
+        #expect(preferences.value(for: scope) == .init(order: .consoleErrorCount))
+    }
+
     // MARK: - Replace, never append
 
     @Test("changing the filter replaces the list instead of extending it")
     func filterChangeReplaces() async throws {
         let transport = RecordingsTransport(total: 200)
-        let store = SessionsStore()
+        let store = sessionsStore()
 
         await store.load(client: client(transport), projectID: 1)
         await store.loadMore(client: client(transport), projectID: 1)
@@ -162,7 +298,7 @@ struct SessionsFilterScreenTests {
     @Test("loading more appends the next page and asks for the right offset")
     func loadMoreAppends() async throws {
         let transport = RecordingsTransport(total: 120)
-        let store = SessionsStore()
+        let store = sessionsStore()
 
         await store.load(client: client(transport), projectID: 1)
         #expect(store.recordings.count == 50)
@@ -182,7 +318,7 @@ struct SessionsFilterScreenTests {
         // The second page rewinds ten rows, so ten ids arrive that the list
         // already holds — what happens when a recording lands mid-scroll.
         let transport = RecordingsTransport(total: 200, overlap: 10)
-        let store = SessionsStore()
+        let store = sessionsStore()
         await store.load(client: client(transport), projectID: 1)
         await store.loadMore(client: client(transport), projectID: 1)
 
@@ -193,7 +329,7 @@ struct SessionsFilterScreenTests {
     @Test("a page still in flight when the filter changes cannot land in the new results")
     func staleResponseIsDiscarded() async throws {
         let gated = RecordingsTransport(total: 200, gated: true)
-        let store = SessionsStore()
+        let store = sessionsStore()
 
         // A slow load for the unfiltered list, held open at the transport...
         let slow = Task { await store.load(client: client(gated), projectID: 1) }
@@ -213,7 +349,7 @@ struct SessionsFilterScreenTests {
 
     @Test("a replacement releases stale paging state and the new results can page")
     func replacementClearsHeldPagingState() async {
-        let store = SessionsStore()
+        let store = sessionsStore()
         await store.load(client: client(RecordingsTransport(total: 200)), projectID: 1)
 
         // Hold page two of the old filter after it has claimed the paging flag.
@@ -250,7 +386,7 @@ struct SessionsFilterScreenTests {
 
     @Test("switching projects clears old recordings before the replacement arrives")
     func projectSwitchClearsRowsSynchronously() async {
-        let store = SessionsStore()
+        let store = sessionsStore()
         await store.load(client: client(RecordingsTransport(total: 10)), projectID: 1)
         #expect(store.recordings.count == 10)
 
@@ -270,7 +406,7 @@ struct SessionsFilterScreenTests {
     @Test("loading more never runs against a filter that has since changed")
     func loadMoreIsGated() async throws {
         let transport = RecordingsTransport(total: 200)
-        let store = SessionsStore()
+        let store = sessionsStore()
         await store.load(client: client(transport), projectID: 1)
 
         store.filter.dateWindow = .last24Hours
@@ -288,7 +424,7 @@ struct SessionsFilterScreenTests {
     @Test("a failed narrowing clears the previous filter's rows rather than leaving them as the answer")
     func failureClearsStaleRows() async throws {
         let good = RecordingsTransport(total: 10)
-        let store = SessionsStore()
+        let store = sessionsStore()
         await store.load(client: client(good), projectID: 1)
         #expect(!store.recordings.isEmpty)
 
@@ -302,7 +438,7 @@ struct SessionsFilterScreenTests {
     @Test("a failed next page preserves rows and remains retryable inline")
     func nextPageFailurePreservesRowsAndRetry() async {
         let transport = PagingRecoveryTransport()
-        let store = SessionsStore()
+        let store = sessionsStore()
 
         await store.load(client: client(transport), projectID: 1)
         let firstPageIDs = store.recordings.map(\.id)
@@ -326,7 +462,7 @@ struct SessionsFilterScreenTests {
 
     @Test("the signature changes with the filter and is stable when it does not")
     func requestSignature() {
-        let store = SessionsStore()
+        let store = sessionsStore()
         let empty = store.requestSignature
         store.filter.dateWindow = .last7Days
         #expect(store.requestSignature != empty)
@@ -338,7 +474,7 @@ struct SessionsFilterScreenTests {
         store.filter.order = .startTime
         #expect(store.requestSignature == narrowed)
 
-        let testAccountsStore = SessionsStore()
+        let testAccountsStore = sessionsStore()
         let includesTestUsers = testAccountsStore.requestSignature
         testAccountsStore.filter.filterTestAccounts = true
         #expect(testAccountsStore.requestSignature != includesTestUsers)

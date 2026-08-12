@@ -19,7 +19,13 @@ final class SessionsStore {
 
     /// Server-side. The whole filter, including the person search behind the
     /// navigation bar's field.
-    var filter = SessionRecordingFilter()
+    var filter = SessionRecordingFilter() {
+        didSet { persistDurableProjectionIfNeeded() }
+    }
+
+    @ObservationIgnored private let preferences: SessionsPreferences
+    @ObservationIgnored private var durableValue = SessionsPreferences.Value()
+    private var activeScope: ProjectPreferenceScope?
 
     private var offset = 0
     private let pageSize = 50
@@ -27,14 +33,48 @@ final class SessionsStore {
     /// Bumped on every fresh load so a page that was already in flight when the
     /// filter changed cannot append its rows onto the new filter's results.
     private var generation = 0
-    private var loadedProjectID: Int?
+    private var loadedScope: ProjectPreferenceScope?
+
+    init(preferences: SessionsPreferences = SessionsPreferences()) {
+        self.preferences = preferences
+    }
+
+    func activate(scope: ProjectPreferenceScope) {
+        guard activeScope != scope else { return }
+        let value = preferences.value(for: scope)
+        activeScope = scope
+        durableValue = value
+        var destinationFilter = SessionRecordingFilter()
+        value.apply(to: &destinationFilter)
+        filter = destinationFilter
+    }
+
+    func replaceFilter(_ replacement: SessionRecordingFilter) {
+        filter = replacement
+    }
+
+    func clearFilters() {
+        var cleared = SessionRecordingFilter()
+        cleared.order = filter.order
+        filter = cleared
+    }
+
+    private func persistDurableProjectionIfNeeded() {
+        guard let activeScope else { return }
+        let value = SessionsPreferences.Value(filter: filter)
+        guard value != durableValue else { return }
+        durableValue = value
+        preferences.set(value, for: activeScope)
+    }
 
     /// Loads the first page for the current filter, **replacing** what is shown.
     func load(client: PostHogClient, projectID: Int) async {
+        let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
+        activate(scope: scope)
         generation += 1
         let token = generation
-        let projectChanged = loadedProjectID != projectID
-        loadedProjectID = projectID
+        let scopeChanged = loadedScope != scope
+        loadedScope = scope
         offset = 0
         pagingError = nil
         // Every replacement invalidates any page request from the preceding
@@ -42,7 +82,7 @@ final class SessionsStore {
         // changed. That stale request's guarded defer cannot clear this flag
         // after `generation` advances, so the new generation must own the reset.
         isLoadingMore = false
-        if projectChanged {
+        if scopeChanged {
             // A project is a data-ownership boundary, not merely another
             // filter. Clear before the request suspends so the replacement can
             // never present old-project recordings as its loading state.
@@ -53,7 +93,7 @@ final class SessionsStore {
         }
         isLoading = true
         defer {
-            if token == generation, loadedProjectID == projectID { isLoading = false }
+            if token == generation, loadedScope == scope { isLoading = false }
         }
 
         do {
@@ -62,7 +102,7 @@ final class SessionsStore {
                     projectID: projectID, limit: pageSize, offset: 0, filter: filter
                 )
             )
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation, loadedScope == scope else { return }
             recordings = list.results
             hasMore = list.hasNext
             offset = list.results.count
@@ -70,7 +110,7 @@ final class SessionsStore {
             error = nil
             pagingError = nil
         } catch {
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation, loadedScope == scope else { return }
             // A failed narrowing must not leave the previous filter's rows on
             // screen looking like the answer to the new question.
             recordings = []
@@ -83,12 +123,19 @@ final class SessionsStore {
     /// Appends the next page. Never runs while a fresh load is in flight, and
     /// discards its result if the filter changed underneath it.
     func loadMore(client: PostHogClient, projectID: Int) async {
-        guard loadedProjectID == projectID, hasMore, !isLoading, !isLoadingMore else { return }
+        let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
+        activate(scope: scope)
+        guard loadedScope == scope,
+              activeScope == scope,
+              hasMore,
+              !isLoading,
+              !isLoadingMore
+        else { return }
         let token = generation
         pagingError = nil
         isLoadingMore = true
         defer {
-            if token == generation, loadedProjectID == projectID { isLoadingMore = false }
+            if token == generation, loadedScope == scope { isLoadingMore = false }
         }
 
         do {
@@ -97,7 +144,7 @@ final class SessionsStore {
                     projectID: projectID, limit: pageSize, offset: offset, filter: filter
                 )
             )
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation, loadedScope == scope else { return }
             // Offset paging over a live, time-ordered table can repeat a row
             // when a new recording lands between pages.
             let known = Set(recordings.map(\.id))
@@ -107,7 +154,7 @@ final class SessionsStore {
             loadedAt = Date()
             pagingError = nil
         } catch {
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation, loadedScope == scope else { return }
             // Keep both the loaded rows and the server's assertion that another
             // page exists. Turning `hasMore` off here removes the only retry
             // control and converts a transient page failure into a false end.
@@ -119,8 +166,17 @@ final class SessionsStore {
     /// A stable key for the current request. Driving `.task(id:)` with this is
     /// what makes a filter change cancel the in-flight request and start a
     /// replacing load, rather than racing it.
-    var requestSignature: String {
+    private static func signature(for filter: SessionRecordingFilter) -> String {
         filter.queryItems.map { "\($0.name)=\($0.value ?? "")" }.joined(separator: "&")
+    }
+
+    var requestSignature: String { Self.signature(for: filter) }
+
+    func requestSignature(for scope: ProjectPreferenceScope) -> String {
+        if activeScope == scope { return requestSignature }
+        var destinationFilter = SessionRecordingFilter()
+        preferences.value(for: scope).apply(to: &destinationFilter)
+        return Self.signature(for: destinationFilter)
     }
 }
 
