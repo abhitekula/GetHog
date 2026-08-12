@@ -4,24 +4,28 @@
 
 ## Platform
 
-ios
+ios, macos
 
 ## Users
 
-PostHog users — product engineers, PMs, founders — away from their laptop with
-a question that cannot wait for one: is the dashboard moving, what did this
-session do, is the flag on. They arrive briefly, often mid-context, on iPhone
-or iPad, and they already know PostHog's concepts; the app never has to teach
-analytics, only answer fast.
+PostHog users — product engineers, PMs, founders — with a question that cannot
+wait: is the dashboard moving, what did this session do, is the flag on. They
+arrive briefly, often mid-context, on iPhone, iPad, or Mac, and they already
+know PostHog's concepts; the app never has to teach analytics, only answer
+fast.
 
 ## Product Purpose
 
-A native iPhone and iPad client for checking PostHog work on the move:
-dashboards, events, people, sessions and web replay, feature flags, and the
-long tail of secondary surfaces (errors, SQL, warehouse, pipelines, and more).
-Deliberately narrow, cache-aware, and honest about surfaces it does not yet
-render. Success is the two-minute check that would otherwise have waited for a
-laptop — finished, trusted, and closed.
+A native iPhone, iPad, and Mac client for checking PostHog work wherever the
+question arises: dashboards, events, people, sessions and web replay, feature
+flags, and the long tail of secondary surfaces (errors, SQL, warehouse,
+pipelines, and more). Deliberately narrow, cache-aware, and honest about
+surfaces it does not yet render. Success is the two-minute check — finished,
+trusted, and closed.
+
+Mac is a first-class adaptive client, not an iPad port: its native source-list
+shell adapts its detail content to the available window width, while Settings,
+commands, menu-bar presence, and tear-off windows follow desktop conventions.
 
 Confirmed ambition: a public App Store release of an open-source, unaffiliated
 community project. The design bar is that a stranger assumes a design team
@@ -33,9 +37,10 @@ and must be original work the project can licence.
 
 The native, private, honest PostHog companion:
 
-- **Native, not wrapped** — SwiftUI end to end, real iPad split views, widgets,
-  App Intents, Dynamic Type, VoiceOver. No web views except the replay
-  renderer, which is offline-only by policy.
+- **Native, not wrapped** — SwiftUI end to end, adaptive iPad and Mac split
+  views, native Mac windows and commands, widgets, App Intents, Dynamic Type,
+  VoiceOver. No web views except the replay renderer, which is offline-only by
+  policy.
 - **Private by architecture** — no backend, no telemetry of its own; the API
   key lives in the device Keychain (or in memory for a verification launch)
   and requests go only to the user's PostHog host.

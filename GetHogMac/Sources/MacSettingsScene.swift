@@ -45,6 +45,14 @@ enum MacSettingsPane: String, CaseIterable, Identifiable {
     }
 }
 
+/// Native Settings panes stay usable in the compact Settings window without
+/// letting a resized wide window turn the explanatory footers into long,
+/// hard-to-scan lines. The outer scene remains resizable; this only bounds its
+/// Form content.
+private enum MacSettingsLayout {
+    static let maximumFormWidth: CGFloat = 680
+}
+
 /// The ⌘, window: the same section views and stores as the iOS Settings
 /// screen, in a Mac container. Wired by `GetHogMacApp`'s `Settings` scene.
 struct MacSettingsRoot: View {
@@ -72,6 +80,9 @@ struct MacSettingsRoot: View {
                             }
                         }
                         .formStyle(.grouped)
+                        .controlSize(.regular)
+                        .frame(maxWidth: MacSettingsLayout.maximumFormWidth)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
             }
