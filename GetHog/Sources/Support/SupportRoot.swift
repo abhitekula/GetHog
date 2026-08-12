@@ -108,6 +108,19 @@ final class SupportTicketsStore {
 /// PostHog, in the same shape `DashboardTemplatesRoot` uses for "apply" — a
 /// stated fact rather than a greyed-out button inviting a tap that cannot work.
 struct SupportRoot: View {
+    static let emptyPolicy = EmptyOutcomePolicy(
+        title: "No support tickets",
+        systemImage: "lifepreserver",
+        message: "PostHog Support turns customer conversations into tickets. "
+            + "This project holds none — the inbox answered, and it was empty.",
+        actionTitle: "Reload"
+    )
+
+    static let emptyGuidePolicy = EmptyStateGuidePolicy(
+        title: "How tickets reach GetHog",
+        systemImage: "tray"
+    )
+
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
     @State private var store = SupportTicketsStore()
@@ -259,20 +272,12 @@ struct SupportRoot: View {
     /// what a row would carry when one does.
     private var emptyInbox: some View {
         PageScaffold {
-            EmptyStateView(
-                title: "No support tickets",
-                systemImage: "lifepreserver",
-                message: "PostHog Support turns customer conversations into tickets. "
-                    + "This project holds none — the inbox answered, and it was empty.",
-                actionTitle: "Reload",
+            CollectionEmptyState(
+                policy: Self.emptyPolicy,
                 action: { Task { await load() } }
             )
-            .frame(maxWidth: .infinity)
-
-            SectionLabel(text: "What would appear here", systemImage: "tray")
-
             Card {
-                VStack(alignment: .leading, spacing: Theme.Space.m) {
+                EmptyStateGuide(policy: Self.emptyGuidePolicy) {
                     Text(
                         "A ticket is one customer's conversation, wherever it started. "
                             + "Each row would show who it is from, the last thing they said, "
@@ -295,11 +300,9 @@ struct SupportRoot: View {
                             accessory: .none
                         )
                     }
-                }
-            }
 
-            Card {
-                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    Divider()
+
                     CardHeader(
                         title: "Nothing is hidden by a filter",
                         systemImage: "line.3.horizontal.decrease",
@@ -314,10 +317,11 @@ struct SupportRoot: View {
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Ink.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                    replyNote
                 }
             }
-
-            replyNote
+            .readableMeasure(Theme.Measure.prose)
         }
     }
 

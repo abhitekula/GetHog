@@ -40,7 +40,17 @@ final class EarlyAccessStore {
 }
 
 struct EarlyAccessRoot: View {
+    static let managementPath = "early_access_features"
+
+    static let emptyPolicy = EmptyOutcomePolicy(
+        title: "No early access features",
+        systemImage: "sparkles",
+        message: "An early access feature lets people opt themselves into a beta from inside your product, backed by a feature flag. This project offers none. GetHog reads early access features; create and manage them in PostHog.",
+        actionTitle: "Manage in PostHog"
+    )
+
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     @State private var store = EarlyAccessStore()
     @State private var search = ""
 
@@ -77,14 +87,22 @@ struct EarlyAccessRoot: View {
                 action: { Task { await load() } }
             )
         } else if store.features.isEmpty && !store.isLoading {
-            EmptyStateView(
-                title: "No early access features",
-                systemImage: "sparkles",
-                illustration: .experiment,
-                message: "An early access feature lets people opt themselves into a beta from inside your product, backed by a feature flag. This project offers none — it is a surface teams add when they have something to invite users into, and many never do."
-            )
+            emptyState
         } else {
             list
+        }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        if consoleURL != nil {
+            EmptyStateView(
+                policy: Self.emptyPolicy,
+                illustration: .experiment,
+                action: openConsole
+            )
+        } else {
+            EmptyStateView(policy: Self.emptyPolicy, illustration: .experiment)
         }
     }
 
@@ -139,6 +157,12 @@ struct EarlyAccessRoot: View {
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID)
+    }
+
+    private var consoleURL: URL? { model.webURL(path: Self.managementPath) }
+
+    private func openConsole() {
+        if let consoleURL { openURL(consoleURL) }
     }
 }
 

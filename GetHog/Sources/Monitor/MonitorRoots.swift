@@ -364,6 +364,7 @@ struct HealthRoot: View {
             }
             .listRowSpacing(Theme.Space.xs)
             .pageSurface()
+            .sparseCollectionSurface()
             .skeleton(store.isLoading && store.issues.isEmpty)
         }
     }

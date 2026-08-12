@@ -133,6 +133,7 @@ struct PipelinesRoot: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        .sparseCollectionSurface()
         .skeleton(store.isLoading && store.functions.isEmpty)
     }
 

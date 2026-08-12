@@ -36,6 +36,17 @@ enum AutomationSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// A collection-level outcome, not a footer fragment. The resource picker
+    /// remains useful when the selected collection is empty, so this policy is
+    /// rendered by `CollectionEmptyState` inside that stable screen.
+    var emptyPolicy: EmptyOutcomePolicy {
+        EmptyOutcomePolicy(
+            title: "No \(title.lowercased())",
+            systemImage: systemImage,
+            message: emptyDescription
+        )
+    }
+
     /// Says what the resource *is* and why a project reasonably has none of it.
     ///
     /// Empty is the normal state on all five of these — a plain "nothing here"
@@ -338,6 +349,7 @@ struct AutomationRoot: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        .sparseCollectionSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 
@@ -359,10 +371,7 @@ struct AutomationRoot: View {
             // zeros, so the two belong on screen together.
             endpointsBody
         } else if store.count(for: section) == 0 && !store.isLoading {
-            SectionEmptyState(
-                text: section.emptyDescription,
-                systemImage: section.systemImage
-            )
+            CollectionEmptyState(policy: section.emptyPolicy)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         } else {
@@ -394,10 +403,7 @@ struct AutomationRoot: View {
         EndpointUsagePanel(store: store) { Task { await reloadUsage() } }
 
         if store.endpoints.isEmpty && !store.isLoading {
-            SectionEmptyState(
-                text: section.emptyDescription,
-                systemImage: section.systemImage
-            )
+            CollectionEmptyState(policy: section.emptyPolicy)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         } else {

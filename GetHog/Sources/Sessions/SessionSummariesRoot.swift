@@ -142,6 +142,7 @@ struct SessionSummariesRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .accessibilityIdentifier("gethog.session-summaries-list")
         .pageSurface()
+        .sparseCollectionSurface()
         .skeleton(store.isLoading && store.rows.isEmpty)
     }
 

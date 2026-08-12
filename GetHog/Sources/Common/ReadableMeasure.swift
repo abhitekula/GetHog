@@ -79,6 +79,19 @@ extension Theme {
         /// has always had on a phone.
         static let pane: CGFloat = 640
 
+        /// A sparse desktop collection whose rows carry one identity and one
+        /// status, rather than a table that benefits from every available
+        /// column.
+        ///
+        /// At 1,280pt the live Mac sweep put those two facts more than a full
+        /// reading column apart on Groups, Warehouse, Pipelines, Surveys,
+        /// Summaries, Health, Notebooks and Max. 760pt preserves room for a
+        /// three-line `DataRow` plus its trailing pill, while keeping both ends
+        /// inside one glance. It is Mac-only: iPad split columns already impose
+        /// their own useful measure, and dense Mac surfaces deliberately do not
+        /// opt in.
+        static let sparseCollection: CGFloat = 760
+
         /// Below this, a `DataRow` stacks instead of competing for width.
         ///
         /// 280pt. Measured off the sweep rather than picked: the `DataRow`s in
@@ -193,5 +206,20 @@ extension View {
     func readableMeasure(_ width: CGFloat) -> some View {
         frame(maxWidth: width, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Gives a sparse Mac collection a leading-aligned desktop measure.
+    ///
+    /// This belongs on the collection itself, after its surface styling. Below
+    /// the cap it is an identity, so compact windows do not acquire a fixed
+    /// width or horizontal scrolling. Dense tables and timelines do not use it.
+    @ViewBuilder
+    func sparseCollectionSurface() -> some View {
+        #if os(macOS)
+        frame(maxWidth: Theme.Measure.sparseCollection, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        #else
+        self
+        #endif
     }
 }

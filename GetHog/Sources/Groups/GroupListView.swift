@@ -118,6 +118,7 @@ struct GroupListView: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        .sparseCollectionSurface()
         .skeleton(store.isLoading && store.isEmpty)
     }
 

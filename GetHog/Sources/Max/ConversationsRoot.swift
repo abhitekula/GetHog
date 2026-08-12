@@ -124,6 +124,7 @@ struct ConversationsRoot: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        .sparseCollectionSurface()
         .skeleton(store.isLoading && store.conversations.isEmpty)
     }
 

@@ -128,6 +128,7 @@ struct NotebooksRoot: View {
         }
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
+        .sparseCollectionSurface()
         .skeleton(store.isLoading && store.notebooks.isEmpty)
     }
 

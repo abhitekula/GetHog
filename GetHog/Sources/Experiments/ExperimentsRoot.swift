@@ -65,9 +65,19 @@ final class ExperimentsStore {
 }
 
 struct ExperimentsRoot: View {
+    static let managementPath = "experiments"
+
+    static let emptyPolicy = EmptyOutcomePolicy(
+        title: "No experiments",
+        systemImage: "flask",
+        message: "An experiment splits traffic behind a feature flag and measures one metric against a control. None have been created in this project; GetHog reads experiments after they are set up in PostHog.",
+        actionTitle: "Create in PostHog"
+    )
+
     @Environment(AppModel.self) private var model
     @Environment(OpenDetails.self) private var openDetails
     @Environment(ExperimentLifecycleController.self) private var lifecycle
+    @Environment(\.openURL) private var openURL
     @State private var store = ExperimentsStore()
 
     /// The open experiment. No second column: the detail is a sheet because the
@@ -111,14 +121,22 @@ struct ExperimentsRoot: View {
             // Says what the product is, not only that it is empty — the standard
             // Notebooks, Actions and Pipelines already set on this app's empty
             // states.
-            EmptyStateView(
-                title: "No experiments",
-                systemImage: "flask",
-                illustration: .experiment,
-                message: "An experiment splits traffic behind a feature flag and measures one metric against a control. None have been created in this project; they are set up in PostHog and appear here once they exist."
-            )
+            emptyState
         } else {
             list
+        }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        if consoleURL != nil {
+            EmptyStateView(
+                policy: Self.emptyPolicy,
+                illustration: .experiment,
+                action: openConsole
+            )
+        } else {
+            EmptyStateView(policy: Self.emptyPolicy, illustration: .experiment)
         }
     }
 
@@ -160,6 +178,12 @@ struct ExperimentsRoot: View {
     private func load() async {
         guard let client = model.client, let projectID = model.projectID else { return }
         await store.load(client: client, projectID: projectID, lifecycle: lifecycle)
+    }
+
+    private var consoleURL: URL? { model.webURL(path: Self.managementPath) }
+
+    private func openConsole() {
+        if let consoleURL { openURL(consoleURL) }
     }
 }
 

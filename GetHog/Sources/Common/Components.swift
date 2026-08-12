@@ -266,6 +266,139 @@ struct SectionEmptyState: View {
     }
 }
 
+/// The semantic contract for an empty result, independent of whether it fills
+/// a whole screen or sits inside stable collection chrome.
+///
+/// Required title and message fields make a complete outcome the default.
+/// Features own named policies and pass the same value into their rendered
+/// empty state, so behavior tests cannot drift into hand-built copy that the
+/// production call site never uses.
+struct EmptyOutcomePolicy: Equatable, Sendable {
+    let title: String
+    let systemImage: String
+    let message: String
+    var actionTitle: String? = nil
+}
+
+extension EmptyStateView {
+    init(
+        policy: EmptyOutcomePolicy,
+        illustration: BrandIllustration? = nil,
+        action: (() -> Void)? = nil
+    ) {
+        self.init(
+            title: policy.title,
+            systemImage: policy.systemImage,
+            illustration: illustration,
+            message: policy.message,
+            actionTitle: policy.actionTitle,
+            action: action
+        )
+    }
+}
+
+/// A complete outcome for one collection inside a screen that still has
+/// useful chrome or sibling content.
+///
+/// This is intentionally between `EmptyStateView` and `SectionEmptyState`.
+/// The former replaces a whole screen and centres itself in all available
+/// height; the latter is one quiet line inside a report. A selected collection
+/// in a filterable screen needs a heading, an explanation and sometimes a
+/// recovery action, but must not pretend the filter bar or sibling sections
+/// disappeared with its rows.
+struct CollectionEmptyState: View {
+    let title: String
+    let systemImage: String
+    let message: String
+    var actionTitle: String?
+    var action: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.m) {
+            RowGlyph(systemName: systemImage, tint: Theme.neutralMark, size: 36)
+
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(.vertical, Theme.Space.m)
+        .frame(maxWidth: Theme.Measure.prose, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension CollectionEmptyState {
+    init(policy: EmptyOutcomePolicy, action: (() -> Void)? = nil) {
+        self.init(
+            title: policy.title,
+            systemImage: policy.systemImage,
+            message: policy.message,
+            actionTitle: policy.actionTitle,
+            action: action
+        )
+    }
+}
+
+struct EmptyStateGuidePolicy: Equatable, Sendable {
+    let title: String
+    let systemImage: String
+    var isInitiallyExpanded = false
+}
+
+/// Secondary education beneath an empty result, collapsed on every visit.
+///
+/// The empty outcome and its recovery stay above the fold; details that help a
+/// first-time reader remain one disclosure away without making every repeat
+/// check scroll through a miniature manual.
+struct EmptyStateGuide<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder let content: Content
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                content
+            }
+            .padding(.top, Theme.Space.m)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: Theme.Measure.prose, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension EmptyStateGuide {
+    init(
+        policy: EmptyStateGuidePolicy,
+        @ViewBuilder content: () -> Content
+    ) {
+        title = policy.title
+        systemImage = policy.systemImage
+        self.content = content()
+        _isExpanded = State(initialValue: policy.isInitiallyExpanded)
+    }
+}
+
 /// The verbatim fault, kept out of the reader's way but never dropped.
 ///
 /// Measured on the Web screen: a `DecodingError` description — four lines naming
