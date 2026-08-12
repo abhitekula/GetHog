@@ -302,6 +302,12 @@ targets:
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets.entitlements
+          # A teamless Mac Debug extension has no App Group by construction,
+          # so it must not register editors whose dynamic catalogs can never
+          # resolve. This condition is scoped to this target and configuration;
+          # Release and the universal iOS widgets keep their production kinds
+          # and App Intent configuration schemas unchanged.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) GETHOG_UNSHARED_MAC_WIDGETS"
         Release:
           CODE_SIGN_ENTITLEMENTS: GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements
 

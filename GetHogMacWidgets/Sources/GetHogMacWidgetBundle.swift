@@ -1,5 +1,72 @@
+import Foundation
+import GetHogUI
 import SwiftUI
 import WidgetKit
+
+#if GETHOG_UNSHARED_MAC_WIDGETS
+
+/// One cache-free provider for the two teamless Debug cards. Placeholder,
+/// snapshot and timeline all carry the same neutral entry, so the installed
+/// widget can always leave redaction for an explicit unavailable state.
+private struct MacDebugUnavailableEntry: TimelineEntry {
+    let date: Date
+}
+
+private struct MacDebugUnavailableProvider: TimelineProvider {
+
+    func placeholder(in context: Context) -> MacDebugUnavailableEntry {
+        MacDebugUnavailableEntry(date: Date())
+    }
+
+    func getSnapshot(
+        in context: Context,
+        completion: @escaping (MacDebugUnavailableEntry) -> Void
+    ) {
+        completion(MacDebugUnavailableEntry(date: Date()))
+    }
+
+    func getTimeline(
+        in context: Context,
+        completion: @escaping (Timeline<MacDebugUnavailableEntry>) -> Void
+    ) {
+        let now = Date()
+        completion(WidgetRefresh.timeline(from: now) { MacDebugUnavailableEntry(date: $0) })
+    }
+}
+
+/// These Debug-only widgets use distinct kinds because their static schema is
+/// intentionally different from the signed widgets' App Intent schema. Reusing
+/// a production kind would rely on an undocumented persisted-state migration
+/// and could preserve the stale redacted instance this boundary removes.
+private struct MacDebugMetricWidget: Widget {
+    static let kind = "app.gethog.widget.debug.metric-unshared"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: Self.kind, provider: MacDebugUnavailableProvider()) { _ in
+            NoDataView(message: WidgetCache.noDataMessage)
+                .containerBackground(Theme.cardBackground, for: .widget)
+        }
+        .configurationDisplayName("Metric")
+        .description("This Debug build can't share app data with widgets. Signed builds let you select a synced metric.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+private struct MacDebugFlagWidget: Widget {
+    static let kind = "app.gethog.widget.debug.flag-unshared"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: Self.kind, provider: MacDebugUnavailableProvider()) { _ in
+            NoDataView(message: WidgetCache.noDataMessage)
+                .containerBackground(Theme.cardBackground, for: .widget)
+        }
+        .configurationDisplayName("Feature Flag")
+        .description("This Debug build can't share app data with widgets. Signed builds let you select an allowed flag.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+#endif
 
 /// Desktop widgets: the same three portable widgets iOS ships, rendering the
 /// same `SharedSnapshot` files. The Control Center controls are absent because
@@ -20,8 +87,14 @@ import WidgetKit
 struct GetHogMacWidgetBundle: WidgetBundle {
 
     var body: some Widget {
+        #if GETHOG_UNSHARED_MAC_WIDGETS
+        MacDebugMetricWidget()
+        HealthWidget()
+        MacDebugFlagWidget()
+        #else
         MetricWidget()
         HealthWidget()
         FlagWidget()
+        #endif
     }
 }

@@ -240,6 +240,130 @@ struct WidgetNoDataMessageTests {
     }
 }
 
+@Suite("Mac Debug widget configuration")
+struct MacDebugWidgetConfigurationTests {
+
+    @Test("only unshared Mac Debug registers distinct static widgets")
+    func teamlessBuildUsesDistinctStaticConfigurations() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // GetHogMac
+            .deletingLastPathComponent()  // repository
+        let project = try String(
+            contentsOf: repository.appending(path: "project.yml"),
+            encoding: .utf8
+        )
+        let targetStart = try #require(project.range(of: "  GetHogMacWidgets:\n"))
+        let afterTarget = project[targetStart.upperBound...]
+        let targetEnd = try #require(afterTarget.range(of: "\n  GetHogVision:\n"))
+        let target = afterTarget[..<targetEnd.lowerBound]
+        let configsStart = try #require(target.range(of: "      configs:\n"))
+        let configs = target[configsStart.upperBound...]
+        let debugStart = try #require(configs.range(of: "        Debug:\n"))
+        let afterDebug = configs[debugStart.upperBound...]
+        let releaseStart = try #require(afterDebug.range(of: "        Release:\n"))
+        let debugSettings = afterDebug[..<releaseStart.lowerBound]
+        let releaseSettings = afterDebug[releaseStart.upperBound...]
+
+        #expect(debugSettings.contains("GetHogMacWidgets/Support/GetHogMacWidgets.entitlements"))
+        #expect(debugSettings.contains("GETHOG_UNSHARED_MAC_WIDGETS"))
+        #expect(releaseSettings.contains("GetHogMacWidgets/Support/GetHogMacWidgets-Distribution.entitlements"))
+        #expect(!releaseSettings.contains("GETHOG_UNSHARED_MAC_WIDGETS"))
+        #expect(project.components(separatedBy: "GETHOG_UNSHARED_MAC_WIDGETS").count - 1 == 1)
+
+        let rawDebugEntitlements = try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: repository.appending(
+                path: "GetHogMacWidgets/Support/GetHogMacWidgets.entitlements"
+            )),
+            format: nil
+        )
+        let debugEntitlements = try #require(rawDebugEntitlements as? [String: Any])
+        #expect(debugEntitlements["com.apple.security.application-groups"] == nil)
+
+        let source = try String(
+            contentsOf: repository.appending(path: "GetHogMacWidgets/Sources/GetHogMacWidgetBundle.swift"),
+            encoding: .utf8
+        )
+        let definitionsStart = try #require(source.range(of: "#if GETHOG_UNSHARED_MAC_WIDGETS"))
+        let afterDefinitionsStart = source[definitionsStart.upperBound...]
+        let definitionsEnd = try #require(afterDefinitionsStart.range(of: "#endif"))
+        let debugDefinitions = afterDefinitionsStart[..<definitionsEnd.lowerBound]
+
+        let bundleStart = try #require(source.range(of: "struct GetHogMacWidgetBundle: WidgetBundle"))
+        let bundle = source[bundleStart.lowerBound...]
+        let unsharedStart = try #require(bundle.range(of: "#if GETHOG_UNSHARED_MAC_WIDGETS"))
+        let guarded = bundle[unsharedStart.upperBound...]
+        let elseRange = try #require(guarded.range(of: "#else"))
+        let debugBranch = guarded[..<elseRange.lowerBound]
+        let afterElse = guarded[elseRange.upperBound...]
+        let endRange = try #require(afterElse.range(of: "#endif"))
+        let releaseBranch = afterElse[..<endRange.lowerBound]
+        let debugLines = debugBranch
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        let releaseLines = releaseBranch
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+
+        #expect(debugLines.contains("MacDebugMetricWidget()"))
+        #expect(debugLines.contains("MacDebugFlagWidget()"))
+        #expect(!debugLines.contains("MetricWidget()"))
+        #expect(!debugLines.contains("FlagWidget()"))
+        #expect(releaseLines.contains("MetricWidget()"))
+        #expect(releaseLines.contains("FlagWidget()"))
+
+        let provider = try sourceSlice(
+            named: "private struct MacDebugUnavailableProvider: TimelineProvider",
+            before: "/// These Debug-only widgets",
+            in: String(debugDefinitions)
+        )
+        #expect(provider.contains("MacDebugUnavailableEntry(date: Date())"))
+        #expect(provider.contains("WidgetRefresh.timeline"))
+        #expect(provider.contains("func getSnapshot"))
+        #expect(provider.contains("completion(MacDebugUnavailableEntry(date: Date()))"))
+        #expect(!provider.contains("WidgetCache"))
+        #expect(!provider.contains("SharedSnapshot"))
+        #expect(!provider.contains(".sample"))
+
+        let metricWrapper = try sourceSlice(
+            named: "private struct MacDebugMetricWidget: Widget",
+            before: "private struct MacDebugFlagWidget: Widget",
+            in: String(debugDefinitions)
+        )
+        let flagStart = try #require(debugDefinitions.range(of: "private struct MacDebugFlagWidget: Widget"))
+        let flagWrapper = debugDefinitions[flagStart.lowerBound...]
+        for (wrapper, kind) in [
+            (metricWrapper, "app.gethog.widget.debug.metric-unshared"),
+            (flagWrapper, "app.gethog.widget.debug.flag-unshared"),
+        ] {
+            #expect(wrapper.contains(kind))
+            #expect(wrapper.contains("StaticConfiguration"))
+            #expect(wrapper.contains("NoDataView(message: WidgetCache.noDataMessage)"))
+            #expect(!wrapper.contains("AppIntentConfiguration"))
+        }
+
+        let metric = try String(
+            contentsOf: repository.appending(path: "GetHogWidgets/MetricWidget.swift"),
+            encoding: .utf8
+        )
+        let flag = try String(
+            contentsOf: repository.appending(path: "GetHogWidgets/FlagWidget.swift"),
+            encoding: .utf8
+        )
+        #expect(metric.contains("static let kind = \"app.gethog.widget.metric\""))
+        #expect(metric.contains("AppIntentConfiguration"))
+        #expect(flag.contains("static let kind = \"app.gethog.widget.flag\""))
+        #expect(flag.contains("AppIntentConfiguration"))
+    }
+
+    private func sourceSlice(named start: String, before end: String, in source: String) throws -> Substring {
+        let startRange = try #require(source.range(of: start))
+        let tail = source[startRange.lowerBound...]
+        let endRange = try #require(tail.range(of: end))
+        return tail[..<endRange.lowerBound]
+    }
+}
+
 @Suite("Metric widget route")
 struct MetricWidgetRouteTests {
 
