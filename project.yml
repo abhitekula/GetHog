@@ -212,11 +212,14 @@ targets:
         - hostedAppDebug
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
-        # The bundle id and visible name remain the cross-platform GetHog
-        # identity, while the build artifact is unique. Xcode resolves hosted
-        # unit tests by output path even with scheme inference disabled; sharing
-        # GetHog.app with iOS makes that iOS target a second Mac TEST_HOST.
-        PRODUCT_NAME: GetHogMac
+        # ProcessInfoPlist derives CFBundleName from PRODUCT_NAME after merging
+        # the source plist, so this is the native short name. The wrapper and
+        # executable stay unique: Xcode resolves hosted tests by output path
+        # even with scheme inference disabled, and sharing GetHog.app with iOS
+        # makes that target a second Mac TEST_HOST.
+        PRODUCT_NAME: GetHog
+        WRAPPER_NAME: GetHogMac.app
+        EXECUTABLE_NAME: GetHogMac
         # Shared sources and Mac tests import the product module as GetHog.
         PRODUCT_MODULE_NAME: GetHog
         GENERATE_INFOPLIST_FILE: YES

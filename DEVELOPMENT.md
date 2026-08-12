@@ -138,11 +138,14 @@ artifact unique, list its app and test bundles in `project.yml`, keep
 `buildImplicitDependencies: false`, and express extension and package
 relationships as target dependencies.
 
-The Mac source Info.plist owns `CFBundleName=GetHog`. Keep that source key even
-though the target also generates plist values: Xcode 26.6 derives the processed
-short name from the unique `GetHogMac` product and ignores an
-`INFOPLIST_KEY_CFBundleName` override at this merge boundary. The source key is
-what keeps the native app menu and About name user-facing `GetHog`.
+The Mac product identity is deliberately split across build settings:
+`PRODUCT_NAME=GetHog` owns the processed native short name, while
+`WRAPPER_NAME=GetHogMac.app` and `EXECUTABLE_NAME=GetHogMac` keep the build
+artifact unique. Xcode 26.6 derives processed `CFBundleName` from PRODUCT_NAME
+after merging the source plist, so neither a literal source value nor an
+`INFOPLIST_KEY_CFBundleName` override can compensate for a different product
+name. Keep all three settings together; the first is native UI identity and the
+other two prevent iOS from becoming a second Mac unit-test host.
 
 Every test bundle also pins distinct `PRODUCT_NAME` and `PRODUCT_MODULE_NAME`
 values. Do not replace them with inherited project defaults: Xcode 26.6 can

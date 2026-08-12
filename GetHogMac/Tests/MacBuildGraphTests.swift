@@ -91,31 +91,20 @@ struct MacBuildGraphTests {
 
         let macConfigurations = configurations.filter {
             $0.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog;")
-                && $0.contains("PRODUCT_NAME = GetHogMac;")
+                && $0.contains("INFOPLIST_FILE = \"GetHogMac/Support/GetHogMac-Info.plist\";")
         }
         #expect(macConfigurations.count == 2)
         for configuration in macConfigurations {
-            #expect(configuration.contains("PRODUCT_NAME = GetHogMac;"))
+            #expect(configuration.contains("PRODUCT_NAME = GetHog;"))
+            #expect(configuration.contains("WRAPPER_NAME = GetHogMac.app;"))
+            #expect(configuration.contains("EXECUTABLE_NAME = GetHogMac;"))
             #expect(configuration.contains("PRODUCT_MODULE_NAME = GetHog;"))
             #expect(configuration.contains("INFOPLIST_KEY_CFBundleDisplayName = GetHog;"))
         }
     }
 
-    @Test("source and processed Mac plists keep the native GetHog short name")
+    @Test("processed Mac plist keeps the native GetHog short name")
     func macNativeShortName() throws {
-        let checkout = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let sourceData = try Data(
-            contentsOf: checkout.appending(path: "GetHogMac/Support/GetHogMac-Info.plist")
-        )
-        let source = try #require(
-            PropertyListSerialization.propertyList(from: sourceData, format: nil)
-                as? [String: Any]
-        )
-
-        #expect(source["CFBundleName"] as? String == "GetHog")
         #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String == "GetHog")
         #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String == "GetHog")
     }
@@ -188,7 +177,7 @@ struct MacBuildGraphTests {
         }
         let hosts: [(name: String, marker: String)] = [
             ("iOS", "PRODUCT_NAME = GetHog;"),
-            ("Mac", "PRODUCT_NAME = GetHogMac;"),
+            ("Mac", "INFOPLIST_FILE = \"GetHogMac/Support/GetHogMac-Info.plist\";"),
             ("Vision", "INFOPLIST_FILE = \"GetHogVision/Support/GetHogVision-Info.plist\";"),
             ("Watch", "PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.watchkitapp;"),
             ("TV", "INFOPLIST_FILE = \"GetHogTV/Support/GetHogTV-Info.plist\";"),
