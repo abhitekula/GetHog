@@ -77,6 +77,14 @@ struct MacRootView: View {
                     .environment(\.horizontalSizeClass, sizeClass)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            // The scene owns the selected root's native title from its outer
+            // detail column. Regular-width roots such as Events and Sessions
+            // bring a nested `NavigationSplitView`, which consumes title
+            // preferences attached inside its list column; without this outer
+            // title the containing window falls back to GetHog. The roots keep
+            // their own chrome for compact pushes and inner column labels.
+            .topLevelNavigationTitle(selectedTab.title)
+            .projectSubtitle()
         }
         // Nothing typed into this app is a sentence by default — see RootView's
         // note for the measurement. The Mac half of that pair is autocorrection;

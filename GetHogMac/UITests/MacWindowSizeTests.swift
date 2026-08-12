@@ -309,6 +309,44 @@ final class MacWindowSizeTests: XCTestCase {
         }
     }
 
+    /// A regular-width root may own a nested `NavigationSplitView`, but that
+    /// inner container must not consume the title before the scene can compose
+    /// the selected destination and project identity into its native title.
+    func testRegularNestedRootsKeepDestinationWindowTitle() {
+        let app = DemoLaunch.launch()
+        DemoLaunch.settle(app)
+        leaveFullScreen(app)
+        defer { resize(app, to: CGSize(width: 800, height: 600)) }
+
+        let size = CGSize(width: 1000, height: 700)
+        resize(app, to: size)
+        let reached = app.windows.firstMatch.frame
+        XCTAssertEqual(reached.width, size.width, "The window missed the requested width.")
+        XCTAssertEqual(reached.height, size.height, "The window missed the requested height.")
+
+        let projectIdentity = "Northstar Sandbox · Starling Metrics Lab"
+        for destination in [
+            "Dashboards", "Events", "Sessions", "Insights", "People", "Errors", "Flags",
+        ] {
+            XCTAssertTrue(
+                go(destination, in: app),
+                "The Go menu could not reach \(destination) at 1000pt."
+            )
+            let selectedRoot = app.windows.descendants(matching: .any)[
+                "gethog.root.\(destination == "Errors" ? "errorTracking" : destination.lowercased())"
+            ].firstMatch
+            XCTAssertTrue(
+                DemoLaunch.wait(for: selectedRoot),
+                "The shell never selected the \(destination) root."
+            )
+            XCTAssertEqual(
+                app.windows.firstMatch.title,
+                "\(destination) – \(projectIdentity)",
+                "The nested \(destination) root erased the scene's native title ownership."
+            )
+        }
+    }
+
     private func assertCompactDrillIn(
         _ destination: (title: String, row: String, otherRow: String, detail: String),
         at size: CGSize,
