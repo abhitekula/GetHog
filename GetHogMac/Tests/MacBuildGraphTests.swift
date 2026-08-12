@@ -176,7 +176,7 @@ struct MacBuildGraphTests {
                 && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.TopShelf;")
         }
         let hosts: [(name: String, marker: String)] = [
-            ("iOS", "PRODUCT_NAME = GetHog;"),
+            ("iOS", "INFOPLIST_FILE = \"GetHog/Support/GetHog-Info.plist\";"),
             ("Mac", "INFOPLIST_FILE = \"GetHogMac/Support/GetHogMac-Info.plist\";"),
             ("Vision", "INFOPLIST_FILE = \"GetHogVision/Support/GetHogVision-Info.plist\";"),
             ("Watch", "PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.watchkitapp;"),
