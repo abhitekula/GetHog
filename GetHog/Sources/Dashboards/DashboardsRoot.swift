@@ -206,6 +206,7 @@ struct DashboardsRoot: View {
 #if os(macOS)
             .toolbar(id: "dashboards") {
                 PinnedProjectSwitcher()
+                ToolbarSpacer(.flexible)
                 ToolbarItem(id: "refresh", placement: .primaryAction) {
                     Button {
                         Task { await load() }
@@ -316,6 +317,7 @@ struct DashboardsRoot: View {
             // coats.
             .toolbar(id: "dashboards") {
                 PinnedProjectSwitcher()
+                ToolbarSpacer(.flexible)
                 ToolbarItem(id: "refresh", placement: .primaryAction) {
                     Button {
                         Task { await load() }

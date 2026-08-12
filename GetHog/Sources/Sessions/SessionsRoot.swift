@@ -260,6 +260,7 @@ struct SessionsRoot: View {
                 // the measurement.
                 .toolbar(id: "sessions") {
                     PinnedProjectSwitcher()
+                    ToolbarSpacer(.flexible)
                     ToolbarItem(id: "filter", placement: .primaryAction) { filterButton }
                     ToolbarItem(id: "playlists", placement: .primaryAction) { playlistsLink }
                     ToolbarItem(id: "refresh", placement: .primaryAction) {

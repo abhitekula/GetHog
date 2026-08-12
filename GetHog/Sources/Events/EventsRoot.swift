@@ -532,6 +532,9 @@ struct EventsRoot: View {
                 .topLevelNavigationTitle("Events")
                 .toolbar {
                     ProjectSwitcher()
+                    #if os(macOS)
+                    ToolbarSpacer(.flexible)
+                    #endif
                     #if !os(tvOS)
                     // tvOS guarantees persistence only for a small preferences
                     // domain; its other local storage is purgeable. Saved

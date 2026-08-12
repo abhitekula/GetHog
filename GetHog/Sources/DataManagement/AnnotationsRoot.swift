@@ -88,6 +88,9 @@ struct AnnotationsRoot: View {
             .navigationTitle("Annotations")
             .toolbar {
                 ProjectSwitcher()
+                #if os(macOS)
+                ToolbarSpacer(.flexible)
+                #endif
                 composeButton
             }
             .projectSubtitle()
