@@ -20,10 +20,20 @@ final class MacWidgetContractTests: XCTestCase {
         let frame: CGRect
     }
 
-    private struct InstalledResolution {
-        let witnessedCount: Int
-        let clusterCount: Int
-        let canonicals: [InstalledCandidate]
+    private enum InstalledResolution {
+        case absent
+        case resolved([InstalledCandidate])
+        case blocked(String)
+    }
+
+    private enum MenuProbeResolution {
+        case opened(XCUIElement)
+        case blocked(String)
+    }
+
+    private enum MenuWitnessResolution {
+        case witnessed
+        case blocked(String)
     }
 
     private static let variants = [
@@ -370,28 +380,26 @@ final class MacWidgetContractTests: XCTestCase {
 
     @MainActor
     private func installedWidget(named name: String) -> XCUIElement {
-        let resolution = installedWidgetResolution(named: name)
-        XCTAssertEqual(
-            resolution.clusterCount,
-            1,
-            "Expected exactly one installed \(name) widget cluster; found \(resolution.clusterCount) "
-                + "from \(resolution.witnessedCount) menu-witnessed descendants."
-        )
-        XCTAssertEqual(
-            resolution.canonicals.count,
-            resolution.clusterCount,
-            "Every installed \(name) widget cluster must have one witnessed container enclosing its descendants."
-        )
-        guard resolution.clusterCount == 1, let canonical = resolution.canonicals.first else {
+        switch installedWidgetResolution(named: name) {
+        case .absent:
+            XCTFail("No installed \(name) widget was present.")
             return missingInstalledWidget(named: name)
+        case let .blocked(reason):
+            XCTFail("Installed \(name) widget resolution was blocked: \(reason).")
+            return missingInstalledWidget(named: name)
+        case let .resolved(canonicals):
+            guard canonicals.count == 1, let canonical = canonicals.first else {
+                XCTFail("Expected exactly one installed \(name) widget cluster; found \(canonicals.count).")
+                return missingInstalledWidget(named: name)
+            }
+            return canonical.element
         }
-        return canonical.element
     }
 
     @MainActor
     private func installedWidgetResolution(named name: String) -> InstalledResolution {
         guard closeMenus() else {
-            return InstalledResolution(witnessedCount: 0, clusterCount: 0, canonicals: [])
+            return .blocked("could not close pre-existing menus")
         }
         let predicate = NSPredicate(
             format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
@@ -412,28 +420,38 @@ final class MacWidgetContractTests: XCTestCase {
         for (id, element) in elements.enumerated()
         where element.exists && element.isHittable && !excludedTypes.contains(element.elementType) {
             let frame = element.frame
-            guard frame.width > 0, frame.height > 0 else { continue }
             let candidate = InstalledCandidate(
                 id: id,
                 element: element,
                 frame: frame
             )
-            if witnessesInstalledWidgetMenu(for: element) {
+            switch witnessesInstalledWidgetMenu(for: element) {
+            case .witnessed:
                 witnessed.append(candidate)
+            case let .blocked(reason):
+                return .blocked("candidate \(id) menu probe failed: \(reason)")
             }
         }
 
-        let clusters = InstalledWidgetGeometryResolver.clusters(for: witnessed.map {
+        let geometry = InstalledWidgetGeometryResolver.resolve(witnessed.map {
             InstalledWidgetGeometryCandidate(id: $0.id, frame: $0.frame)
         })
-        let byID = Dictionary(uniqueKeysWithValues: witnessed.map { ($0.id, $0) })
-        return InstalledResolution(
-            witnessedCount: witnessed.count,
-            clusterCount: clusters.count,
-            canonicals: clusters.compactMap { cluster in
-                cluster.canonicalID.flatMap { byID[$0] }
+        switch geometry {
+        case .absent:
+            return .absent
+        case let .blocked(reason):
+            return .blocked(reason.description)
+        case let .resolved(clusters):
+            let byID = Dictionary(uniqueKeysWithValues: witnessed.map { ($0.id, $0) })
+            var canonicals: [InstalledCandidate] = []
+            for cluster in clusters {
+                guard let canonical = byID[cluster.canonicalID] else {
+                    return .blocked("could not bind canonical AX handle \(cluster.canonicalID)")
+                }
+                canonicals.append(canonical)
             }
-        )
+            return .resolved(canonicals)
+        }
     }
 
     @MainActor
@@ -447,30 +465,51 @@ final class MacWidgetContractTests: XCTestCase {
     @MainActor
     private func installedWidgetMenu(for widget: XCUIElement, named name: String) -> XCUIElement {
         XCTAssertTrue(DemoLaunch.wait(for: widget, timeout: 10), "The \(name) widget was not installed.")
-        let menu = openInstalledWidgetMenu(for: widget)
-        XCTAssertNotNil(menu, "The installed \(name) identity opened no scoped native widget menu.")
-        return menu ?? notificationCenter.menus
-            .matching(NSPredicate(format: "identifier == %@", "__missing-installed-menu__"))
-            .firstMatch
+        switch openInstalledWidgetMenu(for: widget) {
+        case let .opened(menu):
+            return menu
+        case let .blocked(reason):
+            XCTFail("The installed \(name) menu was blocked: \(reason).")
+            return notificationCenter.menus
+                .matching(NSPredicate(format: "identifier == %@", "__missing-installed-menu__"))
+                .firstMatch
+        }
     }
 
     @MainActor
-    private func witnessesInstalledWidgetMenu(for widget: XCUIElement) -> Bool {
-        guard openInstalledWidgetMenu(for: widget) != nil else { return false }
-        return closeMenus()
+    private func witnessesInstalledWidgetMenu(for widget: XCUIElement) -> MenuWitnessResolution {
+        switch openInstalledWidgetMenu(for: widget) {
+        case let .blocked(reason):
+            return .blocked(reason)
+        case .opened:
+            guard closeMenus() else {
+                return .blocked("could not close the witnessed widget menu")
+            }
+            return .witnessed
+        }
     }
 
     @MainActor
-    private func openInstalledWidgetMenu(for widget: XCUIElement) -> XCUIElement? {
-        guard closeMenus(), hittableRemoveWidget() == nil else { return nil }
+    private func openInstalledWidgetMenu(for widget: XCUIElement) -> MenuProbeResolution {
+        guard closeMenus() else { return .blocked("could not close pre-existing menus") }
+        guard hittableRemoveWidget() == nil else {
+            return .blocked("a hittable Remove Widget action survived menu closure")
+        }
+        guard widget.exists && widget.isHittable else {
+            return .blocked("the AX handle no longer exists or is not hittable")
+        }
         widget.rightClick()
         guard DemoLaunch.wait(timeout: 3, until: {
             visibleInstalledWidgetMenu() != nil
         }) else {
             _ = closeMenus()
-            return nil
+            return .blocked("right-click exposed no visible menu with scoped Remove Widget")
         }
-        return visibleInstalledWidgetMenu()
+        guard let menu = visibleInstalledWidgetMenu() else {
+            _ = closeMenus()
+            return .blocked("the witnessed menu disappeared before its AX handle was bound")
+        }
+        return .opened(menu)
     }
 
     @MainActor
@@ -521,23 +560,28 @@ final class MacWidgetContractTests: XCTestCase {
     @MainActor
     private func removeInstalledWidgets(named names: [String] = ["Metric", "Project Health", "Feature Flag"]) {
         openNotificationCenter()
-        for name in names {
+        nameLoop: for name in names {
             while true {
-                let resolution = installedWidgetResolution(named: name)
-                guard resolution.clusterCount > 0 else { break }
-                guard resolution.canonicals.count == resolution.clusterCount else {
-                    XCTFail(
-                        "Cleanup found \(resolution.clusterCount) installed \(name) widget clusters, "
-                            + "but only \(resolution.canonicals.count) had a witnessed canonical container."
-                    )
+                let widget: InstalledCandidate
+                switch installedWidgetResolution(named: name) {
+                case .absent:
+                    continue nameLoop
+                case let .blocked(reason):
+                    XCTFail("Cleanup of \(name) was blocked: \(reason).")
                     return
+                case let .resolved(canonicals):
+                    guard let first = canonicals.first else {
+                        XCTFail("Cleanup resolved \(name) without a canonical widget.")
+                        return
+                    }
+                    widget = first
                 }
-                guard let widget = resolution.canonicals.first else {
-                    XCTFail("Cleanup could not select a canonical installed \(name) widget.")
-                    return
-                }
-                guard let menu = openInstalledWidgetMenu(for: widget.element) else {
-                    XCTFail("Cleanup could not reopen the canonical \(name) widget menu.")
+                let menu: XCUIElement
+                switch openInstalledWidgetMenu(for: widget.element) {
+                case let .opened(openedMenu):
+                    menu = openedMenu
+                case let .blocked(reason):
+                    XCTFail("Cleanup could not reopen the canonical \(name) widget menu: \(reason).")
                     return
                 }
                 guard let remove = firstHittableElement(

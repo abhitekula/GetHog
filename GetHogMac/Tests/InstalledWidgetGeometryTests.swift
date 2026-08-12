@@ -6,15 +6,15 @@ struct InstalledWidgetGeometryTests {
 
     @Test("nested widget descendants collapse into their enclosing container")
     func nestedDescendantsUseTheLargestEnclosingWitness() {
-        let clusters = InstalledWidgetGeometryResolver.clusters(for: [
+        let resolution = InstalledWidgetGeometryResolver.resolve([
             .init(id: 30, frame: CGRect(x: 24, y: 58, width: 150, height: 72)),
             .init(id: 10, frame: CGRect(x: 0, y: 0, width: 200, height: 150)),
             .init(id: 20, frame: CGRect(x: 24, y: 20, width: 80, height: 24)),
         ])
 
-        #expect(clusters == [
+        #expect(resolution == .resolved([
             .init(candidateIDs: [10, 20, 30], canonicalID: 10),
-        ])
+        ]))
     }
 
     @Test("two disjoint widgets remain ambiguous even when their areas differ")
@@ -38,24 +38,25 @@ struct InstalledWidgetGeometryTests {
             ),
         ]
 
-        let clusters = InstalledWidgetGeometryResolver.clusters(for: candidates)
+        let resolution = InstalledWidgetGeometryResolver.resolve(candidates)
 
-        #expect(clusters.count == 2)
-        #expect(clusters.map(\.canonicalID) == [10, 30])
-        #expect(InstalledWidgetGeometryResolver.singleCanonicalID(for: candidates) == nil)
+        #expect(resolution == .resolved([
+            .init(candidateIDs: [10, 20], canonicalID: 10),
+            .init(candidateIDs: [30, 40], canonicalID: 30),
+        ]))
     }
 
     @Test("overlapping sibling witnesses share their enclosing widget cluster")
     func overlappingSiblingsShareTheirEnclosingCluster() {
-        let clusters = InstalledWidgetGeometryResolver.clusters(for: [
+        let resolution = InstalledWidgetGeometryResolver.resolve([
             .init(id: 10, frame: CGRect(x: 0, y: 0, width: 220, height: 140)),
             .init(id: 20, frame: CGRect(x: 20, y: 30, width: 120, height: 60)),
             .init(id: 30, frame: CGRect(x: 100, y: 30, width: 100, height: 60)),
         ])
 
-        #expect(clusters == [
+        #expect(resolution == .resolved([
             .init(candidateIDs: [10, 20, 30], canonicalID: 10),
-        ])
+        ]))
     }
 
     @Test("overlapping leaves cannot impersonate a widget container")
@@ -71,10 +72,9 @@ struct InstalledWidgetGeometryTests {
             ),
         ]
 
-        #expect(InstalledWidgetGeometryResolver.clusters(for: candidates) == [
-            .init(candidateIDs: [20, 30], canonicalID: nil),
-        ])
-        #expect(InstalledWidgetGeometryResolver.singleCanonicalID(for: candidates) == nil)
+        #expect(InstalledWidgetGeometryResolver.resolve(candidates) == .blocked(
+            .missingCanonical(candidateIDs: [20, 30])
+        ))
     }
 
     @Test("canonical choice is stable when witnessed descendants reorder")
@@ -92,11 +92,61 @@ struct InstalledWidgetGeometryTests {
             frame: CGRect(x: 24, y: 58, width: 150, height: 72)
         )
 
-        #expect(InstalledWidgetGeometryResolver.singleCanonicalID(
-            for: [outer, title, content]
-        ) == 10)
-        #expect(InstalledWidgetGeometryResolver.singleCanonicalID(
-            for: [content, title, outer]
-        ) == 10)
+        let expected = InstalledWidgetGeometryResolution.resolved([
+            .init(candidateIDs: [10, 20, 30], canonicalID: 10),
+        ])
+        #expect(InstalledWidgetGeometryResolver.resolve([outer, title, content]) == expected)
+        #expect(InstalledWidgetGeometryResolver.resolve([content, title, outer]) == expected)
+    }
+
+    @Test("no witnessed descendants is explicitly absent")
+    func emptyInputIsAbsent() {
+        #expect(InstalledWidgetGeometryResolver.resolve([]) == .absent)
+    }
+
+    @Test("non-finite and non-positive frames block geometry resolution")
+    func invalidFramesAreBlocked() {
+        let invalidFrames: [(Int, CGRect)] = [
+            (1, CGRect(x: .nan, y: 0, width: 100, height: 100)),
+            (2, CGRect(x: 0, y: .infinity, width: 100, height: 100)),
+            (3, CGRect(x: 0, y: 0, width: .nan, height: 100)),
+            (4, CGRect(x: 0, y: 0, width: 100, height: .infinity)),
+            (5, CGRect(x: 0, y: 0, width: 0, height: 100)),
+            (6, CGRect(x: 0, y: 0, width: 100, height: 0)),
+            (7, CGRect(x: 0, y: 0, width: -1, height: 100)),
+            (8, CGRect(x: 0, y: 0, width: 100, height: -1)),
+            (9, .null),
+            (10, .infinite),
+        ]
+
+        for (id, frame) in invalidFrames {
+            #expect(InstalledWidgetGeometryResolver.resolve([
+                .init(id: id, frame: frame),
+            ]) == .blocked(.invalidFrame(candidateID: id)))
+        }
+    }
+
+    @Test("duplicate equal-frame enclosing witnesses are ambiguous")
+    func equalFrameContainersDoNotTieBreakByID() {
+        let resolution = InstalledWidgetGeometryResolver.resolve([
+            .init(id: 10, frame: CGRect(x: 0, y: 0, width: 200, height: 150)),
+            .init(id: 11, frame: CGRect(x: 0, y: 0, width: 200, height: 150)),
+            .init(id: 20, frame: CGRect(x: 24, y: 20, width: 80, height: 24)),
+        ])
+
+        #expect(resolution == .blocked(.ambiguousCanonical(candidateIDs: [10, 11])))
+    }
+
+    @Test("one strictly largest valid enclosing witness is canonical")
+    func uniqueLargestValidContainerWins() {
+        let resolution = InstalledWidgetGeometryResolver.resolve([
+            .init(id: 10, frame: CGRect(x: 0, y: 0, width: 200, height: 150)),
+            .init(id: 11, frame: CGRect(x: 10, y: 10, width: 180, height: 130)),
+            .init(id: 20, frame: CGRect(x: 24, y: 20, width: 80, height: 24)),
+        ])
+
+        #expect(resolution == .resolved([
+            .init(candidateIDs: [10, 11, 20], canonicalID: 10),
+        ]))
     }
 }
