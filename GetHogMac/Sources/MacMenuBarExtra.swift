@@ -1048,6 +1048,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     private let scheduleOnNextMainTurn: MainTurnScheduler
     private let scanVisibleWindows: @MainActor () -> Void
     private var observerTokens: [NSObjectProtocol] = []
+    private var didRunInitialWindowScan = false
 
     override init() {
         notificationCenter = .default
@@ -1073,9 +1074,11 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: Self.keepInMenuBar)
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationWillFinishLaunching(_ notification: Notification) {
         guard observerTokens.isEmpty else { return }
         let center = notificationCenter
+        // Restoration can finish before `applicationDidFinishLaunching`, so
+        // all observers must exist before AppKit begins restoring windows.
         // Capture the values, not this delegate. NotificationCenter retains
         // each block until its token is removed, so a block capturing `self`
         // would turn the owned token array into a retain cycle.
@@ -1128,7 +1131,11 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
                 scheduleOnNextMainTurn(scanVisibleWindows)
             }
         })
+    }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !didRunInitialWindowScan else { return }
+        didRunInitialWindowScan = true
         // Covers a restored window that became main before the app delegate's
         // finish callback; later windows take the did-become-main path above.
         scanVisibleWindows()

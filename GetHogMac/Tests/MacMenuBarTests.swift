@@ -579,8 +579,8 @@ struct MacWindowObserverLifecycleTests {
         }
     }
 
-    @Test("restoration schedules one later scan and registration is idempotent")
-    func restorationSchedulesOneScan() {
+    @Test("restoration finishing before launch completion still schedules one later scan")
+    func restorationBeforeDidFinishIsObserved() {
         let center = NotificationCenter()
         let recorder = Recorder()
         let delegate = MacAppDelegate(
@@ -588,10 +588,45 @@ struct MacWindowObserverLifecycleTests {
             scheduleOnNextMainTurn: recorder.schedule,
             scanVisibleWindows: recorder.scan
         )
-        let launched = Notification(name: NSApplication.didFinishLaunchingNotification)
+        let willFinish = Notification(name: NSApplication.willFinishLaunchingNotification)
+        let didFinish = Notification(name: NSApplication.didFinishLaunchingNotification)
 
-        delegate.applicationDidFinishLaunching(launched)
-        delegate.applicationDidFinishLaunching(launched)
+        delegate.applicationWillFinishLaunching(willFinish)
+        delegate.applicationWillFinishLaunching(willFinish)
+
+        #expect(delegate.registeredObserverCount == 4)
+        #expect(recorder.scanCount == 0)
+
+        center.post(name: NSApplication.didFinishRestoringWindowsNotification, object: nil)
+
+        #expect(recorder.scanCount == 0)
+        #expect(recorder.scheduled.count == 1)
+        delegate.applicationDidFinishLaunching(didFinish)
+        delegate.applicationDidFinishLaunching(didFinish)
+        #expect(recorder.scanCount == 1)
+
+        recorder.runNext()
+        #expect(recorder.scanCount == 2)
+        #expect(recorder.scheduled.isEmpty)
+        #expect(delegate.registeredObserverCount == 4)
+    }
+
+    @Test("restoration finishing after launch completion schedules one later scan")
+    func restorationAfterDidFinishIsObserved() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan
+        )
+        let willFinish = Notification(name: NSApplication.willFinishLaunchingNotification)
+        let didFinish = Notification(name: NSApplication.didFinishLaunchingNotification)
+
+        delegate.applicationWillFinishLaunching(willFinish)
+        delegate.applicationWillFinishLaunching(willFinish)
+        delegate.applicationDidFinishLaunching(didFinish)
+        delegate.applicationDidFinishLaunching(didFinish)
 
         #expect(delegate.registeredObserverCount == 4)
         #expect(recorder.scanCount == 1)
@@ -602,6 +637,8 @@ struct MacWindowObserverLifecycleTests {
         #expect(recorder.scheduled.count == 1)
         recorder.runNext()
         #expect(recorder.scanCount == 2)
+        #expect(recorder.scheduled.isEmpty)
+        #expect(delegate.registeredObserverCount == 4)
     }
 
     @Test("termination removes restoration with every other owned observer")
@@ -613,6 +650,9 @@ struct MacWindowObserverLifecycleTests {
             scheduleOnNextMainTurn: recorder.schedule,
             scanVisibleWindows: recorder.scan
         )
+        delegate.applicationWillFinishLaunching(
+            Notification(name: NSApplication.willFinishLaunchingNotification)
+        )
         delegate.applicationDidFinishLaunching(
             Notification(name: NSApplication.didFinishLaunchingNotification)
         )
@@ -623,6 +663,9 @@ struct MacWindowObserverLifecycleTests {
         #expect(delegate.registeredObserverCount == 0)
 
         center.post(name: NSApplication.didFinishRestoringWindowsNotification, object: nil)
+        center.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        center.post(name: NSWindow.willCloseNotification, object: nil)
+        center.post(name: NSWindow.didBecomeMainNotification, object: nil)
         #expect(recorder.scheduled.isEmpty)
         #expect(recorder.scanCount == 1)
     }
