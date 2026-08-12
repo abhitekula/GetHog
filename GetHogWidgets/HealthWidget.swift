@@ -473,11 +473,11 @@ struct HealthSection<Content: View>: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if let carriedForwardAge {
+                if let relativeCaption = carriedForwardAge?.relativeCaption {
                     // The footer's age belongs to the metrics. This section was
                     // fetched on a slower clock, so it states its own rather
                     // than letting the footer speak for it.
-                    Text("· as of \(carriedForwardAge.shortLabel) ago")
+                    Text("· as of \(relativeCaption)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

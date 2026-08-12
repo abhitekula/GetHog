@@ -35,4 +35,24 @@ struct WidgetPrimitivesTests {
         #expect(WidgetFreshness(capturedAt: now.addingTimeInterval(-2 * 86_400), now: now).shortLabel == "2d")
         #expect(WidgetFreshness(capturedAt: now.addingTimeInterval(5 * 60), now: now).age == 0)
     }
+
+    @Test("freshness captions are complete phrases without doubled relative suffixes")
+    func freshnessCaptions() {
+        let missing = WidgetFreshness(capturedAt: nil, now: now)
+        let recent = WidgetFreshness(capturedAt: now.addingTimeInterval(-30), now: now)
+        let minutes = WidgetFreshness(capturedAt: now.addingTimeInterval(-20 * 60), now: now)
+        let hours = WidgetFreshness(capturedAt: now.addingTimeInterval(-3 * 3_600), now: now)
+        let days = WidgetFreshness(capturedAt: now.addingTimeInterval(-2 * 86_400), now: now)
+
+        #expect(missing.caption == "never synced")
+        #expect(missing.relativeCaption == nil)
+        #expect(recent.caption == "Updated just now")
+        #expect(recent.relativeCaption == "just now")
+        #expect(minutes.caption == "Updated 20m ago")
+        #expect(minutes.relativeCaption == "20m ago")
+        #expect(hours.caption == "Updated 3h ago")
+        #expect(hours.relativeCaption == "3h ago")
+        #expect(days.caption == "Updated 2d ago")
+        #expect(days.relativeCaption == "2d ago")
+    }
 }

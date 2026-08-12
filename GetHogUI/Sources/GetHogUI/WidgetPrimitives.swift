@@ -89,13 +89,32 @@ public struct WidgetFreshness: Equatable, Sendable {
         }
     }
 
+    /// A complete visual sentence for a widget footer.
+    public var caption: String {
+        guard let age else { return "never synced" }
+        return Self.caption(forAge: age)
+    }
+
+    /// The relative-time clause for copy that supplies its own prefix, such as
+    /// a carried-forward section labelled "as of 20m ago".
+    public var relativeCaption: String? {
+        guard let age else { return nil }
+        return Self.relativeCaption(forAge: age)
+    }
+
     /// One-line title form for surfaces such as Top Shelf and the menu bar.
     public static func caption(forAge age: TimeInterval) -> String {
+        "Updated \(relativeCaption(forAge: age))"
+    }
+
+    /// A prefix-free age that remains grammatical at the under-a-minute
+    /// boundary instead of producing "now ago".
+    public static func relativeCaption(forAge age: TimeInterval) -> String {
         switch max(0, age) {
-        case ..<60: return "Updated just now"
-        case ..<3_600: return "Updated \(Int(age / 60))m ago"
-        case ..<86_400: return "Updated \(Int(age / 3_600))h ago"
-        default: return "Updated \(Int(age / 86_400))d ago"
+        case ..<60: return "just now"
+        case ..<3_600: return "\(Int(age / 60))m ago"
+        case ..<86_400: return "\(Int(age / 3_600))h ago"
+        default: return "\(Int(age / 86_400))d ago"
         }
     }
 }

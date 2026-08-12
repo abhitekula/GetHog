@@ -180,7 +180,7 @@ final class MacWidgetContractTests: XCTestCase {
 
         let runID = UUID().uuidString.lowercased()
         let expectedMetric = "Signed widget acceptance \(runID.prefix(8))"
-        let expectedFreshness = "Updated now ago"
+        let expectedFreshness = "Updated just now"
         let expectedDashboard = "Example App metric 33"
 
         let writer = XCUIApplication(bundleIdentifier: "app.gethog.GetHog")

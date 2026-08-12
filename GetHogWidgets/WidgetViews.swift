@@ -262,7 +262,7 @@ struct FreshnessFooter: View {
         HStack(spacing: 4) {
             Image(systemName: freshness.isStale ? "clock.badge.exclamationmark" : "clock")
                 .imageScale(.small)
-            Text(freshness.capturedAt == nil ? "never synced" : "Updated \(freshness.shortLabel) ago")
+            Text(freshness.caption)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             if showsRefresh, supportsInteraction {
