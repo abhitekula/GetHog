@@ -278,7 +278,7 @@ final class MacWindowSizeTests: XCTestCase {
         print("PHASEB-SIZE left-full-screen frame=\(app.windows.firstMatch.frame)")
     }
 
-    /// At both ordinary compact Mac sizes the source list stays a source list,
+    /// At all three compact Mac sizes the source list stays a source list,
     /// while each shared list/detail root drills into exactly one detail pane.
     func testExactCompactWindowSizesDrillIntoOnePane() {
         let app = DemoLaunch.launch()
@@ -286,7 +286,11 @@ final class MacWindowSizeTests: XCTestCase {
         leaveFullScreen(app)
         defer { resize(app, to: CGSize(width: 800, height: 600)) }
 
-        for size in [CGSize(width: 800, height: 600), CGSize(width: 640, height: 480)] {
+        for size in [
+            CGSize(width: 800, height: 600),
+            CGSize(width: 640, height: 480),
+            CGSize(width: 560, height: 420),
+        ] {
             resize(app, to: size)
             let reached = app.windows.firstMatch.frame
             print("ADAPTIVE-SIZE asked=\(size) got=\(reached) \(sidebarState(app))")

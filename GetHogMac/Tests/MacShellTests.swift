@@ -42,6 +42,19 @@ struct MacShellStructureTests {
         #expect(expansion.persistedValue == "Analyze,Monitor")
     }
 
+    @Test("Display settings names the source-list reset")
+    func sidebarResetCopy() {
+        #expect(MacSidebarSettings.resetTitle == "Reset Sidebar Sections")
+    }
+
+    @Test("Display settings reset restores source-list defaults")
+    func sidebarSettingsReset() {
+        #expect(
+            MacSidebarSettings.resetValue(from: "Data,Workspace")
+                == MacSidebarExpansion.defaultPersistedValue
+        )
+    }
+
     /// On the Mac a section row is a screen's only route — there is no phone
     /// index behind a search tab — so a tab missing from every section is a
     /// screen nothing can open.

@@ -169,7 +169,6 @@ struct MacRootView: View {
             sidebarSections
         }
         .listStyle(.sidebar)
-        .navigationTitle("GetHog")
     }
 
     private var selectedTabBinding: Binding<AppTab?> {

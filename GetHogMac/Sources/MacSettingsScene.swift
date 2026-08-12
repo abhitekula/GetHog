@@ -96,21 +96,30 @@ struct MacSettingsRoot: View {
     }
 }
 
-/// Mac-only: puts the sidebar back the way it started. The sidebar itself has
-/// no such affordance — macOS gives a `.sidebarAdaptable` tab view no Edit
-/// button, only drag-to-reorder and a per-row hide — and a hidden section is
-/// otherwise invisible forever.
+enum MacSidebarSettings {
+    static let resetTitle = "Reset Sidebar Sections"
+
+    static func resetValue(from persistedValue: String) -> String {
+        var expansion = MacSidebarExpansion(persistedValue: persistedValue)
+        expansion.reset()
+        return expansion.persistedValue
+    }
+}
+
+/// Mac-only: reopens the source-list sections that start expanded.
 private struct MacSidebarSection: View {
-    @AppStorage("sidebarCustomization") private var sidebarCustomization = TabViewCustomization()
+    @AppStorage(MacSidebarExpansion.storageKey)
+    private var persistedSidebarExpansion = MacSidebarExpansion.defaultPersistedValue
 
     var body: some View {
         Section {
-            Button("Reset Sidebar Arrangement") {
-                sidebarCustomization.resetVisibility()
-                sidebarCustomization.resetSectionOrder()
+            Button(MacSidebarSettings.resetTitle) {
+                persistedSidebarExpansion = MacSidebarSettings.resetValue(
+                    from: persistedSidebarExpansion
+                )
             }
         } footer: {
-            Text("Hidden and reordered sidebar items go back to the defaults. Nothing else changes.")
+            Text("Analyze and Monitor reopen. Nothing else changes.")
         }
     }
 }
