@@ -70,6 +70,49 @@ struct SessionsPreferencesTests {
         #expect(preferences.value(for: withTrailingSlash).playableOnly)
     }
 
+    @Test("self-hosted host spelling and default ports share one project value")
+    func normalizesSelfHostedHostSpellingAndDefaultPorts() {
+        let preferences = SessionsPreferences(defaults: storage())
+        let canonical = ProjectPreferenceScope(
+            projectID: 72,
+            region: .selfHosted(URL(string: "https://posthog.example.test")!)
+        )
+        let mixedCase = ProjectPreferenceScope(
+            projectID: 72,
+            region: .selfHosted(URL(string: "HTTPS://POSTHOG.example.test")!)
+        )
+        let explicitDefaultPort = ProjectPreferenceScope(
+            projectID: 72,
+            region: .selfHosted(URL(string: "https://posthog.example.test:443")!)
+        )
+
+        preferences.set(.init(filterTestAccounts: true), for: canonical)
+
+        #expect(canonical.storageKeyComponent == mixedCase.storageKeyComponent)
+        #expect(canonical.storageKeyComponent == explicitDefaultPort.storageKeyComponent)
+        #expect(preferences.value(for: mixedCase).filterTestAccounts)
+        #expect(preferences.value(for: explicitDefaultPort).filterTestAccounts)
+    }
+
+    @Test("self-hosted path prefixes and non-default ports remain isolated")
+    func separatesSelfHostedPathPrefixesAndNonDefaultPorts() {
+        let base = ProjectPreferenceScope(
+            projectID: 73,
+            region: .selfHosted(URL(string: "https://posthog.example.test/posthog")!)
+        )
+        let otherPath = ProjectPreferenceScope(
+            projectID: 73,
+            region: .selfHosted(URL(string: "https://posthog.example.test/analytics")!)
+        )
+        let nonDefaultPort = ProjectPreferenceScope(
+            projectID: 73,
+            region: .selfHosted(URL(string: "https://posthog.example.test:8443/posthog")!)
+        )
+
+        #expect(base.storageKeyComponent != otherPath.storageKeyComponent)
+        #expect(base.storageKeyComponent != nonDefaultPort.storageKeyComponent)
+    }
+
     @Test("missing fields default independently and an unknown order does not erase booleans")
     func toleratesVersionSkew() throws {
         let defaults = storage()

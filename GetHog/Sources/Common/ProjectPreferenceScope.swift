@@ -19,6 +19,12 @@ struct ProjectPreferenceScope: Equatable, Hashable, Sendable {
             return region.host.absoluteString
         }
 
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        if (components.scheme == "https" && components.port == 443)
+            || (components.scheme == "http" && components.port == 80) {
+            components.port = nil
+        }
         components.query = nil
         components.fragment = nil
         var path = components.percentEncodedPath
