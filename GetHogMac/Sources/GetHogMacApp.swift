@@ -95,6 +95,7 @@ struct GetHogMacApp: App {
                 MacRootView()
                 #endif
             }
+                .frame(minWidth: 560, minHeight: 420)
                 .environment(model)
                 .environment(
                     \.projectChartTimeZone,
@@ -158,7 +159,8 @@ struct GetHogMacApp: App {
         // Wide enough for a sidebar and a two-column screen beside it. The
         // system's own default came up 900×450, which puts the seven split-view
         // screens into their narrowest shape on first launch.
-        .defaultSize(width: 1_280, height: 820)
+        .defaultSize(width: 1_200, height: 780)
+        .windowResizability(.contentMinSize)
         // The menu bar. Attached to the main window group but app-wide by
         // nature; every item reads the key window's focused values, so the
         // tear-off and Settings scenes participate exactly as much as they

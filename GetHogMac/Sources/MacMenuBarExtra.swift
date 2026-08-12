@@ -993,6 +993,40 @@ enum MenuBarWindowPolicy {
     }
 }
 
+/// Keeps a restored ordinary window inside one display's usable desktop.
+///
+/// The rectangle half is pure so every edge can be pinned without a window
+/// server. The style half is deliberately conservative: only titled windows
+/// participate, and every mask AppKit uses for full-screen or panel-shaped
+/// presentation opts out before the delegate considers moving anything.
+enum MacWindowPlacement {
+
+    static func clampedFrame(_ frame: CGRect, to visibleFrame: CGRect) -> CGRect {
+        let width = min(frame.width, visibleFrame.width)
+        let height = min(frame.height, visibleFrame.height)
+        let x = min(
+            max(frame.minX, visibleFrame.minX),
+            visibleFrame.maxX - width
+        )
+        let y = min(
+            max(frame.minY, visibleFrame.minY),
+            visibleFrame.maxY - height
+        )
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    static func shouldClamp(styleMask: NSWindow.StyleMask) -> Bool {
+        guard styleMask.contains(.titled), !styleMask.contains(.fullScreen) else { return false }
+        let panelMasks: NSWindow.StyleMask = [
+            .utilityWindow,
+            .nonactivatingPanel,
+            .hudWindow,
+            .docModalWindow,
+        ]
+        return styleMask.intersection(panelMasks).isEmpty
+    }
+}
+
 /// The thin AppKit glue over `MenuBarWindowPolicy`. Counts windows that can
 /// become main, which excludes the status item's own window and the popover
 /// panel by construction.
@@ -1008,12 +1042,17 @@ enum MenuBarWindowPolicy {
 @MainActor
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
 
+    private var observerTokens: [NSObjectProtocol] = []
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: Self.keepInMenuBar)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NotificationCenter.default.addObserver(
+        guard observerTokens.isEmpty else { return }
+        let center = NotificationCenter.default
+
+        observerTokens.append(center.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,
             queue: .main
@@ -1026,7 +1065,40 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
                     Self.dropToAccessoryIfAsked(excluding: closing)
                 }
             }
-        }
+        })
+        observerTokens.append(center.addObserver(
+            forName: NSWindow.didBecomeMainNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated { Self.clamp(window) }
+        })
+        observerTokens.append(center.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // AppKit updates `NSScreen.screens` as part of this notification.
+            // Move on the next main turn so every visible frame is settled.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { Self.clampVisibleWindows() }
+            }
+        })
+
+        // Covers a restored window that became main before the app delegate's
+        // finish callback; later windows take the did-become-main path above.
+        Self.clampVisibleWindows()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        removeObservers()
+    }
+
+    private func removeObservers() {
+        let center = NotificationCenter.default
+        observerTokens.forEach(center.removeObserver)
+        observerTokens.removeAll()
     }
 
     /// Leaves the Dock once nothing is left on screen and the user asked to be
@@ -1041,6 +1113,55 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
             visibleMainCapableWindows: remaining
         ) else { return }
         NSApp.setActivationPolicy(policy)
+    }
+
+    private static func clampVisibleWindows() {
+        NSApp.windows
+            .filter(\.isVisible)
+            .forEach(clamp)
+    }
+
+    private static func clamp(_ window: NSWindow) {
+        guard window.canBecomeMain,
+              !(window is NSPanel),
+              MacWindowPlacement.shouldClamp(styleMask: window.styleMask),
+              let screen = bestScreen(for: window)
+        else { return }
+
+        let frame = MacWindowPlacement.clampedFrame(window.frame, to: screen.visibleFrame)
+        guard frame != window.frame else { return }
+        window.setFrame(frame, display: true, animate: false)
+    }
+
+    /// AppKit's own screen answer wins while it has one. A disconnected
+    /// display can leave a restored frame with no answer; then actual overlap
+    /// beats proximity, and proximity gives a fully detached frame a home.
+    private static func bestScreen(for window: NSWindow) -> NSScreen? {
+        if let screen = window.screen { return screen }
+
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return nil }
+        if let intersecting = screens.max(by: {
+            intersectionArea(window.frame, $0.frame) < intersectionArea(window.frame, $1.frame)
+        }), intersectionArea(window.frame, intersecting.frame) > 0 {
+            return intersecting
+        }
+        return screens.min(by: {
+            squaredDistance(from: window.frame, to: $0.frame)
+                < squaredDistance(from: window.frame, to: $1.frame)
+        })
+    }
+
+    private static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
+    }
+
+    private static func squaredDistance(from frame: CGRect, to screen: CGRect) -> CGFloat {
+        let horizontal = max(screen.minX - frame.maxX, frame.minX - screen.maxX, 0)
+        let vertical = max(screen.minY - frame.maxY, frame.minY - screen.maxY, 0)
+        return horizontal * horizontal + vertical * vertical
     }
 
     private static var keepInMenuBar: Bool {

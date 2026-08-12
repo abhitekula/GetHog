@@ -473,6 +473,89 @@ struct MenuBarWindowPolicyTests {
     }
 }
 
+/// Pure geometry around AppKit's state restoration. These expectations are
+/// literal on purpose: each catches one missing edge clamp, while the style
+/// cases keep the observer out of native window-management modes.
+@Suite("Display-safe window placement")
+struct MacWindowPlacementTests {
+
+    private let visibleFrame = CGRect(x: 0, y: 0, width: 1_000, height: 700)
+
+    @Test("a restored frame overflowing the right edge moves fully on-screen")
+    func rightOverflow() {
+        #expect(
+            MacWindowPlacement.clampedFrame(
+                CGRect(x: 800, y: 100, width: 300, height: 200),
+                to: visibleFrame
+            ) == CGRect(x: 700, y: 100, width: 300, height: 200)
+        )
+    }
+
+    @Test("a restored frame overflowing the left edge moves fully on-screen")
+    func leftOverflow() {
+        #expect(
+            MacWindowPlacement.clampedFrame(
+                CGRect(x: -80, y: 100, width: 300, height: 200),
+                to: visibleFrame
+            ) == CGRect(x: 0, y: 100, width: 300, height: 200)
+        )
+    }
+
+    @Test("a restored frame overflowing the top edge moves fully on-screen")
+    func topOverflow() {
+        #expect(
+            MacWindowPlacement.clampedFrame(
+                CGRect(x: 100, y: 600, width: 300, height: 200),
+                to: visibleFrame
+            ) == CGRect(x: 100, y: 500, width: 300, height: 200)
+        )
+    }
+
+    @Test("a restored frame overflowing the bottom edge moves fully on-screen")
+    func bottomOverflow() {
+        #expect(
+            MacWindowPlacement.clampedFrame(
+                CGRect(x: 100, y: -50, width: 300, height: 200),
+                to: visibleFrame
+            ) == CGRect(x: 100, y: 0, width: 300, height: 200)
+        )
+    }
+
+    @Test("a window larger than the display is reduced to its visible frame")
+    func oversizedWindow() {
+        #expect(
+            MacWindowPlacement.clampedFrame(
+                CGRect(x: -300, y: -200, width: 1_400, height: 900),
+                to: visibleFrame
+            ) == visibleFrame
+        )
+    }
+
+    @Test("an already valid restored frame is unchanged")
+    func validFrameIdentity() {
+        let frame = CGRect(x: 120, y: 140, width: 640, height: 420)
+        #expect(MacWindowPlacement.clampedFrame(frame, to: visibleFrame) == frame)
+    }
+
+    @Test("ordinary titled windows clamp without excluding native resize affordances")
+    func ordinaryWindowStyle() {
+        let ordinary: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary))
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.fullSizeContentView)))
+    }
+
+    @Test("native full-screen and panel-style windows are excluded")
+    func nativeWindowStyleExclusions() {
+        let ordinary: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.fullScreen)) == false)
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.utilityWindow)) == false)
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.nonactivatingPanel)) == false)
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.hudWindow)) == false)
+        #expect(MacWindowPlacement.shouldClamp(styleMask: ordinary.union(.docModalWindow)) == false)
+        #expect(MacWindowPlacement.shouldClamp(styleMask: .borderless) == false)
+    }
+}
+
 /// The popover's write path. The gate is injected rather than run, so every
 /// outcome `BiometricGate` can produce is exercised without a device-owner
 /// prompt — and the point of the suite is that all three outcomes are handled
