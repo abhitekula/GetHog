@@ -116,6 +116,7 @@ struct ErrorsOverview: View {
                     statusCount("Suppressed", suppressed.count, .secondary)
                 }
             }
+            .accessibilityIdentifier("gethog.errors-overview-summary")
         }
     }
 

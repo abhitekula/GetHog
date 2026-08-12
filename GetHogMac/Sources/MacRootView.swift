@@ -168,6 +168,11 @@ struct MacRootView: View {
         }
         .environment(surveyLifecycle)
         .environment(experimentLifecycle)
+        // Keep the outer source list in the window's layout proposal. With
+        // macOS' automatic prominent-detail style its safe-area inset is
+        // inherited by regular roots' nested split views, so their overview
+        // content counts this sidebar width a second time.
+        .navigationSplitViewStyle(.balanced)
     }
 
     // MARK: - Structure

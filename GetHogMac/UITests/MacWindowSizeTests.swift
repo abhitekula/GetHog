@@ -399,6 +399,99 @@ final class MacWindowSizeTests: XCTestCase {
         }
     }
 
+    /// A regular-width nested split must start its overview at the inner list's
+    /// trailing edge, not inherit the outer source list's safe-area inset a
+    /// second time. The Dashboard control is the non-nested witness: both
+    /// topologies keep the same ordinary, visually balanced page inset.
+    func testFullScreenOverviewSurfacesHaveBalancedDetailInsets() {
+        let app = DemoLaunch.launch(
+            tab: "dashboards",
+            extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
+        )
+        defer { app.terminate() }
+        DemoLaunch.settle(app)
+        enterFullScreen(app)
+
+        let destinations: [(title: String, root: String, anchor: String)] = [
+            ("Dashboards", "dashboards", "gethog.dashboard-project-summary"),
+            ("Events", "events", "gethog.signal-summary.events"),
+            ("Sessions", "sessions", "gethog.signal-summary.sessions"),
+            ("Insights", "insights", "gethog.signal-summary.insights"),
+            ("People", "people", "gethog.people-overview-summary"),
+            ("Errors", "errorTracking", "gethog.errors-overview-summary"),
+            ("Flags", "flags", "gethog.signal-summary.flags"),
+        ]
+
+        for destination in destinations {
+            XCTAssertTrue(
+                go(destination.title, in: app),
+                "The Go menu could not reach \(destination.title) in full screen."
+            )
+            let root = app.windows.descendants(matching: .any)[
+                "gethog.root.\(destination.root)"
+            ].firstMatch
+            guard DemoLaunch.wait(for: root) else {
+                XCTFail("The shell never selected the \(destination.title) root.")
+                continue
+            }
+
+            let anchor = app.windows.descendants(matching: .any)[destination.anchor]
+                .firstMatch
+            guard DemoLaunch.wait(for: anchor) else {
+                XCTFail(
+                    "\(destination.title) exposed no full-width overview anchor "
+                        + "\(destination.anchor)."
+                )
+                continue
+            }
+
+            let window = app.windows.firstMatch
+            let leadingColumns = window.outlines.allElementsBoundByIndex.filter {
+                $0.frame.width > 0 && $0.frame.maxX <= anchor.frame.minX + 1
+            }
+            guard let list = leadingColumns.max(by: { $0.frame.maxX < $1.frame.maxX }) else {
+                XCTFail(
+                    "\(destination.title) exposed no outline before its overview: "
+                        + "anchor=\(anchor.frame), outlines="
+                        + "\(window.outlines.allElementsBoundByIndex.map { $0.frame })."
+                )
+                continue
+            }
+
+            let leadingInset = anchor.frame.minX - list.frame.maxX
+            let trailingInset = window.frame.maxX - anchor.frame.maxX
+            print(
+                "BALANCED-DETAIL destination=\(destination.title) window=\(window.frame) "
+                    + "list=\(list.frame) anchor=\(anchor.frame) "
+                    + "leading=\(leadingInset) trailing=\(trailingInset)"
+            )
+            XCTAssertLessThan(
+                leadingInset,
+                48,
+                "\(destination.title) counted a leading split-view inset twice."
+            )
+            XCTAssertEqual(
+                leadingInset,
+                trailingInset,
+                accuracy: 12,
+                "\(destination.title) did not balance its overview's outer insets."
+            )
+        }
+    }
+
+    private func enterFullScreen(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        guard window.frame.minY >= 50 else { return }
+        app.typeKey("f", modifierFlags: [.command, .control])
+        XCTAssertTrue(
+            DemoLaunch.wait(timeout: 10, until: {
+                app.windows.firstMatch.frame.minY < 50
+            }),
+            "The window never entered native full screen."
+        )
+        DemoLaunch.settle(app)
+    }
+
     private func assertCompactDrillIn(
         _ destination: (title: String, row: String, otherRow: String, detail: String),
         at size: CGSize,

@@ -98,6 +98,7 @@ struct PeopleOverview: View {
                     countTile("Anonymous", persons.count - identified, .secondary)
                 }
             }
+            .accessibilityIdentifier("gethog.people-overview-summary")
         }
     }
 
