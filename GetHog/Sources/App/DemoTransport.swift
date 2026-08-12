@@ -50,6 +50,7 @@ struct DemoTransport: HTTPTransport {
     static let dashboardDetailDelayEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_DELAY_MS"
     static let dashboardDetailFailureEnvironment = "GETHOG_DEMO_DASHBOARD_DETAIL_FAILURE"
     static let dashboardRecomputeFailureEnvironment = "GETHOG_DEMO_DASHBOARD_RECOMPUTE_FAILURE"
+    static let populatedMaxConversationsEnvironment = "GETHOG_DEMO_MAX_CONVERSATIONS"
     #if DEBUG
     static let dashboardListDelayEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_DELAY_MS"
     static let dashboardListFailureEnvironment = "GETHOG_DEMO_DASHBOARD_LIST_FAILURE"
@@ -81,6 +82,7 @@ struct DemoTransport: HTTPTransport {
     private let dashboardDetailDelayMilliseconds: Int
     private let dashboardDetailFailure: Bool
     private let dashboardRecomputeFailure: Bool
+    private let populatedMaxConversations: Bool
     private let dashboardListDelayMilliseconds: Int
     private let dashboardListFailure: Bool
 
@@ -91,7 +93,8 @@ struct DemoTransport: HTTPTransport {
         dashboardDetailFailure: Bool? = nil,
         dashboardRecomputeFailure: Bool? = nil,
         replaySourceFailures: Int? = nil,
-        deniedResource: String? = nil
+        deniedResource: String? = nil,
+        populatedMaxConversations: Bool? = nil
     ) {
         self.emptyCollection = emptyCollection ?? ProcessInfo.processInfo.environment[
             Self.emptyCollectionEnvironment
@@ -122,6 +125,10 @@ struct DemoTransport: HTTPTransport {
         self.dashboardRecomputeFailure = dashboardRecomputeFailure
             ?? (ProcessInfo.processInfo.environment[
                 Self.dashboardRecomputeFailureEnvironment
+            ] == "1")
+        self.populatedMaxConversations = populatedMaxConversations
+            ?? (ProcessInfo.processInfo.environment[
+                Self.populatedMaxConversationsEnvironment
             ] == "1")
         #if DEBUG
         dashboardListDelayMilliseconds = max(
@@ -251,7 +258,8 @@ struct DemoTransport: HTTPTransport {
                 for: path,
                 method: request.httpMethod ?? "GET",
                 body: body,
-                query: query
+                query: query,
+                populatedMaxConversations: populatedMaxConversations
             )
         }
         // A touch of latency so loading states actually render rather than
@@ -767,7 +775,8 @@ struct DemoTransport: HTTPTransport {
         for path: String,
         method: String,
         body: String,
-        query: String
+        query: String,
+        populatedMaxConversations: Bool = false
     ) -> Reply {
         // Deterministic fixture routing preserves the response shape and status for this case.
         if path.hasSuffix("/query/") {
@@ -1067,6 +1076,13 @@ struct DemoTransport: HTTPTransport {
             return path.hasSuffix("/tickets/")
                 ? load("conversations_tickets")
                 : firstResult(in: "conversations_tickets")
+        }
+
+        // Ordinary demo mode preserves Max's authored empty state below. UI
+        // geometry can opt into a separate deterministic list so it measures
+        // real cards instead of treating an empty-state skip as coverage.
+        if path.hasSuffix("/conversations/"), populatedMaxConversations {
+            return load("max_conversations")
         }
 
         // A **bare array**, not a `Page` — so the generic empty-page fallback

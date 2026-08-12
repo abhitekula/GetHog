@@ -499,19 +499,7 @@ struct SessionsRoot: View {
                     trailing: Theme.Space.s
                 ))
                 #endif
-                #if os(macOS)
-                .listRowBackground(
-                    Theme.cardBackground
-                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                        .padding(.vertical, Theme.Space.xs / 2)
-                )
-                #else
-                .listRowBackground(
-                    Theme.cardBackground
-                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                        .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-                )
-                #endif
+                .listCardBackground(route: "sessions", id: recording.id)
                 .listRowSeparator(.hidden)
                 // A recording row offered nothing on right-click at all, while
                 // the dashboard beside it offered two items and the replay

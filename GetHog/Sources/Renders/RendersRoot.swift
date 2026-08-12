@@ -509,11 +509,7 @@ struct RendersRoot: View {
                         NavigationLink(value: export) {
                             RenderRowView(export: export, asOf: store.asOf)
                         }
-                        .listRowBackground(
-                            Theme.cardBackground
-                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-                        )
+                        .listCardBackground(route: "renders", id: String(export.id))
                         .listRowSeparator(.hidden)
                     }
                 }

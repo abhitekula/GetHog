@@ -727,11 +727,7 @@ struct EventsRoot: View {
                     Section {
                         ForEach(rows) { event in
                             NavigationLink(value: event.id) { EventRowView(event: event) }
-                                .listRowBackground(
-                                    Theme.cardBackground
-                                        .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                        .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-                                )
+                                .listCardBackground(route: "events", id: event.id)
                                 .listRowSeparator(.hidden)
                         }
                     } header: {

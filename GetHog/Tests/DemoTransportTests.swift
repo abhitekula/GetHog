@@ -636,6 +636,37 @@ struct DemoTransportTests {
         #expect((try? Page<MaxConversation>.decode(from: maxBody))?.results.isEmpty == true)
     }
 
+    /// UI geometry needs real Max rows, but ordinary demo mode must keep its
+    /// authored empty state. The opt-in transport seam supplies a separate,
+    /// deterministic page without making the Support prefix any less exact.
+    @Test("Max conversations can opt into deterministic populated rows")
+    func populatedMaxConversationSeam() async throws {
+        let transport = DemoTransport(populatedMaxConversations: true)
+        let endpoint = PostHogAPI.conversations(projectID: Self.projectID)
+        var components = URLComponents(string: "https://app.example.com" + endpoint.path)!
+        if !endpoint.query.isEmpty { components.queryItems = endpoint.query }
+        var request = URLRequest(url: try #require(components.url))
+        request.httpMethod = endpoint.method
+        request.httpBody = endpoint.body
+        let (data, response) = try await transport.send(request)
+        let page = try Page<MaxConversation>.decode(from: data)
+
+        #expect(response.statusCode == 200)
+        #expect(page.results.count == 2)
+        #expect(page.results.map { $0.title } == [
+            "Reviewing fictional observatory navigation",
+            "Comparing synthetic meteor report paths",
+        ])
+        #expect(page.results.map(\.id) == [
+            "018f3000-0000-7000-8000-000000000701",
+            "018f3000-0000-7000-8000-000000000702",
+        ])
+        #expect(page.results.map(\.lastActivityAt) == [
+            try Date("2026-02-12T14:30:00.000Z", strategy: .iso8601),
+            try Date("2026-02-11T16:45:00.000Z", strategy: .iso8601),
+        ])
+    }
+
     /// The ticket thread is a sub-resource of a path that already matches, so it
     /// has the same ordering hazard one level down: `/tickets/{id}/messages/`
     /// contains `/conversations/tickets/` too, and would otherwise be handed the

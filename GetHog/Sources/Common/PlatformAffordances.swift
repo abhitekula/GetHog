@@ -39,6 +39,32 @@ enum PlatformPresentationMetrics {
     #endif
 }
 
+/// The clipped card shape used by list-row backgrounds.
+///
+/// The DEBUG Mac overlay exposes the colored shape's frame to XCUITest. It is
+/// deliberately inside the vertical padding: the marker therefore shrinks with
+/// the card, while the `List` row and its actionable `NavigationLink` keep their
+/// unchanged frames. Release builds and non-Mac platforms add no accessibility
+/// element.
+private struct ListCardBackground: View {
+    let route: String
+    let id: String
+
+    var body: some View {
+        Theme.cardBackground
+            .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
+            .overlay {
+                #if DEBUG && os(macOS)
+                Color.clear
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("List card background")
+                    .accessibilityIdentifier("gethog.list-card-background.\(route).\(id)")
+                #endif
+            }
+            .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
+    }
+}
+
 /// A hardware-keyboard shortcut with no on-screen control of its own.
 struct KeyboardAction: Identifiable {
     let id = UUID()
@@ -80,6 +106,12 @@ private struct PointerHighlightModifier: ViewModifier {
 }
 
 extension View {
+    /// Applies the shared clipped row background and, in DEBUG Mac builds,
+    /// exposes the actual colored frame for rendered geometry tests.
+    func listCardBackground(route: String, id: String) -> some View {
+        listRowBackground(ListCardBackground(route: route, id: id))
+    }
+
     /// Attaches keyboard shortcuts that aren't already carried by a visible button.
     ///
     /// SwiftUI only routes `.keyboardShortcut` from a `Button` that is genuinely

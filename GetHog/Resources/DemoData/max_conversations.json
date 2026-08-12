@@ -1,0 +1,37 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f3000-0000-7000-8000-000000000701",
+      "title": "Reviewing fictional observatory navigation",
+      "topic": "Synthetic wayfinding review",
+      "status": "idle",
+      "type": "assistant",
+      "is_internal": false,
+      "created_at": "2026-02-10T09:00:00.000Z",
+      "updated_at": "2026-02-12T14:30:00.000Z",
+      "user": {
+        "first_name": "Nova",
+        "last_name": "Marlow",
+        "email": "nova.marlow@example.org"
+      }
+    },
+    {
+      "id": "018f3000-0000-7000-8000-000000000702",
+      "title": "Comparing synthetic meteor report paths",
+      "topic": "Fictional activation analysis",
+      "status": "in_progress",
+      "type": "deep_research",
+      "is_internal": false,
+      "created_at": "2026-02-08T11:15:00.000Z",
+      "updated_at": "2026-02-11T16:45:00.000Z",
+      "user": {
+        "first_name": "Elio",
+        "last_name": "Vale",
+        "email": "elio.vale@example.org"
+      }
+    }
+  ]
+}

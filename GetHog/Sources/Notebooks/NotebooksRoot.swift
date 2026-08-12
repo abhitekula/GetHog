@@ -113,7 +113,7 @@ struct NotebooksRoot: View {
                         NavigationLink(value: notebook) {
                             NotebookRowView(notebook: notebook)
                         }
-                        .notebooksRowCard()
+                        .notebooksRowCard(id: notebook.shortID)
                     }
                 }
             } footer: {
@@ -390,12 +390,8 @@ private extension View {
     /// The list treatment from the dashboards screen: every row is its own card
     /// on the page ground, with the system separator suppressed because the gap
     /// between cards already does that work.
-    func notebooksRowCard() -> some View {
-        listRowBackground(
-            Theme.cardBackground
-                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-        )
+    func notebooksRowCard(id: String) -> some View {
+        listCardBackground(route: "notebooks", id: id)
         .listRowSeparator(.hidden)
     }
 }

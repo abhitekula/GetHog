@@ -109,11 +109,7 @@ struct ConversationsRoot: View {
                         NavigationLink(value: conversation) {
                             ConversationRowView(conversation: conversation)
                         }
-                        .listRowBackground(
-                            Theme.cardBackground
-                                .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-                        )
+                        .listCardBackground(route: "max", id: conversation.id)
                         .listRowSeparator(.hidden)
                     }
                 }

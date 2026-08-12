@@ -400,11 +400,7 @@ struct PeopleRoot: View {
                 Section {
                     ForEach(store.persons, id: \.self) { person in
                         NavigationLink(value: person) { PersonRowView(person: person) }
-                            .listRowBackground(
-                                Theme.cardBackground
-                                    .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
-                                    .padding(.vertical, PlatformPresentationMetrics.listCardVerticalInset)
-                            )
+                            .listCardBackground(route: "people", id: person.id)
                             .listRowSeparator(.hidden)
                     }
                 } footer: {
