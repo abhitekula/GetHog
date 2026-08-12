@@ -214,6 +214,11 @@ final class MacReplayWindowController: NSObject, NSWindowDelegate {
 
     func present<Content: View>(_ content: Content) {
         window.contentViewController = NSHostingController(rootView: content)
+        // Installing a hosting controller lets AppKit adopt the hosted view's
+        // fitting size. Reassert the replay's native default after attachment
+        // so compact SwiftUI content cannot collapse a newly opened window to
+        // its minimum size.
+        window.setContentSize(MacReplayWindowMetrics.defaultSize)
         show()
     }
 

@@ -64,8 +64,8 @@ struct MacReplayWindowTests {
         #expect(recorder.count == 1)
     }
 
-    @Test("presenting content keeps the controller's one owned window")
-    func presentationKeepsOneWindow() {
+    @Test("hosting content keeps one window at the exact default content size")
+    func presentationKeepsOneDefaultSizedWindow() {
         let controller = MacReplayWindowController(title: "Replay — Alex Example") {}
         let ownedWindow = controller.window
         defer { ownedWindow.close() }
@@ -74,5 +74,15 @@ struct MacReplayWindowTests {
 
         #expect(controller.window === ownedWindow)
         #expect(controller.window.contentViewController is NSHostingController<Text>)
+        #expect(
+            controller.window.contentRect(forFrameRect: controller.window.frame).size
+                == MacReplayWindowMetrics.defaultSize
+        )
+        #expect(
+            controller.window.frame.size
+                == controller.window.frameRect(
+                    forContentRect: NSRect(origin: .zero, size: MacReplayWindowMetrics.defaultSize)
+                ).size
+        )
     }
 }

@@ -48,6 +48,13 @@ final class MacReplayTransportTests: XCTestCase {
         Double("\(slider(in: app).value ?? "")") ?? -1
     }
 
+    private func framesMatch(_ lhs: CGRect, _ rhs: CGRect, accuracy: CGFloat = 1) -> Bool {
+        abs(lhs.minX - rhs.minX) <= accuracy
+            && abs(lhs.minY - rhs.minY) <= accuracy
+            && abs(lhs.width - rhs.width) <= accuracy
+            && abs(lhs.height - rhs.height) <= accuracy
+    }
+
     /// The solo replay window (`GETHOG_SOLO_RECORDING`): one screen, no shell.
     ///
     /// Launched here rather than through `DemoLaunch.launch`, whose macOS gate
@@ -86,20 +93,27 @@ final class MacReplayTransportTests: XCTestCase {
     func testExpandedReplayUsesANativeWindowAndReturnsInline() {
         let app = openSessionDetail()
         let inlineStage = app.windows.buttons["Session replay"]
+        let inlineTransport = app.windows.sliders["Playback position"]
         guard inlineStage.exists else {
             XCTFail("The session detail rendered no inline replay stage.")
+            return
+        }
+        guard inlineTransport.exists, let inlineValue = inlineTransport.value as? String else {
+            XCTFail("The inline replay published no playback value before expansion.")
             return
         }
 
         app.windows.buttons["Expand replay"].click()
         let expandedStage = app.windows.descendants(matching: .any)["Full-screen session replay"]
         XCTAssertTrue(
-            expandedStage.waitForExistence(timeout: 15),
+            DemoLaunch.wait(for: expandedStage, timeout: 15),
             "Expansion rendered no replay stage in a native window."
         )
         let expandedTransport = app.windows.sliders["Full-screen playback position"]
         XCTAssertTrue(
-            expandedTransport.waitForExistence(timeout: 10),
+            DemoLaunch.wait(until: {
+                expandedTransport.exists && expandedTransport.isEnabled && expandedTransport.isHittable
+            }),
             "The expanded replay window rendered no transport."
         )
 
@@ -112,26 +126,47 @@ final class MacReplayTransportTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(app.windows.count, 2)
         capture("b10-expanded-native-window")
 
+        expandedTransport.adjust(toNormalizedSliderPosition: 0.8)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: {
+                guard let value = expandedTransport.value as? String else { return false }
+                return value != inlineValue
+            }),
+            "The expanded transport did not move away from the inline playhead."
+        )
+        guard let transferredValue = expandedTransport.value as? String else {
+            XCTFail("The expanded replay published no playback value to hand back.")
+            return
+        }
+
         let beforeFullScreen = expandedWindow.frame
         app.typeKey("f", modifierFlags: [.control, .command])
-        DemoLaunch.pause(2)
-        XCTAssertNotEqual(
-            expandedWindow.frame, beforeFullScreen,
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { !self.framesMatch(expandedWindow.frame, beforeFullScreen) }),
             "The replay window did not enter native full screen."
         )
         app.typeKey("f", modifierFlags: [.control, .command])
-        DemoLaunch.pause(2)
-        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(
+            DemoLaunch.wait(until: { self.framesMatch(expandedWindow.frame, beforeFullScreen) }),
+            "The replay window did not restore its pre-full-screen frame."
+        )
+        let afterFullScreen = expandedWindow.frame
+        XCTAssertEqual(afterFullScreen.minX, beforeFullScreen.minX, accuracy: 1)
+        XCTAssertEqual(afterFullScreen.minY, beforeFullScreen.minY, accuracy: 1)
+        XCTAssertEqual(afterFullScreen.width, beforeFullScreen.width, accuracy: 1)
+        XCTAssertEqual(afterFullScreen.height, beforeFullScreen.height, accuracy: 1)
 
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(
-            inlineStage.waitForExistence(timeout: 10),
-            "The inline replay stage did not return after Command-W."
+            DemoLaunch.wait(until: {
+                !expandedStage.exists
+                    && app.windows.count == 1
+                    && (inlineTransport.value as? String) == transferredValue
+            }),
+            "Command-W did not close the expanded window and transfer its playhead inline."
         )
-        XCTAssertTrue(
-            expandedStage.waitForNonExistence(timeout: 10),
-            "The expanded replay stage survived Command-W."
-        )
+        XCTAssertTrue(inlineStage.exists)
+        XCTAssertEqual(inlineTransport.value as? String, transferredValue)
         XCTAssertEqual(app.windows.count, 1)
     }
 
