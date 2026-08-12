@@ -147,17 +147,34 @@ struct MacBuildGraphTests {
             "app.gethog.GetHog.watchkitapp;",
         ]
 
-        let appDebugConfigurations = configurations.filter { configuration in
+        let hostConfigurations = configurations.filter { configuration in
             bundleIDs.contains(where: configuration.contains)
-                && configuration.contains("name = Debug;")
                 && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.Widgets;")
                 && !configuration.contains("PRODUCT_BUNDLE_IDENTIFIER = app.gethog.GetHog.TopShelf;")
         }
-        #expect(appDebugConfigurations.count == 5)
-        for configuration in appDebugConfigurations {
-            #expect(configuration.contains("ENABLE_TESTABILITY = YES;"))
-            #expect(configuration.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
-            #expect(configuration.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;"))
+        let sdkRoots = ["iphoneos", "macosx", "xros", "watchos", "appletvos"]
+        for sdkRoot in sdkRoots {
+            let debug = try #require(
+                hostConfigurations.first {
+                    $0.contains("SDKROOT = \(sdkRoot);") && $0.contains("name = Debug;")
+                },
+                "missing hosted Debug configuration for \(sdkRoot)"
+            )
+            #expect(debug.contains("ENABLE_TESTABILITY = YES;"))
+            #expect(debug.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
+            #expect(debug.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;"))
+
+            let release = try #require(
+                hostConfigurations.first {
+                    $0.contains("SDKROOT = \(sdkRoot);") && $0.contains("name = Release;")
+                },
+                "missing hosted Release configuration for \(sdkRoot)"
+            )
+            #expect(!release.contains("ENABLE_TESTABILITY = YES;"))
+            #expect(!release.contains("SWIFT_OPTIMIZATION_LEVEL = \"-Onone\";"))
+            #expect(!release.contains("SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;"))
         }
+        #expect(hostConfigurations.filter { $0.contains("name = Debug;") }.count == 5)
+        #expect(hostConfigurations.filter { $0.contains("name = Release;") }.count == 5)
     }
 }
