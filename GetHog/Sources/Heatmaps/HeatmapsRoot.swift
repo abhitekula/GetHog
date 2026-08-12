@@ -197,6 +197,7 @@ final class HeatmapsStore {
 struct HeatmapsRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var store = HeatmapsStore()
     @State private var window: AnalyticsWindow = .week
@@ -284,13 +285,18 @@ struct HeatmapsRoot: View {
                 }
 
                 Group {
-                    overlayLinks
-
-                    switch lens {
-                    case .depth: depthSection
-                    case .across: horizontalSection
-                    case .elements: elementsSection
+                    #if os(macOS)
+                    if horizontalSizeClass == .compact {
+                        selectedLensSection
+                        overlayLinks
+                    } else {
+                        overlayLinks
+                        selectedLensSection
                     }
+                    #else
+                    overlayLinks
+                    selectedLensSection
+                    #endif
 
                     screenshotNote
 
@@ -302,6 +308,20 @@ struct HeatmapsRoot: View {
             .padding(.vertical, Theme.Space.l)
         }
         .pageSurface()
+    }
+
+    /// A compact Mac window has one short initial viewport for both the answer
+    /// and the route to a rendered page. The selected question wins that first
+    /// viewport; saved renders stay immediately after it in the same scroll.
+    /// Regular Mac windows and touch platforms retain the established
+    /// render-navigation-first composition.
+    @ViewBuilder
+    private var selectedLensSection: some View {
+        switch lens {
+        case .depth: depthSection
+        case .across: horizontalSection
+        case .elements: elementsSection
+        }
     }
 
     /// Segmented controls shrink their labels to slivers at accessibility text

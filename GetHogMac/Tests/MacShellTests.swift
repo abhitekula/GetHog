@@ -1,4 +1,7 @@
+import AppKit
+import SwiftUI
 import Testing
+import Vision
 
 @testable import GetHog
 
@@ -124,6 +127,85 @@ struct MacShellStructureTests {
             "gethog.root.templates",
         ])
         #expect(Set(identifiers).count == identifiers.count)
+    }
+}
+
+@MainActor
+@Suite("Compact Clickmap composition")
+struct CompactClickmapCompositionTests {
+
+    /// A compact Clickmap still owns one scroll view, but its initial viewport
+    /// must answer the selected lens before asking someone to scroll past saved
+    /// render navigation. This mounts the real screen and deterministic demo
+    /// transport; the pixel assertion is about the rendered viewport, not an
+    /// ordering constant or a copy of the production layout decision.
+    @Test("selected depth outcome is fully visible before compact scrolling")
+    func selectedDepthOutcomeIsInitiallyVisible() async throws {
+        let model = MacAppModelFactory.makeModel(
+            environment: [:],
+            demoModeEnabled: true
+        )
+        await model.bootstrap()
+
+        let root = NavigationStack {
+            HeatmapsRoot()
+        }
+        .environment(model)
+        .environment(
+            \.horizontalSizeClass,
+            MacWindowLayout.sizeClass(forContentWidth: 640)
+        )
+
+        let controller = NSHostingController(rootView: root)
+        let window = NSWindow(
+            contentRect: .zero,
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        window.setFrame(
+            NSRect(x: 80, y: 80, width: 640, height: 480),
+            display: false
+        )
+        window.orderBack(nil)
+        defer { window.close() }
+
+        var renderedText: [String] = []
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while ContinuousClock.now < deadline {
+            controller.view.layoutSubtreeIfNeeded()
+            renderedText = try recognizedText(in: controller.view)
+            if contains("No scroll-depth data", in: renderedText) { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        #expect(
+            contains("No scroll-depth data", in: renderedText),
+            "The compact initial viewport clipped the selected depth outcome title. OCR: \(renderedText)"
+        )
+        #expect(
+            contains("No clicks were recorded in this period", in: renderedText),
+            "The compact initial viewport clipped the selected depth outcome explanation. OCR: \(renderedText)"
+        )
+    }
+
+    private func contains(_ text: String, in recognized: [String]) -> Bool {
+        recognized.contains { $0.localizedCaseInsensitiveContains(text) }
+    }
+
+    private func recognizedText(in view: NSView) throws -> [String] {
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            return []
+        }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        guard let image = bitmap.cgImage else { return [] }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        let handler = VNImageRequestHandler(cgImage: image)
+        try handler.perform([request])
+        return request.results?.compactMap { $0.topCandidates(1).first?.string } ?? []
     }
 }
 

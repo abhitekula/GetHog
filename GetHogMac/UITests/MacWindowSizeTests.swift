@@ -171,6 +171,58 @@ final class MacWindowSizeTests: XCTestCase {
         )
     }
 
+    /// The selected lens is the reason someone opens Clickmap. Saved renders
+    /// remain useful navigation, but at the compact floor they must not spend
+    /// the whole initial viewport before the lens can answer its question.
+    func testCompactClickmapRevealsSelectedOutcomeBeforeScrolling() {
+        let app = DemoLaunch.launch(
+            tab: "clickmap",
+            extraArguments: ["-ApplePersistenceIgnoreState", "YES"]
+        )
+        DemoLaunch.settle(app)
+        leaveFullScreen(app)
+        defer { resize(app, to: CGSize(width: 800, height: 600)) }
+
+        let compactSize = CGSize(width: 640, height: 480)
+        resize(app, to: compactSize)
+
+        let window = app.windows.firstMatch
+        XCTAssertEqual(window.frame.width, compactSize.width, accuracy: 1)
+        XCTAssertEqual(window.frame.height, compactSize.height, accuracy: 1)
+        XCTAssertTrue(
+            DemoLaunch.wait(
+                timeout: 10,
+                until: {
+                    DemoLaunch.elements(labelled: "Pages with a render", in: app)
+                        .firstMatch.exists
+                        && DemoLaunch.elements(labelled: "No scroll-depth data", in: app)
+                            .firstMatch.exists
+                }
+            ),
+            "Clickmap did not settle into its deterministic render-navigation and depth-empty state."
+        )
+
+        let outcomeTitle = DemoLaunch.elements(
+            labelled: "No scroll-depth data",
+            in: app
+        ).firstMatch
+        let outcomeExplanation = DemoLaunch.elements(
+            labelled: "No clicks were recorded in this period.",
+            in: app
+        ).firstMatch
+
+        XCTAssertTrue(
+            window.frame.contains(outcomeTitle.frame),
+            "The compact initial viewport clipped the selected depth outcome title: "
+                + "window=\(window.frame), title=\(outcomeTitle.frame)."
+        )
+        XCTAssertTrue(
+            window.frame.contains(outcomeExplanation.frame),
+            "The compact initial viewport clipped the selected depth outcome explanation: "
+                + "window=\(window.frame), explanation=\(outcomeExplanation.frame)."
+        )
+    }
+
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
