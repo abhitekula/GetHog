@@ -11,18 +11,44 @@ struct SourceSymbolNameTests {
     @Test("Every symbol name written in the app's source resolves")
     func sourceLiteralsResolve() throws {
         let names = try Self.sourceLiterals()
+        let manifest = try Self.manifestLiterals()
 
         // A scan that finds nothing passes vacuously, which would be worse than
         // no test at all: it would read as coverage while checking nothing. The
         // app names well over a hundred symbols, so any small number here means
         // the scan broke, not that the app got tidier.
         #expect(names.count > 100, "only \(names.count) symbol literals found — the scan is broken")
+        #expect(manifest.count > 100, "only \(manifest.count) manifest symbols found — the manifest is broken")
+        #expect(
+            manifest == Array(Set(manifest)).sorted(),
+            "source-symbol manifest must stay sorted and duplicate-free"
+        )
+
+        let scanned = Set(names.keys)
+        let manifested = Set(manifest)
+        let missing = scanned.subtracting(manifested).sorted()
+        let excess = manifested.subtracting(scanned).sorted()
+        #expect(
+            missing.isEmpty && excess.isEmpty,
+            "source-symbol manifest drifted; missing: \(missing), excess: \(excess)"
+        )
 
         for (name, origin) in names.sorted(by: { $0.key < $1.key }) {
             #expect(
                 NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil,
                 "\(origin) names \"\(name)\""
             )
+        }
+    }
+
+    private static func manifestLiterals() throws -> [String] {
+        let url = repositoryRoot.appending(path: "GetHog/Tests/SourceSymbolManifest.swift")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let pattern = try NSRegularExpression(pattern: #"^\s*"([^"\\]+)",?$"#, options: .anchorsMatchLines)
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return pattern.matches(in: text, range: range).compactMap { match in
+            guard let captured = Range(match.range(at: 1), in: text) else { return nil }
+            return String(text[captured])
         }
     }
 
@@ -59,11 +85,7 @@ struct SourceSymbolNameTests {
     }
 
     private static func sourceFiles() throws -> [URL] {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let root = repositoryRoot
             .appending(path: "GetHog/Sources")
 
         let enumerator = try #require(
@@ -71,5 +93,13 @@ struct SourceSymbolNameTests {
             "couldn't read \(root.path) — the sources moved, or the host test cannot reach them"
         )
         return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
+    }
+
+    private static var repositoryRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }

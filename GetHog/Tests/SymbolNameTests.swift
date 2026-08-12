@@ -74,4 +74,15 @@ struct SymbolNameTests {
             "\(kind.rawValue) names \"\(name)\", which is not an SF Symbol"
         )
     }
+
+    @Test("Every source-discovered symbol resolves through UIKit")
+    func sourceManifestResolvesThroughUIKit() {
+        #expect(
+            sourceSymbolManifest.count > 100,
+            "only \(sourceSymbolManifest.count) source symbols found — the manifest is broken"
+        )
+        for name in sourceSymbolManifest {
+            #expect(UIImage(systemName: name) != nil, "source manifest names \"\(name)\"")
+        }
+    }
 }
