@@ -1,5 +1,4 @@
 import Foundation
-import FoundationXML
 import Testing
 
 @Suite("Mac build graph")
