@@ -565,14 +565,20 @@ struct MacWindowObserverLifecycleTests {
     private final class Recorder {
         var scanCount = 0
         var placedWindows: [NSWindow] = []
+        var restoredWindows: [(window: NSWindow, preferredFrame: CGRect?)] = []
         var scheduled: [@MainActor () -> Void] = []
 
         func scan() {
             scanCount += 1
         }
 
-        func place(_ window: NSWindow) {
+        func place(_ window: NSWindow, preferredFrame: CGRect?) {
             placedWindows.append(window)
+            restoredWindows.append((window, preferredFrame))
+        }
+
+        func restore(_ window: NSWindow, preferredFrame: CGRect?) {
+            restoredWindows.append((window, preferredFrame))
         }
 
         func schedule(_ action: @escaping @MainActor () -> Void) {
@@ -582,6 +588,50 @@ struct MacWindowObserverLifecycleTests {
         func runNext() {
             scheduled.removeFirst()()
         }
+    }
+
+    @Test("native full-screen exit restores each window's captured ordinary frame")
+    func fullScreenExitRestoresCapturedFramePerWindow() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan,
+            restoreWindow: recorder.restore
+        )
+        delegate.applicationWillFinishLaunching(
+            Notification(name: NSApplication.willFinishLaunchingNotification)
+        )
+
+        let first = NSWindow()
+        let second = NSWindow()
+        let firstOrdinary = CGRect(x: 40, y: 60, width: 1_000, height: 700)
+        let secondOrdinary = CGRect(x: 180, y: 140, width: 860, height: 620)
+        let fallback = CGRect(x: 424, y: 220, width: 1_200, height: 780)
+
+        first.setFrame(firstOrdinary, display: false)
+        second.setFrame(secondOrdinary, display: false)
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: first)
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: second)
+        #expect(delegate.capturedFullScreenFrameCount == 2)
+
+        first.setFrame(fallback, display: false)
+        second.setFrame(fallback, display: false)
+        center.post(name: NSWindow.didExitFullScreenNotification, object: second)
+        center.post(name: NSWindow.didExitFullScreenNotification, object: first)
+
+        #expect(delegate.capturedFullScreenFrameCount == 0)
+        #expect(recorder.restoredWindows.isEmpty)
+        #expect(recorder.scheduled.count == 2)
+        recorder.runNext()
+        recorder.runNext()
+
+        #expect(recorder.restoredWindows.count == 2)
+        #expect(recorder.restoredWindows[0].window === second)
+        #expect(recorder.restoredWindows[0].preferredFrame == secondOrdinary)
+        #expect(recorder.restoredWindows[1].window === first)
+        #expect(recorder.restoredWindows[1].preferredFrame == firstOrdinary)
     }
 
     @Test("becoming main never mutates AppKit's ordinary-frame restoration")
@@ -621,7 +671,7 @@ struct MacWindowObserverLifecycleTests {
             notificationCenter: center,
             scheduleOnNextMainTurn: recorder.schedule,
             scanVisibleWindows: recorder.scan,
-            placeWindow: recorder.place
+            restoreWindow: recorder.place
         )
         delegate.applicationWillFinishLaunching(
             Notification(name: NSApplication.willFinishLaunchingNotification)
@@ -643,8 +693,93 @@ struct MacWindowObserverLifecycleTests {
         #expect(recorder.placedWindows.count == 2)
         #expect(recorder.placedWindows[0] === first)
         #expect(recorder.placedWindows[1] === second)
+        #expect(recorder.restoredWindows.allSatisfy { $0.preferredFrame == nil })
         #expect(recorder.scheduled.isEmpty)
-        #expect(delegate.registeredObserverCount == 5)
+        #expect(delegate.registeredObserverCount == 6)
+    }
+
+    @Test("closing a full-screen window cancels captured and queued restoration")
+    func closingWindowCancelsFullScreenRestoration() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan,
+            restoreWindow: recorder.place
+        )
+        delegate.applicationWillFinishLaunching(
+            Notification(name: NSApplication.willFinishLaunchingNotification)
+        )
+        let window = NSWindow()
+
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+        #expect(delegate.capturedFullScreenFrameCount == 1)
+
+        center.post(name: NSWindow.didExitFullScreenNotification, object: window)
+        #expect(delegate.capturedFullScreenFrameCount == 0)
+        #expect(recorder.scheduled.count == 1)
+
+        center.post(name: NSWindow.willCloseNotification, object: window)
+        #expect(delegate.capturedFullScreenFrameCount == 0)
+
+        recorder.runNext()
+        #expect(recorder.placedWindows.isEmpty)
+    }
+
+    @Test("late native transition notifications cannot restore a closed window")
+    func lateTransitionNotificationsIgnoreClosedWindow() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan,
+            restoreWindow: recorder.place
+        )
+        delegate.applicationWillFinishLaunching(
+            Notification(name: NSApplication.willFinishLaunchingNotification)
+        )
+        let window = NSWindow()
+
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+        center.post(name: NSWindow.willCloseNotification, object: window)
+        center.post(name: NSWindow.didExitFullScreenNotification, object: window)
+        center.post(name: NSWindow.didDeminiaturizeNotification, object: window)
+
+        // The close policy itself schedules one main-turn action. Neither
+        // geometry notification may add another after the window is terminal.
+        #expect(recorder.scheduled.count == 1)
+        recorder.runNext()
+        #expect(recorder.placedWindows.isEmpty)
+    }
+
+    @Test("a later full-screen attempt overwrites a failed entry's captured frame")
+    func repeatedWillEnterOverwritesFailedEntryCapture() {
+        let center = NotificationCenter()
+        let recorder = Recorder()
+        let delegate = MacAppDelegate(
+            notificationCenter: center,
+            scheduleOnNextMainTurn: recorder.schedule,
+            scanVisibleWindows: recorder.scan,
+            restoreWindow: recorder.place
+        )
+        delegate.applicationWillFinishLaunching(
+            Notification(name: NSApplication.willFinishLaunchingNotification)
+        )
+        let window = NSWindow()
+        let firstAttempt = CGRect(x: 20, y: 30, width: 800, height: 600)
+        let secondAttempt = CGRect(x: 80, y: 90, width: 900, height: 650)
+
+        window.setFrame(firstAttempt, display: false)
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+        window.setFrame(secondAttempt, display: false)
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+        center.post(name: NSWindow.didExitFullScreenNotification, object: window)
+        recorder.runNext()
+
+        #expect(recorder.restoredWindows.count == 1)
+        #expect(recorder.restoredWindows[0].preferredFrame == secondAttempt)
     }
 
     @Test("restoration finishing before launch completion still schedules one later scan")
@@ -655,7 +790,7 @@ struct MacWindowObserverLifecycleTests {
             notificationCenter: center,
             scheduleOnNextMainTurn: recorder.schedule,
             scanVisibleWindows: recorder.scan,
-            placeWindow: recorder.place
+            restoreWindow: recorder.place
         )
         let willFinish = Notification(name: NSApplication.willFinishLaunchingNotification)
         let didFinish = Notification(name: NSApplication.didFinishLaunchingNotification)
@@ -663,7 +798,7 @@ struct MacWindowObserverLifecycleTests {
         delegate.applicationWillFinishLaunching(willFinish)
         delegate.applicationWillFinishLaunching(willFinish)
 
-        #expect(delegate.registeredObserverCount == 5)
+        #expect(delegate.registeredObserverCount == 6)
         #expect(recorder.scanCount == 0)
 
         center.post(name: NSApplication.didFinishRestoringWindowsNotification, object: nil)
@@ -677,7 +812,7 @@ struct MacWindowObserverLifecycleTests {
         recorder.runNext()
         #expect(recorder.scanCount == 2)
         #expect(recorder.scheduled.isEmpty)
-        #expect(delegate.registeredObserverCount == 5)
+        #expect(delegate.registeredObserverCount == 6)
     }
 
     @Test("restoration finishing after launch completion schedules one later scan")
@@ -688,7 +823,7 @@ struct MacWindowObserverLifecycleTests {
             notificationCenter: center,
             scheduleOnNextMainTurn: recorder.schedule,
             scanVisibleWindows: recorder.scan,
-            placeWindow: recorder.place
+            restoreWindow: recorder.place
         )
         let willFinish = Notification(name: NSApplication.willFinishLaunchingNotification)
         let didFinish = Notification(name: NSApplication.didFinishLaunchingNotification)
@@ -698,7 +833,7 @@ struct MacWindowObserverLifecycleTests {
         delegate.applicationDidFinishLaunching(didFinish)
         delegate.applicationDidFinishLaunching(didFinish)
 
-        #expect(delegate.registeredObserverCount == 5)
+        #expect(delegate.registeredObserverCount == 6)
         #expect(recorder.scanCount == 1)
 
         center.post(name: NSApplication.didFinishRestoringWindowsNotification, object: nil)
@@ -708,7 +843,7 @@ struct MacWindowObserverLifecycleTests {
         recorder.runNext()
         #expect(recorder.scanCount == 2)
         #expect(recorder.scheduled.isEmpty)
-        #expect(delegate.registeredObserverCount == 5)
+        #expect(delegate.registeredObserverCount == 6)
     }
 
     @Test("termination removes restoration with every other owned observer")
@@ -719,7 +854,7 @@ struct MacWindowObserverLifecycleTests {
             notificationCenter: center,
             scheduleOnNextMainTurn: recorder.schedule,
             scanVisibleWindows: recorder.scan,
-            placeWindow: recorder.place
+            restoreWindow: recorder.place
         )
         delegate.applicationWillFinishLaunching(
             Notification(name: NSApplication.willFinishLaunchingNotification)
@@ -732,10 +867,15 @@ struct MacWindowObserverLifecycleTests {
         center.post(name: NSWindow.didExitFullScreenNotification, object: window)
         #expect(recorder.scheduled.count == 1)
 
+        let capturedWindow = NSWindow()
+        center.post(name: NSWindow.willEnterFullScreenNotification, object: capturedWindow)
+        #expect(delegate.capturedFullScreenFrameCount == 1)
+
         delegate.applicationWillTerminate(
             Notification(name: NSApplication.willTerminateNotification)
         )
         #expect(delegate.registeredObserverCount == 0)
+        #expect(delegate.capturedFullScreenFrameCount == 0)
 
         recorder.runNext()
         #expect(recorder.placedWindows.isEmpty)

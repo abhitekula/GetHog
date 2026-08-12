@@ -1047,15 +1047,18 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     private let notificationCenter: NotificationCenter
     private let scheduleOnNextMainTurn: MainTurnScheduler
     private let scanVisibleWindows: @MainActor () -> Void
-    private let placeWindow: @MainActor (NSWindow) -> Void
+    private let restoreWindow: @MainActor (NSWindow, CGRect?) -> Void
     private var observerTokens: [NSObjectProtocol] = []
     private var didRunInitialWindowScan = false
+    private var ordinaryFramesBeforeFullScreen: [ObjectIdentifier: CGRect] = [:]
+    private var windowPlacementGenerations: [ObjectIdentifier: UInt] = [:]
+    private let closedWindows = NSHashTable<NSWindow>.weakObjects()
 
     override init() {
         notificationCenter = .default
         scheduleOnNextMainTurn = Self.scheduleOnNextMainTurn
         scanVisibleWindows = Self.clampVisibleWindows
-        placeWindow = Self.clamp
+        restoreWindow = Self.restore
         super.init()
     }
 
@@ -1063,16 +1066,17 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         notificationCenter: NotificationCenter,
         scheduleOnNextMainTurn: @escaping MainTurnScheduler,
         scanVisibleWindows: @escaping @MainActor () -> Void,
-        placeWindow: @escaping @MainActor (NSWindow) -> Void = { _ in }
+        restoreWindow: @escaping @MainActor (NSWindow, CGRect?) -> Void = { _, _ in }
     ) {
         self.notificationCenter = notificationCenter
         self.scheduleOnNextMainTurn = scheduleOnNextMainTurn
         self.scanVisibleWindows = scanVisibleWindows
-        self.placeWindow = placeWindow
+        self.restoreWindow = restoreWindow
         super.init()
     }
 
     var registeredObserverCount: Int { observerTokens.count }
+    var capturedFullScreenFrameCount: Int { ordinaryFramesBeforeFullScreen.count }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         MenuBarWindowPolicy.shouldTerminateAfterLastWindowClosed(keepInMenuBar: Self.keepInMenuBar)
@@ -1088,17 +1092,23 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // would turn the owned token array into a retain cycle.
         let scheduleOnNextMainTurn = scheduleOnNextMainTurn
         let scanVisibleWindows = scanVisibleWindows
-        let placeWindow = placeWindow
+        let restoreWindow = restoreWindow
 
         observerTokens.append(center.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,
             queue: .main
-        ) { note in
+        ) { [weak self] note in
             let closing = note.object as? NSWindow
             // After the close lands rather than during it: the closing window
             // still counts itself until the next turn of the loop.
             MainActor.assumeIsolated {
+                if let closing {
+                    let identifier = ObjectIdentifier(closing)
+                    self?.closedWindows.add(closing)
+                    self?.ordinaryFramesBeforeFullScreen.removeValue(forKey: identifier)
+                    self?.windowPlacementGenerations.removeValue(forKey: identifier)
+                }
                 scheduleOnNextMainTurn {
                     Self.dropToAccessoryIfAsked(excluding: closing)
                 }
@@ -1128,21 +1138,62 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
                 scheduleOnNextMainTurn(scanVisibleWindows)
             }
         })
-        for name in [NSWindow.didDeminiaturizeNotification, NSWindow.didExitFullScreenNotification] {
-            observerTokens.append(center.addObserver(
-                forName: name,
-                object: nil,
-                queue: .main
-            ) { [weak self] note in
-                guard let window = note.object as? NSWindow else { return }
-                MainActor.assumeIsolated {
-                    scheduleOnNextMainTurn { [weak self, weak window] in
-                        guard let self, !self.observerTokens.isEmpty, let window else { return }
-                        placeWindow(window)
-                    }
+        observerTokens.append(center.addObserver(
+            forName: NSWindow.willEnterFullScreenNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                let identifier = ObjectIdentifier(window)
+                self?.closedWindows.remove(window)
+                self?.ordinaryFramesBeforeFullScreen[identifier] = window.frame
+                self?.advancePlacementGeneration(for: identifier)
+            }
+        })
+        observerTokens.append(center.addObserver(
+            forName: NSWindow.didDeminiaturizeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                guard self?.closedWindows.contains(window) == false else { return }
+                let identifier = ObjectIdentifier(window)
+                let generation = self?.advancePlacementGeneration(for: identifier)
+                scheduleOnNextMainTurn { [weak self, weak window] in
+                    guard let self,
+                          !self.observerTokens.isEmpty,
+                          self.windowPlacementGenerations[identifier] == generation,
+                          let window
+                    else { return }
+                    restoreWindow(window, nil)
                 }
-            })
-        }
+            }
+        })
+        observerTokens.append(center.addObserver(
+            forName: NSWindow.didExitFullScreenNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                guard self?.closedWindows.contains(window) == false else { return }
+                let identifier = ObjectIdentifier(window)
+                let ordinaryFrame = self?.ordinaryFramesBeforeFullScreen.removeValue(
+                    forKey: identifier
+                )
+                let generation = self?.advancePlacementGeneration(for: identifier)
+                scheduleOnNextMainTurn { [weak self, weak window] in
+                    guard let self,
+                          !self.observerTokens.isEmpty,
+                          self.windowPlacementGenerations[identifier] == generation,
+                          let window
+                    else { return }
+                    restoreWindow(window, ordinaryFrame)
+                }
+            }
+        })
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -1162,6 +1213,16 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         let center = notificationCenter
         observerTokens.forEach(center.removeObserver)
         observerTokens.removeAll()
+        ordinaryFramesBeforeFullScreen.removeAll()
+        windowPlacementGenerations.removeAll()
+        closedWindows.removeAllObjects()
+    }
+
+    @discardableResult
+    private func advancePlacementGeneration(for identifier: ObjectIdentifier) -> UInt {
+        let generation = windowPlacementGenerations[identifier, default: 0] &+ 1
+        windowPlacementGenerations[identifier] = generation
+        return generation
     }
 
     private static func scheduleOnNextMainTurn(_ action: @escaping @MainActor () -> Void) {
@@ -1191,13 +1252,20 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func clamp(_ window: NSWindow) {
+        restore(window, preferredFrame: nil)
+    }
+
+    private static func restore(_ window: NSWindow, preferredFrame: CGRect?) {
         guard window.canBecomeMain,
               !(window is NSPanel),
               MacWindowPlacement.shouldClamp(styleMask: window.styleMask),
               let screen = bestScreen(for: window)
         else { return }
 
-        let frame = MacWindowPlacement.clampedFrame(window.frame, to: screen.visibleFrame)
+        let frame = MacWindowPlacement.clampedFrame(
+            preferredFrame ?? window.frame,
+            to: screen.visibleFrame
+        )
         guard frame != window.frame else { return }
         window.setFrame(frame, display: true, animate: false)
     }
