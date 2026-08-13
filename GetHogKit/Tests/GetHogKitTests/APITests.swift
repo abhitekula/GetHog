@@ -141,6 +141,33 @@ struct APITests {
 @Suite("Scope preflight")
 struct ScopePreflightTests {
 
+    @Test("the compatibility report treats a 401 as inconclusive, never as a missing scope")
+    func compatibilityReportDoesNotLockUnauthorized() async {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic-rejected-key", region: .usCloud),
+            transport: StubTransport(status: 401, body: #"{"detail":"Synthetic rejection."}"#)
+        )
+
+        let report = await ScopePreflight(client: client).run(projectID: 1_001)
+
+        #expect(report.missingScopes.isEmpty)
+        #expect(Capability.allCases.allSatisfy { report.isAvailable($0) })
+        #expect(Capability.allCases.allSatisfy { report.probeFailure($0) != nil })
+    }
+
+    @Test("the credential-validating preflight surfaces a 401 to the session owner")
+    func unauthorizedEscapesTheValidatingPreflight() async {
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic-rejected-key", region: .usCloud),
+            transport: StubTransport(status: 401, body: #"{"detail":"Synthetic rejection."}"#)
+        )
+
+        await #expect(throws: PostHogError.unauthorized) {
+            _ = try await ScopePreflight(client: client)
+                .runRequiringValidCredential(projectID: 1_001)
+        }
+    }
+
     @Test("marks a capability available when its probe succeeds")
     func availableCapability() {
         let result = CapabilityReport(results: [.dashboards: .available])

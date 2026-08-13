@@ -46,6 +46,43 @@ private struct FailingProbeTransport: HTTPTransport {
 @MainActor
 struct CapabilityGateTests {
 
+    @Test("a 401 during an active preflight clears the rejected key and asks to reconnect")
+    func activeSessionUnauthorizedRequiresCredentialReplacement() async throws {
+        let store = InMemoryTokenStore()
+        let model = AppModel(
+            store: store,
+            transport: FailingProbeTransport(
+                status: 401,
+                body: #"{"type":"authentication_error","detail":"Synthetic rejection."}"#
+            )
+        )
+
+        try await model.connect(key: "synthetic-rejected-key", region: .usCloud)
+
+        #expect(model.phase == .onboarding)
+        #expect(model.storedCredentialRecovery == .replaceCredential(.usCloud))
+        #expect(model.connectionError == PostHogError.unauthorized.localizedDescription)
+        #expect(try store.load() == nil)
+        #expect(model.client == nil)
+        #expect(model.lockedScope(for: .dashboards) == nil)
+    }
+
+    @Test("a late 401 from a replaced authentication epoch cannot revoke the new session")
+    func staleUnauthorizedCannotRevokeReplacementSession() async throws {
+        let model = AppModel(store: InMemoryTokenStore(), transport: DemoTransport())
+        try await model.connect(key: "synthetic-first-key", region: .usCloud)
+        let rejectedScope = try #require(model.flagWriteScope)
+
+        try await model.connect(key: "synthetic-replacement-key", region: .usCloud)
+        let replacementEpoch = try #require(model.authSessionID)
+        model.invalidateRejectedCredential(ifCurrent: rejectedScope)
+
+        #expect(model.phase == .ready)
+        #expect(model.authSessionID == replacementEpoch)
+        #expect(model.capabilities?.allAvailable == true)
+        #expect(model.storedCredentialRecovery == nil)
+    }
+
     @Test("a transient probe failure does not lock a capability")
     func transientFailureDoesNotLock() async throws {
         let model = AppModel(

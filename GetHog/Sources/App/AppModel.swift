@@ -442,8 +442,36 @@ final class AppModel {
     }
 
     func refreshCapabilities() async {
-        guard let client, let project = selectedProject else { return }
-        capabilities = await ScopePreflight(client: client).run(projectID: project.id)
+        guard let client, let scope = flagWriteScope else { return }
+        do {
+            let report = try await ScopePreflight(client: client)
+                .runRequiringValidCredential(projectID: scope.projectID)
+            // A project or credential replacement may have completed while the
+            // probes were suspended. Its report belongs to the captured epoch,
+            // not whichever session happens to be current when it returns.
+            guard flagWriteScope == scope else { return }
+            capabilities = report
+        } catch PostHogError.unauthorized {
+            invalidateRejectedCredential(ifCurrent: scope)
+        } catch {
+            // ScopePreflight turns every non-authentication failure into a
+            // capability-local `.failed` result. This remains defense-in-depth
+            // if a future implementation gains another throwing dependency.
+        }
+    }
+
+    /// Applies a capability preflight's authentication rejection only while the
+    /// exact session that made the request is still current. Internal so both
+    /// app test hosts can deterministically exercise the late-response boundary
+    /// without holding a live transport request open. `signOut` remains the one
+    /// owner of credential, session and customer-data teardown; restoring the
+    /// rejection afterward preserves the reconnect reason for onboarding.
+    func invalidateRejectedCredential(ifCurrent rejectedScope: FlagWriteScope) {
+        guard flagWriteScope == rejectedScope,
+              let region = rejectedScope.projectRegion else { return }
+        signOut()
+        connectionError = PostHogError.unauthorized.localizedDescription
+        storedCredentialRecovery = .replaceCredential(region)
     }
 
     // MARK: - Widget snapshot

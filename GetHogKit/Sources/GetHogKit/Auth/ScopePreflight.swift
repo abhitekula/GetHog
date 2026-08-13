@@ -141,11 +141,48 @@ public struct ScopePreflight: Sendable {
         self.client = client
     }
 
+    private enum UnauthorizedPolicy {
+        case recordFailure
+        case invalidateSession
+    }
+
+    /// Builds capability evidence without changing this public API's original
+    /// nonthrowing contract.
+    ///
+    /// A 401 is not evidence about one capability's scopes: every request made
+    /// with that credential is now unauthenticated. Compatibility callers get
+    /// an inconclusive `.failed` result for every rejected probe, never a lock.
+    /// Session owners that can replace the credential use
+    /// `runRequiringValidCredential(projectID:)` instead.
     public func run(projectID: Int) async -> CapabilityReport {
+        do {
+            return try await run(projectID: projectID, unauthorized: .recordFailure)
+        } catch {
+            // `.recordFailure` handles every error at the probe boundary. Keep a
+            // complete inconclusive report as defense if that invariant changes.
+            return failedReport(error.localizedDescription)
+        }
+    }
+
+    /// Builds capability evidence while surfacing a session-wide 401 to the
+    /// credential owner. A 403 remains capability-local evidence; transport and
+    /// server failures remain inconclusive probe results.
+    public func runRequiringValidCredential(projectID: Int) async throws -> CapabilityReport {
+        try await run(projectID: projectID, unauthorized: .invalidateSession)
+    }
+
+    private func run(
+        projectID: Int,
+        unauthorized policy: UnauthorizedPolicy
+    ) async throws -> CapabilityReport {
         var results: [Capability: CapabilityStatus] = [:]
 
         for capability in Capability.allCases where capability != .replay {
-            results[capability] = await probe(capability, projectID: projectID)
+            results[capability] = try await probe(
+                capability,
+                projectID: projectID,
+                unauthorized: policy
+            )
         }
         // Replay rides on the same scope as the inspector; a separate probe would
         // cost a request for no extra information.
@@ -154,7 +191,17 @@ public struct ScopePreflight: Sendable {
         return CapabilityReport(results: results)
     }
 
-    private func probe(_ capability: Capability, projectID: Int) async -> CapabilityStatus {
+    private func failedReport(_ message: String) -> CapabilityReport {
+        CapabilityReport(results: Dictionary(uniqueKeysWithValues: Capability.allCases.map {
+            ($0, CapabilityStatus.failed(message))
+        }))
+    }
+
+    private func probe(
+        _ capability: Capability,
+        projectID: Int,
+        unauthorized policy: UnauthorizedPolicy
+    ) async throws -> CapabilityStatus {
         let endpoint: Endpoint = switch capability {
         case .dashboards: PostHogAPI.dashboards(projectID: projectID, limit: 1)
         case .events: PostHogAPI.hogql(projectID: projectID, sql: "SELECT 1 LIMIT 1")
@@ -168,7 +215,11 @@ public struct ScopePreflight: Sendable {
         } catch let error as PostHogError {
             switch error {
             case .forbidden(let scope, _): return .locked(scope: scope)
-            case .unauthorized: return .locked(scope: nil)
+            case .unauthorized:
+                switch policy {
+                case .recordFailure: return .failed(error.localizedDescription)
+                case .invalidateSession: throw error
+                }
             default: return .failed(error.localizedDescription)
             }
         } catch {
