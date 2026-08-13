@@ -151,6 +151,77 @@ private actor ProjectEventsTransport: HTTPTransport {
     }
 }
 
+/// Serves one initial page immediately, then holds the same client's Live Tail
+/// request so a replacement project can retire it before its response arrives.
+private actor HeldLiveTailEventsTransport: HTTPTransport {
+    private var requestCount = 0
+    private let gate: AsyncStream<Void>.Continuation
+    private let gateStream: AsyncStream<Void>
+
+    init() {
+        var continuation: AsyncStream<Void>.Continuation?
+        gateStream = AsyncStream<Void> { continuation = $0 }
+        gate = continuation!
+    }
+
+    func requests() -> Int { requestCount }
+    func release() { gate.finish() }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        let tag = requestCount == 1 ? "project-one" : "stale-tick"
+        if requestCount == 2 {
+            for await _ in gateStream {}
+        }
+        let body = """
+        {"columns":["uuid","event","distinct_id","timestamp","properties","$current_url"],
+         "results":[["synthetic-\(tag)","synthetic_\(tag)","person-\(tag)",
+         "2026-08-08T12:00:00Z",{},null]]}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
+    }
+}
+
+/// Holds a same-signature replacement request while allowing an accidental
+/// concurrent Live Tail request to complete, making the request-count contract
+/// deterministic rather than deadlocking the test.
+private actor HeldSameSignatureReloadTransport: HTTPTransport {
+    private var requestCount = 0
+    private var heldContinuation: CheckedContinuation<Void, Never>?
+
+    func requests() -> Int { requestCount }
+    func isHoldingReload() -> Bool { heldContinuation != nil }
+
+    func releaseReload() {
+        heldContinuation?.resume()
+        heldContinuation = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        let requestNumber = requestCount
+        if requestNumber == 2 {
+            await withCheckedContinuation { continuation in
+                heldContinuation = continuation
+            }
+        }
+        let body = """
+        {"columns":["uuid","event","distinct_id","timestamp","properties","$current_url"],
+         "results":[["synthetic-request-\(requestNumber)","synthetic_event",\
+         "person-request-\(requestNumber)","2026-08-08T12:00:00Z",{},null]]}
+        """
+        return (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+        )
+    }
+}
+
 /// Holds the first request so two reload callers overlap deterministically and
 /// the request budget can be checked before either one completes.
 private actor HeldFirstEventsTransport: HTTPTransport {
@@ -318,6 +389,37 @@ struct EventsLiveTailRecoveryTests {
         #expect(!bodies[1].contains(visibleDraftSearch))
     }
 
+    @Test("paging failure preserves the feed and retry appends older events")
+    func pagingFailurePreservesFeedAndRecovers() async {
+        let transport = LiveTailRecoveryTransport()
+        let store = EventsStore()
+        let api = client(transport)
+
+        await store.reload(client: api, projectID: 1, tokens: [], search: nil)
+        let originalIDs = store.events.map(\.id)
+        let originalRows = store.responseRows
+        let originalReachedEnd = store.reachedEnd
+        let originalWindow = store.searchedDescription
+        #expect(originalIDs.count == 50)
+
+        await store.loadMore(client: api, projectID: 1, tokens: [], search: nil)
+
+        #expect(store.events.map(\.id) == originalIDs)
+        #expect(store.responseRows == originalRows)
+        #expect(store.reachedEnd == originalReachedEnd)
+        #expect(store.searchedDescription == originalWindow)
+        #expect(store.export != nil)
+        #expect(store.failure == nil)
+        #expect(store.pagingFailure != nil)
+
+        await store.loadMore(client: api, projectID: 1, tokens: [], search: nil)
+
+        #expect(store.events.count == 52)
+        #expect(store.responseRows.count == 52)
+        #expect(store.pagingFailure == nil)
+        #expect(store.failure == nil)
+    }
+
     @Test("an identical follower survives cancellation of the reload leader")
     func identicalFollowerSurvivesLeaderCancellation() async {
         let transport = HeldFirstEventsTransport()
@@ -353,6 +455,27 @@ struct EventsLiveTailRecoveryTests {
         #expect(store.failure == nil)
     }
 
+    @Test("Live Tail stands down while a same-signature reload replaces the feed")
+    func liveTailStandsDownDuringReload() async {
+        let transport = HeldSameSignatureReloadTransport()
+        let store = EventsStore()
+        let api = client(transport)
+
+        await store.reload(client: api, projectID: 1, tokens: [], search: nil)
+        let pendingReload = Task {
+            await store.reload(client: api, projectID: 1, tokens: [], search: nil)
+        }
+        while await !transport.isHoldingReload() { await Task.yield() }
+        #expect(store.isLoading)
+
+        await store.refreshLatest(client: api, projectID: 1, tokens: [], search: nil)
+
+        #expect(await transport.requests() == 2)
+        await transport.releaseReload()
+        await pendingReload.value
+        #expect(store.events.map(\.distinctID) == ["person-request-2"])
+    }
+
     @Test("a late reload from the prior project cannot replace the new project feed")
     func lateProjectReloadIsDiscarded() async {
         let store = EventsStore()
@@ -374,20 +497,22 @@ struct EventsLiveTailRecoveryTests {
     @Test("a late live-tail tick cannot prepend into a replacement project's feed")
     func lateProjectLiveTailIsDiscarded() async {
         let store = EventsStore()
-        let original = ProjectEventsTransport(tag: "project-one")
-        await store.reload(client: client(original), projectID: 1, tokens: [], search: nil)
+        let original = HeldLiveTailEventsTransport()
+        let originalClient = client(original)
+        await store.reload(
+            client: originalClient, projectID: 1, tokens: [], search: nil
+        )
 
-        let slowTick = ProjectEventsTransport(tag: "stale-tick", gated: true)
         let pending = Task {
             await store.refreshLatest(
-                client: client(slowTick), projectID: 1, tokens: [], search: nil
+                client: originalClient, projectID: 1, tokens: [], search: nil
             )
         }
-        while await slowTick.requests() == 0 { await Task.yield() }
+        while await original.requests() < 2 { await Task.yield() }
 
         let current = ProjectEventsTransport(tag: "project-two")
         await store.reload(client: client(current), projectID: 2, tokens: [], search: nil)
-        await slowTick.release()
+        await original.release()
         await pending.value
 
         #expect(store.events.map(\.distinctID) == ["person-project-two"])

@@ -56,6 +56,29 @@ private actor SessionsRefreshTransport: HTTPTransport {
     }
 }
 
+private actor EventsRefreshTransport: HTTPTransport {
+    private var requestCount = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 2 {
+            throw PostHogError.transport("Synthetic events refresh failed")
+        }
+
+        let body = """
+        {"columns":["uuid","event","distinct_id","timestamp","properties","$current_url"],
+         "results":[["018f7e00-0000-7000-8000-000000000001","synthetic_event",
+         "synthetic-mac-person","2026-08-08T12:00:00Z",{},null]]}
+        """
+        return (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+        )
+    }
+}
+
 private actor SessionsFilterChangeTransport: HTTPTransport {
     private var requestCount = 0
     private var staleContinuation: CheckedContinuation<Void, Never>?
@@ -184,6 +207,60 @@ struct StaleRefreshPreservationTests {
                 actionTitle: "Try again"
             )
         )
+    }
+
+    @Test("events same-filter refresh keeps its last-good feed")
+    func eventsRefreshFailurePreservesRows() async {
+        let store = EventsStore()
+        let transport = EventsRefreshTransport()
+        let client = staleRefreshClient(transport)
+
+        await store.reload(client: client, projectID: 1, tokens: [], search: nil)
+        let ids = store.events.map(\.id)
+        let columns = store.responseColumns
+        let rows = store.responseRows
+        let loadedAt = store.loadedAt
+        let reachedEnd = store.reachedEnd
+        let searchedDescription = store.searchedDescription
+        #expect(ids == ["018f7e00-0000-7000-8000-000000000001"])
+        #expect(store.export != nil)
+
+        await store.reload(client: client, projectID: 1, tokens: [], search: nil)
+
+        #expect(store.events.map(\.id) == ids)
+        #expect(store.responseColumns == columns)
+        #expect(store.responseRows == rows)
+        #expect(store.loadedAt == loadedAt)
+        #expect(store.reachedEnd == reachedEnd)
+        #expect(store.searchedDescription == searchedDescription)
+        #expect(store.export != nil)
+        #expect(store.failure?.summary.contains("Synthetic events refresh failed") == true)
+        #expect(!store.isLoading)
+    }
+
+    @Test("events do not retain another client's same-host feed after failure")
+    func eventsClientReplacementFailureClearsRows() async {
+        let store = EventsStore()
+        let transport = EventsRefreshTransport()
+        let originalClient = staleRefreshClient(transport)
+        let replacementClient = staleRefreshClient(transport)
+
+        await store.reload(
+            client: originalClient, projectID: 1, tokens: [], search: nil
+        )
+        #expect(store.events.map(\.id) == ["018f7e00-0000-7000-8000-000000000001"])
+
+        await store.reload(
+            client: replacementClient, projectID: 1, tokens: [], search: nil
+        )
+
+        #expect(store.events.isEmpty)
+        #expect(store.responseColumns.isEmpty)
+        #expect(store.responseRows.isEmpty)
+        #expect(store.loadedAt == nil)
+        #expect(store.export == nil)
+        #expect(store.failure?.summary.contains("Synthetic events refresh failed") == true)
+        #expect(!store.isLoading)
     }
 
     @Test("sessions filter edit retires rows and paging before replacement load")

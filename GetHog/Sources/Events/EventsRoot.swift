@@ -9,6 +9,7 @@ final class EventsStore {
     var isLoading = false
     var isPaging = false
     var failure: LoadFailure?
+    var pagingFailure: LoadFailure?
     /// A periodic refresh failure is deliberately separate from the initial
     /// feed failure: the rows already on screen remain valid and visible.
     var liveTailFailure: LoadFailure?
@@ -39,7 +40,8 @@ final class EventsStore {
     /// Cancellation is advisory; the token rejects a transport that delivers
     /// an old project's response after cancellation.
     private var generation = 0
-    private var loadedProjectID: Int?
+    private var loadedScope: ProjectPreferenceScope?
+    private var loadedSignature: ReloadSignature?
     /// The search that authored the current pager and its cursor. Text still in
     /// the field is only a local draft until the user submits it, so a later page
     /// must continue this search even if a caller momentarily supplies the draft.
@@ -51,11 +53,21 @@ final class EventsStore {
     /// submitted search still supersedes it immediately.
     private var inFlightReload: ReloadFlight?
 
-    private struct ReloadSignature: Equatable {
-        let client: ObjectIdentifier
-        let projectID: Int
-        let tokens: [EventFilterToken]
+    private struct RequestSignature: Equatable {
+        let scope: ProjectPreferenceScope
+        let tokenIDs: [String]
         let search: String?
+    }
+
+    private struct ReloadSignature: Equatable {
+        /// Retained while this signature is authoritative so a replacement
+        /// client cannot reuse the preceding client's object address.
+        let client: PostHogClient
+        let request: RequestSignature
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.client === rhs.client && lhs.request == rhs.request
+        }
     }
 
     private struct ReloadFlight {
@@ -92,11 +104,12 @@ final class EventsStore {
     func reload(
         client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
     ) async {
-        let signature = ReloadSignature(
-            client: ObjectIdentifier(client),
+        let normalizedSearch = Self.normalized(search)
+        let signature = makeSignature(
+            client: client,
             projectID: projectID,
             tokens: tokens,
-            search: search
+            search: normalizedSearch
         )
         if let inFlightReload, inFlightReload.signature == signature {
             await inFlightReload.task.value
@@ -105,18 +118,23 @@ final class EventsStore {
         inFlightReload?.task.cancel()
         generation += 1
         let token = generation
-        loadedProjectID = projectID
-        pagingSearch = search
+        let requestChanged = loadedSignature != signature
+        loadedScope = signature.request.scope
+        pagingSearch = normalizedSearch
         liveTailFailure = nil
-        pager.restart()
-        events = []
-        responseColumns = []
-        responseRows = []
-        reachedEnd = false
+        pagingFailure = nil
+        if requestChanged {
+            pager.restart()
+            events = []
+            responseColumns = []
+            responseRows = []
+            reachedEnd = false
+            loadedAt = nil
+            loadedSignature = nil
+        }
         isLoading = true
         isPaging = false
         failure = nil
-        loadedAt = nil
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -124,7 +142,9 @@ final class EventsStore {
                 client: client,
                 projectID: projectID,
                 tokens: tokens,
-                search: search,
+                search: normalizedSearch,
+                signature: signature,
+                preservesLastGoodResult: !requestChanged,
                 generation: token
             )
         }
@@ -137,10 +157,12 @@ final class EventsStore {
         projectID: Int,
         tokens: [EventFilterToken],
         search: String?,
+        signature: ReloadSignature,
+        preservesLastGoodResult: Bool,
         generation token: Int
     ) async {
         defer {
-            if token == generation, loadedProjectID == projectID {
+            if token == generation, loadedScope == signature.request.scope {
                 isLoading = false
                 if inFlightReload?.generation == token {
                     inFlightReload = nil
@@ -159,29 +181,95 @@ final class EventsStore {
         // last week costs that worst case every 30s — the budget is
         // organisation-wide, and that is the price of not telling someone with
         // two years of events that they have none.
-        repeat {
-            guard await fetchPage(
-                client: client,
-                projectID: projectID,
-                tokens: tokens,
-                search: search,
-                generation: token
-            ) else { return }
-        } while token == generation
-            && loadedProjectID == projectID
-            && events.isEmpty
-            && !pager.isExhausted
+        if preservesLastGoodResult {
+            var candidatePager = EventFeedPager()
+            var candidateEvents: [EventRow] = []
+            var candidateColumns: [String] = []
+            var candidateRows: [[JSONValue]] = []
+            do {
+                repeat {
+                    let response: QueryResponse = try await client.send(
+                        PostHogAPI.events(
+                            projectID: projectID,
+                            limit: pageSize,
+                            since: candidatePager.floor(now: Date()),
+                            before: candidatePager.cursor,
+                            tokens: tokens,
+                            search: search
+                        )
+                    )
+                    guard token == generation,
+                          loadedScope == signature.request.scope,
+                          !Task.isCancelled
+                    else { return }
+                    let page = response.rows.compactMap(EventRow.init(row:))
+                    candidateEvents.append(contentsOf: page)
+                    if candidateColumns.isEmpty { candidateColumns = response.columns }
+                    candidateRows.append(contentsOf: response.rows.map(\.values))
+                    candidatePager.advance(
+                        rowCount: page.count,
+                        limit: pageSize,
+                        cursor: response.eventCursor()
+                    )
+                } while candidateEvents.isEmpty && !candidatePager.isExhausted
+
+                pager = candidatePager
+                events = candidateEvents
+                responseColumns = candidateColumns
+                responseRows = candidateRows
+                reachedEnd = candidatePager.isExhausted
+                loadedAt = Date()
+                loadedSignature = signature
+                failure = nil
+            } catch {
+                guard token == generation,
+                      loadedScope == signature.request.scope,
+                      !Task.isCancelled,
+                      !(error is CancellationError)
+                else { return }
+                failure = LoadFailure(error, loading: "events")
+            }
+        } else {
+            repeat {
+                guard await fetchPage(
+                    client: client,
+                    projectID: projectID,
+                    tokens: tokens,
+                    search: search,
+                    signature: signature,
+                    generation: token
+                ) else { return }
+            } while token == generation
+                && loadedScope == signature.request.scope
+                && events.isEmpty
+                && !pager.isExhausted
+            if token == generation, loadedScope == signature.request.scope, failure == nil {
+                loadedSignature = signature
+            }
+        }
+    }
+
+    private static func normalized(_ search: String?) -> String? {
+        let value = search?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
     }
 
     func loadMore(
-        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
+        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search _: String?
     ) async {
-        guard loadedProjectID == projectID, !isPaging, !isLoading, !reachedEnd else { return }
+        let pageSearch = pagingSearch
+        let signature = makeSignature(
+            client: client,
+            projectID: projectID,
+            tokens: tokens,
+            search: pageSearch
+        )
+        guard loadedSignature == signature, !isPaging, !isLoading, !reachedEnd else { return }
         let token = generation
-        let pageSearch = search == pagingSearch ? search : pagingSearch
+        pagingFailure = nil
         isPaging = true
         defer {
-            if token == generation, loadedProjectID == projectID {
+            if token == generation, loadedSignature == signature {
                 isPaging = false
             }
         }
@@ -204,19 +292,28 @@ final class EventsStore {
                 projectID: projectID,
                 tokens: tokens,
                 search: pageSearch,
+                signature: signature,
+                requiresCommittedSignature: true,
                 generation: token
             ) else { return }
             if events.count > before { return }
-        } while token == generation && loadedProjectID == projectID && !pager.isExhausted
+        } while token == generation && loadedSignature == signature && !pager.isExhausted
     }
 
     /// Fetches only the newest bounded page and prepends rows this feed does not
     /// already hold. It never restarts or advances the scrollback pager, and it
     /// never clears export rows before a network request succeeds.
     func refreshLatest(
-        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search: String?
+        client: PostHogClient, projectID: Int, tokens: [EventFilterToken], search _: String?
     ) async {
-        guard loadedProjectID == projectID else { return }
+        let refreshSearch = pagingSearch
+        let signature = makeSignature(
+            client: client,
+            projectID: projectID,
+            tokens: tokens,
+            search: refreshSearch
+        )
+        guard !isLoading, loadedSignature == signature else { return }
         let token = generation
         do {
             let latestPager = EventFeedPager()
@@ -227,11 +324,11 @@ final class EventsStore {
                     since: latestPager.floor(now: Date()),
                     before: nil,
                     tokens: tokens,
-                    search: search
+                    search: refreshSearch
                 )
             )
 
-            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+            guard token == generation, loadedSignature == signature, !Task.isCancelled else {
                 return
             }
 
@@ -261,7 +358,7 @@ final class EventsStore {
             loadedAt = Date()
             liveTailFailure = nil
         } catch {
-            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+            guard token == generation, loadedSignature == signature, !Task.isCancelled else {
                 return
             }
             if error is CancellationError { return }
@@ -278,6 +375,8 @@ final class EventsStore {
         projectID: Int,
         tokens: [EventFilterToken],
         search: String?,
+        signature: ReloadSignature,
+        requiresCommittedSignature: Bool = false,
         generation token: Int
     ) async -> Bool {
         do {
@@ -291,7 +390,11 @@ final class EventsStore {
                     search: search
                 )
             )
-            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+            guard token == generation,
+                  loadedScope == signature.request.scope,
+                  (!requiresCommittedSignature || loadedSignature == signature),
+                  !Task.isCancelled
+            else {
                 return false
             }
             let page = response.rows.compactMap(EventRow.init(row:))
@@ -308,16 +411,44 @@ final class EventsStore {
             pager.advance(rowCount: page.count, limit: pageSize, cursor: response.eventCursor())
             reachedEnd = pager.isExhausted
             loadedAt = Date()
-            failure = nil
+            if requiresCommittedSignature {
+                pagingFailure = nil
+            } else {
+                failure = nil
+            }
             return true
         } catch {
-            guard token == generation, loadedProjectID == projectID, !Task.isCancelled else {
+            guard token == generation,
+                  loadedScope == signature.request.scope,
+                  (!requiresCommittedSignature || loadedSignature == signature),
+                  !Task.isCancelled
+            else {
                 return false
             }
             if error is CancellationError { return false }
-            failure = LoadFailure(error, loading: "events")
+            if requiresCommittedSignature {
+                pagingFailure = LoadFailure(error, loading: "older events")
+            } else {
+                failure = LoadFailure(error, loading: "events")
+            }
             return false
         }
+    }
+
+    private func makeSignature(
+        client: PostHogClient,
+        projectID: Int,
+        tokens: [EventFilterToken],
+        search: String?
+    ) -> ReloadSignature {
+        ReloadSignature(
+            client: client,
+            request: RequestSignature(
+                scope: ProjectPreferenceScope(projectID: projectID, region: client.region),
+                tokenIDs: tokens.map(\.id).sorted(),
+                search: Self.normalized(search)
+            )
+        )
     }
 
     /// Groups into human time buckets rather than raw timestamps.
@@ -727,6 +858,18 @@ struct EventsRoot: View {
 
     private var list: some View {
         List(selection: selectedID) {
+            if let failure = store.failure, !store.events.isEmpty {
+                SectionEmptyState(
+                    text: "Couldn't refresh events. \(failure.summary)",
+                    systemImage: "exclamationmark.triangle",
+                    detail: failure.detail,
+                    actionTitle: "Try again"
+                ) {
+                    Task { await reload() }
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
             if store.liveTailFailure != nil {
                 Section {
                     VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -788,22 +931,35 @@ struct EventsRoot: View {
                 // and scroll position is not something a VoiceOver or Full
                 // Keyboard Access user has — so until now the feed's second page
                 // was unreachable for them.
-                HStack {
-                    Spacer()
-                    if store.isPaging {
-                        ProgressView()
-                    } else {
-                        Button("Load older events") { Task { await loadMore() } }
-                            .font(.footnote)
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Theme.accent)
-                            .minimumHitTarget()
+                if let failure = store.pagingFailure {
+                    SectionEmptyState(
+                        text: "Couldn't load older events. \(failure.summary)",
+                        systemImage: "exclamationmark.triangle",
+                        detail: failure.detail,
+                        actionTitle: "Try loading older events again"
+                    ) {
+                        Task { await loadMore() }
                     }
-                    Spacer()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                } else {
+                    HStack {
+                        Spacer()
+                        if store.isPaging {
+                            ProgressView()
+                        } else {
+                            Button("Load older events") { Task { await loadMore() } }
+                                .font(.footnote)
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Theme.accent)
+                                .minimumHitTarget()
+                        }
+                        Spacer()
+                    }
+                    .task { await loadMore() }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
-                .task { await loadMore() }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
             }
 
             FreshnessLabel(date: store.loadedAt)
