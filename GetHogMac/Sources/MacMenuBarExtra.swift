@@ -480,11 +480,20 @@ struct MacMenuBarEmptyPresentation: Equatable {
                 isRefreshEnabled: false
             )
         case .ready:
-            Self(
-                title: "No menu bar data yet",
-                message: "GetHog is connected, but no menu bar data has synced yet. Try Refresh.",
-                isRefreshEnabled: refreshState != .refreshing
-            )
+            switch refreshState {
+            case .failed:
+                Self(
+                    title: "Couldn't refresh menu bar data",
+                    message: "The first menu bar sync couldn't finish. Try Refresh again.",
+                    isRefreshEnabled: true
+                )
+            case .idle, .refreshing:
+                Self(
+                    title: "No menu bar data yet",
+                    message: "GetHog is connected, but no menu bar data has synced yet. Try Refresh.",
+                    isRefreshEnabled: refreshState != .refreshing
+                )
+            }
         }
     }
 }

@@ -366,6 +366,23 @@ struct MacMenuBarRefreshTests {
         #expect(!runtimeDemo.isRefreshEnabled)
     }
 
+    @Test("a failed first sync reports failure without claiming retained data")
+    func failedFirstSyncHasExplicitCopy() {
+        let failed = MacMenuBarEmptyPresentation.resolve(
+            phase: AppModel.Phase.ready,
+            isRuntimeDemo: false,
+            refreshState: .failed
+        )
+
+        #expect(failed.title == "Couldn't refresh menu bar data")
+        #expect(
+            failed.message
+                == "The first menu bar sync couldn't finish. Try Refresh again."
+        )
+        #expect(failed.isRefreshEnabled)
+        #expect(!failed.message.contains("last synced data"))
+    }
+
     private static let authSessionID = UUID(
         uuidString: "018f9000-0000-7000-8000-000000000601"
     )!
