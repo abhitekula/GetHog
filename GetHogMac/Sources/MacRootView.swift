@@ -123,9 +123,9 @@ struct MacRootView: View {
         }
         .focusedSceneValue(
             \.macSidebarToggle,
-            MacSidebarToggleAction(presentation: sidebarPresentation) {
-                sidebarPresentation = sidebarPresentation.toggled
-            }
+            MacSidebarToggleAction(
+                presentationRawValue: $sidebarPresentationRawValue
+            )
         )
         // Nothing typed into this app is a sentence by default — see RootView's
         // note for the measurement. The Mac half of that pair is autocorrection;

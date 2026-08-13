@@ -1,12 +1,18 @@
 import SwiftUI
 
-/// The key window's one sidebar action. Its presentation is captured with the
-/// closure so the menu title and the rendered shell are from the same update.
+/// The key window's one sidebar action. The binding is the scene-storage
+/// location that draws the shell, so the command title and invocation cannot
+/// become two snapshots of one window at different times.
 struct MacSidebarToggleAction {
-    let presentation: MacSidebarPresentation
-    let run: @MainActor () -> Void
+    let presentationRawValue: Binding<String>
 
-    @MainActor func callAsFunction() { run() }
+    var presentation: MacSidebarPresentation {
+        MacSidebarPresentation(rawValue: presentationRawValue.wrappedValue) ?? .visible
+    }
+
+    @MainActor func callAsFunction() {
+        presentationRawValue.wrappedValue = presentation.toggled.rawValue
+    }
 }
 
 extension FocusedValues {

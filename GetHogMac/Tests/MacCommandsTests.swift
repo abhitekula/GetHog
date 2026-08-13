@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 
 @testable import GetHog
@@ -89,22 +90,23 @@ struct GoMenuLayoutTests {
 @MainActor
 @Suite("Mac sidebar command action")
 struct MacSidebarCommandActionTests {
-    @MainActor
-    private final class Recorder {
-        var runs = 0
-    }
-
-    @Test("the action carries one presentation and invokes its window")
-    func forwards() {
-        let recorder = Recorder()
+    @Test("invoking the action updates the presentation read by the command")
+    func togglesPresentation() {
+        var rawPresentation = MacSidebarPresentation.visible.rawValue
         let action = MacSidebarToggleAction(
-            presentation: .visible,
-            run: { recorder.runs += 1 }
+            presentationRawValue: Binding(
+                get: { rawPresentation },
+                set: { rawPresentation = $0 }
+            )
         )
 
         #expect(action.presentation.commandTitle == "Hide Sidebar")
         action()
-        #expect(recorder.runs == 1)
+        #expect(rawPresentation == MacSidebarPresentation.hidden.rawValue)
+        #expect(action.presentation.commandTitle == "Show Sidebar")
+        action()
+        #expect(rawPresentation == MacSidebarPresentation.visible.rawValue)
+        #expect(action.presentation.commandTitle == "Hide Sidebar")
     }
 }
 
