@@ -10,7 +10,7 @@ import SwiftUI
 /// or regular split topology without a device-width fiction.
 struct MacRootView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -393,7 +393,8 @@ struct MacRootView: View {
     /// a link, or `GETHOG_TAB`. Settings has no row; ⌘, territory.
     private func open(_ tab: AppTab) {
         guard tab != .settings else {
-            openSettings()
+            MacMenuBar.activateRegular()
+            openWindow(id: MacSettingsWindow.id)
             return
         }
         selectedTab = tab

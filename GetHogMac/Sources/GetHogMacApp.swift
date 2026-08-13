@@ -230,15 +230,18 @@ struct GetHogMacApp: App {
         // The system's own 900×450 gave a torn-off dashboard one tile column.
         .defaultSize(width: 1_000, height: 700)
 
-        // ⌘, — the same section views and stores as iOS Settings, regrouped
-        // into panes. Scenes inherit no environment from each other, so the
-        // model and preferences are injected again here.
-        Settings {
+        // A named, single-instance window rather than SwiftUI's `Settings`
+        // scene: on macOS 26 the latter continuously fixes its AppKit window
+        // to the current content size. The app menu and every in-app route
+        // address this id through `openWindow`.
+        Window("Settings", id: MacSettingsWindow.id) {
             MacSettingsRoot()
                 .environment(model)
                 .environment(nav)
                 .tint(Theme.accent)
         }
+        .defaultSize(width: 900, height: 568)
+        .windowResizability(.contentMinSize)
 
         // The ambient layer (spec §4): a window-style extra whose label is the
         // user's headline metric. Reads the same snapshot file the widgets do;

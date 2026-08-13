@@ -495,7 +495,6 @@ struct MacMenuBarEmptyPresentation: Equatable {
 struct MacMenuBarPopover: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
 
     let controller: MacMenuBarController
 
@@ -780,10 +779,10 @@ struct MacMenuBarPopover: View {
     private var overflowMenu: some View {
         Menu {
             Button("Settings…") {
-                // Back into the Dock first: `openSettings` in `.accessory`
+                // Back into the Dock first: `openWindow` in `.accessory`
                 // opens a window behind an app the switcher cannot reach.
                 MacMenuBar.activateRegular()
-                openSettings()
+                openWindow(id: MacSettingsWindow.id)
             }
             .keyboardShortcut(",", modifiers: .command)
             Divider()

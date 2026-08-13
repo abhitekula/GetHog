@@ -182,13 +182,20 @@ struct SettingsProjectSection: View {
 #if !os(tvOS)
 struct SettingsAlertsSection: View {
     let snapshotStore: SharedSnapshotStore
+    var openMetricAlerts: (() -> Void)? = nil
 
     var body: some View {
         Section {
-            NavigationLink {
-                MetricAlertsView(snapshotStore: snapshotStore)
-            } label: {
-                Label("Metric alerts", systemImage: "bell.badge")
+            if let openMetricAlerts {
+                Button(action: openMetricAlerts) {
+                    Label("Metric alerts", systemImage: "bell.badge")
+                }
+            } else {
+                NavigationLink {
+                    MetricAlertsView(snapshotStore: snapshotStore)
+                } label: {
+                    Label("Metric alerts", systemImage: "bell.badge")
+                }
             }
         } header: {
             SectionLabel(text: "Alerts", systemImage: "bell.badge")
@@ -570,12 +577,20 @@ struct SettingsSDKHealthSection: View {
 // MARK: - About
 
 struct SettingsAboutSection: View {
+    var openAbout: (() -> Void)? = nil
+
     var body: some View {
         Section {
-            NavigationLink {
-                AboutView()
-            } label: {
-                Label("About GetHog", systemImage: "info.circle")
+            if let openAbout {
+                Button(action: openAbout) {
+                    Label("About GetHog", systemImage: "info.circle")
+                }
+            } else {
+                NavigationLink {
+                    AboutView()
+                } label: {
+                    Label("About GetHog", systemImage: "info.circle")
+                }
             }
         } footer: {
             Text("GetHog is a third-party app and operates independently from PostHog.")

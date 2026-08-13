@@ -88,12 +88,21 @@ enum GoMenuLayout {
 /// shrank instead would make the bar's shape a function of what happened to be
 /// frontmost.
 struct MacCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.openTab) private var openTab
     @FocusedValue(\.screenRefresh) private var screenRefresh
     @FocusedValue(\.insightCSVExport) private var insightCSVExport
     @FocusedValue(\.macSidebarToggle) private var macSidebarToggle
 
     var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                MacMenuBar.activateRegular()
+                openWindow(id: MacSettingsWindow.id)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         // File ▸ New Window (⌘N) is the system's own `WindowGroup` item; these
         // join it rather than replacing it, because the system's already opens
         // the right group. Export saves through the key window's
