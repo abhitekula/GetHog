@@ -14,6 +14,16 @@ import Testing
 @Suite("Skeleton loading semantics", .serialized)
 struct SkeletonLoadingSemanticsTests {
 
+    @Test("Reduce Motion removes the skeleton state transition")
+    func reduceMotionDisablesSkeletonAnimation() {
+        #expect(!SkeletonLoadingMotion.allowsAnimation(reduceMotion: true))
+    }
+
+    @Test("Standard motion retains the skeleton state transition")
+    func standardMotionKeepsSkeletonAnimation() {
+        #expect(SkeletonLoadingMotion.allowsAnimation(reduceMotion: false))
+    }
+
     @Test("loading policy resolves one generic or named outcome")
     func loadingPolicyResolvesGenericAndNamedOutcomes() {
         let generic = SkeletonLoadingPresentation(label: nil)

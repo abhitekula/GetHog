@@ -49,6 +49,12 @@ public enum InsightChartInteraction {
     }
 }
 
+enum TimeSeriesScrubMotion {
+    static func usesScaleTransition(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
+}
+
 public struct InsightChartView: View {
     let model: InsightRenderModel
     var compact: Bool = true
@@ -677,6 +683,14 @@ struct TimeSeriesChart: View {
         #endif
     }
 
+    private var scrubReadoutTransition: AnyTransition {
+        if TimeSeriesScrubMotion.usesScaleTransition(reduceMotion: reduceMotion) {
+            .opacity.combined(with: .scale(scale: 0.96))
+        } else {
+            .identity
+        }
+    }
+
     private var xAxisTickCount: Int {
         dynamicTypeSize.thinnedAxisCount(compact ? 3 : 5)
     }
@@ -1190,7 +1204,7 @@ struct TimeSeriesChart: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(.thinMaterial, in: .capsule)
-        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .transition(scrubReadoutTransition)
     }
 
     /// The readout, as "show me these people".

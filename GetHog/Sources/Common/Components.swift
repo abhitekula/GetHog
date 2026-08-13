@@ -891,12 +891,34 @@ extension View {
     /// whose children are ignored. A screen can also provide a visible label;
     /// it is drawn as an overlay so naming slow work never changes the geometry
     /// the placeholder exists to preserve.
-    @ViewBuilder
     func skeleton(_ isLoading: Bool, label: String? = nil) -> some View {
+        modifier(SkeletonLoadingModifier(isLoading: isLoading, label: label))
+    }
+}
+
+/// Motion policy for the shared loading skeleton.
+///
+/// Redaction and its loading status remain useful with Reduce Motion enabled;
+/// only the decorative cross-fade disappears so the state changes immediately.
+enum SkeletonLoadingMotion {
+    static func allowsAnimation(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
+}
+
+private struct SkeletonLoadingModifier: ViewModifier {
+    let isLoading: Bool
+    let label: String?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
         if isLoading {
             let presentation = SkeletonLoadingPresentation(label: label)
             ZStack {
-                redacted(reason: .placeholder)
+                content
+                    .redacted(reason: .placeholder)
                     .accessibilityHidden(true)
 
                 // The clear sibling adopts the redacted view's proposal; its
@@ -908,11 +930,16 @@ extension View {
                         SkeletonLoadingStatus(presentation: presentation)
                     }
             }
-            .animation(.default, value: isLoading)
+            .animation(skeletonAnimation, value: isLoading)
         } else {
-            redacted(reason: [])
-                .animation(.default, value: isLoading)
+            content
+                .redacted(reason: [])
+                .animation(skeletonAnimation, value: isLoading)
         }
+    }
+
+    private var skeletonAnimation: Animation? {
+        SkeletonLoadingMotion.allowsAnimation(reduceMotion: reduceMotion) ? .default : nil
     }
 }
 
