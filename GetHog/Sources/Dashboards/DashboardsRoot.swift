@@ -10,6 +10,19 @@ enum DashboardCollectionContentState: Equatable {
     case loaded
 }
 
+struct DashboardListRefreshPresentation: Equatable {
+    let message: String
+    let actionTitle: String
+
+    static func resolve(dashboardCount: Int, error: String?) -> Self? {
+        guard dashboardCount > 0, let error else { return nil }
+        return Self(
+            message: "Couldn't refresh dashboards. \(error)",
+            actionTitle: "Try again"
+        )
+    }
+}
+
 enum DashboardNavigationTopology {
     static var showsExplicitReturnControl: Bool {
         #if os(macOS) || os(visionOS)
@@ -248,15 +261,18 @@ struct DashboardsRoot: View {
                 message: "This project doesn't have any dashboards yet."
             )
         case .loaded:
-            DashboardHub(
-                dashboards: store.dashboards,
-                pinned: store.pinned,
-                others: store.others,
-                loadedAt: store.loadedAt,
-                pinnedPreviewStore: pinnedPreviewStore,
-                search: $search
-            ) { dashboard in
-                dashboardHubRow(dashboard)
+            VStack(spacing: 0) {
+                dashboardListRefreshFailure
+                DashboardHub(
+                    dashboards: store.dashboards,
+                    pinned: store.pinned,
+                    others: store.others,
+                    loadedAt: store.loadedAt,
+                    pinnedPreviewStore: pinnedPreviewStore,
+                    search: $search
+                ) { dashboard in
+                    dashboardHubRow(dashboard)
+                }
             }
         }
     }
@@ -399,6 +415,14 @@ struct DashboardsRoot: View {
 
     private var list: some View {
         List(selection: selectedID) {
+            if let presentation = DashboardListRefreshPresentation.resolve(
+                dashboardCount: store.dashboards.count,
+                error: store.error
+            ) {
+                dashboardListRefreshFailure(presentation: presentation)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
             if !filtered(store.pinned).isEmpty {
                 Section {
                     ForEach(filtered(store.pinned), id: \.self) { row($0) }
@@ -535,6 +559,27 @@ struct DashboardsRoot: View {
         } actions: {
             Button("Try again") { Task { await load() } }
         }
+    }
+
+    @ViewBuilder
+    private var dashboardListRefreshFailure: some View {
+        if let presentation = DashboardListRefreshPresentation.resolve(
+            dashboardCount: store.dashboards.count,
+            error: store.error
+        ) {
+            dashboardListRefreshFailure(presentation: presentation)
+        }
+    }
+
+    private func dashboardListRefreshFailure(presentation: DashboardListRefreshPresentation) -> some View {
+        SectionEmptyState(
+            text: presentation.message,
+            systemImage: "exclamationmark.triangle",
+            actionTitle: presentation.actionTitle
+        ) {
+            Task { await load() }
+        }
+        .padding(.horizontal, Theme.Space.l)
     }
 
     private var dashboardLoading: some View {

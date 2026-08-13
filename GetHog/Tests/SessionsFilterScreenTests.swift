@@ -511,6 +511,43 @@ struct SessionsFilterScreenTests {
         #expect(!store.hasMore)
     }
 
+    @Test("a same-filter refresh failure preserves rows and remains retryable inline")
+    func refreshFailurePreservesRows() async {
+        let transport = RefreshFailureTransport()
+        let store = sessionsStore()
+
+        await store.load(client: client(transport), projectID: 1)
+        let firstPageIDs = store.recordings.map(\.id)
+        #expect(firstPageIDs.count == 50)
+        #expect(store.hasMore)
+
+        await store.load(client: client(transport), projectID: 1)
+
+        #expect(store.recordings.map(\.id) == firstPageIDs)
+        #expect(store.hasMore)
+        #expect(store.error?.contains("Synthetic sessions refresh failed") == true)
+        #expect(
+            SessionsRefreshPresentation.resolve(
+                recordingCount: store.recordings.count,
+                error: store.error
+            ) == SessionsRefreshPresentation(
+                message: "Couldn't refresh sessions. Couldn't reach PostHog: Synthetic sessions refresh failed",
+                actionTitle: "Try again"
+            )
+        )
+
+        await store.load(client: client(transport), projectID: 1)
+
+        #expect(store.recordings.map(\.id) == firstPageIDs)
+        #expect(store.error == nil)
+        #expect(
+            SessionsRefreshPresentation.resolve(
+                recordingCount: store.recordings.count,
+                error: store.error
+            ) == nil
+        )
+    }
+
     @Test("a failed next page preserves rows and remains retryable inline")
     func nextPageFailurePreservesRowsAndRetry() async {
         let transport = PagingRecoveryTransport()
@@ -619,6 +656,37 @@ struct SessionsFilterScreenTests {
 private struct FailingTransport: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         throw PostHogError.transport("The network connection was lost.")
+    }
+}
+
+/// The first page succeeds, the next same-filter refresh fails, and retrying
+/// that exact request succeeds. Every row and message is synthetic.
+private actor RefreshFailureTransport: HTTPTransport {
+    private var requestCount = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 2 {
+            throw PostHogError.transport("Synthetic sessions refresh failed")
+        }
+
+        let rows = (1...50).map { index in
+            """
+            {"id":"synthetic-refresh-session-\(index)","distinct_id":"synthetic-refresh-person-\(index)",
+             "recording_duration":120,"active_seconds":60,
+             "start_time":"2026-01-15T10:00:00Z","click_count":1,
+             "keypress_count":0,"console_log_count":0,"console_warn_count":0,
+             "console_error_count":0,"snapshot_source":"web",
+             "ongoing":false,"viewed":false}
+            """
+        }
+        let body = """
+        {"results":[\(rows.joined(separator: ","))],"has_next":true,"version":4}
+        """
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(body.utf8), response)
     }
 }
 

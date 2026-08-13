@@ -2,6 +2,19 @@ import GetHogKit
 import GetHogUI
 import SwiftUI
 
+struct SessionsRefreshPresentation: Equatable {
+    let message: String
+    let actionTitle: String
+
+    static func resolve(recordingCount: Int, error: String?) -> Self? {
+        guard recordingCount > 0, let error else { return nil }
+        return Self(
+            message: "Couldn't refresh sessions. \(error)",
+            actionTitle: "Try again"
+        )
+    }
+}
+
 @MainActor
 @Observable
 final class SessionsStore {
@@ -34,6 +47,7 @@ final class SessionsStore {
     /// filter changed cannot append its rows onto the new filter's results.
     private var generation = 0
     private var loadedScope: ProjectPreferenceScope?
+    private var loadedRequestSignature: String?
 
     init(preferences: SessionsPreferences = SessionsPreferences()) {
         self.preferences = preferences
@@ -71,11 +85,12 @@ final class SessionsStore {
     func load(client: PostHogClient, projectID: Int) async {
         let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
         activate(scope: scope)
+        let requestSignature = self.requestSignature
         generation += 1
         let token = generation
         let scopeChanged = loadedScope != scope
+        let requestChanged = loadedRequestSignature != requestSignature
         loadedScope = scope
-        offset = 0
         pagingError = nil
         // Every replacement invalidates any page request from the preceding
         // generation, even when the project stayed the same and only its filter
@@ -109,12 +124,21 @@ final class SessionsStore {
             loadedAt = Date()
             error = nil
             pagingError = nil
+            loadedRequestSignature = requestSignature
         } catch {
             guard token == generation, loadedScope == scope else { return }
-            // A failed narrowing must not leave the previous filter's rows on
-            // screen looking like the answer to the new question.
-            recordings = []
-            hasMore = false
+            let retainsLastGoodRows = !scopeChanged
+                && !requestChanged
+                && loadedRequestSignature == requestSignature
+                && !recordings.isEmpty
+            if !retainsLastGoodRows {
+                // A failed narrowing must not leave the previous filter's rows
+                // on screen looking like the answer to the new question.
+                recordings = []
+                hasMore = false
+                offset = 0
+                loadedAt = nil
+            }
             pagingError = nil
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
@@ -539,6 +563,20 @@ struct SessionsRoot: View {
 
     private var list: some View {
         List(selection: selectedID) {
+            if let presentation = SessionsRefreshPresentation.resolve(
+                recordingCount: store.recordings.count,
+                error: store.error
+            ) {
+                SectionEmptyState(
+                    text: presentation.message,
+                    systemImage: "exclamationmark.triangle",
+                    actionTitle: presentation.actionTitle
+                ) {
+                    Task { await load() }
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
             if store.filter.isNarrowed {
                 ActiveFilterSummary(filter: store.filter, onClear: store.clearFilters)
                     .listRowBackground(Color.clear)

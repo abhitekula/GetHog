@@ -158,6 +158,26 @@ private actor OutOfOrderDashboardListTransport: HTTPTransport {
     }
 }
 
+/// The first dashboard-list request succeeds, a same-project refresh fails,
+/// and the retry succeeds. Every row and failure is synthetic.
+private actor DashboardListRefreshFailureTransport: HTTPTransport {
+    private var requestCount = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        if requestCount == 2 {
+            throw PostHogError.transport("Synthetic dashboard list refresh failed")
+        }
+        let body = #"{"count":1,"next":null,"previous":null,"results":[{"id":9001,"name":"Synthetic dashboard","pinned":true}]}"#
+        return (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+        )
+    }
+}
+
 private actor GatedDashboardListRetryTransport: HTTPTransport {
     private var requestCount = 0
     private var retryStarted = false
@@ -551,6 +571,46 @@ struct DashboardConsistencyTests {
         #expect(store.contentState == .tiles)
         #expect(store.loadFailure?.refresh == true)
         #expect(store.loadFailure?.failure.summary.contains("Synthetic dashboard recompute failed") == true)
+    }
+
+    @Test("same-project dashboard list refresh failure preserves rows and retry state")
+    func dashboardListRefreshFailurePreservesRows() async {
+        let transport = DashboardListRefreshFailureTransport()
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport
+        )
+        let store = DashboardsStore()
+
+        await store.load(client: client, projectID: 1)
+        let firstPageIDs = store.dashboards.map(\.id)
+        #expect(firstPageIDs == [9001])
+
+        await store.load(client: client, projectID: 1)
+
+        #expect(store.dashboards.map(\.id) == firstPageIDs)
+        #expect(store.contentState(isAvailable: true) == .loaded)
+        #expect(store.error?.contains("Synthetic dashboard list refresh failed") == true)
+        #expect(
+            DashboardListRefreshPresentation.resolve(
+                dashboardCount: store.dashboards.count,
+                error: store.error
+            ) == DashboardListRefreshPresentation(
+                message: "Couldn't refresh dashboards. Couldn't reach PostHog: Synthetic dashboard list refresh failed",
+                actionTitle: "Try again"
+            )
+        )
+
+        await store.load(client: client, projectID: 1)
+
+        #expect(store.dashboards.map(\.id) == firstPageIDs)
+        #expect(store.error == nil)
+        #expect(
+            DashboardListRefreshPresentation.resolve(
+                dashboardCount: store.dashboards.count,
+                error: store.error
+            ) == nil
+        )
     }
 
     @Test("failed refresh does not discard a valid in-flight range result")
