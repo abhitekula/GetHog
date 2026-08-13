@@ -51,9 +51,14 @@ struct HealthEntry: TimelineEntry {
 
     /// Verdict, fact, scope and age, in that order — the same order the visual
     /// hierarchy puts them in, so VoiceOver and sight agree.
-    var spokenLabel: String {
+    var statusSpokenLabel: String {
         guard let snapshot else { return "GetHog project health, not synced yet" }
-        return "\(snapshot.projectName). \(snapshot.healthSpokenLabel) \(freshness.spokenLabel)."
+        return "\(snapshot.projectName). \(snapshot.healthSpokenLabel)"
+    }
+
+    var spokenLabel: String {
+        guard snapshot != nil else { return statusSpokenLabel }
+        return "\(statusSpokenLabel) \(freshness.spokenLabel)."
     }
 
     static func sample(at date: Date = Date()) -> HealthEntry {
@@ -145,22 +150,24 @@ struct HealthWidgetView: View {
 
     private var small: some View {
         VStack(alignment: .leading, spacing: 4) {
-            VerdictBadge(verdict: entry.verdict)
-            Text(entry.headline)
-                .font(.system(.headline, design: .rounded))
-                .lineLimit(3)
-                .minimumScaleFactor(0.6)
-            Text(entry.detail)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+            VStack(alignment: .leading, spacing: 4) {
+                VerdictBadge(verdict: entry.verdict)
+                Text(entry.headline)
+                    .font(.system(.headline, design: .rounded))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.6)
+                Text(entry.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(entry.statusSpokenLabel)
             Spacer(minLength: 2)
             FreshnessFooter(freshness: entry.freshness)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(entry.spokenLabel)
     }
 
     private var medium: some View {

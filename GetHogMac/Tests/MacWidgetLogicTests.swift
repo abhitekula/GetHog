@@ -240,6 +240,56 @@ struct WidgetNoDataMessageTests {
     }
 }
 
+@Suite("Widget accessibility composition")
+struct WidgetAccessibilityCompositionTests {
+
+    @Test("small project health keeps its summary separate from the refresh action")
+    func smallHealthPreservesDistinctRefreshAction() throws {
+        let source = try widgetSource(named: "HealthWidget.swift")
+        let small = try sourceSlice(
+            after: "    private var small: some View {",
+            before: "    private var medium: some View {",
+            in: source
+        )
+
+        #expect(small.contains("FreshnessFooter(freshness: entry.freshness)"))
+        #expect(small.contains(".accessibilityLabel(entry.statusSpokenLabel)"))
+        #expect(small.components(separatedBy: ".accessibilityElement(children: .ignore)").count - 1 == 1)
+    }
+
+    @Test("freshness and refresh remain separate accessibility elements")
+    func freshnessFooterPreservesDistinctRefreshAction() throws {
+        let source = try widgetSource(named: "WidgetViews.swift")
+        let footer = try sourceSlice(
+            after: "struct FreshnessFooter: View {",
+            before: "/// Shown when the App Group holds nothing yet.",
+            in: source
+        )
+
+        #expect(footer.contains(".accessibilityLabel(freshness.spokenLabel)"))
+        #expect(footer.contains(".accessibilityLabel(\"Open GetHog to sync\")"))
+        #expect(!footer.contains(".accessibilityElement(children: .combine)"))
+    }
+
+    private func widgetSource(named name: String) throws -> String {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repository.appending(path: "GetHogWidgets/\(name)"),
+            encoding: .utf8
+        )
+    }
+
+    private func sourceSlice(after start: String, before end: String, in source: String) throws -> String {
+        let startRange = try #require(source.range(of: start))
+        let tail = source[startRange.upperBound...]
+        let endRange = try #require(tail.range(of: end))
+        return String(tail[..<endRange.lowerBound])
+    }
+}
+
 @Suite("Mac Debug widget configuration")
 struct MacDebugWidgetConfigurationTests {
 

@@ -260,11 +260,16 @@ struct FreshnessFooter: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: freshness.isStale ? "clock.badge.exclamationmark" : "clock")
-                .imageScale(.small)
-            Text(freshness.caption)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            HStack(spacing: 4) {
+                Image(systemName: freshness.isStale ? "clock.badge.exclamationmark" : "clock")
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+                Text(freshness.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(freshness.spokenLabel)
             if showsRefresh, supportsInteraction {
                 Spacer(minLength: 2)
                 Button(intent: RefreshInAppIntent()) {
@@ -277,8 +282,6 @@ struct FreshnessFooter: View {
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(freshness.spokenLabel)
     }
 
     /// Buttons only exist on the families that can host them; a Lock Screen
