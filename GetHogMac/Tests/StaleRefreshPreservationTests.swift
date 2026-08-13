@@ -26,6 +26,8 @@ private actor DashboardListRefreshTransport: HTTPTransport {
 private actor SessionsRefreshTransport: HTTPTransport {
     private var requestCount = 0
 
+    func requests() -> Int { requestCount }
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requestCount += 1
         if requestCount == 2 {
@@ -54,9 +56,12 @@ private actor SessionsRefreshTransport: HTTPTransport {
     }
 }
 
-private func staleRefreshClient(_ transport: some HTTPTransport) -> PostHogClient {
+private func staleRefreshClient(
+    _ transport: some HTTPTransport,
+    region: PostHogRegion = .usCloud
+) -> PostHogClient {
     PostHogClient(
-        auth: PersonalKeyAuthProvider(key: "phx_synthetic_mac", region: .usCloud),
+        auth: PersonalKeyAuthProvider(key: "phx_synthetic_mac", region: region),
         transport: transport
     )
 }
@@ -64,6 +69,30 @@ private func staleRefreshClient(_ transport: some HTTPTransport) -> PostHogClien
 @MainActor
 @Suite("Mac stale refresh preservation", .serialized)
 struct StaleRefreshPreservationTests {
+    @Test("dashboard list does not retain another host's same-project rows after failure")
+    func dashboardListHostSwitchFailureClearsRows() async {
+        let store = DashboardsStore()
+        let transport = DashboardListRefreshTransport()
+
+        await store.load(
+            client: staleRefreshClient(transport, region: .usCloud),
+            projectID: 1
+        )
+        #expect(store.dashboards.map(\.id) == [9101])
+
+        await store.load(
+            client: staleRefreshClient(transport, region: .euCloud),
+            projectID: 1
+        )
+
+        #expect(store.dashboards.isEmpty)
+        #expect(store.loadedAt == nil)
+        guard case .failed = store.contentState(isAvailable: true) else {
+            Issue.record("A failed EU load retained the US host's dashboard rows")
+            return
+        }
+    }
+
     @Test("dashboard list keeps same-project rows and exposes retry state")
     func dashboardListRefreshFailurePreservesRows() async {
         let store = DashboardsStore()
@@ -112,5 +141,23 @@ struct StaleRefreshPreservationTests {
                 actionTitle: "Try again"
             )
         )
+    }
+
+    @Test("sessions filter edit prevents paging before replacement load")
+    func sessionsFilterEditInvalidatesPaging() async {
+        let store = SessionsStore()
+        let transport = SessionsRefreshTransport()
+        let client = staleRefreshClient(transport)
+
+        await store.load(client: client, projectID: 1)
+        let ids = store.recordings.map(\.id)
+        store.filter.signal = .rageClick
+
+        await store.loadMore(client: client, projectID: 1)
+
+        #expect(await transport.requests() == 1)
+        #expect(store.recordings.map(\.id) == ids)
+        #expect(store.pagingError == nil)
+        #expect(!store.isLoadingMore)
     }
 }

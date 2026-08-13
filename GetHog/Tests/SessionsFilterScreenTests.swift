@@ -313,6 +313,24 @@ struct SessionsFilterScreenTests {
         #expect(!store.hasMore)
     }
 
+    @Test("a filter edit cannot page its request into rows from the previous filter")
+    func filterEditInvalidatesPagingBeforeReplacementLoad() async {
+        let transport = RecordingsTransport(total: 120)
+        let api = client(transport)
+        let store = sessionsStore()
+        await store.load(client: api, projectID: 1)
+        let loadedIDs = store.recordings.map(\.id)
+
+        store.filter.signal = .rageClick
+        await store.loadMore(client: api, projectID: 1)
+
+        #expect(await transport.urls().count == 1)
+        #expect(store.recordings.map(\.id) == loadedIDs)
+        #expect(store.recordings.allSatisfy { $0.id.hasPrefix("u-") })
+        #expect(store.hasMore)
+        #expect(!store.isLoadingMore)
+    }
+
     @Test("a row repeated across two pages is not shown twice")
     func loadMoreDeduplicates() async throws {
         // The second page rewinds ten rows, so ten ids arrive that the list

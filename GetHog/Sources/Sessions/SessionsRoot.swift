@@ -148,8 +148,10 @@ final class SessionsStore {
     /// discards its result if the filter changed underneath it.
     func loadMore(client: PostHogClient, projectID: Int) async {
         let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
+        let requestSignature = self.requestSignature
         guard loadedScope == scope,
               activeScope == scope,
+              loadedRequestSignature == requestSignature,
               hasMore,
               !isLoading,
               !isLoadingMore
@@ -167,7 +169,11 @@ final class SessionsStore {
                     projectID: projectID, limit: pageSize, offset: offset, filter: filter
                 )
             )
-            guard token == generation, loadedScope == scope else { return }
+            guard token == generation,
+                  loadedScope == scope,
+                  loadedRequestSignature == requestSignature,
+                  self.requestSignature == requestSignature
+            else { return }
             // Offset paging over a live, time-ordered table can repeat a row
             // when a new recording lands between pages.
             let known = Set(recordings.map(\.id))
@@ -177,7 +183,11 @@ final class SessionsStore {
             loadedAt = Date()
             pagingError = nil
         } catch {
-            guard token == generation, loadedScope == scope else { return }
+            guard token == generation,
+                  loadedScope == scope,
+                  loadedRequestSignature == requestSignature,
+                  self.requestSignature == requestSignature
+            else { return }
             // Keep both the loaded rows and the server's assertion that another
             // page exists. Turning `hasMore` off here removes the only retry
             // control and converts a transient page failure into a false end.

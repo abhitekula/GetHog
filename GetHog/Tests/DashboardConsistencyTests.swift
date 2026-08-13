@@ -178,6 +178,32 @@ private actor DashboardListRefreshFailureTransport: HTTPTransport {
     }
 }
 
+private actor HeldDashboardListTransport: HTTPTransport {
+    private var requestStarted = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func waitForRequest() async {
+        while !requestStarted { await Task.yield() }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestStarted = true
+        await withCheckedContinuation { continuation = $0 }
+        let body = #"{"count":1,"next":null,"previous":null,"results":[{"id":9077,"name":"Late US dashboard","pinned":false}]}"#
+        return (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+        )
+    }
+}
+
 private actor GatedDashboardListRetryTransport: HTTPTransport {
     private var requestCount = 0
     private var retryStarted = false
@@ -389,6 +415,76 @@ private actor HeldFirstPinnedPreviewTransport: HTTPTransport {
 @Suite("Dashboard consistency")
 @MainActor
 struct DashboardConsistencyTests {
+    @Test("the same numeric project on another host clears rows when its load fails")
+    func dashboardListFailureAcrossHostsDoesNotRetainRows() async {
+        let initialTransport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.dashboardList)]
+        )
+        let initialClient = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: initialTransport
+        )
+        let store = DashboardsStore()
+        await store.load(client: initialClient, projectID: 1)
+        #expect(store.dashboards.map(\.title) == ["Project 1 dashboard"])
+
+        let failingTransport = DashboardConsistencyTransport(
+            dashboardReplies: [
+                .status(503, #"{"detail":"Synthetic EU dashboard list failed"}"#),
+            ]
+        )
+        let failingClient = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .euCloud),
+            transport: failingTransport
+        )
+
+        await store.load(client: failingClient, projectID: 1)
+
+        #expect(store.dashboards.isEmpty)
+        #expect(store.loadedAt == nil)
+        guard case .failed = store.contentState(isAvailable: true) else {
+            Issue.record("A failed load for another host retained the previous host's rows")
+            return
+        }
+    }
+
+    @Test("a late dashboard list cannot publish across a host switch with the same project ID")
+    func dashboardListIsHostScoped() async {
+        let initialTransport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.dashboardList)]
+        )
+        let initialClient = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: initialTransport
+        )
+        let store = DashboardsStore()
+        await store.load(client: initialClient, projectID: 1)
+
+        let heldTransport = HeldDashboardListTransport()
+        let heldClient = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: heldTransport
+        )
+        let oldRefresh = Task { await store.load(client: heldClient, projectID: 1) }
+        await heldTransport.waitForRequest()
+
+        let euBody = #"{"count":1,"next":null,"previous":null,"results":[{"id":9177,"name":"Current EU dashboard","pinned":false}]}"#
+        let euTransport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Data(euBody.utf8))]
+        )
+        let euClient = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .euCloud),
+            transport: euTransport
+        )
+        let newScope = Task { await store.load(client: euClient, projectID: 1) }
+
+        await heldTransport.release()
+        await oldRefresh.value
+        await newScope.value
+
+        #expect(store.dashboards.map(\.title) == ["Current EU dashboard"])
+    }
+
     @Test("a late dashboard list cannot publish across a project switch")
     func dashboardListIsProjectScoped() async {
         let transport = OutOfOrderDashboardListTransport()
@@ -861,12 +957,26 @@ struct DashboardConsistencyTests {
         )
         let store = DashboardsStore()
 
-        let unavailable = DashboardListLoadScope(projectID: 1, isAvailable: false)
+        let unavailable = DashboardListLoadScope(
+            projectID: 1,
+            region: .usCloud,
+            isAvailable: false
+        )
         #expect(store.contentState(isAvailable: false) == .unavailable)
         await unavailable.load(store: store, client: client)
         #expect(await transport.dashboardRequestCount == 0)
 
-        let available = DashboardListLoadScope(projectID: 1, isAvailable: true)
+        let available = DashboardListLoadScope(
+            projectID: 1,
+            region: .usCloud,
+            isAvailable: true
+        )
+        let otherHost = DashboardListLoadScope(
+            projectID: 1,
+            region: .euCloud,
+            isAvailable: true
+        )
+        #expect(available != otherHost)
         await available.load(store: store, client: client)
 
         #expect(await transport.dashboardRequestCount == 1)

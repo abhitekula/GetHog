@@ -50,7 +50,7 @@ enum DashboardRowContainer {
 final class DashboardsStore {
     private struct LoadFlight {
         let id: Int
-        let projectID: Int
+        let scope: ProjectPreferenceScope
         let task: Task<Void, Never>
     }
 
@@ -58,13 +58,14 @@ final class DashboardsStore {
     var isLoading = true
     var error: String?
     var loadedAt: Date?
-    private var loadedProjectID: Int?
+    private var loadedScope: ProjectPreferenceScope?
     private var generation = 0
     private var nextLoadFlightID = 0
     private var loadFlight: LoadFlight?
 
     func load(client: PostHogClient, projectID: Int) async {
-        if let loadFlight, loadFlight.projectID == projectID {
+        let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
+        if let loadFlight, loadFlight.scope == scope {
             await loadFlight.task.value
             return
         }
@@ -72,38 +73,38 @@ final class DashboardsStore {
         nextLoadFlightID += 1
         let flightID = nextLoadFlightID
         let task = Task { @MainActor in
-            await self.performLoad(client: client, projectID: projectID)
+            await self.performLoad(client: client, scope: scope)
         }
-        loadFlight = LoadFlight(id: flightID, projectID: projectID, task: task)
+        loadFlight = LoadFlight(id: flightID, scope: scope, task: task)
         await task.value
         if loadFlight?.id == flightID {
             loadFlight = nil
         }
     }
 
-    private func performLoad(client: PostHogClient, projectID: Int) async {
+    private func performLoad(client: PostHogClient, scope: ProjectPreferenceScope) async {
         generation += 1
         let token = generation
-        if loadedProjectID != projectID {
-            loadedProjectID = projectID
+        if loadedScope != scope {
+            loadedScope = scope
             dashboards = []
             error = nil
             loadedAt = nil
         }
         isLoading = true
         defer {
-            if token == generation, loadedProjectID == projectID { isLoading = false }
+            if token == generation, loadedScope == scope { isLoading = false }
         }
         do {
             let page: Page<DashboardSummary> = try await client.send(
-                PostHogAPI.dashboards(projectID: projectID)
+                PostHogAPI.dashboards(projectID: scope.projectID)
             )
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation, loadedScope == scope else { return }
             dashboards = page.results.filter { !$0.title.isEmpty }
             loadedAt = Date()
             error = nil
         } catch {
-            guard token == generation, loadedProjectID == projectID else { return }
+            guard token == generation, loadedScope == scope else { return }
             self.error = (error as? PostHogError)?.localizedDescription ?? error.localizedDescription
         }
     }
@@ -123,18 +124,22 @@ final class DashboardsStore {
 /// Using the whole value as the SwiftUI task id makes capability discovery
 /// restart a previously guarded task without requiring a project switch.
 struct DashboardListLoadScope: Hashable {
-    let projectID: Int?
+    let scope: ProjectPreferenceScope?
     let isAvailable: Bool
 
-    init(projectID: Int?, isAvailable: Bool) {
-        self.projectID = projectID
+    init(projectID: Int?, region: PostHogRegion?, isAvailable: Bool) {
+        scope = if let projectID, let region {
+            ProjectPreferenceScope(projectID: projectID, region: region)
+        } else {
+            nil
+        }
         self.isAvailable = isAvailable
     }
 
     @MainActor
     func load(store: DashboardsStore, client: PostHogClient?) async {
-        guard isAvailable, let projectID, let client else { return }
-        await store.load(client: client, projectID: projectID)
+        guard isAvailable, let scope, let client else { return }
+        await store.load(client: client, projectID: scope.projectID)
     }
 }
 
@@ -170,6 +175,7 @@ struct DashboardsRoot: View {
     private var loadScope: DashboardListLoadScope {
         DashboardListLoadScope(
             projectID: model.projectID,
+            region: model.client?.region,
             isAvailable: model.isAvailable(.dashboards)
         )
     }
