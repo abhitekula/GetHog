@@ -5,7 +5,7 @@ import Testing
 @testable import GetHog
 
 private let capabilityRecoveryIdentityJSON = """
-{"email":"operator@example.test","first_name":"Ada","distinct_id":"person-synthetic",
+{"email":"operator@example.com","first_name":"Ada","distinct_id":"person-synthetic",
  "team":{"id":42,"name":"Synthetic Project","api_token":"phc_synthetic","timezone":"UTC"},
  "organization":{"id":"org-synthetic","name":"Synthetic Organization",
    "teams":[{"id":42,"name":"Synthetic Project","api_token":"phc_synthetic","timezone":"UTC"}]},

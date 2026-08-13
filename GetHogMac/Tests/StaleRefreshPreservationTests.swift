@@ -127,7 +127,7 @@ private func staleRefreshClient(
     region: PostHogRegion = .usCloud
 ) -> PostHogClient {
     PostHogClient(
-        auth: PersonalKeyAuthProvider(key: "phx_synthetic_mac", region: region),
+        auth: PersonalKeyAuthProvider(key: "synthetic-mac-key", region: region),
         transport: transport
     )
 }

@@ -115,7 +115,7 @@ struct ResultSurfaceStateTests {
     @Test("Only the latest invocation for a request authority may publish")
     func latestInvocationWins() {
         var authority = ResultRequestAuthority()
-        let scope = ResultScope(["host:https://example.test", "project:1", "auth:synthetic"])
+        let scope = ResultScope(["host:https://example.com", "project:1", "auth:synthetic"])
         let first = authority.begin(scope: scope)
         let second = authority.begin(scope: scope)
 
@@ -130,20 +130,20 @@ struct ResultSurfaceStateTests {
 
     @Test("Result scopes include host, project, and credential session")
     func resultScopesIncludeSecurityAuthority() {
-        let authSession = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
-        let replacementSession = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        let authSession = UUID(uuidString: "018f0000-0000-7000-8000-000000000001")!
+        let replacementSession = UUID(uuidString: "018f0000-0000-7000-8000-000000000002")!
         let us = ResourceRequestAuthority(
-            projectID: 7,
+            projectID: 1,
             region: .usCloud,
             authSessionID: authSession
         )
         let eu = ResourceRequestAuthority(
-            projectID: 7,
+            projectID: 1,
             region: .euCloud,
             authSessionID: authSession
         )
         let replacement = ResourceRequestAuthority(
-            projectID: 7,
+            projectID: 1,
             region: .usCloud,
             authSessionID: replacementSession
         )
@@ -253,7 +253,7 @@ struct ResultSurfaceStateTests {
                 id: "synthetic-render-id",
                 shortID: "synthetic-render",
                 name: "Synthetic saved page",
-                url: "https://example.test/synthetic",
+                url: "https://example.com/synthetic",
                 type: "screenshot",
                 status: "completed",
                 targetWidths: [1_280],
@@ -295,12 +295,12 @@ struct ResultSurfaceStateTests {
         let oldAuthority = ResourceRequestAuthority(
             projectID: 1,
             region: .usCloud,
-            authSessionID: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+            authSessionID: UUID(uuidString: "018f0000-0000-7000-8000-000000000001")!
         )
         let newAuthority = ResourceRequestAuthority(
             projectID: 2,
             region: .usCloud,
-            authSessionID: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+            authSessionID: UUID(uuidString: "018f0000-0000-7000-8000-000000000001")!
         )
         let staleToken = store.beginRenderLookup(authority: oldAuthority)
         let currentToken = store.beginRenderLookup(authority: newAuthority)
@@ -333,7 +333,7 @@ struct ResultSurfaceStateTests {
         let authority = ResourceRequestAuthority(
             projectID: 2,
             region: .euCloud,
-            authSessionID: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+            authSessionID: UUID(uuidString: "018f0000-0000-7000-8000-000000000002")!
         )
 
         _ = store.beginHeatmapRequest(authority: authority, window: .week)
@@ -410,7 +410,7 @@ struct ResultSurfaceStateTests {
             id: "synthetic-render-id",
             shortID: "synthetic-render",
             name: "Synthetic saved page",
-            url: "https://example.test/synthetic",
+            url: "https://example.com/synthetic",
             type: "screenshot",
             status: "completed",
             targetWidths: [1_280],
