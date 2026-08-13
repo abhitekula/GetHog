@@ -175,6 +175,330 @@ enum MacSidebarShellLayout {
     }
 }
 
+/// Resizable two-pane structure for a regular Mac product root.
+///
+/// `NavigationSplitView` treats its column-width modifiers as preferences and
+/// can compress a split nested inside the app-wide source-list shell below the
+/// declared minimum. This split gives pointer drag and accessibility adjustment
+/// the same scene binding, so remounting the selected root cannot reset one path.
+struct MacRegularListDetailSplit<Sidebar: View, Detail: View>: View {
+    let accessibilityIdentifier: String
+    let accessibilityLabel: String
+    @Binding private var preferredListWidth: Double
+    let minimumListWidth: CGFloat
+    let idealListWidth: CGFloat
+    let maximumListWidth: CGFloat
+    private let sidebar: Sidebar
+    private let detail: Detail
+    @GestureState private var resizeTranslation: CGFloat = 0
+
+    init(
+        accessibilityIdentifier: String,
+        accessibilityLabel: String,
+        minimumListWidth: CGFloat,
+        idealListWidth: CGFloat,
+        maximumListWidth: CGFloat,
+        preferredListWidth: Binding<Double>,
+        @ViewBuilder sidebar: () -> Sidebar,
+        @ViewBuilder detail: () -> Detail
+    ) {
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.accessibilityLabel = accessibilityLabel
+        _preferredListWidth = preferredListWidth
+        self.minimumListWidth = minimumListWidth
+        self.idealListWidth = idealListWidth
+        self.maximumListWidth = maximumListWidth
+        self.sidebar = sidebar()
+        self.detail = detail()
+    }
+
+    var body: some View {
+        let listWidth = MacRegularListWidth.clamped(
+            preferredListWidth + Double(resizeTranslation),
+            defaultWidth: idealListWidth,
+            minimumWidth: minimumListWidth,
+            maximumWidth: maximumListWidth
+        )
+
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: listWidth)
+                .frame(maxHeight: .infinity)
+
+            ZStack {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(width: 1)
+                    .accessibilityHidden(true)
+
+                Color.clear
+                    .frame(width: 8)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .updating($resizeTranslation) { value, state, _ in
+                                state = value.translation.width
+                            }
+                            .onEnded { value in
+                                preferredListWidth = Double(
+                                    MacRegularListWidth.dragged(
+                                        preferredListWidth,
+                                        translation: value.translation.width,
+                                        defaultWidth: idealListWidth,
+                                        minimumWidth: minimumListWidth,
+                                        maximumWidth: maximumListWidth
+                                    )
+                                )
+                            }
+                    )
+                    .accessibilityHidden(true)
+
+                MacRegularDividerAccessibilityProxy(
+                    identifier: accessibilityIdentifier,
+                    label: accessibilityLabel,
+                    minimumWidth: minimumListWidth,
+                    maximumWidth: maximumListWidth,
+                    width: Binding(
+                        get: { Double(listWidth) },
+                        set: { value in
+                            preferredListWidth = Double(
+                                MacRegularListWidth.clamped(
+                                    value,
+                                    defaultWidth: idealListWidth,
+                                    minimumWidth: minimumListWidth,
+                                    maximumWidth: maximumListWidth
+                                )
+                            )
+                        }
+                    )
+                )
+                .frame(width: 8)
+                .frame(maxHeight: .infinity)
+                .allowsHitTesting(false)
+            }
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+
+            detail
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+        }
+    }
+}
+
+/// A semantic control only: SwiftUI owns the divider's pixels and pointer
+/// gesture, while AppKit supplies the Mac accessibility contract SwiftUI drops
+/// from narrow adjustable overlays on Tahoe.
+private struct MacRegularDividerAccessibilityProxy: NSViewRepresentable {
+    let identifier: String
+    let label: String
+    let minimumWidth: CGFloat
+    let maximumWidth: CGFloat
+    @Binding var width: Double
+
+    func makeNSView(context: Context) -> MacRegularDividerAccessibilitySlider {
+        MacRegularDividerAccessibilitySlider()
+    }
+
+    func updateNSView(
+        _ slider: MacRegularDividerAccessibilitySlider,
+        context: Context
+    ) {
+        slider.configure(
+            identifier: identifier,
+            label: label,
+            value: width,
+            minimumValue: Double(minimumWidth),
+            maximumValue: Double(maximumWidth),
+            increment: MacRegularListWidth.accessibilityAdjustment,
+            onChange: { width = $0 }
+        )
+    }
+}
+
+private final class MacRegularDividerAccessibilitySlider: NSSlider {
+    private var increment = MacRegularListWidth.accessibilityAdjustment
+    private var onChange: ((Double) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        isContinuous = true
+        setAccessibilityElement(true)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        isContinuous = true
+        setAccessibilityElement(true)
+    }
+
+    func configure(
+        identifier: String,
+        label: String,
+        value: Double,
+        minimumValue: Double,
+        maximumValue: Double,
+        increment: Double,
+        onChange: @escaping (Double) -> Void
+    ) {
+        minValue = minimumValue
+        maxValue = maximumValue
+        doubleValue = min(max(value, minimumValue), maximumValue)
+        self.increment = increment
+        self.onChange = onChange
+        setAccessibilityIdentifier(identifier)
+        setAccessibilityLabel(label)
+        updateAccessibilityNumericContract()
+        updateAccessibilityValueDescription()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {}
+
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        .slider
+    }
+
+    override func accessibilityPerformIncrement() -> Bool {
+        applyAccessibilityAdjustment(increment)
+        return true
+    }
+
+    override func accessibilityPerformDecrement() -> Bool {
+        applyAccessibilityAdjustment(-increment)
+        return true
+    }
+
+    private func applyAccessibilityAdjustment(_ delta: Double) {
+        doubleValue = min(max(doubleValue + delta, minValue), maxValue)
+        updateAccessibilityNumericContract()
+        updateAccessibilityValueDescription()
+        onChange?(doubleValue)
+        NSAccessibility.post(element: self, notification: .valueChanged)
+    }
+
+    private func updateAccessibilityNumericContract() {
+        setAccessibilityValue(NSNumber(value: doubleValue))
+        setAccessibilityMinValue(NSNumber(value: minValue))
+        setAccessibilityMaxValue(NSNumber(value: maxValue))
+    }
+
+    private func updateAccessibilityValueDescription() {
+        setAccessibilityValueDescription("\(Int(doubleValue)) points")
+    }
+}
+
+enum MacRegularListWidth {
+    static let accessibilityAdjustment: Double = 10
+
+    static func clamped(
+        _ width: Double,
+        defaultWidth: CGFloat,
+        minimumWidth: CGFloat,
+        maximumWidth: CGFloat
+    ) -> CGFloat {
+        guard width.isFinite else {
+            return min(max(defaultWidth, minimumWidth), maximumWidth)
+        }
+        return min(max(CGFloat(width), minimumWidth), maximumWidth)
+    }
+
+    static func dragged(
+        _ width: Double,
+        translation: CGFloat,
+        defaultWidth: CGFloat,
+        minimumWidth: CGFloat,
+        maximumWidth: CGFloat
+    ) -> CGFloat {
+        let renderedWidth = clamped(
+            width,
+            defaultWidth: defaultWidth,
+            minimumWidth: minimumWidth,
+            maximumWidth: maximumWidth
+        )
+        return clamped(
+            Double(renderedWidth + translation),
+            defaultWidth: defaultWidth,
+            minimumWidth: minimumWidth,
+            maximumWidth: maximumWidth
+        )
+    }
+
+    static func adjusted(
+        _ width: Double,
+        direction: AccessibilityAdjustmentDirection,
+        defaultWidth: CGFloat,
+        minimumWidth: CGFloat,
+        maximumWidth: CGFloat
+    ) -> CGFloat {
+        let delta: Double
+        switch direction {
+        case .increment: delta = accessibilityAdjustment
+        case .decrement: delta = -accessibilityAdjustment
+        @unknown default: delta = 0
+        }
+        return clamped(
+            width + delta,
+            defaultWidth: defaultWidth,
+            minimumWidth: minimumWidth,
+            maximumWidth: maximumWidth
+        )
+    }
+}
+
+/// Serialized by the owning scene, not app defaults, so independently restored
+/// windows and product destinations never borrow each other's divider choice.
+struct MacRegularSplitWidthState: Equatable {
+    private var widths: [AppTab: Double]
+
+    init(persistedValue: String?) {
+        widths = [:]
+        for component in persistedValue?.split(separator: ",") ?? [] {
+            let pair = component.split(separator: "=", maxSplits: 1).map(String.init)
+            guard pair.count == 2,
+                  let tab = AppTab(rawValue: pair[0]),
+                  tab.ownsRegularNestedSplit,
+                  let width = Double(pair[1]),
+                  width.isFinite
+            else { continue }
+            widths[tab] = width
+        }
+    }
+
+    var persistedValue: String {
+        AppTab.allCases
+            .compactMap { tab -> String? in
+                guard let width = widths[tab], width.isFinite else { return nil }
+                return "\(tab.rawValue)=\(width)"
+            }
+            .joined(separator: ",")
+    }
+
+    func width(for tab: AppTab, defaultWidth: Double) -> Double {
+        widths[tab] ?? defaultWidth
+    }
+
+    mutating func set(width: Double, for tab: AppTab) {
+        guard tab.ownsRegularNestedSplit else { return }
+        if width.isFinite {
+            widths[tab] = width
+        } else {
+            widths[tab] = nil
+        }
+    }
+}
+
+private struct MacRegularListWidthBindingKey: EnvironmentKey {
+    static let defaultValue = Binding<Double>.constant(.nan)
+}
+
+extension EnvironmentValues {
+    var macRegularListWidth: Binding<Double> {
+        get { self[MacRegularListWidthBindingKey.self] }
+        set { self[MacRegularListWidthBindingKey.self] = newValue }
+    }
+}
+
 // MARK: - Navigation bar title display mode
 
 /// Shadow of SwiftUI's unavailable-on-macOS `NavigationBarItem`, carrying just

@@ -153,6 +153,10 @@ struct FlagsRoot: View {
         return sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    #if os(macOS)
+    @Environment(\.macRegularListWidth) private var macRegularListWidth
+    #endif
+
     var body: some View {
         if usesHostNavigation {
             // No `NavigationSplitView` here, and that is the whole fix: in
@@ -171,6 +175,20 @@ struct FlagsRoot: View {
                     }
                 }
         } else {
+            #if os(macOS)
+            MacRegularListDetailSplit(
+                accessibilityIdentifier: "gethog.mac-product-divider.flags",
+                accessibilityLabel: "Flags list width",
+                minimumListWidth: 280,
+                idealListWidth: 340,
+                maximumListWidth: 400,
+                preferredListWidth: macRegularListWidth
+            ) {
+                listChrome
+            } detail: {
+                detailPane
+            }
+            #else
             NavigationSplitView {
                 listChrome
                     .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 400)
@@ -178,8 +196,6 @@ struct FlagsRoot: View {
             } detail: {
                 detailPane
             }
-            #if os(macOS)
-            .navigationSplitViewStyle(.balanced)
             #endif
         }
     }

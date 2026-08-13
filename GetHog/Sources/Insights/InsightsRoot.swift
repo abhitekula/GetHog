@@ -93,6 +93,10 @@ struct InsightsRoot: View {
         sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    #if os(macOS)
+    @Environment(\.macRegularListWidth) private var macRegularListWidth
+    #endif
+
     var body: some View {
         if usesHostNavigation {
             list
@@ -109,6 +113,24 @@ struct InsightsRoot: View {
                     .id(id)
                 }
         } else {
+            #if os(macOS)
+            MacRegularListDetailSplit(
+                accessibilityIdentifier: "gethog.mac-product-divider.insights",
+                accessibilityLabel: "Insights list width",
+                minimumListWidth: 300,
+                idealListWidth: 380,
+                maximumListWidth: 440,
+                preferredListWidth: macRegularListWidth
+            ) {
+                list
+            } detail: {
+                // Its own stack, so `NavigationLink(value:)` inside the detail
+                // has somewhere to push.
+                NavigationStack {
+                    detailPane
+                }
+            }
+            #else
             NavigationSplitView {
                 list
                     // Sized to the row: a title that wraps to two lines, the
@@ -130,8 +152,6 @@ struct InsightsRoot: View {
                     detailPane
                 }
             }
-            #if os(macOS)
-            .navigationSplitViewStyle(.balanced)
             #endif
         }
     }

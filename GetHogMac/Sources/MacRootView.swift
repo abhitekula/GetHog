@@ -37,6 +37,10 @@ struct MacRootView: View {
     private var sidebarPresentationRawValue = MacSidebarPresentation.visible.rawValue
     @SceneStorage("macSidebarWidth")
     private var preferredSidebarWidth = Double(MacSidebarShellLayout.defaultWidth)
+    /// Tab-keyed but scene-owned: switching destinations remounts roots, while
+    /// each window restores only the divider choices made inside that window.
+    @SceneStorage("macRegularSplitWidths")
+    private var persistedRegularSplitWidths = ""
     @State private var sidebarRevealGeneration = 0
     @State private var sidebarHasRevealableWidth = false
     /// Set only when a link could not do what it said. Success is silent.
@@ -295,11 +299,34 @@ struct MacRootView: View {
         for tab: AppTab,
         sizeClass: UserInterfaceSizeClass
     ) -> some View {
-        container(for: tab, compact: sizeClass == .compact)
-            .id(tab)
-            .accessibilityIdentifier(tab.selectedRootAccessibilityIdentifier)
-            .environment(\.horizontalSizeClass, sizeClass)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        MacSelectedRootAccessibilityContainer(
+            identifier: tab.selectedRootAccessibilityIdentifier,
+            label: "\(tab.title) screen"
+        ) {
+            container(for: tab, compact: sizeClass == .compact)
+                .id(tab)
+                .environment(\.horizontalSizeClass, sizeClass)
+                .environment(\.macRegularListWidth, regularSplitWidthBinding(for: tab))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func regularSplitWidthBinding(for tab: AppTab) -> Binding<Double> {
+        Binding(
+            get: {
+                let width = MacRegularSplitWidthState(
+                    persistedValue: persistedRegularSplitWidths
+                ).width(for: tab, defaultWidth: .nan)
+                return width
+            },
+            set: { width in
+                var state = MacRegularSplitWidthState(
+                    persistedValue: persistedRegularSplitWidths
+                )
+                state.set(width: width, for: tab)
+                persistedRegularSplitWidths = state.persistedValue
+            }
+        )
     }
 
     @ViewBuilder
@@ -434,6 +461,41 @@ struct MacRootView: View {
             var path = NavigationPath()
             path.append(target.link)
             searchPath = path
+        }
+    }
+}
+
+/// Keeps the selected destination's stable acceptance marker from becoming an
+/// accessibility owner for the destination itself. On macOS, applying an
+/// identifier to the mounted root replaces identifiers exported by descendants
+/// such as the adjustable product divider. A separate, noninteractive witness
+/// lets acceptance tests observe selection while every real control keeps its
+/// own identity and actions.
+struct MacSelectedRootAccessibilityContainer<Content: View>: View {
+    let identifier: String
+    let label: String
+    private let content: Content
+
+    init(
+        identifier: String,
+        label: String = "Selected screen",
+        @ViewBuilder content: () -> Content
+    ) {
+        self.identifier = identifier
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            content
+
+            Color.clear
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier(identifier)
+                .accessibilityLabel(label)
         }
     }
 }

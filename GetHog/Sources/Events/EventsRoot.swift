@@ -506,6 +506,10 @@ struct EventsRoot: View {
         return sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    #if os(macOS)
+    @Environment(\.macRegularListWidth) private var macRegularListWidth
+    #endif
+
     var body: some View {
         if usesHostNavigation {
             listChrome
@@ -517,13 +521,34 @@ struct EventsRoot: View {
                     )
                 }
         } else {
-            NavigationSplitView {
+            #if os(macOS)
+            MacRegularListDetailSplit(
+                accessibilityIdentifier: "gethog.mac-product-divider.events",
+                accessibilityLabel: "Events list width",
+                minimumListWidth: 300,
+                idealListWidth: 360,
+                maximumListWidth: 420,
+                preferredListWidth: macRegularListWidth
+            ) {
                 listChrome
             } detail: {
                 detailPane
             }
-            #if os(macOS)
-            .navigationSplitViewStyle(.balanced)
+            #else
+            NavigationSplitView {
+                listChrome
+                    // Sized to the monospaced line under the event name, which
+                    // is a path or a distinct id — and a distinct id is a
+                    // 36-character UUID, ~300pt set monospaced. At the ~320pt
+                    // the column took by default that left the row identifying
+                    // nothing.
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 420)
+                    // The tab sidebar already puts a toggle in this bar; the
+                    // split view added a second, identical one beside it.
+                    .toolbar(removing: .sidebarToggle)
+            } detail: {
+                detailPane
+            }
             #endif
         }
     }
@@ -606,14 +631,6 @@ struct EventsRoot: View {
                     await reload()
                 }
                 .onDisappear { liveTail.stop() }
-                // Sized to the monospaced line under the event name, which is a
-                // path or a distinct id — and a distinct id is a 36-character
-                // UUID, ~300pt set monospaced. At the ~320pt the column took by
-                // default that left the row identifying nothing.
-                .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 420)
-                // The tab sidebar already puts a toggle in this bar; the split
-                // view added a second, identical one beside it.
-                .toolbar(removing: .sidebarToggle)
     }
 
     /// The detail column: the chosen event, or a summary of the feed when nothing

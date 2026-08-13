@@ -189,6 +189,9 @@ struct SessionsRoot: View {
     #endif
     @State private var store = SessionsStore()
     @State private var showsFilters = false
+    #if os(macOS)
+    @State private var showsPlaylists = false
+    #endif
 
     /// The open recording's id, and deliberately **not** `@State`.
     ///
@@ -212,6 +215,10 @@ struct SessionsRoot: View {
         sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    #if os(macOS)
+    @Environment(\.macRegularListWidth) private var macRegularListWidth
+    #endif
+
     private var preferenceScope: ProjectPreferenceScope? {
         guard let client = model.client, let projectID = model.projectID else { return nil }
         return ProjectPreferenceScope(projectID: projectID, region: client.region)
@@ -231,17 +238,60 @@ struct SessionsRoot: View {
                             sessionDetail(recording).id(id)
                         }
                     }
+                    #if os(macOS)
+                    .navigationDestination(isPresented: $showsPlaylists) {
+                        PlaylistsView { filter in
+                            store.replaceFilter(filter)
+                            showsPlaylists = false
+                        }
+                    }
+                    #endif
             } else {
+                #if os(macOS)
+                NavigationStack {
+                    MacRegularListDetailSplit(
+                        accessibilityIdentifier: "gethog.mac-product-divider.sessions",
+                        accessibilityLabel: "Sessions list width",
+                        minimumListWidth: 300,
+                        idealListWidth: 380,
+                        maximumListWidth: 440,
+                        preferredListWidth: macRegularListWidth
+                    ) {
+                        listChrome
+                    } detail: {
+                        detailPane
+                    }
+                    .navigationDestination(isPresented: $showsPlaylists) {
+                        PlaylistsView { filter in
+                            store.replaceFilter(filter)
+                            showsPlaylists = false
+                        }
+                    }
+                }
+                #else
                 NavigationSplitView {
                     listChrome
+                        // Sized to the row's caption line, which is the longest
+                        // thing here: "0:42 · 12 clicks · 3 errors · Mobile,
+                        // not playable · 2d" needs ~300pt, and the glyph plus
+                        // row insets take another ~90 before it starts. At the
+                        // ~320pt the column took by default the caveat that a
+                        // recording cannot be played was being truncated away.
+                        .navigationSplitViewColumnWidth(min: 300, ideal: 380, max: 440)
+                        // The tab sidebar already puts a toggle in this bar; the
+                        // split view added a second, identical one beside it.
+                        .toolbar(removing: .sidebarToggle)
                 } detail: {
                     detailPane
                 }
-                #if os(macOS)
-                .navigationSplitViewStyle(.balanced)
                 #endif
             }
         }
+        #if os(macOS)
+        .onChange(of: usesHostNavigation) { _, _ in
+            showsPlaylists = false
+        }
+        #endif
     }
 
     /// The list and everything attached to it, shared by both widths so the two
@@ -265,7 +315,7 @@ struct SessionsRoot: View {
                     PinnedProjectSwitcher()
                     ToolbarSpacer(.flexible)
                     ToolbarItem(id: "filter", placement: .primaryAction) { filterButton }
-                    ToolbarItem(id: "playlists", placement: .primaryAction) { playlistsLink }
+                    ToolbarItem(id: "playlists", placement: .primaryAction) { playlistsButton }
                     ToolbarItem(id: "refresh", placement: .primaryAction) {
                         Button {
                             Task { await load() }
@@ -319,16 +369,11 @@ struct SessionsRoot: View {
                     }
                     await load()
                 }
-                // Sized to the row's caption line, which is the longest thing
-                // here: "0:42 · 12 clicks · 3 errors · Mobile, not playable ·
-                // 2d" needs ~300pt, and the glyph plus row insets take another
-                // ~90 before it starts. At the ~320pt the column took by
-                // default the caveat that a recording cannot be played was
-                // being truncated away — the one thing it exists to say early.
-                .navigationSplitViewColumnWidth(min: 300, ideal: 380, max: 440)
-                // The tab sidebar already puts a toggle in this bar; the split
-                // view added a second, identical one beside it.
-                .toolbar(removing: .sidebarToggle)
+                #if os(macOS)
+                .onChange(of: model.projectID) { _, _ in
+                    showsPlaylists = false
+                }
+                #endif
                 .sheet(isPresented: $showsFilters) {
                     SessionFilterSheet(filter: $store.filter, onClear: store.clearFilters)
                         .presentationDetents([.medium, .large])
@@ -442,10 +487,20 @@ struct SessionsRoot: View {
 
     /// Playlists are saved views over these same recordings, so they live here
     /// rather than competing for a tab.
-    ///
-    /// A property rather than inline in the toolbar because two toolbars build
-    /// it now — the fixed one on iOS and the customizable one on the Mac — and
-    /// a copy in each would be two controls to keep in step.
+    #if os(macOS)
+    private var playlistsButton: some View {
+        Button {
+            showsPlaylists = true
+        } label: {
+            Image(systemName: "list.star")
+        }
+        .accessibilityLabel("Playlists")
+    }
+    #endif
+
+    /// Non-Mac navigation containers resolve the link directly. The Mac uses
+    /// explicit route state above because a customizable window-toolbar link
+    /// does not inherit the regular screen's nested navigation stack.
     private var playlistsLink: some View {
         NavigationLink {
             PlaylistsView { store.replaceFilter($0) }

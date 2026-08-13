@@ -190,6 +190,10 @@ struct PeopleRoot: View {
         sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    #if os(macOS)
+    @Environment(\.macRegularListWidth) private var macRegularListWidth
+    #endif
+
     // In compact width the index behind "More" owns the navigation stack (see
     // `RootView`). A `NavigationSplitView` here collapses into a stack of its
     // own inside that one, which draws a second navigation bar above the first —
@@ -216,6 +220,20 @@ struct PeopleRoot: View {
                         .id(cohort.id)
                 }
         } else {
+            #if os(macOS)
+            MacRegularListDetailSplit(
+                accessibilityIdentifier: "gethog.mac-product-divider.people",
+                accessibilityLabel: "People list width",
+                minimumListWidth: 300,
+                idealListWidth: 380,
+                maximumListWidth: 440,
+                preferredListWidth: macRegularListWidth
+            ) {
+                sidebar
+            } detail: {
+                detailPane
+            }
+            #else
             NavigationSplitView {
                 sidebar
                     // Sized to the row's two identifier lines: a distinct id is
@@ -231,8 +249,6 @@ struct PeopleRoot: View {
             } detail: {
                 detailPane
             }
-            #if os(macOS)
-            .navigationSplitViewStyle(.balanced)
             #endif
         }
     }

@@ -147,13 +147,14 @@ struct MacShellStructureTests {
         #expect(!AppTab.dashboards.ownsRegularNestedSplit)
     }
 
-    /// A split-view style is consumed by the `NavigationSplitView` it modifies;
-    /// attaching it to the shell outside a descendant root does not constrain
-    /// that root's columns. Keep the style on every constructor that owns the
-    /// regular nested split. `MacWindowSizeTests` is the rendered counterpart:
-    /// it measures each real outline against its declared minimum width.
-    @Test("each regular nested root styles its owned split directly")
-    func nestedSplitStyleLivesOnOwningConstructors() throws {
+    /// A nested `NavigationSplitView` treats its column-width modifiers as
+    /// preferences and can compress a Mac product list below its readable
+    /// minimum. Every regular nested root therefore constructs the shared
+    /// native Mac split, while its non-Mac branch keeps the adaptive split.
+    /// `MacWindowSizeTests` is the rendered counterpart: it measures each real
+    /// outline against its declared minimum width at 1280 points and full screen.
+    @Test("each regular nested root constructs the native Mac split")
+    func nestedSplitStructureLivesOnOwningConstructors() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // GetHogMac
@@ -174,30 +175,16 @@ struct MacShellStructureTests {
             )
             #expect(
                 source.components(separatedBy: "NavigationSplitView {").count == 2,
-                "Expected exactly one owned split constructor in \(path)"
+                "Expected exactly one non-Mac adaptive split constructor in \(path)"
             )
-            let lines = source.components(separatedBy: .newlines)
-            let styleLines = lines.indices.filter {
-                lines[$0].contains(".navigationSplitViewStyle(.balanced)")
-            }
             #expect(
-                styleLines.count == 1,
-                "Expected one balanced style on the owned split in \(path)"
+                source.components(separatedBy: "MacRegularListDetailSplit(").count == 2,
+                "Expected exactly one native Mac list-detail split in \(path)"
             )
-            if let styleLine = styleLines.first, styleLine > lines.startIndex,
-               lines.index(after: styleLine) < lines.endIndex
-            {
-                #expect(
-                    lines[lines.index(before: styleLine)].trimmingCharacters(in: .whitespaces)
-                        == "#if os(macOS)",
-                    "The balanced style in \(path) was not Mac-only"
-                )
-                #expect(
-                    lines[lines.index(after: styleLine)].trimmingCharacters(in: .whitespaces)
-                        == "#endif",
-                    "The balanced style in \(path) was not closed by its Mac-only guard"
-                )
-            }
+            #expect(
+                !source.contains(".navigationSplitViewStyle(.balanced)"),
+                "\(path) still relies on a preferred NavigationSplitView style on Mac"
+            )
         }
 
         let shell = try String(
@@ -208,6 +195,270 @@ struct MacShellStructureTests {
             !shell.contains("hostedRoot.navigationSplitViewStyle"),
             "The shell still assumes a style propagates into a descendant split constructor"
         )
+    }
+
+    /// On macOS 26, hiding the divider hairline and then attaching the
+    /// semantic slider in an overlay hides the overlay subtree as well. The
+    /// divider layers must remain siblings so only the decorative and pointer
+    /// surfaces are excluded from accessibility.
+    @Test("the regular divider does not hide its accessibility proxy ancestor")
+    func regularDividerKeepsAccessibilityProxyOutsideHiddenDecoration() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // GetHogMac
+            .deletingLastPathComponent()  // repository
+        let source = try String(
+            contentsOf: repository.appending(
+                path: "GetHog/Sources/Common/MacAdaptations.swift"
+            ),
+            encoding: .utf8
+        )
+        let splitStart = try #require(
+            source.range(of: "struct MacRegularListDetailSplit")
+        )
+        let proxyDeclaration = try #require(
+            source.range(
+                of: "private struct MacRegularDividerAccessibilityProxy",
+                range: splitStart.lowerBound..<source.endIndex
+            )
+        )
+        let splitSource = source[splitStart.lowerBound..<proxyDeclaration.lowerBound]
+
+        #expect(
+            splitSource.contains("ZStack"),
+            "The divider layers no longer share one sibling container."
+        )
+        #expect(
+            !splitSource.contains(".accessibilityHidden(true)\n                .overlay"),
+            "The accessibility proxy is still below the hidden decorative line."
+        )
+    }
+
+    @Test("restored regular split widths clamp to the product bounds")
+    func regularSplitWidthClampsRestoredValues() {
+        #expect(
+            MacRegularListWidth.clamped(
+                120,
+                defaultWidth: 380,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 300
+        )
+        #expect(
+            MacRegularListWidth.clamped(
+                900,
+                defaultWidth: 380,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 440
+        )
+        #expect(
+            MacRegularListWidth.clamped(
+                .nan,
+                defaultWidth: 380,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 380
+        )
+        #expect(
+            MacRegularListWidth.clamped(
+                .nan,
+                defaultWidth: 280,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 300
+        )
+        #expect(
+            MacRegularListWidth.clamped(
+                .infinity,
+                defaultWidth: 480,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 440
+        )
+    }
+
+    @Test("pointer and accessibility commits share the clamped width policy")
+    func regularSplitPointerAndAccessibilityAdjustTheSameWidth() {
+        let pointerWidth = MacRegularListWidth.dragged(
+            380,
+            translation: -40,
+            defaultWidth: 380,
+            minimumWidth: 300,
+            maximumWidth: 440
+        )
+        let accessibilityWidth = MacRegularListWidth.adjusted(
+            350,
+            direction: .decrement,
+            defaultWidth: 380,
+            minimumWidth: 300,
+            maximumWidth: 440
+        )
+
+        #expect(pointerWidth == 340)
+        #expect(accessibilityWidth == 340)
+        #expect(
+            MacRegularListWidth.adjusted(
+                300,
+                direction: .decrement,
+                defaultWidth: 380,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 300
+        )
+    }
+
+    @Test("pointer drag starts from the rendered width after a malformed restore")
+    func regularSplitPointerNormalizesOutOfRangeRestore() {
+        #expect(
+            MacRegularListWidth.dragged(
+                900,
+                translation: -20,
+                defaultWidth: 380,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 420
+        )
+        #expect(
+            MacRegularListWidth.dragged(
+                120,
+                translation: 20,
+                defaultWidth: 380,
+                minimumWidth: 300,
+                maximumWidth: 440
+            ) == 320
+        )
+    }
+
+    @Test("regular split widths restore per destination without crossing windows")
+    func regularSplitWidthsRestoreAndStaySceneScoped() {
+        var firstWindow = MacRegularSplitWidthState(persistedValue: nil)
+        let secondWindow = MacRegularSplitWidthState(persistedValue: nil)
+
+        firstWindow.set(width: 412, for: .people)
+        firstWindow.set(width: 355, for: .events)
+        #expect(
+            firstWindow.persistedValue == "events=355.0,people=412.0",
+            "Scene restoration needs one deterministic encoding."
+        )
+        let restoredFirstWindow = MacRegularSplitWidthState(
+            persistedValue: firstWindow.persistedValue
+        )
+
+        #expect(restoredFirstWindow.width(for: .people, defaultWidth: 380) == 412)
+        #expect(restoredFirstWindow.width(for: .events, defaultWidth: 360) == 355)
+        #expect(restoredFirstWindow.width(for: .sessions, defaultWidth: 380) == 380)
+        #expect(secondWindow.width(for: .people, defaultWidth: 380) == 380)
+        #expect(secondWindow.width(for: .events, defaultWidth: 360) == 360)
+
+        var malformedRestore = MacRegularSplitWidthState(
+            persistedValue: "people=not-a-number,unknown=400,events=355"
+        )
+        #expect(malformedRestore.width(for: .people, defaultWidth: 380) == 380)
+        #expect(malformedRestore.width(for: .events, defaultWidth: 360) == 355)
+        malformedRestore.set(width: .infinity, for: .people)
+        #expect(malformedRestore.width(for: .people, defaultWidth: 380) == 380)
+    }
+
+    @Test("the regular split restores its bound divider width")
+    func regularSplitRestoresDividerWidth() async throws {
+        let recorder = MacRegularSplitWidthRecorder(width: 412)
+        let root = MacRegularListDetailSplit(
+            accessibilityIdentifier: "gethog.mac-product-divider.test",
+            accessibilityLabel: "Test list width",
+            minimumListWidth: 300,
+            idealListWidth: 380,
+            maximumListWidth: 440,
+            preferredListWidth: Binding(
+                get: { recorder.width },
+                set: { recorder.width = $0 }
+            )
+        ) {
+            Color.clear
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                    recorder.renderedListWidth = $0
+                }
+        } detail: {
+            Color.clear
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                    recorder.renderedDetailWidth = $0
+                }
+        }
+        let controller = NSHostingController(rootView: root.frame(width: 900, height: 600))
+        controller.sizingOptions = []
+        let window = NSWindow(
+            contentRect: NSRect(x: 80, y: 80, width: 900, height: 600),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        window.orderBack(nil)
+        defer { window.close() }
+
+        #expect(
+            await waitForHostedRegularSplit(controller: controller, window: window) {
+                abs(recorder.renderedListWidth - 412) <= 1
+                    && recorder.renderedDetailWidth > 400
+            },
+            "The regular split did not restore its bound divider geometry: list=\(recorder.renderedListWidth), detail=\(recorder.renderedDetailWidth)."
+        )
+
+        #expect(recorder.width == 412)
+    }
+
+    @Test("the regular divider publishes its numeric slider contract")
+    func regularSplitPublishesNumericAccessibilityContract() async throws {
+        let recorder = MacRegularSplitWidthRecorder(width: 380)
+        let root = MacRegularListDetailSplit(
+            accessibilityIdentifier: "gethog.mac-product-divider.test",
+            accessibilityLabel: "Test list width",
+            minimumListWidth: 300,
+            idealListWidth: 380,
+            maximumListWidth: 440,
+            preferredListWidth: Binding(
+                get: { recorder.width },
+                set: { recorder.width = $0 }
+            )
+        ) {
+            Color.clear
+        } detail: {
+            Color.clear
+        }
+        let controller = NSHostingController(rootView: root.frame(width: 900, height: 600))
+        controller.sizingOptions = []
+        let window = NSWindow(
+            contentRect: NSRect(x: 80, y: 80, width: 900, height: 600),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = controller
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        window.orderBack(nil)
+        defer { window.close() }
+
+        var sliders: [NSSlider] = []
+        #expect(
+            await waitForHostedRegularSplit(controller: controller, window: window) {
+                sliders = self.descendantSliders(in: controller.view).filter {
+                    $0.accessibilityIdentifier() == "gethog.mac-product-divider.test"
+                }
+                return sliders.count == 1
+            },
+            "The hosted regular split did not mount exactly one semantic divider slider."
+        )
+        let slider = try #require(sliders.first)
+
+        #expect(slider.accessibilityRole() == .slider)
+        #expect(numericAccessibilityValue(slider.accessibilityValue()) == 380)
+        #expect(numericAccessibilityValue(slider.accessibilityMinValue()) == 300)
+        #expect(numericAccessibilityValue(slider.accessibilityMaxValue()) == 440)
+        #expect(slider.accessibilityPerformDecrement())
+        #expect(recorder.width == 370)
+        #expect(numericAccessibilityValue(slider.accessibilityValue()) == 370)
+        #expect(slider.accessibilityValueDescription() == "370 points")
     }
 
     @Test("every grouped destination knows its one owning sidebar section")
@@ -354,11 +605,52 @@ struct MacShellStructureTests {
         controller: NSHostingController<MacSidebarShellGeometryProbe>,
         window: NSWindow
     ) {
+        controller.view.frame = window.contentView?.bounds ?? .zero
         window.contentView?.needsLayout = true
         window.contentView?.layoutSubtreeIfNeeded()
         controller.view.needsLayout = true
         controller.view.layoutSubtreeIfNeeded()
         window.contentView?.displayIfNeeded()
+    }
+
+    private func waitForHostedRegularSplit<Content: View>(
+        timeout: Duration = .seconds(2),
+        controller: NSHostingController<Content>,
+        window: NSWindow,
+        _ condition: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            controller.view.frame = window.contentView?.bounds ?? .zero
+            window.contentView?.layoutSubtreeIfNeeded()
+            controller.view.layoutSubtreeIfNeeded()
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        controller.view.frame = window.contentView?.bounds ?? .zero
+        return condition()
+    }
+
+    private func descendantSliders(in root: NSView) -> [NSSlider] {
+        let current = (root as? NSSlider).map { [$0] } ?? []
+        return current + root.subviews.flatMap(descendantSliders(in:))
+    }
+
+}
+
+private func numericAccessibilityValue(_ value: Any?) -> Double? {
+    (value as? NSNumber)?.doubleValue
+}
+
+@MainActor
+@Observable
+private final class MacRegularSplitWidthRecorder {
+    var width: Double
+    var renderedListWidth: CGFloat = 0
+    var renderedDetailWidth: CGFloat = 0
+
+    init(width: Double) {
+        self.width = width
     }
 }
 

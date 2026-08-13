@@ -188,6 +188,10 @@ struct ErrorTrackingRoot: View {
         sizeClass == .compact || navigationPlacement == .visionSectionDetail
     }
 
+    #if os(macOS)
+    @Environment(\.macRegularListWidth) private var macRegularListWidth
+    #endif
+
     // In compact width the enclosing navigation stack owns navigation. A nested
     // split view would add a redundant navigation bar without a second column.
     var body: some View {
@@ -215,6 +219,20 @@ struct ErrorTrackingRoot: View {
                 // regular root that normally owns NavigationSplitView.
                 NavigationStack { issueList }
             } else {
+                #if os(macOS)
+                MacRegularListDetailSplit(
+                    accessibilityIdentifier: "gethog.mac-product-divider.errorTracking",
+                    accessibilityLabel: "Errors list width",
+                    minimumListWidth: 320,
+                    idealListWidth: 400,
+                    maximumListWidth: 460,
+                    preferredListWidth: macRegularListWidth
+                ) {
+                    issueList
+                } detail: {
+                    detailPane
+                }
+                #else
                 NavigationSplitView {
                     issueList
                         // This list needs sufficient width for status, message, and
@@ -227,8 +245,6 @@ struct ErrorTrackingRoot: View {
                 } detail: {
                     detailPane
                 }
-                #if os(macOS)
-                .navigationSplitViewStyle(.balanced)
                 #endif
             }
         }
