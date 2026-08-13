@@ -313,21 +313,20 @@ struct SessionsFilterScreenTests {
         #expect(!store.hasMore)
     }
 
-    @Test("a filter edit cannot page its request into rows from the previous filter")
+    @Test("a filter edit retires previous rows and paging before replacement load")
     func filterEditInvalidatesPagingBeforeReplacementLoad() async {
         let transport = RecordingsTransport(total: 120)
         let api = client(transport)
         let store = sessionsStore()
         await store.load(client: api, projectID: 1)
-        let loadedIDs = store.recordings.map(\.id)
 
         store.filter.signal = .rageClick
         await store.loadMore(client: api, projectID: 1)
 
         #expect(await transport.urls().count == 1)
-        #expect(store.recordings.map(\.id) == loadedIDs)
-        #expect(store.recordings.allSatisfy { $0.id.hasPrefix("u-") })
-        #expect(store.hasMore)
+        #expect(store.recordings.isEmpty)
+        #expect(!store.hasMore)
+        #expect(store.isLoading)
         #expect(!store.isLoadingMore)
     }
 

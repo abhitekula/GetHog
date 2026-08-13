@@ -33,7 +33,12 @@ final class SessionsStore {
     /// Server-side. The whole filter, including the person search behind the
     /// navigation bar's field.
     var filter = SessionRecordingFilter() {
-        didSet { persistDurableProjectionIfNeeded() }
+        didSet {
+            if Self.signature(for: oldValue) != requestSignature {
+                invalidateRequestProvenanceIfNeeded()
+            }
+            persistDurableProjectionIfNeeded()
+        }
     }
 
     @ObservationIgnored private let preferences: SessionsPreferences
@@ -79,6 +84,23 @@ final class SessionsStore {
         guard value != durableValue else { return }
         durableValue = value
         preferences.set(value, for: activeScope)
+    }
+
+    /// A filter edit becomes visible synchronously, while its replacing request
+    /// may be debounced. Retire the preceding request at that same boundary so
+    /// its rows cannot sit beneath the new summary or publish after the edit.
+    private func invalidateRequestProvenanceIfNeeded() {
+        guard loadedScope != nil else { return }
+        generation += 1
+        recordings = []
+        hasMore = false
+        offset = 0
+        loadedAt = nil
+        error = nil
+        pagingError = nil
+        isLoadingMore = false
+        loadedRequestSignature = nil
+        isLoading = true
     }
 
     /// Loads the first page for the current filter, **replacing** what is shown.
@@ -402,6 +424,9 @@ struct SessionsRoot: View {
                         guard !Task.isCancelled else { return }
                     }
                     await load()
+                }
+                .onChange(of: store.requestSignature) { _, _ in
+                    selectedID.wrappedValue = nil
                 }
                 #if os(macOS)
                 .onChange(of: model.projectID) { _, _ in

@@ -56,6 +56,49 @@ private actor SessionsRefreshTransport: HTTPTransport {
     }
 }
 
+private actor SessionsFilterChangeTransport: HTTPTransport {
+    private var requestCount = 0
+    private var staleContinuation: CheckedContinuation<Void, Never>?
+
+    func requests() -> Int { requestCount }
+
+    func releaseStaleRequest() {
+        staleContinuation?.resume()
+        staleContinuation = nil
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requestCount += 1
+        let requestNumber = requestCount
+        if requestNumber == 2 {
+            await withCheckedContinuation { continuation in
+                staleContinuation = continuation
+            }
+        }
+
+        let phase = switch requestNumber {
+        case 1: "initial"
+        case 2: "stale"
+        default: "replacement"
+        }
+        let body = """
+        {"results":[{"id":"synthetic-mac-\(phase)",
+         "distinct_id":"synthetic-mac-person-\(phase)",
+         "recording_duration":120,"active_seconds":60,
+         "start_time":"2026-01-15T10:00:00Z","click_count":1,
+         "keypress_count":0,"console_log_count":0,"console_warn_count":0,
+         "console_error_count":0,"snapshot_source":"web",
+         "ongoing":false,"viewed":false}],"has_next":true,"version":4}
+        """
+        return (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+        )
+    }
+}
+
 private func staleRefreshClient(
     _ transport: some HTTPTransport,
     region: PostHogRegion = .usCloud
@@ -143,21 +186,61 @@ struct StaleRefreshPreservationTests {
         )
     }
 
-    @Test("sessions filter edit prevents paging before replacement load")
+    @Test("sessions filter edit retires rows and paging before replacement load")
     func sessionsFilterEditInvalidatesPaging() async {
         let store = SessionsStore()
         let transport = SessionsRefreshTransport()
         let client = staleRefreshClient(transport)
 
         await store.load(client: client, projectID: 1)
-        let ids = store.recordings.map(\.id)
         store.filter.signal = .rageClick
 
         await store.loadMore(client: client, projectID: 1)
 
         #expect(await transport.requests() == 1)
-        #expect(store.recordings.map(\.id) == ids)
+        #expect(store.recordings.isEmpty)
+        #expect(!store.hasMore)
+        #expect(store.isLoading)
         #expect(store.pagingError == nil)
         #expect(!store.isLoadingMore)
+    }
+
+    @Test("sessions filter edit clears rows and rejects a held refresh before replacement")
+    func sessionsFilterEditInvalidatesHeldRefresh() async {
+        let store = SessionsStore()
+        let transport = SessionsFilterChangeTransport()
+        let client = staleRefreshClient(transport)
+
+        await store.load(client: client, projectID: 1)
+        #expect(store.recordings.map(\.id) == ["synthetic-mac-initial"])
+        #expect(store.hasMore)
+
+        let staleRefresh = Task {
+            await store.load(client: client, projectID: 1)
+        }
+        while await transport.requests() < 2 { await Task.yield() }
+        #expect(store.isLoading)
+
+        store.filter.signal = .rageClick
+
+        #expect(store.recordings.isEmpty)
+        #expect(store.isLoading)
+        #expect(!store.hasMore)
+        #expect(store.loadedAt == nil)
+        #expect(store.error == nil)
+        #expect(store.pagingError == nil)
+        #expect(!store.isLoadingMore)
+
+        await transport.releaseStaleRequest()
+        await staleRefresh.value
+
+        #expect(store.recordings.isEmpty)
+        #expect(store.isLoading)
+
+        await store.load(client: client, projectID: 1)
+
+        #expect(store.recordings.map(\.id) == ["synthetic-mac-replacement"])
+        #expect(store.hasMore)
+        #expect(!store.isLoading)
     }
 }
