@@ -131,10 +131,33 @@ struct MenuBarHeadlineTests {
         #expect(MenuBarHeadline.label(for: metric("1", value: 1_000, previous: nil)) == "1K")
     }
 
-    @Test("the spoken form names the metric, because the strip is a bare number")
-    func spokenLabel() {
-        let spoken = MenuBarHeadline.accessibilityLabel(for: metric("1", value: 1_234))
-        #expect(spoken == "GetHog: Metric 1, 1.2K")
+    @Test("the spoken form preserves every comparison direction")
+    func spokenLabelPreservesDirection() {
+        #expect(
+            MenuBarHeadline.accessibilityLabel(
+                for: metric("1", value: 1_234, previous: 1_000)
+            ) == "GetHog: Metric 1, 1.2K, up"
+        )
+        #expect(
+            MenuBarHeadline.accessibilityLabel(
+                for: metric("1", value: 900, previous: 1_000)
+            ) == "GetHog: Metric 1, 900, down"
+        )
+        #expect(
+            MenuBarHeadline.accessibilityLabel(
+                for: metric("1", value: 1_000, previous: 1_000)
+            ) == "GetHog: Metric 1, 1K, unchanged"
+        )
+        #expect(
+            MenuBarHeadline.accessibilityLabel(
+                for: metric("1", value: 10, previous: 0)
+            ) == "GetHog: Metric 1, 10, up"
+        )
+        #expect(
+            MenuBarHeadline.accessibilityLabel(
+                for: metric("1", value: 1_000, previous: nil)
+            ) == "GetHog: Metric 1, 1K, no comparison available"
+        )
         #expect(MenuBarHeadline.accessibilityLabel(for: nil) == "GetHog")
     }
 

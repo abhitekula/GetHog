@@ -112,10 +112,17 @@ enum MenuBarHeadline {
         return "\(number) \(unit)"
     }
 
-    /// Spoken form for the status item: the label alone reads as a bare number.
+    /// Spoken form for the status item: the label alone reads as a bare number,
+    /// and replacing the visible arrow must not also erase its direction.
     static func accessibilityLabel(for metric: SharedSnapshot.Metric?) -> String {
         guard let metric else { return "GetHog" }
-        return "GetHog: \(metric.title), \(compact(metric.value, unit: metric.unit))"
+        let direction = switch metric.direction {
+        case .up: "up"
+        case .down: "down"
+        case .flat: "unchanged"
+        case .unknown: "no comparison available"
+        }
+        return "GetHog: \(metric.title), \(compact(metric.value, unit: metric.unit)), \(direction)"
     }
 }
 
