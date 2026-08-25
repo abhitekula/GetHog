@@ -166,7 +166,7 @@ enum FixturePrivacyScanner {
     /// credential-shaped query is a credential wherever it is pointed.
     private static let loopbackHosts: Set<String> = ["127.0.0.1", "::1", "localhost"]
     private static let publicDocumentationHosts: Set<String> = [
-        "developer.apple.com", "evilmartians.com", "github.com", "posthog.com",
+        "apps.apple.com", "developer.apple.com", "evilmartians.com", "github.com", "posthog.com",
         "registry.npmjs.org", "www.apple.com", "www.contributor-covenant.org",
         "www.npmjs.com", "www.w3.org", "www.w3ctech.com",
     ]
@@ -1456,6 +1456,7 @@ struct FixturePrivacyTests {
             "let cohort = \"cohort \(735_000 + 101)\"",
         ].joined(separator: "\n")
         let publicDocs = [
+            "https://apps.apple.com/us/app/gethog/id6798921061",
             "https://developer.apple.com/documentation/backgroundtasks",
             "https://posthog.com/docs/api",
             "https://github.com/PostHog/posthog",

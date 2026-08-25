@@ -27,11 +27,12 @@ Mac is a first-class adaptive client, not an iPad port: its native source-list
 shell adapts its detail content to the available window width, while Settings,
 commands, menu-bar presence, and tear-off windows follow desktop conventions.
 
-Confirmed ambition: a public App Store release of an open-source, unaffiliated
-community project. The design bar is that a stranger assumes a design team
-shipped it. Open source is a delivery constraint, not just a licence: every
-committed asset — illustrations, marks, icons — ships in a public repository
-and must be original work the project can licence.
+GetHog is publicly available for iPhone and iPad on the
+[App Store](https://apps.apple.com/us/app/gethog/id6798921061) as an open-source,
+unaffiliated community project. The design bar is that a stranger assumes a
+design team shipped it. Open source is a delivery constraint, not just a
+licence: every committed asset — illustrations, marks, icons — ships in a
+public repository and must be original work the project can licence.
 
 ## Positioning
 
@@ -85,7 +86,6 @@ complete, not replace.
 
 ## Open decisions
 
-- Monetization/App Store listing details: undecided.
 - Marks for product areas outside the four PostHog families (warehouse, logs,
   pipelines…): none exist yet; treated as a design gap, not filled by
   stretching the existing four.

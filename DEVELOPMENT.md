@@ -258,6 +258,9 @@ exercised without touching the simulator's network settings.
 
 ## App Store archive and signing
 
+The public iPhone and iPad listing is
+[GetHog on the App Store](https://apps.apple.com/us/app/gethog/id6798921061).
+
 `DEVELOPMENT_TEAM` is deliberately empty in `project.yml`: this is a public
 repository and a team id is an account detail, not a project fact. Supply it
 on the command line at archive time instead — it never gets committed:

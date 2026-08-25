@@ -1,4 +1,5 @@
 import XCTest
+import Vision
 
 final class ReplayInteractionTests: XCTestCase {
     private enum ScrollDirection {
@@ -50,9 +51,10 @@ final class ReplayInteractionTests: XCTestCase {
         }
     }
 
-    private func launchReadyReplay() -> XCUIApplication {
+    private func launchReadyReplay(extraArguments: [String] = []) -> XCUIApplication {
         let app = DemoLaunch.launch(
-            openURL: "gethog://replay/\(DemoLaunch.replaySessionID)"
+            openURL: "gethog://replay/\(DemoLaunch.replaySessionID)",
+            extraArguments: extraArguments
         )
         let slider = app.sliders["Playback position"]
         let deadline = Date().addingTimeInterval(180)
@@ -62,6 +64,117 @@ final class ReplayInteractionTests: XCTestCase {
         }
         XCTAssertTrue(slider.exists && slider.isEnabled)
         return app
+    }
+
+    /// The compact replay is a video surface, so its primary transport belongs
+    /// on the recording rather than only in the control stack underneath it.
+    /// Waiting for `Pause replay` pins both halves of the contract: playback
+    /// starts when the first renderer becomes ready, and the inline control
+    /// reflects that running state. Tapping it proves the control owns transport
+    /// rather than being a decorative overlay.
+    func testReplayAutostartsWithInlinePlayPauseControl() {
+        let app = launchReadyReplay()
+
+        let pause = app.buttons["Pause replay"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: pause),
+            "A ready replay did not autostart with an inline pause control."
+        )
+        pause.assertMeetsMinimumHitTarget("Inline replay pause control")
+        pause.tap()
+
+        let play = app.buttons["Play replay"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: play),
+            "Pausing the inline replay did not expose its play control."
+        )
+        play.assertMeetsMinimumHitTarget("Inline replay play control")
+        play.tap()
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.buttons["Pause replay"]),
+            "Resuming from the inline control did not restart playback."
+        )
+    }
+
+    /// The active-time value is the fourth item in the shared `StatStrip`.
+    /// Horizontal scrolling technically kept it reachable at AX5, but made the
+    /// timer look cut off at the phone edge. This assertion uses the same strip
+    /// contract as every other metrics page: at accessibility sizes each value
+    /// must reflow inside the viewport instead of living beyond it.
+    func testSessionReplayActiveMetricReflowsAtAX5() {
+        let app = DemoLaunch.launch(
+            openURL: "gethog://replay/\(DemoLaunch.replaySessionID)",
+            extraArguments: [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL",
+            ]
+        )
+
+        let active = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "0:08 Active")
+        ).firstMatch
+        bringOnscreen(active, in: app, direction: .up, attempts: 24)
+        guard active.exists else {
+            XCTFail("The session replay active-time metric never loaded at AX5.")
+            return
+        }
+
+        let viewport = app.windows.firstMatch.frame
+        XCTAssertGreaterThanOrEqual(
+            active.frame.minX,
+            viewport.minX,
+            "The AX5 active-time metric began outside the phone viewport."
+        )
+        XCTAssertLessThanOrEqual(
+            active.frame.maxX,
+            viewport.maxX,
+            "The AX5 active-time metric ended outside the phone viewport."
+        )
+    }
+
+    /// A fixed, scaled timestamp gutter was allowed to consume most of an
+    /// iPhone row at AX5, leaving the console message and seek control to
+    /// compress one another. The card still fit the viewport, so the existing
+    /// outer-width test stayed green while the text visibly clipped. Apple's
+    /// focused rendered audit catches the actual failure inside the row.
+    func testReplayDiagnosticTimestampDoesNotClipAtAX5() throws {
+        let app = launchReadyReplay(extraArguments: [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityXXXL",
+        ])
+
+        let consoleHeader = app.staticTexts["Console"]
+        bringOnscreen(consoleHeader, in: app, direction: .up, attempts: 50)
+        guard consoleHeader.exists else {
+            XCTFail("The populated replay console never came onscreen at AX5.")
+            return
+        }
+
+        let row = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "Dashboard widgets loaded")
+        ).firstMatch
+        bringOnscreen(row, in: app, direction: .up, attempts: 12)
+        guard row.exists && row.isHittable else {
+            XCTFail("The populated console row never came onscreen.")
+            return
+        }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        let image = try XCTUnwrap(row.screenshot().image.cgImage)
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        let renderedText = (request.results ?? [])
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
+        let normalizedText = renderedText
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        XCTAssertTrue(
+            normalizedText.contains("+0:01")
+                && normalizedText.localizedCaseInsensitiveContains("Dashboard widgets loaded"),
+            "The AX5 console row did not visibly render its complete timestamp and message. OCR saw:\n\(renderedText)"
+        )
     }
 
     func testReplayExpandsAndReturnsItsPlayhead() {

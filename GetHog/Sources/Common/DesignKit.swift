@@ -639,14 +639,17 @@ struct MetricTile: View {
 
 /// Two to four metrics across a header.
 ///
-/// Scrolls horizontally rather than compressing, because a metric that has been
-/// squeezed until it truncates has stopped being a metric.
+/// Scrolls horizontally at ordinary type sizes rather than compressing, because
+/// a metric squeezed until it truncates has stopped being a metric. At
+/// accessibility sizes it stacks by default: an offscreen horizontal metric is
+/// technically scrollable but visually indistinguishable from clipped content,
+/// and every screen that uses this shared strip needs the same reflow.
 struct StatStrip<Content: View>: View {
     var compact: Bool = true
-    /// Overview summaries can opt into a reading-order stack at accessibility
-    /// sizes. The default remains a horizontal strip for dense data surfaces
-    /// where scrolling is the established interaction.
-    var stacksAtAccessibilitySizes: Bool = false
+    /// A deliberately spatial surface may opt out, but ordinary metrics follow
+    /// the vertical reading order at AX sizes without every caller remembering
+    /// to repair the same phone-width failure independently.
+    var stacksAtAccessibilitySizes: Bool = true
     @ViewBuilder var content: Content
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize

@@ -22,7 +22,7 @@ struct SessionDetailView: View {
     @State private var timeline = SessionTimelineStore()
     @State private var summary = SessionSummaryStore()
     @State private var loader = ReplayLoader()
-    @State private var player = ReplayPlayerController()
+    @State private var player = ReplayPlayerController(autostarts: true)
     @State private var webLink: WebLink?
     #if os(macOS) || os(visionOS)
     /// Neither the Mac nor Vision Pro has an in-app Safari to present; the web

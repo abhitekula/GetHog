@@ -245,6 +245,8 @@ struct ReplayNetworkRow: View {
     let onToggle: () -> Void
     let onSeek: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     /// Bar height, and — because the bar is a capsule — its own minimum width.
     /// A capsule narrower than it is tall renders as a squeezed sliver; at this
     /// floor a 6 ms request in a 19 minute session is a legible dot.
@@ -300,43 +302,82 @@ struct ReplayNetworkRow: View {
     }
 
     private var label: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            if let method = entry.method {
-                Text(method)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Theme.Ink.secondary)
-            }
-            Text(rowLabel)
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(entry.isFailure ? Theme.Status.criticalInk : Color.primary)
-
-            Spacer(minLength: 4)
-
-            if let status = entry.status {
-                Text("\(status)")
-                    .font(.caption2.monospacedDigit().weight(.medium))
-                    .foregroundStyle(
-                        entry.isFailure ? Theme.Status.criticalInk : Theme.Ink.secondary
-                    )
-            }
-            Text(ReplayByteFormat.duration(entry.duration))
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(Theme.Ink.tertiary)
-
-            if canSeek {
-                Button(action: onSeek) {
-                    Image(systemName: "play.circle")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.accent)
-                        .minimumHitTarget()
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Status, duration and a 44pt seek control are fixed furniture.
+                // Let the request identifier own a full line rather than
+                // compressing every field into fragments at AX sizes.
+                VStack(alignment: .leading, spacing: 4) {
+                    rowLabelText
+                    HStack(alignment: .center, spacing: 8) {
+                        methodLabel
+                        statusLabel
+                        durationLabel
+                        Spacer(minLength: 4)
+                        seekButton
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    "Play the replay from \(SessionClock.spoken(max(0, offset ?? 0)))"
-                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    methodLabel
+                    rowLabelText
+                    Spacer(minLength: 4)
+                    statusLabel
+                    durationLabel
+                    seekButton
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var methodLabel: some View {
+        if let method = entry.method {
+            Text(method)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Theme.Ink.secondary)
+        }
+    }
+
+    private var rowLabelText: some View {
+        Text(rowLabel)
+            .font(.caption)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .truncationMode(.middle)
+            .foregroundStyle(entry.isFailure ? Theme.Status.criticalInk : Color.primary)
+    }
+
+    @ViewBuilder
+    private var statusLabel: some View {
+        if let status = entry.status {
+            Text("\(status)")
+                .font(.caption2.monospacedDigit().weight(.medium))
+                .foregroundStyle(
+                    entry.isFailure ? Theme.Status.criticalInk : Theme.Ink.secondary
+                )
+        }
+    }
+
+    private var durationLabel: some View {
+        Text(ReplayByteFormat.duration(entry.duration))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(Theme.Ink.tertiary)
+    }
+
+    @ViewBuilder
+    private var seekButton: some View {
+        if canSeek {
+            Button(action: onSeek) {
+                Image(systemName: "play.circle")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.accent)
+                    .minimumHitTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "Play the replay from \(SessionClock.spoken(max(0, offset ?? 0)))"
+            )
         }
     }
 
@@ -390,16 +431,29 @@ struct ReplayNetworkRow: View {
                 .font(.caption2.monospaced())
                 .foregroundStyle(Theme.Ink.secondary)
                 .textSelection(.enabled)
-            HStack(spacing: 10) {
-                ForEach(facts, id: \.0) { fact in
-                    Text("\(fact.0) \(fact.1)")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.Ink.tertiary)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) {
+                        factLabels
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        factLabels
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 2)
+    }
+
+    @ViewBuilder
+    private var factLabels: some View {
+        ForEach(facts, id: \.0) { fact in
+            Text("\(fact.0) \(fact.1)")
+                .font(.caption2)
+                .foregroundStyle(Theme.Ink.tertiary)
+        }
     }
 
     /// Only what the entry actually reported. A missing size is unknown, and

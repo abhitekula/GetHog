@@ -38,6 +38,10 @@ probes/
 /screenshots/
 build/Screenshots/
 
+# Local-only App Store production tooling and generated artwork
+/scripts/generate-app-store-screenshots
+/docs/images/app-store/
+
 # Keep recovery bundles outside the repository. These patterns protect local
 # private or history-rewrite artifacts if one is created here by mistake.
 *.private.bundle

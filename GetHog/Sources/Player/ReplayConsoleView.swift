@@ -188,51 +188,37 @@ struct ReplayConsoleRow: View {
     /// is already the full width at default size, so a fixed one truncates the
     /// hour off exactly the sessions long enough to need it.
     @ScaledMetric(relativeTo: .caption2) private var offsetWidth: CGFloat = 54
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(offset.map(SessionClock.offset) ?? "—")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(Theme.Ink.secondary)
-                .frame(width: offsetWidth, alignment: .trailing)
-                .padding(.top, 3)
-
-            Circle()
-                .fill(entry.level.mark)
-                .frame(width: 8, height: 8)
-                .padding(.top, 6)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.summary.isEmpty ? entry.rawLevel : entry.summary)
-                    .font(.footnote)
-                    .foregroundStyle(entry.level == .error ? entry.level.ink : Color.primary)
-                    .lineLimit(isExpanded ? nil : 2)
-                    .multilineTextAlignment(.leading)
-
-                if !isExpanded, let first = entry.detail.first {
-                    Text(first)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(Theme.Ink.secondary)
-                        .lineLimit(1)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // A scaled fixed gutter is not adaptive: 54pt grows to roughly
+                // half an iPhone at AX5, then the message and 44pt seek control
+                // fight over what remains. Give time/control one metadata line
+                // and the recorded message the whole card beneath it. The same
+                // rule already protects session timeline and chapter rows.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .center, spacing: 8) {
+                        offsetLabel
+                        levelMark
+                        Spacer(minLength: 4)
+                        seekButton
+                    }
+                    messageContent
                 }
-
-                if isExpanded { detail }
-            }
-
-            Spacer(minLength: 4)
-
-            if canSeek {
-                Button(action: onSeek) {
-                    Image(systemName: "play.circle")
-                        .font(.body)
-                        .foregroundStyle(Theme.accent)
-                        .minimumHitTarget()
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    offsetLabel
+                        .frame(width: offsetWidth, alignment: .trailing)
+                        .padding(.top, 3)
+                    levelMark
+                        .padding(.top, 6)
+                    messageContent
+                    Spacer(minLength: 4)
+                    seekButton
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    "Play the replay from \(SessionClock.spoken(max(0, offset ?? 0)))"
-                )
             }
         }
         .padding(.vertical, 8)
@@ -246,6 +232,54 @@ struct ReplayConsoleRow: View {
         .accessibilityLabel(spokenLabel)
         .accessibilityHint(isExpanded ? "Collapses this entry" : "Expands this entry")
         .accessibilityAction(.default, onToggle)
+    }
+
+    private var offsetLabel: some View {
+        Text(offset.map(SessionClock.offset) ?? "—")
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(Theme.Ink.secondary)
+    }
+
+    private var levelMark: some View {
+        Circle()
+            .fill(entry.level.mark)
+            .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
+    }
+
+    private var messageContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(entry.summary.isEmpty ? entry.rawLevel : entry.summary)
+                .font(.footnote)
+                .foregroundStyle(entry.level == .error ? entry.level.ink : Color.primary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize || isExpanded ? nil : 2)
+                .multilineTextAlignment(.leading)
+
+            if !isExpanded, let first = entry.detail.first {
+                Text(first)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(Theme.Ink.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            }
+
+            if isExpanded { detail }
+        }
+    }
+
+    @ViewBuilder
+    private var seekButton: some View {
+        if canSeek {
+            Button(action: onSeek) {
+                Image(systemName: "play.circle")
+                    .font(.body)
+                    .foregroundStyle(Theme.accent)
+                    .minimumHitTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "Play the replay from \(SessionClock.spoken(max(0, offset ?? 0)))"
+            )
+        }
     }
 
     @ViewBuilder

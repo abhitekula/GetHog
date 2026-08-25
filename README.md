@@ -5,6 +5,13 @@
 The PostHog companion I wanted on my phone. I built it over a weekend, and then
 it got a little out of hand.
 
+<a href="https://apps.apple.com/us/app/gethog/id6798921061">
+  <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download GetHog on the App Store" height="52">
+</a>
+
+Available now for iPhone and iPad. You can also build every platform shell from
+source.
+
 > GetHog is an independent community project. It is not affiliated with,
 > endorsed by, or maintained by PostHog.
 
@@ -69,9 +76,10 @@ without the UI. Widgets use the shared cache and do not call PostHog directly.
 
 ## Project status
 
-GetHog is unfinished and moving quickly. You can use dashboards, events,
-people, sessions, replay, and feature flags now. If the app finds an insight
-type it cannot draw yet, it tells you instead of making up a chart.
+GetHog is available on the App Store and still moving quickly. You can use
+dashboards, events, people, sessions, replay, and feature flags now. If the app
+finds an insight type it cannot draw yet, it tells you instead of making up a
+chart.
 
 This is not a replacement for the PostHog web app. Some API surfaces are still
 missing. A replay can only show what the original recording captured. Plenty

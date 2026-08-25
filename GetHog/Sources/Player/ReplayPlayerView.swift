@@ -80,6 +80,11 @@ final class ReplaySubmissionCoordinator {
 @Observable
 final class ReplayPlayerController {
 
+    /// Compact session replays begin moving as soon as their first renderer is
+    /// ready. Expanded players opt out and inherit the inline player's explicit
+    /// resume intent instead.
+    @ObservationIgnored private let autostarts: Bool
+
     private struct PendingSeekAcknowledgement {
         static let tolerance: TimeInterval = 0.05
         /// How long rejected ticks may pile up before the gate opens anyway.
@@ -165,6 +170,13 @@ final class ReplayPlayerController {
     )?
     @ObservationIgnored private(set) var didRestorePreparedPlayback = false
 
+    init(autostarts: Bool = false) {
+        self.autostarts = autostarts
+        if autostarts {
+            preparedPlayback = (position: 0, speed: 1, resume: true)
+        }
+    }
+
     // MARK: Wiring
 
     func attach(_ webView: WKWebView) {
@@ -234,6 +246,9 @@ final class ReplayPlayerController {
         interactiveSeekPosition = nil
         preparedPlayback = nil
         didRestorePreparedPlayback = false
+        if autostarts {
+            preparedPlayback = (position: 0, speed: speed, resume: true)
+        }
     }
 
     /// Clears the current rrweb instance while keeping its loaded document so a
@@ -1072,42 +1087,52 @@ struct ReplayPlayerView: View {
     }
 
     private var stage: some View {
-        WKWebViewRepresentable(controller: controller)
-            .aspectRatio(16.0 / 10.0, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .background(Theme.replayStageBackground.opacity(0.9))
-            .clipShape(.rect(cornerRadius: 10))
-            .overlay {
-                ZStack {
-                    Rectangle()
-                        .fill(.clear)
-                        .contentShape(.rect)
-                        .onTapGesture(perform: expand)
-                    if !controller.isReady {
-                        ProgressView().tint(.white)
-                    }
+        ZStack(alignment: .bottomLeading) {
+            WKWebViewRepresentable(controller: controller)
+                .aspectRatio(16.0 / 10.0, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                // A recording is a picture of a page that has already happened.
+                // Its links lead nowhere, its buttons do nothing, and the site
+                // is not even this app's — so the stage is one element that says
+                // what it is, and nothing inside it is a VoiceOver stop.
+                //
+                // Labelling a container does not make it a leaf, and neither
+                // does `.accessibilityElement(children: .ignore)`: the content
+                // process still publishes WebKit's tree. Replacing that subtree
+                // removes the inert site controls while leaving the native
+                // transport beside it as a separate, actionable element.
+                .accessibilityRepresentation {
+                    Button("Session replay", action: expand)
+                        .accessibilityHint("Opens the replay full screen.")
+                        .disabled(!controller.isReady)
                 }
+
+            Rectangle()
+                .fill(.clear)
+                .contentShape(.rect)
+                .onTapGesture(perform: expand)
+                .accessibilityHidden(true)
+
+            if controller.isReady {
+                Button {
+                    controller.togglePlayPause()
+                } label: {
+                    Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(Theme.Status.accentInk)
+                        .background(.regularMaterial, in: .circle)
+                        .overlay {
+                            Circle().stroke(Theme.accent.opacity(0.18), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+                .accessibilityLabel(controller.isPlaying ? "Pause replay" : "Play replay")
             }
-            // A recording is a picture of a page that has already happened. Its
-            // links lead nowhere, its buttons do nothing, and the site is not
-            // even this app's — so the stage is one element that says what it
-            // is, and nothing inside it is a VoiceOver stop.
-            //
-            // Labelling a container does not make it a leaf, and neither does
-            // `.accessibilityElement(children: .ignore)` here. Measured through
-            // XCUITest on this same shape: a bare label leaves 3 web views, 15
-            // activatable links and 61 elements; adding `.ignore` leaves 3, 15
-            // and 62. WebKit serves the page's elements from the content
-            // process, so SwiftUI's ignore never reaches them. Replacing the
-            // subtree does: 0 web views, 0 links, one element carrying this
-            // label. It has to be replacement rather than suppression because
-            // the leak is unbounded — a bigger recorded page contributes
-            // arbitrarily more of somebody else's navigation.
-            .accessibilityRepresentation {
-                Button("Session replay", action: expand)
-                    .accessibilityHint("Opens the replay full screen.")
-                    .disabled(!controller.isReady)
-            }
+        }
+        .background(Theme.replayStageBackground.opacity(0.9))
+        .clipShape(.rect(cornerRadius: 10))
     }
 
     private var preparing: some View {
