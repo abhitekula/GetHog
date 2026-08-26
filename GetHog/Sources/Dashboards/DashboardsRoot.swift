@@ -525,7 +525,10 @@ struct DashboardsRoot: View {
             DashboardPreviewScope(authority: $0, dashboardID: dashboard.id)
         }
         return row().quickPreview {
-            DashboardQuickPreview(summary: dashboard, state: quickPreviewStore.state)
+            DashboardQuickPreview(
+                summary: dashboard,
+                state: quickPreviewStore.state(for: scope)
+            )
                 .task(id: scope) {
                     await quickPreviewStore.activate(client: model.client, scope: scope)
                 }

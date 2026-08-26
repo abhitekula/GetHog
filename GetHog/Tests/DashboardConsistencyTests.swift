@@ -1120,70 +1120,162 @@ struct DashboardConsistencyTests {
         #expect(dashboard.title == "Current preview")
     }
 
-    @Test("project region and authentication changes invalidate dashboard preview reuse")
-    func authorityChangesInvalidateDashboardPreviewReuse() async {
-        let initialAuth = UUID(uuidString: "018F9000-0000-7000-8000-000000000601")!
-        let changes: [(projectID: Int, region: PostHogRegion, authSessionID: UUID)] = [
-            (2, .usCloud, initialAuth),
-            (1, .euCloud, initialAuth),
-            (1, .usCloud, UUID(uuidString: "018F9000-0000-7000-8000-000000000602")!),
-        ]
-
-        for change in changes {
-            let transport = DashboardConsistencyTransport(
-                dashboardReplies: [
-                    .ok(Self.savedDashboard),
-                    .ok(Self.savedDashboard),
-                ]
-            )
-            let store = DashboardPreviewStore()
-            await store.activate(
-                client: Self.previewClient(region: .usCloud, transport: transport),
-                scope: Self.previewScope(
-                    projectID: 1,
-                    dashboardID: 9_001,
-                    authSessionID: initialAuth
-                )
-            )
-            await store.activate(
-                client: Self.previewClient(region: change.region, transport: transport),
-                scope: Self.previewScope(
-                    projectID: change.projectID,
-                    dashboardID: 9_001,
-                    region: change.region,
-                    authSessionID: change.authSessionID
-                )
-            )
-
-            #expect(await transport.dashboardRequestCount == 2)
+    @Test("a new authority hides retained content before replacement activation completes")
+    func authorityChangeSynchronouslyHidesRetainedDashboardPreview() async {
+        var now = Date(timeIntervalSince1970: 1_787_738_400)
+        let oldScope = Self.previewScope(
+            projectID: 1,
+            dashboardID: 9_001,
+            authSessionID: UUID(
+                uuidString: "018F9000-0000-7000-8000-000000000601"
+            )!
+        )
+        let newScope = Self.previewScope(
+            projectID: 1,
+            dashboardID: 9_001,
+            authSessionID: UUID(
+                uuidString: "018F9000-0000-7000-8000-000000000602"
+            )!
+        )
+        let store = DashboardPreviewStore(now: { now })
+        let initialTransport = DashboardConsistencyTransport(
+            dashboardReplies: [
+                .ok(Self.previewDashboard(id: 9_001, title: "Prior authority preview")),
+            ]
+        )
+        await store.activate(
+            client: Self.previewClient(region: .usCloud, transport: initialTransport),
+            scope: oldScope
+        )
+        guard case .loaded(let initial, _) = store.state(for: oldScope) else {
+            Issue.record("The initial authority did not publish its preview.")
+            return
         }
+        #expect(initial.title == "Prior authority preview")
+
+        now.addTimeInterval(300)
+        let oldRefreshTransport = HeldCancelableDashboardTransport(
+            responseBody: Self.previewDashboard(id: 9_001, title: "Late prior authority preview")
+        )
+        let oldRefresh = Task {
+            await store.activate(
+                client: Self.previewClient(region: .usCloud, transport: oldRefreshTransport),
+                scope: oldScope
+            )
+        }
+        await oldRefreshTransport.waitForRequest()
+
+        guard case .idle = store.state(for: newScope) else {
+            Issue.record("The new authority could see the retained prior-authority value.")
+            return
+        }
+
+        let replacementTransport = HeldCancelableDashboardTransport(
+            responseBody: Self.previewDashboard(id: 9_001, title: "Current authority preview")
+        )
+        let replacement = Task {
+            await store.activate(
+                client: Self.previewClient(region: .usCloud, transport: replacementTransport),
+                scope: newScope
+            )
+        }
+        await replacementTransport.waitForRequest()
+        guard case .loading(let previous, let loadedAt) = store.state(for: newScope) else {
+            Issue.record("The replacement authority did not own the loading state.")
+            return
+        }
+        if previous != nil {
+            Issue.record("The replacement loading state retained prior-authority content.")
+        }
+        #expect(loadedAt == nil)
+
+        await replacementTransport.release()
+        await replacement.value
+        await oldRefreshTransport.release()
+        await oldRefresh.value
+
+        guard case .loaded(let current, _) = store.state(for: newScope) else {
+            Issue.record("The replacement authority did not retain publication ownership.")
+            return
+        }
+        #expect(current.title == "Current authority preview")
     }
 
-    @Test("invalidation rejects a late dashboard preview response")
-    func invalidationRejectsLateDashboardPreviewResponse() async {
-        let transport = HeldFirstDashboardPreviewTransport(
-            heldReply: Self.previewDashboard(id: 9_001, title: "Late preview"),
-            subsequentReplies: []
+    @Test("a missing client automatically invalidates and rejects a late preview")
+    func missingClientAutomaticallyInvalidatesDashboardPreview() async {
+        let transport = HeldCancelableDashboardTransport(
+            responseBody: Self.previewDashboard(id: 9_001, title: "Late preview")
         )
         let client = Self.previewClient(region: .usCloud, transport: transport)
         let store = DashboardPreviewStore()
-        let activation = Task {
-            await store.activate(
-                client: client,
-                scope: Self.previewScope(projectID: 1, dashboardID: 9_001)
-            )
-        }
-        await transport.waitForFirstRequest()
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
+        let activation = Task { await store.activate(client: client, scope: scope) }
+        await transport.waitForRequest()
 
-        store.invalidate()
-        await transport.releaseFirst()
-        await activation.value
-
-        #expect(await transport.requests() == 1)
-        guard case .idle = store.state else {
-            Issue.record("A late response published after invalidation.")
+        await store.activate(client: nil, scope: scope)
+        guard case .idle = store.state(for: scope) else {
+            Issue.record("A missing client did not clear the public preview state.")
             return
         }
+
+        await transport.release()
+        await activation.value
+        guard case .idle = store.state(for: scope) else {
+            Issue.record("A late response published after missing-client invalidation.")
+            return
+        }
+    }
+
+    @Test("a missing scope automatically invalidates and rejects a late preview")
+    func missingScopeAutomaticallyInvalidatesDashboardPreview() async {
+        let transport = HeldCancelableDashboardTransport(
+            responseBody: Self.previewDashboard(id: 9_001, title: "Late preview")
+        )
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore()
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
+        let activation = Task { await store.activate(client: client, scope: scope) }
+        await transport.waitForRequest()
+
+        await store.activate(client: client, scope: nil)
+        guard case .idle = store.state(for: scope) else {
+            Issue.record("A missing scope did not clear the public preview state.")
+            return
+        }
+
+        await transport.release()
+        await activation.value
+        guard case .idle = store.state(for: scope) else {
+            Issue.record("A late response published after missing-scope invalidation.")
+            return
+        }
+    }
+
+    @Test("an unavailable dashboard preview recovers on deliberate retry")
+    func unavailableDashboardPreviewRecoversOnRetry() async {
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [
+                .status(503, #"{"detail":"Synthetic preview failure"}"#),
+                .ok(Self.previewDashboard(id: 9_001, title: "Recovered preview")),
+            ]
+        )
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore()
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
+
+        await store.activate(client: client, scope: scope)
+        guard case .unavailable = store.state(for: scope) else {
+            Issue.record("The failed preview was not exposed as unavailable.")
+            return
+        }
+
+        await store.activate(client: client, scope: scope)
+        guard case .loaded(let recovered, _) = store.state(for: scope) else {
+            Issue.record("The unavailable preview did not recover on retry.")
+            return
+        }
+        #expect(recovered.title == "Recovered preview")
+        #expect(await transport.dashboardRequestCount == 2)
     }
 
     @Test("an expired preview becomes stale when its replacement fails")

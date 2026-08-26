@@ -100,6 +100,15 @@ final class DashboardPreviewStore {
         state = .idle
     }
 
+    /// The state a surface may render for its current request authority.
+    /// SwiftUI can recompute with a new project or authentication session
+    /// before the replacement `.task` begins, so publication fencing alone is
+    /// not enough: an unqualified retained value must be hidden synchronously.
+    func state(for scope: DashboardPreviewScope?) -> QuickPreviewEnrichment<Dashboard> {
+        guard let scope, activeScope == scope else { return .idle }
+        return state
+    }
+
     private func performLoad(
         client: PostHogClient,
         scope: DashboardPreviewScope,
@@ -209,6 +218,10 @@ struct ProjectOverviewContent<RecentRow: View>: View {
         )
     }
 
+    private var pinnedPreviewState: QuickPreviewEnrichment<Dashboard> {
+        pinnedPreviewStore.state(for: pinnedPreviewScope)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xl) {
             summaryScene
@@ -302,7 +315,7 @@ struct ProjectOverviewContent<RecentRow: View>: View {
         if let pinned = facts.pinned {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 SectionLabel(text: "Pinned", productMark: .dashboard)
-                if let pinnedDetail = pinnedPreviewStore.state.value {
+                if let pinnedDetail = pinnedPreviewState.value {
                     // Two columns of real tiles. Capped at four: this is a preview
                     // that should invite a tap, not a second copy of the dashboard
                     // one tap away.
@@ -325,12 +338,12 @@ struct ProjectOverviewContent<RecentRow: View>: View {
                                 .allowsHitTesting(false)
                         }
                     }
-                } else if case .loading = pinnedPreviewStore.state {
+                } else if case .loading = pinnedPreviewState {
                     HStack(spacing: Theme.Space.m) {
                         ProgressView()
                         Text("Loading \(pinned.title)…")
                     }
-                } else if case .unavailable = pinnedPreviewStore.state {
+                } else if case .unavailable = pinnedPreviewState {
                     VStack(alignment: .leading, spacing: Theme.Space.s) {
                         Label(
                             "Couldn't load pinned dashboard preview",
