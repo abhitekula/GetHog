@@ -16,7 +16,7 @@ struct DashboardHub<RowContent: View>: View {
     let pinned: [DashboardSummary]
     let others: [DashboardSummary]
     let loadedAt: Date?
-    let pinnedPreviewStore: PinnedDashboardPreviewStore
+    let pinnedPreviewStore: DashboardPreviewStore
     @Binding var search: String
     @ViewBuilder let row: (DashboardSummary) -> RowContent
 

@@ -305,62 +305,11 @@ private actor HeldCancelableDashboardTransport: HTTPTransport {
     }
 }
 
-private actor OutOfOrderPinnedPreviewTransport: HTTPTransport {
-    private var requestCount = 0
-    private var firstRequestStarted = false
-    private var releaseFirstRequest: CheckedContinuation<Void, Never>?
-
-    func waitForFirstRequest() async {
-        while !firstRequestStarted { await Task.yield() }
-    }
-
-    func releaseFirst() {
-        releaseFirstRequest?.resume()
-        releaseFirstRequest = nil
-    }
-
-    func requests() -> Int {
-        requestCount
-    }
-
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        requestCount += 1
-        let projectID = request.url?.pathComponents
-            .drop(while: { $0 != "projects" })
-            .dropFirst()
-            .first
-            .flatMap(Int.init) ?? 0
-
-        if projectID == 1 {
-            firstRequestStarted = true
-            await withCheckedContinuation { releaseFirstRequest = $0 }
-        }
-
-        let body = projectID == 1
-            ? Self.projectOneDashboard
-            : Self.projectTwoDashboard
-        let response = HTTPURLResponse(
-            url: try #require(request.url),
-            statusCode: 200,
-            httpVersion: nil,
-            headerFields: nil
-        )!
-        return (body, response)
-    }
-
-    private static let projectOneDashboard = Data(
-        #"{"id":9001,"name":"Project 1 pinned dashboard","tiles":[]}"#.utf8
-    )
-    private static let projectTwoDashboard = Data(
-        #"{"id":9001,"name":"Project 2 pinned dashboard","tiles":[]}"#.utf8
-    )
-}
-
-private actor HeldFirstPinnedPreviewTransport: HTTPTransport {
+private actor HeldFirstDashboardPreviewTransport: HTTPTransport {
     private let heldReply: Data
     private var subsequentReplies: [Data]
     private var requestCount = 0
-    private var refreshValues: [String?] = []
+    private var cancelledRequestCount = 0
     private var firstRequestStarted = false
     private var releaseFirstRequest: CheckedContinuation<Void, Never>?
 
@@ -382,22 +331,20 @@ private actor HeldFirstPinnedPreviewTransport: HTTPTransport {
         requestCount
     }
 
-    func receivedRefreshValues() -> [String?] {
-        refreshValues
+    func cancelledRequests() -> Int {
+        cancelledRequestCount
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requestCount += 1
         let sequence = requestCount
-        refreshValues.append(
-            URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?
-                .queryItems?
-                .first(where: { $0.name == "refresh" })?
-                .value
-        )
         if sequence == 1 {
             firstRequestStarted = true
             await withCheckedContinuation { releaseFirstRequest = $0 }
+            if Task.isCancelled {
+                cancelledRequestCount += 1
+                throw CancellationError()
+            }
         }
         let body = sequence == 1
             ? heldReply
@@ -1037,241 +984,265 @@ struct DashboardConsistencyTests {
         #expect(store.contentState(isAvailable: true) == .loaded)
     }
 
-    @Test("a remounted pinned preview shares one cached dashboard request")
-    func remountedPinnedPreviewSharesAStoreOwnedLoad() async {
-        let transport = HeldCancelableDashboardTransport(responseBody: Self.savedDashboard)
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
+    @Test("dashboard preview uses the exact cached dashboard endpoint")
+    func dashboardPreviewUsesCachedDashboardEndpoint() async throws {
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.savedDashboard)]
         )
-        let store = PinnedDashboardPreviewStore()
-        let authSessionID = UUID()
-        let outgoingMount = Task {
-            await store.loadIfNeeded(
-                client: client,
-                projectID: 1,
-                dashboardID: 9_001,
-                authSessionID: authSessionID
-            )
-        }
-        await transport.waitForRequest()
-        outgoingMount.cancel()
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore()
 
-        let release = Task {
-            await Task.yield()
-            await transport.release()
-        }
-        await store.loadIfNeeded(
+        await store.activate(
             client: client,
-            projectID: 1,
-            dashboardID: 9_001,
-            authSessionID: authSessionID
+            scope: Self.previewScope(projectID: 1_001, dashboardID: 9_001)
         )
-        await release.value
-        await outgoingMount.value
 
-        #expect(await transport.requests() == 1)
-        #expect(store.dashboard?.id == 9_001)
+        let request = try #require(await transport.requests.first)
+        #expect(request.url?.path == "/api/projects/1001/dashboards/9001")
+        #expect(
+            URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?
+                .queryItems == [URLQueryItem(name: "refresh", value: "force_cache")]
+        )
+        #expect(await transport.dashboardRequestCount == 1)
+        #expect(await transport.queryRequestCount == 0)
+        guard case .loaded(let dashboard, _) = store.state else {
+            Issue.record("The cached dashboard response did not publish as loaded.")
+            return
+        }
+        #expect(dashboard.id == 9_001)
     }
 
-    @Test("a failed pinned preview stays visible and can recover on retry")
-    func pinnedPreviewFailureCanRetry() async {
+    @Test("same-scope dashboard preview activations join one store-owned flight")
+    func sameScopeDashboardPreviewActivationsJoin() async {
+        let transport = HeldCancelableDashboardTransport(responseBody: Self.savedDashboard)
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore()
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
+
+        let first = Task { await store.activate(client: client, scope: scope) }
+        await transport.waitForRequest()
+        let second = Task { await store.activate(client: client, scope: scope) }
+        await Task.yield()
+        #expect(await transport.requests() == 1)
+
+        await transport.release()
+        await first.value
+        await second.value
+
+        #expect(await transport.requests() == 1)
+        guard case .loaded(let dashboard, _) = store.state else {
+            Issue.record("Joined callers did not receive the shared result.")
+            return
+        }
+        #expect(dashboard.id == 9_001)
+    }
+
+    @Test("a completed dashboard preview is reused inside five minutes")
+    func completedDashboardPreviewIsReusedInsideFiveMinutes() async {
+        var now = Date(timeIntervalSince1970: 1_787_738_400)
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.savedDashboard)]
+        )
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore(now: { now })
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
+
+        await store.activate(client: client, scope: scope)
+        now.addTimeInterval(299)
+        await store.activate(client: client, scope: scope)
+
+        #expect(await transport.dashboardRequestCount == 1)
+        guard case .loaded(_, let loadedAt) = store.state else {
+            Issue.record("The reusable value did not remain loaded.")
+            return
+        }
+        #expect(loadedAt == Date(timeIntervalSince1970: 1_787_738_400))
+    }
+
+    @Test("a dashboard preview reloads at the five-minute expiry")
+    func dashboardPreviewReloadsAtFiveMinuteExpiry() async {
+        var now = Date(timeIntervalSince1970: 1_787_738_400)
         let transport = DashboardConsistencyTransport(
             dashboardReplies: [
-                .status(503, #"{"detail":"Synthetic pinned preview failed"}"#),
-                .ok(Self.savedDashboard),
+                .ok(Self.previewDashboard(id: 9_001, title: "Initial cached preview")),
+                .ok(Self.previewDashboard(id: 9_001, title: "Replacement cached preview")),
             ]
         )
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
-        )
-        let store = PinnedDashboardPreviewStore()
-        let authSessionID = UUID(uuidString: "018F9000-0000-7000-8000-000000000600")!
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore(now: { now })
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
 
-        await store.loadIfNeeded(
-            client: client,
-            projectID: 1_001,
-            dashboardID: 9_001,
-            authSessionID: authSessionID
-        )
-
-        #expect(store.dashboard == nil)
-        #expect(store.failure != nil)
-        #expect(!store.isLoading)
-
-        await store.loadIfNeeded(
-            client: client,
-            projectID: 1_001,
-            dashboardID: 9_001,
-            authSessionID: authSessionID
-        )
+        await store.activate(client: client, scope: scope)
+        now.addTimeInterval(300)
+        await store.activate(client: client, scope: scope)
 
         #expect(await transport.dashboardRequestCount == 2)
-        #expect(store.dashboard?.id == 9_001)
-        #expect(store.failure == nil)
-        #expect(!store.isLoading)
-    }
-
-    @Test("a late pinned preview cannot publish across a same-id project switch")
-    func pinnedPreviewIsProjectScoped() async {
-        let transport = OutOfOrderPinnedPreviewTransport()
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
-        )
-        let store = PinnedDashboardPreviewStore()
-        let authSessionID = UUID()
-
-        let oldScope = Task {
-            await store.loadIfNeeded(
-                client: client,
-                projectID: 1,
-                dashboardID: 9_001,
-                authSessionID: authSessionID
-            )
+        guard case .loaded(let dashboard, let loadedAt) = store.state else {
+            Issue.record("The expired value was not replaced.")
+            return
         }
-        await transport.waitForFirstRequest()
-
-        await store.loadIfNeeded(
-            client: client,
-            projectID: 2,
-            dashboardID: 9_001,
-            authSessionID: authSessionID
-        )
-        #expect(store.dashboard?.title == "Project 2 pinned dashboard")
-
-        await transport.releaseFirst()
-        await oldScope.value
-
-        #expect(await transport.requests() == 2)
-        #expect(store.dashboard?.title == "Project 2 pinned dashboard")
+        #expect(dashboard.title == "Replacement cached preview")
+        #expect(loadedAt == now)
     }
 
-    @Test("a late pinned preview cannot publish across an authentication epoch")
-    func pinnedPreviewIsAuthenticationScoped() async {
-        let transport = HeldFirstPinnedPreviewTransport(
-            heldReply: Self.previewDashboard(id: 9_001, title: "Prior authentication preview"),
+    @Test("a different dashboard activation cancels the previous flight")
+    func differentDashboardActivationCancelsPreviousFlight() async {
+        let transport = HeldFirstDashboardPreviewTransport(
+            heldReply: Self.previewDashboard(id: 9_001, title: "Cancelled preview"),
             subsequentReplies: [
-                Self.previewDashboard(id: 9_001, title: "Replacement authentication preview"),
+                Self.previewDashboard(id: 9_002, title: "Current preview"),
             ]
         )
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
-        )
-        let store = PinnedDashboardPreviewStore()
-
-        let oldScope = Task {
-            await store.loadIfNeeded(
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore()
+        let first = Task {
+            await store.activate(
                 client: client,
-                projectID: 1,
-                dashboardID: 9_001,
-                authSessionID: UUID()
+                scope: Self.previewScope(projectID: 1, dashboardID: 9_001)
             )
         }
         await transport.waitForFirstRequest()
 
-        await store.loadIfNeeded(
+        await store.activate(
             client: client,
-            projectID: 1,
-            dashboardID: 9_001,
-            authSessionID: UUID()
+            scope: Self.previewScope(projectID: 1, dashboardID: 9_002)
         )
-        #expect(store.dashboard?.title == "Replacement authentication preview")
-
         await transport.releaseFirst()
-        await oldScope.value
+        await first.value
 
         #expect(await transport.requests() == 2)
-        #expect(await transport.receivedRefreshValues() == ["force_cache", "force_cache"])
-        #expect(store.dashboard?.title == "Replacement authentication preview")
-    }
-
-    @Test("a late pinned preview cannot publish after the pinned dashboard changes")
-    func pinnedPreviewIsDashboardScoped() async {
-        let transport = HeldFirstPinnedPreviewTransport(
-            heldReply: Self.previewDashboard(id: 9_001, title: "Previous pinned dashboard"),
-            subsequentReplies: [
-                Self.previewDashboard(id: 9_002, title: "Replacement pinned dashboard"),
-            ]
-        )
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
-        )
-        let store = PinnedDashboardPreviewStore()
-        let authSessionID = UUID()
-
-        let oldScope = Task {
-            await store.loadIfNeeded(
-                client: client,
-                projectID: 1,
-                dashboardID: 9_001,
-                authSessionID: authSessionID
-            )
+        #expect(await transport.cancelledRequests() == 1)
+        guard case .loaded(let dashboard, _) = store.state else {
+            Issue.record("Cancellation surfaced as a user-facing preview failure.")
+            return
         }
-        await transport.waitForFirstRequest()
-
-        await store.loadIfNeeded(
-            client: client,
-            projectID: 1,
-            dashboardID: 9_002,
-            authSessionID: authSessionID
-        )
-        #expect(store.dashboard?.title == "Replacement pinned dashboard")
-
-        await transport.releaseFirst()
-        await oldScope.value
-
-        #expect(await transport.requests() == 2)
-        #expect(await transport.receivedRefreshValues() == ["force_cache", "force_cache"])
-        #expect(store.dashboard?.id == 9_002)
-        #expect(store.dashboard?.title == "Replacement pinned dashboard")
+        #expect(dashboard.id == 9_002)
+        #expect(dashboard.title == "Current preview")
     }
 
-    @Test("an invalid pinned-preview scope immediately clears and rejects late tiles")
-    func invalidPinnedPreviewScopeClearsAndRejectsLateResponse() async {
-        let transport = HeldFirstPinnedPreviewTransport(
-            heldReply: Self.previewDashboard(id: 9_001, title: "Stale pinned dashboard"),
+    @Test("project region and authentication changes invalidate dashboard preview reuse")
+    func authorityChangesInvalidateDashboardPreviewReuse() async {
+        let initialAuth = UUID(uuidString: "018F9000-0000-7000-8000-000000000601")!
+        let changes: [(projectID: Int, region: PostHogRegion, authSessionID: UUID)] = [
+            (2, .usCloud, initialAuth),
+            (1, .euCloud, initialAuth),
+            (1, .usCloud, UUID(uuidString: "018F9000-0000-7000-8000-000000000602")!),
+        ]
+
+        for change in changes {
+            let transport = DashboardConsistencyTransport(
+                dashboardReplies: [
+                    .ok(Self.savedDashboard),
+                    .ok(Self.savedDashboard),
+                ]
+            )
+            let store = DashboardPreviewStore()
+            await store.activate(
+                client: Self.previewClient(region: .usCloud, transport: transport),
+                scope: Self.previewScope(
+                    projectID: 1,
+                    dashboardID: 9_001,
+                    authSessionID: initialAuth
+                )
+            )
+            await store.activate(
+                client: Self.previewClient(region: change.region, transport: transport),
+                scope: Self.previewScope(
+                    projectID: change.projectID,
+                    dashboardID: 9_001,
+                    region: change.region,
+                    authSessionID: change.authSessionID
+                )
+            )
+
+            #expect(await transport.dashboardRequestCount == 2)
+        }
+    }
+
+    @Test("invalidation rejects a late dashboard preview response")
+    func invalidationRejectsLateDashboardPreviewResponse() async {
+        let transport = HeldFirstDashboardPreviewTransport(
+            heldReply: Self.previewDashboard(id: 9_001, title: "Late preview"),
             subsequentReplies: []
         )
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
-        )
-        let store = PinnedDashboardPreviewStore()
-
-        let oldScope = Task {
-            await store.loadIfNeeded(
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore()
+        let activation = Task {
+            await store.activate(
                 client: client,
-                projectID: 1,
-                dashboardID: 9_001,
-                authSessionID: UUID()
+                scope: Self.previewScope(projectID: 1, dashboardID: 9_001)
             )
         }
         await transport.waitForFirstRequest()
 
-        await store.loadIfNeeded(
-            client: client,
-            projectID: nil,
-            dashboardID: 9_001,
-            authSessionID: UUID()
-        )
-        #expect(store.dashboard == nil)
-        #expect(!store.isLoading)
-        #expect(await transport.requests() == 1)
-
+        store.invalidate()
         await transport.releaseFirst()
-        await oldScope.value
+        await activation.value
 
         #expect(await transport.requests() == 1)
-        #expect(store.dashboard == nil)
-        #expect(!store.isLoading)
+        guard case .idle = store.state else {
+            Issue.record("A late response published after invalidation.")
+            return
+        }
+    }
+
+    @Test("an expired preview becomes stale when its replacement fails")
+    func expiredDashboardPreviewBecomesStaleAfterFailure() async {
+        let loadedAt = Date(timeIntervalSince1970: 1_787_738_400)
+        var now = loadedAt
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [
+                .ok(Self.previewDashboard(id: 9_001, title: "Retained cached preview")),
+                .status(503, #"{"detail":"Synthetic cached preview failed"}"#),
+            ]
+        )
+        let client = Self.previewClient(region: .usCloud, transport: transport)
+        let store = DashboardPreviewStore(now: { now })
+        let scope = Self.previewScope(projectID: 1, dashboardID: 9_001)
+
+        await store.activate(client: client, scope: scope)
+        now.addTimeInterval(300)
+        await store.activate(client: client, scope: scope)
+
+        #expect(await transport.dashboardRequestCount == 2)
+        guard case .stale(let dashboard, let staleLoadedAt) = store.state else {
+            Issue.record("The failed replacement discarded its expired value.")
+            return
+        }
+        #expect(dashboard.title == "Retained cached preview")
+        #expect(staleLoadedAt == loadedAt)
     }
 
     private static func previewDashboard(id: Int, title: String) -> Data {
         Data("{\"id\":\(id),\"name\":\"\(title)\",\"tiles\":[]}".utf8)
+    }
+
+    private static func previewScope(
+        projectID: Int,
+        dashboardID: Int,
+        region: PostHogRegion = .usCloud,
+        authSessionID: UUID = UUID(
+            uuidString: "018F9000-0000-7000-8000-000000000600"
+        )!
+    ) -> DashboardPreviewScope {
+        DashboardPreviewScope(
+            authority: ResourceRequestAuthority(
+                projectID: projectID,
+                region: region,
+                authSessionID: authSessionID
+            ),
+            dashboardID: dashboardID
+        )
+    }
+
+    private static func previewClient(
+        region: PostHogRegion,
+        transport: some HTTPTransport
+    ) -> PostHogClient {
+        PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: region),
+            transport: transport
+        )
     }
 
     private static let totalSevenQuery = Data(

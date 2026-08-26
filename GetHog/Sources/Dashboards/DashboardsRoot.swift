@@ -151,7 +151,8 @@ struct DashboardsRoot: View {
     @Environment(\.openWindow) private var openWindow
     #endif
     @State private var store = DashboardsStore()
-    @State private var pinnedPreviewStore = PinnedDashboardPreviewStore()
+    @State private var pinnedPreviewStore = DashboardPreviewStore()
+    @State private var quickPreviewStore = DashboardPreviewStore()
     @State private var search = ""
 
     /// The open dashboard's id, and deliberately **not** `@State`.
@@ -179,6 +180,20 @@ struct DashboardsRoot: View {
             isAvailable: model.isAvailable(.dashboards)
         )
     }
+
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard
+            let client = model.client,
+            let projectID = model.projectID,
+            let authSessionID = model.authSessionID
+        else { return nil }
+        return ResourceRequestAuthority(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
+    }
+
     var body: some View {
         Group {
             if sizeClass == .compact {
@@ -203,6 +218,9 @@ struct DashboardsRoot: View {
         .onChange(of: selection) { _, opened in
             guard let opened else { return }
             IntentDonations.dashboardOpened(opened)
+        }
+        .onChange(of: requestAuthority, initial: true) { _, _ in
+            quickPreviewStore.invalidate()
         }
     }
 
@@ -471,30 +489,49 @@ struct DashboardsRoot: View {
     }
 
     private func row(_ dashboard: DashboardSummary) -> some View {
-        NavigationLink(value: dashboard.id) {
-            dashboardRowContent(dashboard, in: .navigationLink)
+        dashboardQuickPreview(dashboard) {
+            NavigationLink(value: dashboard.id) {
+                dashboardRowContent(dashboard, in: .navigationLink)
+            }
+            .dashboardRowSurface()
+            .listRowSeparator(.hidden)
+            .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
         }
-        .dashboardRowSurface()
-        .listRowSeparator(.hidden)
-        .contextMenu { dashboardContextMenu(dashboard) }
-        .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
     }
 
     private func dashboardHubRow(_ dashboard: DashboardSummary) -> some View {
-        Button {
-            selectedID.wrappedValue = dashboard.id
-        } label: {
-            Card(
-                padding: Theme.Space.m,
-                accent: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent
-            ) {
-                dashboardRowContent(dashboard, in: .button)
+        dashboardQuickPreview(dashboard) {
+            Button {
+                selectedID.wrappedValue = dashboard.id
+            } label: {
+                Card(
+                    padding: Theme.Space.m,
+                    accent: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent
+                ) {
+                    dashboardRowContent(dashboard, in: .button)
+                }
             }
+            .buttonStyle(.plain)
+            .pointerHighlight(cornerRadius: Theme.Radius.medium)
+            .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
         }
-        .buttonStyle(.plain)
-        .pointerHighlight(cornerRadius: Theme.Radius.medium)
-        .contextMenu { dashboardContextMenu(dashboard) }
-        .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
+    }
+
+    private func dashboardQuickPreview<Row: View>(
+        _ dashboard: DashboardSummary,
+        @ViewBuilder row: () -> Row
+    ) -> some View {
+        let scope = requestAuthority.map {
+            DashboardPreviewScope(authority: $0, dashboardID: dashboard.id)
+        }
+        return row().quickPreview {
+            DashboardQuickPreview(summary: dashboard, state: quickPreviewStore.state)
+                .task(id: scope) {
+                    await quickPreviewStore.activate(client: model.client, scope: scope)
+                }
+        } menuItems: {
+            dashboardContextMenu(dashboard)
+        }
     }
 
     private func dashboardRowContent(
@@ -521,35 +558,23 @@ struct DashboardsRoot: View {
 
     @ViewBuilder
     private func dashboardContextMenu(_ dashboard: DashboardSummary) -> some View {
-            // The detail's own toolbar has offered this since the tear-off
-            // landed; the row it was opened from did not, which put the one
-            // affordance a Mac user reaches for behind a navigation step.
-            // iOS keeps the menu it had — iPad parity is a separate question
-            // about where a torn-off window belongs on a touch device.
-            #if os(macOS)
-            Button {
-                openWindow(value: WindowTarget.dashboard(id: dashboard.id))
-            } label: {
-                Label("Open in new window", systemImage: "macwindow.badge.plus")
-            }
-            #endif
-            #if !os(tvOS)
-            // Both entries need something tvOS does not have: a browser to open
-            // the link in, and a pasteboard to copy it to. `Link` compiles
-            // there and silently does nothing when pressed, which on a focus
-            // platform is worse than absence — it is a stop on the focus walk
-            // that leads nowhere.
-            if let url = model.webURL(path: "dashboard/\(dashboard.id)") {
-                Link(destination: url) {
-                    Label("Open in PostHog", systemImage: "arrow.up.forward.square")
-                }
-                Button {
-                    UIPasteboard.general.url = url
-                } label: {
-                    Label("Copy link", systemImage: "link")
-                }
-            }
-            #endif
+        Button {
+            selectedID.wrappedValue = dashboard.id
+        } label: {
+            Label("Open Dashboard", systemImage: "arrow.right.circle")
+        }
+        // The detail's own toolbar has offered this since the tear-off
+        // landed; the row it was opened from did not, which put the one
+        // affordance a Mac user reaches for behind a navigation step.
+        // iOS keeps the menu it had — iPad parity is a separate question
+        // about where a torn-off window belongs on a touch device.
+        #if os(macOS)
+        Button {
+            openWindow(value: WindowTarget.dashboard(id: dashboard.id))
+        } label: {
+            Label("Open in New Window", systemImage: "macwindow.badge.plus")
+        }
+        #endif
     }
 
     private func filtered(_ items: [DashboardSummary]) -> [DashboardSummary] {
