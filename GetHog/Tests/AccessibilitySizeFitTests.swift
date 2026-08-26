@@ -171,17 +171,16 @@ struct AccessibilitySizeFitTests {
             sessionID: recording.id,
             window: Date().addingTimeInterval(-864_000)...Date()
         )
-        let summary = SessionSummaryStore()
+        let summary = ReplayVisionSummaryStore()
         await summary.load(client: client(), projectID: 1_001, sessionID: recording.id)
         let loader = ReplayLoader()
         await loader.start(client: client(), projectID: 1_001, recording: recording)
 
         // The fixtures have to be populated, or this measures empty cards and
-        // passes on the broken build — the summary card only overflowed once it
-        // had chapters to put in its gutter.
+        // passes on a broken loaded-state layout.
         #expect(!timeline.events.isEmpty)
         if case .loaded = summary.state {} else {
-            Issue.record("The demo session's stored summary did not load; the chapter rows were not measured.")
+            Issue.record("The demo session's Replay Vision summary did not load.")
         }
 
         expectFits("The session header card", page(
@@ -240,7 +239,7 @@ struct AccessibilitySizeFitTests {
             sessionID: recording.id,
             window: Date().addingTimeInterval(-864_000)...Date()
         )
-        let summary = SessionSummaryStore()
+        let summary = ReplayVisionSummaryStore()
         await summary.load(client: client(), projectID: 1_001, sessionID: recording.id)
         let loader = ReplayLoader()
         await loader.start(client: client(), projectID: 1_001, recording: recording)
@@ -313,15 +312,12 @@ struct AccessibilitySizeFitTests {
     /// this assertion fails on the old shape. It is 393.0 now.
     @Test("the session summary detail screen fits an iPhone at AX5")
     func sessionSummaryDetailFits() async throws {
-        let page: Page<SessionSummaryRow> = try await client().send(
-            PostHogAPI.sessionSummaries(projectID: 1_001)
+        let response: QueryResponse = try await client().send(
+            PostHogAPI.replayVisionSummaryDigests(projectID: 1_001)
         )
-        let row = try #require(
-            page.results.first { $0.hasExceptions && ($0.exceptionCount ?? 0) > 0 }
-                ?? page.results.first
-        )
+        let row = try #require(ReplayVisionSummaryDigest.rows(from: response).first)
         expectFits("The session summary detail screen", self.page(
-            SessionSummaryDetailView(row: row)
+            ReplayVisionSummaryDetailView(row: row)
         ))
     }
 

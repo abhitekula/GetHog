@@ -360,6 +360,7 @@ targets:
         - hostedAppDebug
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
+        PRODUCT_MODULE_NAME: GetHog
         # The user-facing name and cross-platform bundle identity stay GetHog,
         # but the build product follows the target name. Hosted tests resolve a
         # TEST_HOST from output paths; if Vision and Mac both produce
@@ -545,6 +546,7 @@ targets:
         - hostedAppDebug
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
+        PRODUCT_MODULE_NAME: GetHog
         # Keep the build artifact unique for the same TEST_HOST reason recorded
         # on GetHogVision. CFBundleDisplayName below remains the product name a
         # person sees on Apple TV.

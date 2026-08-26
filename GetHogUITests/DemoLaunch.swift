@@ -27,7 +27,7 @@ enum DemoLaunch {
     ///
     /// `DemoTransport` answers any session id with the first row of
     /// `session_recordings.json`, and this is that row — it is also the only
-    /// session with a stored AI summary, so the whole detail screen is populated.
+    /// session with a Replay Vision summary, so the whole detail screen is populated.
     static let replaySessionID = "018f1000-0000-7000-8000-000000000001"
 
     /// `dashboard_detail_raw.json` — the synthetic example dashboard.

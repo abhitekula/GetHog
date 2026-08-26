@@ -121,12 +121,12 @@ final class NestedGestureTapTests: XCTestCase {
 
     // MARK: - The inverse shape: a plain `TapGesture` wrapping a real `Button`
 
-    // Five rows in the replay screen are built the other way round from the tile:
+    // Four rows in the replay screen are built the other way round from the tile:
     // `.contentShape(.rect)` plus `.onTapGesture(perform: onToggle)` around a row
     // that can also contain a real seek `Button`. The row therefore has to publish
     // its own explicit button trait and default accessibility action without
     // flattening that nested control: `TimelineRowView`, `TimelineRunRowView`,
-    // `SessionChapterRow`, `ReplayConsoleRow` and `ReplayNetworkRow`.
+    // `ReplayConsoleRow` and `ReplayNetworkRow`.
     //
     // A sweep set these aside by argument: a `TapGesture` has no press-state
     // machine, so there is nothing for a child to latch. That argument is
@@ -334,71 +334,41 @@ final class NestedGestureTapTests: XCTestCase {
         )
     }
 
-    // MARK: Session summary chapters
+    // MARK: Session summary citations
 
-    /// `SessionChapterRow` — the row's own toggle, first tap.
-    func testSummaryChapterRowExpandsOnFirstTap() {
-        let app = launchReplay()
-        let row = app.buttons
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,"))
-            .firstMatch
-        XCTAssertTrue(reveal(row, in: app), "Chapter 1 never came into reach.")
-        let before = row.frame.height
-        print("CHAPTER-ROW-PROBE button=\(row.frame)")
-
-        row.tap()
-
-        let after = waitForGrowth(of: row, beyond: before)
-        XCTAssertGreaterThan(
-            after, before + 8,
-            """
-            Tapping chapter 1 at its centre did not expand it: \(before)pt before \
-            the tap, \(after)pt after. The labelled element is the row's exported \
-            button, so this measures its default toggle action directly.
-            """
-        )
-    }
-
-    /// `SessionChapterRow` — the nested seek `Button`, first tap.
-    func testSummaryChapterSeekButtonFiresOnFirstTap() {
+    func testFirstSummaryCitationSeeksOnFirstTap() {
         let app = launchReplay()
         let slider = app.sliders["Playback position"]
         let start = slider.value as? String ?? ""
-
-        let chapterRows = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,")
-        )
-        XCTAssertEqual(chapterRows.count, 1, "Chapter 1 should expose one semantic row button.")
-        let chapterRow = chapterRows.firstMatch
-        let chapterSeekButtons = chapterRow.descendants(matching: .button).matching(
-            NSPredicate(format: "label == %@", "Play the replay from 1 second")
-        )
-        XCTAssertEqual(
-            chapterSeekButtons.count,
-            1,
-            "Chapter 1 should contain one seek button at its own offset."
-        )
-        let seek = chapterSeekButtons.firstMatch
-        XCTAssertTrue(reveal(seek, in: app), "Chapter 1's seek button never came into reach.")
-        print("CHAPTER-SEEK-PROBE frame=\(seek.frame) start=\(start)")
+        let seek = app.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Play summary citation 1 at"))
+            .firstMatch
+        XCTAssertTrue(reveal(seek, in: app), "The first summary citation never came into reach.")
 
         seek.tap()
 
-        let moved = waitForPlayhead(slider, toLeave: start)
         XCTAssertNotEqual(
-            moved, start,
-            """
-            Chapter 1's seek button did not move the playhead on a tap at its \
-            centre; the scrubber still reads "\(start)".
-            """
+            waitForPlayhead(slider, toLeave: start),
+            start,
+            "The first summary citation did not move the replay playhead."
         )
+    }
 
-        let before = chapterRow.frame.height
-        chapterRow.tap()
-        let after = waitForGrowth(of: chapterRow, beyond: before)
-        XCTAssertGreaterThan(
-            after, before + 8,
-            "The chapter row stopped toggling after its seek button had been used once."
+    func testSecondSummaryCitationSeeksOnFirstTap() {
+        let app = launchReplay()
+        let slider = app.sliders["Playback position"]
+        let start = slider.value as? String ?? ""
+        let seek = app.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Play summary citation 2 at"))
+            .firstMatch
+        XCTAssertTrue(reveal(seek, in: app), "The second summary citation never came into reach.")
+
+        seek.tap()
+
+        XCTAssertNotEqual(
+            waitForPlayhead(slider, toLeave: start),
+            start,
+            "The second summary citation did not move the replay playhead."
         )
     }
 

@@ -35,11 +35,8 @@ final class HitTargetTests: XCTestCase {
     /// Was **16.0 × 16.0pt**, on both rows, measured through XCUITest while
     /// probing something else entirely.
     ///
-    /// `TimelineRowView` and `SessionChapterRow` each put a `.plain` seek `Button`
-    /// inside a row whose whole area carries `.onTapGesture(perform: onToggle)`.
-    /// `ReplayConsoleRow` and `ReplayNetworkRow` are the same arrangement and
-    /// already measured 44 × 44 — they carry `minimumHitTarget()` and these two
-    /// did not, which is the only difference between the pairs.
+    /// Replay Vision citations and timeline rows both use compact labels, but
+    /// their tappable frames still owe the same 44-point floor.
     ///
     /// Undersized *inside a toggle* is the bad case: the 28pt of row around the
     /// glyph is not dead space, so a near miss expands the row instead of doing
@@ -72,22 +69,11 @@ final class HitTargetTests: XCTestCase {
         // off-screen row is still its laid-out size, so this would measure
         // correctly without scrolling; it scrolls anyway, because a hit-target
         // assertion about something that cannot be hit is worth nothing.
-        let chapterRows = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,")
-        )
-        XCTAssertEqual(chapterRows.count, 1, "Chapter 1 should expose one semantic row button.")
-        let chapterRow = chapterRows.firstMatch
-        let chapterSeekButtons = chapterRow.descendants(matching: .button).matching(
-            NSPredicate(format: "label == %@", "Play the replay from 1 second")
-        )
-        XCTAssertEqual(
-            chapterSeekButtons.count,
-            1,
-            "Chapter 1 should contain one seek button at its own offset."
-        )
-        let chapter = chapterSeekButtons.firstMatch
-        XCTAssertTrue(reveal(chapter, in: app), "Chapter 1's seek button never came into reach.")
-        chapter.assertMeetsMinimumHitTarget("Session chapter row seek button")
+        let citation = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Play summary citation 1 at")
+        ).firstMatch
+        XCTAssertTrue(reveal(citation, in: app), "The first summary citation never came into reach.")
+        citation.assertMeetsMinimumHitTarget("Session summary citation seek button")
 
         let event = app.buttons["Play the replay from 7 seconds"]
         XCTAssertTrue(reveal(event, in: app), "The timeline row's seek button never came into reach.")

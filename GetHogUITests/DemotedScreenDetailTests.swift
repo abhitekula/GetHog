@@ -182,7 +182,9 @@ final class DemotedScreenDetailTests: XCTestCase {
 
         let before = app.navigationBars.count
         let row = app.cells.buttons.allElementsBoundByIndex.first {
-            $0.isHittable && !$0.label.localizedCaseInsensitiveContains("dismiss")
+            $0.isHittable
+                && !$0.label.localizedCaseInsensitiveContains("dismiss")
+                && !$0.label.localizedCaseInsensitiveContains("clear all")
         }
         guard let row else {
             XCTFail("\(title) listed no tappable row, so nothing was measured.", file: file, line: line)

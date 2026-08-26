@@ -270,6 +270,7 @@ enum IntentNavigationTarget: Equatable, Sendable {
 @Observable
 final class ReplayPlayerController {
     let isReady = false
+    init(autostarts _: Bool = false) {}
     func seek(to offset: TimeInterval, resume: Bool) {}
     func resetForRetry() {}
 }

@@ -903,7 +903,7 @@ struct ReplayPlayerView: View {
     let recording: SessionRecording
     let loader: ReplayLoader
     let controller: ReplayPlayerController
-    var summary: SessionSummaryDetail?
+    var summary: ReplayVisionSummary?
     var onOpenInPostHog: (() -> Void)?
     var onRetry: (() -> Void)?
 
@@ -927,11 +927,7 @@ struct ReplayPlayerView: View {
     }
 
     private var markers: [SessionReplayMarker] {
-        SessionReplayMarker.make(
-            detail: summary,
-            origin: loader.replayStart ?? recording.startTime,
-            duration: duration
-        )
+        SessionReplayMarker.make(summary: summary, duration: duration)
     }
 
     var body: some View {

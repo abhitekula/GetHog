@@ -245,7 +245,7 @@ final class VisionSurfaceSweepTests: XCTestCase {
             "sessionSummaries",
             "Summaries",
             witness: .allOf([
-                .text("AI summaries"),
+                .text("Replay Vision summaries"),
                 .text("The user refreshed the fictional dashboard widgets."),
             ])
         ),

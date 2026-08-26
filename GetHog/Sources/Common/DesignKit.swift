@@ -366,6 +366,10 @@ struct DataRow: View {
     var tint: Color = Theme.accent
     let title: String
     var subtitle: String?
+    /// One compact generated-context line between the identifier and stats.
+    /// It stays one line even at accessibility sizes so an optional summary
+    /// cannot turn a scannable list card into a paragraph card.
+    var supplement: String? = nil
     /// Third line, for provenance or freshness — kept to a caption so it recedes
     /// behind the title by size. It recedes by colour too, but on a measured
     /// token rather than the system ramp, and it took two passes to get there:
@@ -549,6 +553,13 @@ struct DataRow: View {
                 .font(isSubtitleMonospaced ? Theme.Typography.body.monospaced() : Theme.Typography.body)
                 .foregroundStyle(Theme.Ink.secondary)
                 .lineLimit(typeSize.isAccessibilitySize ? nil : subtitleLineLimit)
+        }
+
+        if let supplement, !supplement.isEmpty {
+            Text(supplement)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Ink.secondary)
+                .lineLimit(1)
         }
 
         if let footnote, !footnote.isEmpty {

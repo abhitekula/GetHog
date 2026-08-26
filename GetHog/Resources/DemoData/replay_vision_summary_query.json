@@ -1,0 +1,26 @@
+{
+  "columns": [
+    "session_id",
+    "title",
+    "summary",
+    "intent",
+    "outcome",
+    "friction_points",
+    "confidence",
+    "model",
+    "completed_at"
+  ],
+  "results": [
+    [
+      "018f1000-0000-7000-8000-000000000001",
+      "Reviewed the orbital dashboard",
+      "The user opened the orbital dashboard, compared telemetry, and refreshed a slow status widget before finishing the review.",
+      "Review current orbital telemetry.",
+      "The dashboard review was completed.",
+      "[\"The status widget refreshed slowly.\"]",
+      0.91,
+      "gemini-3-flash-preview",
+      "2026-01-18T12:03:12Z"
+    ]
+  ]
+}

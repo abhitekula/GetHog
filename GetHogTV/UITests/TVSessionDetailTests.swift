@@ -14,7 +14,7 @@ final class TVSessionDetailTests: XCTestCase {
         let app = openCanonicalSession(environment: [
             "GETHOG_DEMO_SUMMARY_GENERATION": "1"
         ])
-        let generate = app.buttons["Generate AI summary"]
+        let generate = app.buttons["Generate summary"]
 
         XCTAssertTrue(DemoLaunch.wait(for: generate, timeout: 60))
         XCTAssertTrue(
@@ -27,13 +27,13 @@ final class TVSessionDetailTests: XCTestCase {
         let app = openCanonicalSession(environment: [
             "GETHOG_DEMO_SUMMARY_GENERATION": "1"
         ])
-        let generate = app.buttons["Generate AI summary"]
+        let generate = app.buttons["Generate summary"]
         XCTAssertTrue(DemoLaunch.wait(for: generate, timeout: 60))
         XCTAssertTrue(TVRemote.focus(on: generate, by: .up, limit: 32))
 
         TVRemote.press(.select)
 
-        let title = app.sheets["Generate and save an AI summary for Alex Example?"]
+        let title = app.sheets["Generate and save a summary for Alex Example?"]
         XCTAssertTrue(DemoLaunch.wait(for: title, timeout: 10))
         let consequences = app.staticTexts.matching(NSPredicate(
             format: "label CONTAINS %@ OR value CONTAINS %@",
@@ -42,8 +42,8 @@ final class TVSessionDetailTests: XCTestCase {
         )).firstMatch
         let budget = app.staticTexts.matching(NSPredicate(
             format: "label CONTAINS %@ OR value CONTAINS %@",
-            "shared query and AI budget",
-            "shared query and AI budget"
+            "shared Replay Vision budget",
+            "shared Replay Vision budget"
         )).firstMatch
         XCTAssertTrue(DemoLaunch.wait(for: consequences, timeout: 10))
         XCTAssertTrue(DemoLaunch.wait(for: budget, timeout: 10))

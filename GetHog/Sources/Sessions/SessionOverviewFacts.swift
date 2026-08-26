@@ -36,8 +36,13 @@ struct SessionOverviewFacts {
 }
 
 enum SessionBrandAppearance {
-    static func glyph(hasErrors: Bool, isReplayable: Bool) -> BrandObjectGlyph {
+    static func glyph(
+        hasErrors: Bool,
+        isReplayable: Bool,
+        hasFriction: Bool = false
+    ) -> BrandObjectGlyph {
         if hasErrors { return .errorSession }
+        if hasFriction { return .frictionSession }
         if !isReplayable { return .mobileSession }
         return .session
     }

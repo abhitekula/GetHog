@@ -180,8 +180,8 @@ final class ReplayInteractionTests: XCTestCase {
     func testReplayExpandsAndReturnsItsPlayhead() {
         let app = launchReadyReplay()
         let compact = app.sliders["Playback position"]
-        compact.adjust(toNormalizedSliderPosition: 0.2)
-        let markerSemantics = ["2 key events", "fictional refresh button"]
+        compact.adjust(toNormalizedSliderPosition: 0.3)
+        let markerSemantics = ["2 key events"]
         guard let compactSemanticValue = compact.value as? String else {
             XCTFail("Compact playback position did not publish an accessibility value.")
             return
@@ -211,9 +211,8 @@ final class ReplayInteractionTests: XCTestCase {
 
         let markerRestored = XCTNSPredicateExpectation(
             predicate: NSPredicate(
-                format: "value CONTAINS %@ AND value CONTAINS %@",
-                markerSemantics[0],
-                markerSemantics[1]
+                format: "value CONTAINS %@",
+                markerSemantics[0]
             ),
             object: full
         )
@@ -267,15 +266,13 @@ final class ReplayInteractionTests: XCTestCase {
         )
         XCTAssertEqual(XCTWaiter().wait(for: [playbackReady], timeout: 120), .completed)
 
-        let generate = app.buttons["Generate AI summary"]
+        let generate = app.buttons["Generate summary"]
         bringOnscreen(generate, in: app, direction: .up)
         XCTAssertTrue(generate.exists && generate.isHittable)
         generate.tap()
 
-        let chapter = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Chapter 1,")
-        ).firstMatch
-        XCTAssertTrue(DemoLaunch.wait(for: chapter, timeout: 120))
+        let generatedTitle = app.staticTexts["Reviewed the orbital dashboard"]
+        XCTAssertTrue(DemoLaunch.wait(for: generatedTitle, timeout: 120))
 
         bringOnscreen(compact, in: app, direction: .down)
         XCTAssertTrue(compact.exists && compact.isEnabled && compact.isHittable)
@@ -284,8 +281,8 @@ final class ReplayInteractionTests: XCTestCase {
         bringOnscreen(expand, in: app, direction: .down)
         XCTAssertTrue(expand.exists && expand.isHittable)
 
-        compact.adjust(toNormalizedSliderPosition: 0.1)
-        let markerSemantics = ["2 key events", "fictional refresh button"]
+        compact.adjust(toNormalizedSliderPosition: 0.3)
+        let markerSemantics = ["2 key events"]
         guard let compactSemanticValue = compact.value as? String else {
             XCTFail("Compact playback position did not publish an accessibility value.")
             return
@@ -308,9 +305,8 @@ final class ReplayInteractionTests: XCTestCase {
 
         let markerRestored = XCTNSPredicateExpectation(
             predicate: NSPredicate(
-                format: "value CONTAINS %@ AND value CONTAINS %@",
-                markerSemantics[0],
-                markerSemantics[1]
+                format: "value CONTAINS %@",
+                markerSemantics[0]
             ),
             object: full
         )

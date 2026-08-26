@@ -277,7 +277,7 @@ struct DemoTransportTests {
 
     /// This catches a demo transport that accepts generation but keeps the
     /// canonical synthetic replay in its initial missing-summary state.
-    @Test("demo summary generation changes one transport from absent to stored")
+    @Test("demo Replay Vision generation changes one transport from absent to succeeded")
     @MainActor
     func demoSummaryGenerationPersistsForTheRun() async {
         let transport = DemoTransport(summaryInitiallyAbsent: true)
@@ -285,7 +285,7 @@ struct DemoTransportTests {
             auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
             transport: transport
         )
-        let store = SessionSummaryStore()
+        let store = ReplayVisionSummaryStore(maximumPollAttempts: 1, pollDelay: {})
 
         await store.load(
             client: client,
@@ -299,20 +299,25 @@ struct DemoTransportTests {
             projectID: Self.projectID,
             sessionID: "018f1000-0000-7000-8000-000000000001"
         )
-        #expect(store.detail?.chapters.count == 2)
+        #expect(store.summary?.title == "Reviewed the orbital dashboard")
+        #expect(store.summary?.hasFriction == true)
     }
 
-    @Test("a multi-session generation request does not store the canonical summary")
+    @Test("a noncanonical Replay Vision request does not store the canonical summary")
     @MainActor
     func multiSessionGenerationDoesNotChangeDemoSummary() async throws {
         let transport = DemoTransport(summaryInitiallyAbsent: true)
         let canonicalSessionID = "018f1000-0000-7000-8000-000000000001"
         let endpoint = Endpoint(
-            path: "/api/projects/\(Self.projectID)/session_summaries/"
-                + "create_session_summaries_individually/",
+            path: "/api/projects/\(Self.projectID)/vision/scanners/inline_scan/",
             method: "POST",
             body: try JSONSerialization.data(
-                withJSONObject: ["session_ids": [canonicalSessionID, "other"]]
+                withJSONObject: [
+                    "scanner_type": "summarizer",
+                    "scanner_config": ["length": "medium"],
+                    "prompt": "Synthetic prompt",
+                    "session_ids": [canonicalSessionID, "other"],
+                ]
             ),
             category: .query
         )
@@ -327,13 +332,28 @@ struct DemoTransportTests {
             auth: PersonalKeyAuthProvider(key: "demo", region: .usCloud),
             transport: transport
         )
-        let store = SessionSummaryStore()
+        let store = ReplayVisionSummaryStore(maximumPollAttempts: 1, pollDelay: {})
         await store.load(
             client: client,
             projectID: Self.projectID,
             sessionID: canonicalSessionID
         )
         #expect(store.state == .absent)
+    }
+
+    @Test("demo routes the Replay Vision digest query before generic HogQL")
+    func replayVisionDigestQueryUsesItsOwnFixture() async throws {
+        let data = try await fixture(
+            for: PostHogAPI.replayVisionSummaryDigests(
+                projectID: Self.projectID,
+                sessionIDs: ["018f1000-0000-7000-8000-000000000001"]
+            )
+        )
+        let response = try QueryResponse.decode(from: data)
+        let digest = try #require(ReplayVisionSummaryDigest.rows(from: response).first)
+
+        #expect(digest.title == "Reviewed the orbital dashboard")
+        #expect(digest.frictionPoints == ["The status widget refreshed slowly."])
     }
 
     @Test(

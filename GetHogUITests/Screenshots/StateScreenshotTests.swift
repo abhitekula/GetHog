@@ -772,7 +772,7 @@ final class StateScreenshotTests: ScreenshotCase {
             tab: "sessionSummaries",
             titled: "Summaries",
             named: "summary-detail",
-            row: "AI summary, Succeeded, The user refreshed the fictional dashboard widgets.",
+            row: "Reviewed the orbital dashboard, The user opened the orbital dashboard, compared telemetry, and refreshed a slow status widget before finishing the review., Friction reported",
             scrolling: "gethog.session-summaries-list"
         )
     }

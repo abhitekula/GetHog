@@ -77,6 +77,7 @@ let sourceSymbolManifest: [String] = [
     "ellipsis.rectangle",
     "envelope",
     "exclamationmark.circle",
+    "exclamationmark.circle.fill",
     "exclamationmark.octagon",
     "exclamationmark.octagon.fill",
     "exclamationmark.triangle",

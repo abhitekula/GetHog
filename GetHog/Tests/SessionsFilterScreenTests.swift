@@ -55,6 +55,12 @@ private actor RecordingsTransport: HTTPTransport {
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let url = request.url!
+        if url.path(percentEncoded: false).hasSuffix("/query/") {
+            let response = HTTPURLResponse(
+                url: url, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (Data(#"{"columns":[],"results":[]}"#.utf8), response)
+        }
         requestedURLs.append(url)
 
         if let gateStream {
@@ -103,6 +109,32 @@ private func client(
         auth: PersonalKeyAuthProvider(key: "phx_test", region: region),
         transport: transport
     )
+}
+
+/// Test-only convenience for suites whose concern is filtering or paging, not
+/// credential replacement. Production callers must provide the real epoch.
+extension SessionsStore {
+    func load(client: PostHogClient, projectID: Int) async {
+        await load(
+            client: client,
+            authority: ResourceRequestAuthority(
+                projectID: projectID,
+                region: client.region,
+                authSessionID: UUID(uuidString: "018f9000-0000-7000-8000-000000000600")!
+            )
+        )
+    }
+
+    func loadMore(client: PostHogClient, projectID: Int) async {
+        await loadMore(
+            client: client,
+            authority: ResourceRequestAuthority(
+                projectID: projectID,
+                region: client.region,
+                authSessionID: UUID(uuidString: "018f9000-0000-7000-8000-000000000600")!
+            )
+        )
+    }
 }
 
 @Suite("Sessions filtering")
@@ -449,6 +481,10 @@ struct SessionsFilterScreenTests {
             projectID: scope.projectID
         )
         store.filter.urlSearch = "example.com/held-page"
+        await store.load(
+            client: client(RecordingsTransport(total: 120)),
+            projectID: scope.projectID
+        )
         let expectedSignature = store.requestSignature
 
         let heldPage = RecordingsTransport(total: 120, gated: true)
@@ -682,6 +718,12 @@ private actor RefreshFailureTransport: HTTPTransport {
     private var requestCount = 0
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        if request.url?.path(percentEncoded: false).hasSuffix("/query/") == true {
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (Data(#"{"columns":[],"results":[]}"#.utf8), response)
+        }
         requestCount += 1
         if requestCount == 2 {
             throw PostHogError.transport("Synthetic sessions refresh failed")
@@ -713,6 +755,12 @@ private actor PagingRecoveryTransport: HTTPTransport {
     private var requestCount = 0
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        if request.url?.path(percentEncoded: false).hasSuffix("/query/") == true {
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (Data(#"{"columns":[],"results":[]}"#.utf8), response)
+        }
         requestCount += 1
         if requestCount == 2 {
             throw PostHogError.transport("Synthetic page-two interruption")

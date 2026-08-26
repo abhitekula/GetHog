@@ -19,6 +19,7 @@ struct SessionsRefreshPresentation: Equatable {
 @Observable
 final class SessionsStore {
     var recordings: [SessionRecording] = []
+    private(set) var summariesBySessionID: [String: ReplayVisionSummaryDigest] = [:]
     var isLoading = false
     var isLoadingMore = false
     var error: String?
@@ -51,6 +52,8 @@ final class SessionsStore {
     /// Bumped on every fresh load so a page that was already in flight when the
     /// filter changed cannot append its rows onto the new filter's results.
     private var generation = 0
+    private var preparedAuthority: ResourceRequestAuthority?
+    private var loadedAuthority: ResourceRequestAuthority?
     private var loadedScope: ProjectPreferenceScope?
     private var loadedRequestSignature: String?
 
@@ -78,6 +81,34 @@ final class SessionsStore {
         filter = cleared
     }
 
+    /// Changes in host, project, or credential epoch are ownership boundaries.
+    /// Clear synchronously so the old authority is never drawn beneath a new
+    /// project subtitle while its replacement request is still suspended.
+    func prepare(authority: ResourceRequestAuthority?) {
+        guard preparedAuthority != authority else { return }
+        preparedAuthority = authority
+        generation += 1
+        loadedAuthority = nil
+        loadedScope = nil
+        loadedRequestSignature = nil
+        recordings = []
+        summariesBySessionID = [:]
+        hasMore = false
+        offset = 0
+        loadedAt = nil
+        error = nil
+        pagingError = nil
+        isLoadingMore = false
+        isLoading = authority != nil
+
+        if let authority {
+            activate(scope: ProjectPreferenceScope(
+                projectID: authority.projectID,
+                region: authority.region
+            ))
+        }
+    }
+
     private func persistDurableProjectionIfNeeded() {
         guard let activeScope else { return }
         let value = SessionsPreferences.Value(filter: filter)
@@ -93,6 +124,7 @@ final class SessionsStore {
         guard loadedScope != nil else { return }
         generation += 1
         recordings = []
+        summariesBySessionID = [:]
         hasMore = false
         offset = 0
         loadedAt = nil
@@ -104,14 +136,18 @@ final class SessionsStore {
     }
 
     /// Loads the first page for the current filter, **replacing** what is shown.
-    func load(client: PostHogClient, projectID: Int) async {
-        let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
+    func load(client: PostHogClient, authority: ResourceRequestAuthority) async {
+        prepare(authority: authority)
+        guard preparedAuthority == authority, client.region == authority.region else { return }
+        let projectID = authority.projectID
+        let scope = ProjectPreferenceScope(projectID: projectID, region: authority.region)
         activate(scope: scope)
         let requestSignature = self.requestSignature
         generation += 1
         let token = generation
-        let scopeChanged = loadedScope != scope
+        let authorityChanged = loadedAuthority != authority
         let requestChanged = loadedRequestSignature != requestSignature
+        loadedAuthority = authority
         loadedScope = scope
         pagingError = nil
         // Every replacement invalidates any page request from the preceding
@@ -119,18 +155,23 @@ final class SessionsStore {
         // changed. That stale request's guarded defer cannot clear this flag
         // after `generation` advances, so the new generation must own the reset.
         isLoadingMore = false
-        if scopeChanged {
+        if authorityChanged {
             // A project is a data-ownership boundary, not merely another
             // filter. Clear before the request suspends so the replacement can
             // never present old-project recordings as its loading state.
             recordings = []
+            summariesBySessionID = [:]
             error = nil
             loadedAt = nil
             hasMore = false
         }
         isLoading = true
         defer {
-            if token == generation, loadedScope == scope { isLoading = false }
+            if token == generation,
+               preparedAuthority == authority,
+               loadedAuthority == authority {
+                isLoading = false
+            }
         }
 
         do {
@@ -139,7 +180,10 @@ final class SessionsStore {
                     projectID: projectID, limit: pageSize, offset: 0, filter: filter
                 )
             )
-            guard token == generation, loadedScope == scope else { return }
+            guard token == generation,
+                  preparedAuthority == authority,
+                  loadedAuthority == authority
+            else { return }
             recordings = list.results
             hasMore = list.hasNext
             offset = list.results.count
@@ -147,9 +191,22 @@ final class SessionsStore {
             error = nil
             pagingError = nil
             loadedRequestSignature = requestSignature
+            await enrichSummaries(
+                client: client,
+                projectID: projectID,
+                sessionIDs: list.results.map(\.id),
+                token: token,
+                authority: authority,
+                scope: scope,
+                requestSignature: requestSignature,
+                replacing: true
+            )
         } catch {
-            guard token == generation, loadedScope == scope else { return }
-            let retainsLastGoodRows = !scopeChanged
+            guard token == generation,
+                  preparedAuthority == authority,
+                  loadedAuthority == authority
+            else { return }
+            let retainsLastGoodRows = !authorityChanged
                 && !requestChanged
                 && loadedRequestSignature == requestSignature
                 && !recordings.isEmpty
@@ -157,6 +214,7 @@ final class SessionsStore {
                 // A failed narrowing must not leave the previous filter's rows
                 // on screen looking like the answer to the new question.
                 recordings = []
+                summariesBySessionID = [:]
                 hasMore = false
                 offset = 0
                 loadedAt = nil
@@ -168,10 +226,14 @@ final class SessionsStore {
 
     /// Appends the next page. Never runs while a fresh load is in flight, and
     /// discards its result if the filter changed underneath it.
-    func loadMore(client: PostHogClient, projectID: Int) async {
-        let scope = ProjectPreferenceScope(projectID: projectID, region: client.region)
+    func loadMore(client: PostHogClient, authority: ResourceRequestAuthority) async {
+        guard client.region == authority.region else { return }
+        let projectID = authority.projectID
+        let scope = ProjectPreferenceScope(projectID: projectID, region: authority.region)
         let requestSignature = self.requestSignature
-        guard loadedScope == scope,
+        guard preparedAuthority == authority,
+              loadedAuthority == authority,
+              loadedScope == scope,
               activeScope == scope,
               loadedRequestSignature == requestSignature,
               hasMore,
@@ -182,7 +244,11 @@ final class SessionsStore {
         pagingError = nil
         isLoadingMore = true
         defer {
-            if token == generation, loadedScope == scope { isLoadingMore = false }
+            if token == generation,
+               preparedAuthority == authority,
+               loadedAuthority == authority {
+                isLoadingMore = false
+            }
         }
 
         do {
@@ -192,6 +258,8 @@ final class SessionsStore {
                 )
             )
             guard token == generation,
+                  preparedAuthority == authority,
+                  loadedAuthority == authority,
                   loadedScope == scope,
                   loadedRequestSignature == requestSignature,
                   self.requestSignature == requestSignature
@@ -199,13 +267,26 @@ final class SessionsStore {
             // Offset paging over a live, time-ordered table can repeat a row
             // when a new recording lands between pages.
             let known = Set(recordings.map(\.id))
-            recordings.append(contentsOf: list.results.filter { !known.contains($0.id) })
+            let appended = list.results.filter { !known.contains($0.id) }
+            recordings.append(contentsOf: appended)
             hasMore = list.hasNext
             offset += list.results.count
             loadedAt = Date()
             pagingError = nil
+            await enrichSummaries(
+                client: client,
+                projectID: projectID,
+                sessionIDs: appended.map(\.id),
+                token: token,
+                authority: authority,
+                scope: scope,
+                requestSignature: requestSignature,
+                replacing: false
+            )
         } catch {
             guard token == generation,
+                  preparedAuthority == authority,
+                  loadedAuthority == authority,
                   loadedScope == scope,
                   loadedRequestSignature == requestSignature,
                   self.requestSignature == requestSignature
@@ -215,6 +296,81 @@ final class SessionsStore {
             // control and converts a transient page failure into a false end.
             pagingError = (error as? PostHogError)?.localizedDescription
                 ?? error.localizedDescription
+        }
+    }
+
+    func summary(for sessionID: String) -> ReplayVisionSummaryDigest? {
+        summariesBySessionID[sessionID]
+    }
+
+    func publish(
+        summary observation: ReplayVisionObservation,
+        authority: ResourceRequestAuthority
+    ) {
+        guard preparedAuthority == authority,
+              let digest = ReplayVisionSummaryDigest(observation: observation)
+        else { return }
+        mergeSummaries([digest])
+    }
+
+    func mergeSummaries(_ digests: [ReplayVisionSummaryDigest]) {
+        for digest in digests {
+            if let current = summariesBySessionID[digest.id],
+               !Self.isAtLeastAsRecent(digest, as: current) {
+                continue
+            }
+            summariesBySessionID[digest.id] = digest
+        }
+    }
+
+    private static func isAtLeastAsRecent(
+        _ incoming: ReplayVisionSummaryDigest,
+        as current: ReplayVisionSummaryDigest
+    ) -> Bool {
+        switch (incoming.completedAt, current.completedAt) {
+        case let (incoming?, current?): incoming >= current
+        case (.some, .none): true
+        case (.none, .some), (.none, .none): false
+        }
+    }
+
+    /// Replay Vision enrichment is optional context on an otherwise valid
+    /// recording list. It is one query for the whole page, and a failure here
+    /// never turns successful `/session_recordings/` rows into an error state.
+    private func enrichSummaries(
+        client: PostHogClient,
+        projectID: Int,
+        sessionIDs: [String],
+        token: Int,
+        authority: ResourceRequestAuthority,
+        scope: ProjectPreferenceScope,
+        requestSignature: String,
+        replacing: Bool
+    ) async {
+        if replacing { summariesBySessionID = [:] }
+        guard !sessionIDs.isEmpty else {
+            return
+        }
+        do {
+            let response: QueryResponse = try await client.send(
+                PostHogAPI.replayVisionSummaryDigests(
+                    projectID: projectID,
+                    sessionIDs: sessionIDs,
+                    limit: sessionIDs.count
+                )
+            )
+            guard token == generation,
+                  preparedAuthority == authority,
+                  loadedAuthority == authority,
+                  loadedScope == scope,
+                  loadedRequestSignature == requestSignature,
+                  self.requestSignature == requestSignature
+            else { return }
+            let digests = ReplayVisionSummaryDigest.rows(from: response)
+            mergeSummaries(digests)
+        } catch {
+            // The recordings request already succeeded. Summary enrichment is
+            // intentionally best-effort and leaves the list usable.
         }
     }
 
@@ -276,13 +432,29 @@ struct SessionsRoot: View {
     #endif
 
     private var preferenceScope: ProjectPreferenceScope? {
-        guard let client = model.client, let projectID = model.projectID else { return nil }
-        return ProjectPreferenceScope(projectID: projectID, region: client.region)
+        guard let authority = requestAuthority else { return nil }
+        return ProjectPreferenceScope(
+            projectID: authority.projectID,
+            region: authority.region
+        )
+    }
+
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
     }
 
     private var loadTaskID: String {
         guard let scope = preferenceScope else { return "sessions.none" }
-        return "\(scope.storageKeyComponent)|\(store.requestSignature(for: scope))"
+        guard let authority = requestAuthority else { return "sessions.none" }
+        return "\(scope.storageKeyComponent)|auth:\(authority.authSessionID.uuidString)|\(store.requestSignature(for: scope))"
     }
 
     var body: some View {
@@ -413,6 +585,9 @@ struct SessionsRoot: View {
                 )
                 #endif
                 .screenRefreshable { await load() }
+                .onChange(of: requestAuthority, initial: true) { _, authority in
+                    store.prepare(authority: authority)
+                }
                 // One task covers project switches, typing and every control on
                 // the filter sheet. `.task(id:)` cancels the previous one, so a
                 // burst of keystrokes costs one request, and a filter change
@@ -483,10 +658,18 @@ struct SessionsRoot: View {
             recording: recording,
             onOpenInNewWindow: {
                 openWindow(value: WindowTarget.recording(id: recording.id))
+            },
+            onSummaryGenerated: { observation, authority in
+                store.publish(summary: observation, authority: authority)
             }
         )
         #else
-        SessionDetailView(recording: recording)
+        SessionDetailView(
+            recording: recording,
+            onSummaryGenerated: { observation, authority in
+                store.publish(summary: observation, authority: authority)
+            }
+        )
         #endif
     }
 
@@ -620,7 +803,10 @@ struct SessionsRoot: View {
 
             ForEach(store.recordings) { recording in
                 NavigationLink(value: recording.id) {
-                    SessionRowView(recording: recording)
+                    SessionRowView(
+                        recording: recording,
+                        summary: store.summary(for: recording.id)
+                    )
                 }
                 .accessibilityIdentifier("gethog.session-card.\(recording.id)")
                 #if os(macOS)
@@ -694,13 +880,13 @@ struct SessionsRoot: View {
     }
 
     private func load() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.load(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.load(client: client, authority: authority)
     }
 
     private func loadMore() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
-        await store.loadMore(client: client, projectID: projectID)
+        guard let client = model.client, let authority = requestAuthority else { return }
+        await store.loadMore(client: client, authority: authority)
     }
 }
 
@@ -734,7 +920,7 @@ struct ActiveFilterSummary: View {
                     clearButton
                 }
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                HStack(alignment: .center, spacing: Theme.Space.s) {
                     sentence
                     Spacer(minLength: Theme.Space.s)
                     clearButton
@@ -746,9 +932,9 @@ struct ActiveFilterSummary: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// Top-aligned against the first line rather than centred on the block:
-    /// `Label` centres its icon, which floated it into the middle of a
-    /// four-line sentence.
+    /// The icon and sentence share a text baseline. The outer row itself is
+    /// centred so the visible `Clear` glyph—not the top edge of its 44-point
+    /// hit target—aligns with a one-line sentence.
     private var sentence: some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
             Image(systemName: "line.3.horizontal.decrease.circle.fill")
@@ -816,17 +1002,24 @@ extension SessionRecordingFilter {
 
 struct SessionRowView: View {
     let recording: SessionRecording
+    var summary: ReplayVisionSummaryDigest? = nil
+
+    private var presentation: SessionRowPresentation {
+        SessionRowPresentation(recording: recording, summary: summary)
+    }
 
     var body: some View {
         DataRow(
             glyph: glyph,
             brandGlyph: SessionBrandAppearance.glyph(
                 hasErrors: recording.hasErrors,
-                isReplayable: recording.isReplayable
+                isReplayable: recording.isReplayable,
+                hasFriction: presentation.hasFriction
             ),
             tint: tint,
             title: recording.personDisplayName,
             subtitle: recording.pathComponent,
+            supplement: presentation.summaryLine,
             footnote: stats,
             // The start URL's path is an identifier, and a column of aligned
             // paths is what makes one session's entry point comparable to the
@@ -838,7 +1031,7 @@ struct SessionRowView: View {
             accessory: .none
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityDescription)
+        .accessibilityLabel(presentation.accessibilityDescription)
     }
 
     /// The glyph carries whatever is unusual about the session — errors first,
@@ -869,13 +1062,26 @@ struct SessionRowView: View {
         return parts.joined(separator: " · ")
     }
 
-    private var accessibilityDescription: String {
+}
+
+struct SessionRowPresentation {
+    let recording: SessionRecording
+    let summary: ReplayVisionSummaryDigest?
+
+    var summaryLine: String? { summary?.cardSummary }
+    var hasFriction: Bool { summary?.hasFriction == true }
+
+    var accessibilityDescription: String {
         var parts = [
             recording.personDisplayName,
             "duration \(recording.durationText)",
             "\(recording.clickCount) clicks",
         ]
-        if recording.hasErrors { parts.append("\(recording.consoleErrorCount) console errors") }
+        if let summaryLine { parts.append(summaryLine) }
+        if recording.hasErrors {
+            parts.append("\(recording.consoleErrorCount) console errors")
+        }
+        if hasFriction { parts.append("Replay Vision friction") }
         if !recording.isReplayable { parts.append("mobile recording, not playable") }
         return parts.joined(separator: ", ")
     }

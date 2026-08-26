@@ -11,6 +11,7 @@ enum BrandObjectGlyph: String, CaseIterable, Equatable {
     case session
     case mobileSession
     case errorSession
+    case frictionSession
     case flag
     case multivariateFlag
     case archivedFlag
@@ -19,7 +20,7 @@ enum BrandObjectGlyph: String, CaseIterable, Equatable {
         switch self {
         case .dashboard, .generatedDashboard: .dashboard
         case .event, .screenEvent, .exceptionEvent, .featureFlagEvent: .event
-        case .session, .mobileSession, .errorSession: .session
+        case .session, .mobileSession, .errorSession, .frictionSession: .session
         case .flag, .multivariateFlag, .archivedFlag: .flag
         }
     }
@@ -54,6 +55,10 @@ struct BrandObjectGlyphView: View {
         case .exceptionEvent, .errorSession:
             Circle()
                 .fill(Theme.Status.critical)
+                .frame(width: size * 0.24, height: size * 0.24)
+        case .frictionSession:
+            Circle()
+                .fill(Theme.accentWarm)
                 .frame(width: size * 0.24, height: size * 0.24)
         case .featureFlagEvent, .multivariateFlag:
             Circle()

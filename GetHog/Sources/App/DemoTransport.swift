@@ -327,17 +327,49 @@ struct DemoTransport: HTTPTransport {
         }
 
         if request.httpMethod == "POST",
-           path.hasSuffix("/create_session_summaries_individually/"),
+           path.hasSuffix("/vision/scanners/inline_scan/"),
            Self.isCanonicalSummaryGenerationRequest(request.httpBody) {
             await summaryGeneration.markGenerated()
             return Self.jsonReply(
-                url: request.url!, data: Data(#"{}"#.utf8), status: 200
+                url: request.url!,
+                data: Data(
+                    #"{"scan_id":"018f1000-0000-7000-8000-000000000011","started":1,"results":[{"session_id":"018f1000-0000-7000-8000-000000000001","scan_outcome":"started"}]}"#.utf8
+                ),
+                status: 202
             )
         }
 
-        if path.hasSuffix("/single_session_summaries/\(Self.summarisedDemoSession)/"),
+        if request.httpMethod == "POST",
+           path.contains("/vision/observations/"),
+           path.hasSuffix("/retry/") {
+            await summaryGeneration.markGenerated()
+            return Self.jsonReply(
+                url: request.url!,
+                data: Data(#"{"workflow_id":"018f1000-0000-7000-8000-000000000011"}"#.utf8),
+                status: 202
+            )
+        }
+
+        if Self.isReplayVisionObservationList(path),
+           Self.queryValue("session_id", in: query) == Self.summarisedDemoSession {
+            let data = await summaryGeneration.shouldReturnMissing
+                ? Self.emptyObservationPage
+                : Self.load("replay_vision_observations").data
+            return Self.jsonReply(url: request.url!, data: data, status: 200)
+        }
+
+        if Self.isReplayVisionObservationList(path) {
+            return Self.jsonReply(
+                url: request.url!,
+                data: Self.emptyObservationPage,
+                status: 200
+            )
+        }
+
+        if path.hasSuffix("/query/"),
+           Self.isReplayVisionSummaryQuery(body),
            await summaryGeneration.shouldReturnMissing {
-            return Self.jsonReply(url: request.url!, data: Self.noStoredSummary, status: 404)
+            return Self.jsonReply(url: request.url!, data: Self.emptyQueryResult, status: 200)
         }
 
         // Writes route by **method**, because a create and a list share a path.
@@ -428,10 +460,34 @@ struct DemoTransport: HTTPTransport {
     private static func isCanonicalSummaryGenerationRequest(_ body: Data?) -> Bool {
         guard let body,
               let payload = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              payload["scanner_type"] as? String == "summarizer",
+              let prompt = payload["prompt"] as? String,
+              prompt.contains("Summarize what the user did in this session"),
+              let scannerConfig = payload["scanner_config"] as? [String: String],
+              scannerConfig["length"] == "medium",
               let sessionIDs = payload["session_ids"] as? [String]
         else { return false }
 
         return sessionIDs == [summarisedDemoSession]
+    }
+
+    private static func isReplayVisionObservationList(_ path: String) -> Bool {
+        path.hasSuffix("/vision/observations/")
+            || (path.contains("/vision/scanners/") && path.hasSuffix("/observations/"))
+    }
+
+    private static func isReplayVisionSummaryQuery(_ body: String) -> Bool {
+        guard let data = body.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let query = payload["query"] as? [String: Any],
+              query["kind"] as? String == "HogQLQuery",
+              let sql = query["query"] as? String
+        else { return false }
+
+        return sql.contains("event = '$recording_observed'")
+            && sql.contains("properties.scanner_type = 'summarizer'")
+            && sql.contains("scanner_output_title")
+            && sql.contains("scanner_output_friction_points")
     }
 
     /// Only the replay timeline builder owns `session_events.json`. A bare
@@ -458,8 +514,8 @@ struct DemoTransport: HTTPTransport {
             && sql.contains("LIMIT ")
     }
 
-    private static let noStoredSummary =
-        Data(#"{"detail":"No stored summary found for this session."}"#.utf8)
+    private static let emptyObservationPage =
+        Data(#"{"count":0,"next":null,"previous":null,"results":[]}"#.utf8)
 
     // Deterministic fixture routing preserves the response shape and status for this case.
 
@@ -1098,6 +1154,8 @@ struct DemoTransport: HTTPTransport {
             // share one clock without changing arbitrary HogQL results.
             if isCanonicalSessionTimelineQuery(body) { return load("session_events") }
 
+            if isReplayVisionSummaryQuery(body) { return load("replay_vision_summary_query") }
+
             // The generic HogQL fixture, and it is the events feed's.
             //
             // **Not "the two screens backed by HogQL"**, which is what this said
@@ -1271,31 +1329,6 @@ struct DemoTransport: HTTPTransport {
         // `/comments/count/` never falls through to the thread fixture.
         if path.hasSuffix("/comments/count/") { return Reply(Data(#"{"count":4}"#.utf8)) }
         if path.contains("/comments/") { return load("comments") }
-
-        // AI session summaries. Checked **before** `/session_recordings/`
-        // although the two paths do not overlap, because both are keyed on the
-        // same synthetic session id. The summary and recording for
-        // `018f1000-0000-7000-8000-000000000001` must stay aligned so the demo
-        // can navigate between them.
-        //
-        // The detail route serves its fixture for whichever id reaches it, which
-        // is the same stand-in convention as `firstResult` below — but only for
-        // the one session this admits to having a summary. Every other synthetic
-        // id deliberately returns 404 to exercise the no-summary state.
-        //
-        // That 404 is deliberate rather than a missing fixture. Serving 200 for
-        // every id would make the demo unable to show the no-summary state and
-        // would let a regression turning it into an error card go unnoticed.
-        // The status is spelled beside the body it belongs to; the separate
-        // `status(for:)` that used to decide it is gone.
-        if path.contains("/single_session_summaries/") {
-            if path.hasSuffix("/single_session_summaries/") {
-                return load("single_session_summaries")
-            }
-            return path.contains(summarisedDemoSession)
-                ? load("single_session_summary")
-                : Reply(noStoredSummary, status: 404)
-        }
 
         // Deterministic fixture routing preserves the response shape and status for this case.
         if path.contains("/session_recording_playlists/") {

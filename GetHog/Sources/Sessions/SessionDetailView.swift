@@ -8,19 +8,22 @@ import SwiftUI
 struct SessionDetailView: View {
     let recording: SessionRecording
     let onOpenInNewWindow: (() -> Void)?
+    let onSummaryGenerated: ((ReplayVisionObservation, ResourceRequestAuthority) -> Void)?
 
     init(
         recording: SessionRecording,
-        onOpenInNewWindow: (() -> Void)? = nil
+        onOpenInNewWindow: (() -> Void)? = nil,
+        onSummaryGenerated: ((ReplayVisionObservation, ResourceRequestAuthority) -> Void)? = nil
     ) {
         self.recording = recording
         self.onOpenInNewWindow = onOpenInNewWindow
+        self.onSummaryGenerated = onSummaryGenerated
     }
 
     @Environment(AppModel.self) private var model
 
     @State private var timeline = SessionTimelineStore()
-    @State private var summary = SessionSummaryStore()
+    @State private var summary = ReplayVisionSummaryStore()
     @State private var loader = ReplayLoader()
     @State private var player = ReplayPlayerController(autostarts: true)
     @State private var webLink: WebLink?
@@ -47,6 +50,18 @@ struct SessionDetailView: View {
 
     private var replayWebURL: URL? {
         model.webURL(path: "replay/\(recording.id)")
+    }
+
+    private var summaryRequestAuthority: ResourceRequestAuthority? {
+        guard let client = model.client,
+              let projectID = model.projectID,
+              let authSessionID = model.authSessionID
+        else { return nil }
+        return .init(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
     }
 
     /// `nil` when there is no console link to offer, so the replay cards can
@@ -100,7 +115,7 @@ struct SessionDetailView: View {
                     recording: recording,
                     loader: loader,
                     controller: player,
-                    summary: summary.detail,
+                    summary: summary.summary,
                     onOpenInPostHog: openInPostHog,
                     onRetry: { retryReplay() }
                 )
@@ -121,15 +136,11 @@ struct SessionDetailView: View {
                 // story first, the evidence after.
                 SessionSummaryCard(
                     store: summary,
-                    // rrweb counts from its first snapshot, not from
-                    // `session_start_time`, so the chapter offsets are re-based
-                    // onto whichever origin the player is actually using. Same
-                    // origin the timeline seeks on, for the same reason.
-                    origin: loader.replayStart ?? recording.startTime,
                     canSeek: player.isReady,
                     onSeek: { offset in player.seek(to: offset, resume: true) },
                     onGenerate: { requestSummaryGeneration() },
-                    onRetry: { Task { await loadSummary() } }
+                    onRetryLoad: { Task { await loadSummary() } },
+                    onRetryObservation: { Task { await retrySummary() } }
                 )
                 #if os(tvOS)
                 .focusSection()
@@ -232,13 +243,17 @@ struct SessionDetailView: View {
         #endif
         .task(id: recording.id) { await loadTimeline() }
         .task(id: recording.id) { await startReplay() }
+        .onChange(of: summaryRequestAuthority, initial: true) { _, authority in
+            summaryGenerationTask?.cancel()
+            summaryGenerationTask = nil
+            summary.prepare(authority: authority)
+        }
         // A separate request, made when the screen opens. Most sessions have no
-        // summary and answer 404, which the store reads as absence rather than
-        // as failure — so this costs the screen nothing when there is nothing.
-        .task(id: recording.id) { await loadSummary() }
+        // summary, so the current observations route simply returns no row.
+        .task(id: summaryRequestAuthority) { await loadSummary() }
         #if os(tvOS)
         .confirmationDialog(
-            "Generate and save an AI summary for \(recording.personDisplayName)?",
+            "Generate and save a summary for \(recording.personDisplayName)?",
             isPresented: $isConfirmingSummaryGeneration,
             titleVisibility: .visible
         ) {
@@ -249,7 +264,7 @@ struct SessionDetailView: View {
         } message: {
             Text(
                 "PostHog will save the generated summary with this session. "
-                    + "Generation uses the organization's shared query and AI budget."
+                    + "Generation uses the organization's shared Replay Vision budget."
             )
         }
         #endif
@@ -363,19 +378,39 @@ struct SessionDetailView: View {
     }
 
     private func loadSummary() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
+        guard let client = model.client, let authority = summaryRequestAuthority else { return }
         // Keyed by the session id, which is what `SessionRecording.id` already
         // is — no lookup, and no second identifier to keep in step.
-        await summary.load(client: client, projectID: projectID, sessionID: recording.id)
+        await summary.load(client: client, authority: authority, sessionID: recording.id)
     }
 
     private func generateSummary() async {
-        guard let client = model.client, let projectID = model.projectID else { return }
+        guard let client = model.client, let authority = summaryRequestAuthority else { return }
         await summary.generate(
             client: client,
-            projectID: projectID,
+            authority: authority,
             sessionID: recording.id
         )
+        publishSummary(ifCurrent: authority)
+    }
+
+    private func retrySummary() async {
+        guard let client = model.client, let authority = summaryRequestAuthority else { return }
+        await summary.retry(
+            client: client,
+            authority: authority,
+            sessionID: recording.id
+        )
+        publishSummary(ifCurrent: authority)
+    }
+
+    private func publishSummary(ifCurrent authority: ResourceRequestAuthority) {
+        guard summaryRequestAuthority == authority,
+              let observation = summary.observation,
+              observation.status == .succeeded,
+              observation.summary != nil
+        else { return }
+        onSummaryGenerated?(observation, authority)
     }
 
     private func requestSummaryGeneration() {

@@ -1,6 +1,15 @@
 import Foundation
 import GetHogKit
 
+/// The complete security namespace in which a read response may publish.
+/// Numeric project ids can repeat between hosts, and a replacement credential
+/// invalidates work even when both host and project number stay unchanged.
+struct ResourceRequestAuthority: Hashable, Sendable {
+    let projectID: Int
+    let region: PostHogRegion
+    let authSessionID: UUID
+}
+
 /// Whether the most recent successful request produced rows.
 ///
 /// This is deliberately smaller than a screen's model. The state boundary only

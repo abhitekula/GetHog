@@ -73,15 +73,6 @@ extension LogSeverity {
 
 // MARK: - Store
 
-/// The complete security namespace in which a read response may publish.
-/// Numeric project ids can repeat between hosts, and a replacement credential
-/// invalidates work even when both host and project number stay unchanged.
-struct ResourceRequestAuthority: Hashable, Sendable {
-    let projectID: Int
-    let region: PostHogRegion
-    let authSessionID: UUID
-}
-
 /// Every value that changes the meaning of one Logs response.
 struct LogsRequestDescriptor: Hashable, Sendable {
     let authority: ResourceRequestAuthority

@@ -1,0 +1,66 @@
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "018f1000-0000-7000-8000-000000000010",
+      "scanner_id": "018f1000-0000-7000-8000-000000000011",
+      "session_id": "018f1000-0000-7000-8000-000000000001",
+      "status": "succeeded",
+      "error_reason": "",
+      "workflow_id": "replay-vision-orbit-review",
+      "scanner_snapshot": {
+        "name": "Orbital summary scanner",
+        "scanner_type": "summarizer",
+        "scanner_version": 1,
+        "model": "gemini-3-flash-preview",
+        "provider": "google",
+        "emits_signals": false,
+        "scanner_config": {
+          "length": "medium"
+        }
+      },
+      "scanner_result": {
+        "model_output": {
+          "scanner_type": "summarizer",
+          "title": "Reviewed the orbital dashboard",
+          "summary": "The user opened the orbital dashboard, compared telemetry, and refreshed a slow status widget before finishing the review.",
+          "summary_segments": [
+            {
+              "kind": "text",
+              "value": "Opened the orbital dashboard and compared telemetry."
+            },
+            {
+              "kind": "chip",
+              "timestamp_ms": 2200
+            },
+            {
+              "kind": "text",
+              "value": " Refreshed the status widget."
+            },
+            {
+              "kind": "chip",
+              "timestamp_ms": 7600
+            }
+          ],
+          "intent": "Review current orbital telemetry.",
+          "outcome": "The dashboard review was completed.",
+          "friction_points": [
+            "The status widget refreshed slowly."
+          ],
+          "keywords": [
+            "orbital dashboard",
+            "telemetry",
+            "refresh"
+          ],
+          "confidence": 0.91
+        },
+        "signals_count": 0
+      },
+      "started_at": "2026-01-18T12:03:00Z",
+      "completed_at": "2026-01-18T12:03:12Z",
+      "created_at": "2026-01-18T12:03:00Z"
+    }
+  ]
+}

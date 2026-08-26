@@ -16,52 +16,43 @@ struct SessionReplayMarker: Identifiable, Equatable, Sendable {
     let kind: Kind
 
     static func make(
-        detail: SessionSummaryDetail?,
-        origin: Date?,
+        summary: ReplayVisionSummary?,
         duration: TimeInterval
     ) -> [Self] {
-        guard let detail else { return [] }
-        var seen = Set<String>()
+        guard let summary else { return [] }
         let upperBound = max(0, duration)
+        var seenMilliseconds = Set<Int>()
+        var pendingText = ""
+        var markers: [Self] = []
 
-        return detail.chapters
-            .flatMap(\.events)
-            .compactMap { event -> Self? in
-                let rawOffset: TimeInterval?
-                if let origin, let timestamp = event.timestamp {
-                    rawOffset = timestamp.timeIntervalSince(origin)
-                } else {
-                    rawOffset = event.offset
+        for segment in summary.summarySegments {
+            switch segment {
+            case .text(let text):
+                pendingText += text
+            case .citation(let milliseconds):
+                guard seenMilliseconds.insert(milliseconds).inserted else {
+                    pendingText = ""
+                    continue
                 }
-                guard let rawOffset, rawOffset.isFinite else { return nil }
-                guard seen.insert(event.id).inserted else { return nil }
-                let label = event.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-                let kind: Kind = if event.exception != nil {
-                    .exception
-                } else if event.confusion == true || event.abandonment == true {
-                    .struggle
-                } else {
-                    .keyAction
-                }
-                let fallbackLabel = event.event?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let resolvedLabel = if !label.isEmpty {
-                    label
-                } else if let fallbackLabel, !fallbackLabel.isEmpty {
-                    fallbackLabel
-                } else {
-                    "Key event"
-                }
-                return Self(
-                    id: event.id,
-                    offset: min(upperBound, max(0, rawOffset)),
-                    label: resolvedLabel,
-                    kind: kind
-                )
+                let trimmed = pendingText.trimmingCharacters(in: .whitespacesAndNewlines)
+                markers.append(Self(
+                    id: "summary-citation-\(markers.count)",
+                    offset: min(
+                        upperBound,
+                        max(0, TimeInterval(milliseconds) / 1_000)
+                    ),
+                    label: trimmed.isEmpty ? "Summary citation" : trimmed,
+                    kind: .keyAction
+                ))
+                pendingText = ""
+            case .unknown:
+                continue
             }
-            .sorted { left, right in
-                left.offset == right.offset ? left.id < right.id : left.offset < right.offset
-            }
+        }
+
+        return markers.sorted { left, right in
+            left.offset == right.offset ? left.id < right.id : left.offset < right.offset
+        }
     }
 
     static func active(in markers: [Self], at position: TimeInterval) -> Self? {
