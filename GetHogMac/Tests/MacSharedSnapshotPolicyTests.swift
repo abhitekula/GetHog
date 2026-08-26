@@ -97,7 +97,8 @@ struct MacSharedSnapshotPolicyTests {
         #expect(!root.contains("SharedSnapshotStore.shared"))
 
         let settings = try source("GetHogMac/Sources/MacSettingsScene.swift", repository: repository)
-        #expect(settings.contains("SettingsAlertsSection(snapshotStore: MacSharedSnapshotPolicy.store)"))
+        #expect(!settings.contains("SettingsAlertsSection"))
+        #expect(!settings.contains("MetricAlertsView"))
 
         let intents = try source(
             "GetHog/Sources/Intents/IntentDependencies.swift",
@@ -114,45 +115,11 @@ struct MacSharedSnapshotPolicyTests {
         #expect(sharedDefaults.contains("UserDefaults(suiteName: appGroupID)"))
 
         let sharedSettings = try source("GetHog/Sources/Settings/SettingsRoot.swift", repository: repository)
-        let settingsRoot = try slice(
-            sharedSettings,
-            after: "struct SettingsRoot: View {",
-            before: "\n}\n\n// MARK: - Account"
-        )
-        #expect(settingsRoot.contains("SettingsAlertsSection(snapshotStore: alertsSnapshotStore)"))
-        #expect(settingsRoot.contains("#if os(macOS)"))
-        #expect(settingsRoot.contains("MacSharedSnapshotPolicy.store"))
-        #expect(settingsRoot.contains("#else"))
-        #expect(settingsRoot.contains("SharedSnapshotStore.shared"))
-        let alertsSection = try suffix(sharedSettings, after: "struct SettingsAlertsSection: View {")
-        #expect(alertsSection.contains("let snapshotStore: SharedSnapshotStore"))
-        #expect(!alertsSection.contains("init(snapshotStore: SharedSnapshotStore = .shared)"))
-        #expect(alertsSection.contains("MetricAlertsView(snapshotStore: snapshotStore)"))
-
-        let alertsView = try source("GetHog/Sources/Alerts/MetricAlertsView.swift", repository: repository)
-        #expect(alertsView.contains("init(snapshotStore: SharedSnapshotStore)"))
-        #expect(!alertsView.contains("init(snapshotStore: SharedSnapshotStore = .shared)"))
-        #expect(alertsView.contains("MetricWatchController(store: snapshotStore)"))
+        #expect(!sharedSettings.contains("SettingsAlertsSection"))
+        #expect(!sharedSettings.contains("MetricAlertsView"))
 
         let model = try source("GetHog/Sources/App/AppModel.swift", repository: repository)
-        #expect(model.contains("MetricAlertDelivery.evaluate(snapshot: snapshot, store: snapshotStore)"))
-        let delivery = try source(
-            "GetHog/Sources/Alerts/MetricWatchController.swift",
-            repository: repository
-        )
-        let evaluate = try slice(
-            delivery,
-            after: "static func evaluate(",
-            before: ") async {"
-        )
-        #expect(evaluate.contains("store: SharedSnapshotStore"))
-        #expect(!evaluate.contains("= .shared"))
-        let controllerInitializer = try slice(
-            delivery,
-            after: "init(store: SharedSnapshotStore",
-            before: ") {"
-        )
-        #expect(!controllerInitializer.contains("= .shared"))
+        #expect(!model.contains("MetricAlertDelivery"))
 
         let widgetBundle = try source(
             "GetHogMacWidgets/Sources/GetHogMacWidgetBundle.swift",

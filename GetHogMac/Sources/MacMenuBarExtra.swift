@@ -8,10 +8,9 @@ import SwiftUI
 // The phase-2 ambient layer's first surface (spec §4): a `MenuBarExtra` whose
 // label is one user-chosen headline metric and whose window is a mini-dashboard
 // over the same `SharedSnapshot` the widgets read. The iron rule carries over
-// verbatim: **nothing in this file calls the PostHog API.** The render path
-// reads the snapshot file; the one Refresh affordance routes through
-// `AppModel.publishWidgetSnapshot()`, the app's existing, governor-metered
-// machinery.
+// verbatim: the render path reads the snapshot file; the one Refresh affordance
+// routes through `AppModel.publishWidgetSnapshot()`, the app's shared,
+// governor-metered refresh machinery.
 
 /// Names the contract this feature persists and posts. Statics rather than
 /// scattered literals because two of these strings outlive the process — they
@@ -48,26 +47,18 @@ enum MenuBarHeadline {
 
     /// The election, in order of how explicit the user was:
     /// 1. the metric they chose by id, when the snapshot still carries it;
-    /// 2. the first *enabled* `MetricWatch` whose metric the snapshot carries —
-    ///    a watch is the strongest signal short of a choice, the same reasoning
-    ///    `SnapshotRelevance` records;
-    /// 3. the snapshot's first metric, which is the pinned dashboard's first
+    /// 2. the snapshot's first metric, which is the pinned dashboard's first
     ///    tile by construction (`AppModel.publishWidgetSnapshot`).
     ///
-    /// A choice or a watch naming a metric the snapshot no longer carries is
-    /// skipped rather than honoured blind: the dashboard it came from can be
-    /// re-pinned or re-tiled between two syncs, and a label with nothing behind
-    /// it is worse than the next-best metric.
+    /// A choice naming a metric the snapshot no longer carries is skipped rather
+    /// than honoured blind: the dashboard can be re-pinned or re-tiled between
+    /// two syncs, and a label with nothing behind it is worse than the fallback.
     static func metric(
         in snapshot: SharedSnapshot?,
-        watches: [MetricWatch],
         chosenID: String?
     ) -> SharedSnapshot.Metric? {
         guard let snapshot else { return nil }
         if let chosenID, let chosen = snapshot.metric(id: chosenID) { return chosen }
-        for watch in watches where watch.isEnabled {
-            if let watched = snapshot.metric(id: watch.metricID) { return watched }
-        }
         return snapshot.metrics.first
     }
 
@@ -142,7 +133,6 @@ enum MenuBarHeadline {
 final class MacMenuBarController {
 
     private(set) var snapshot: SharedSnapshot?
-    private(set) var watches: [MetricWatch] = []
     /// The live app session allowed to adopt a snapshot. The ticker may keep
     /// firing after sign-out, so the guard belongs here rather than only in a
     /// view callback.
@@ -191,7 +181,7 @@ final class MacMenuBarController {
     }
 
     var headline: SharedSnapshot.Metric? {
-        MenuBarHeadline.metric(in: snapshot, watches: watches, chosenID: headlineMetricID)
+        MenuBarHeadline.metric(in: snapshot, chosenID: headlineMetricID)
     }
 
     func reload() {
@@ -201,7 +191,6 @@ final class MacMenuBarController {
         } else {
             snapshot = nil
         }
-        watches = store.metricWatches()
     }
 
     /// Handles the store's in-process publication signal. File identity is

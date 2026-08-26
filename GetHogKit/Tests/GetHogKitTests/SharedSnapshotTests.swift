@@ -545,23 +545,40 @@ struct SharedSnapshotTests {
         try store.write(sample())
         try store.enqueue(PendingFlagWrite(flagID: 7, key: "synthetic-flag", desiredActive: true))
         try store.enqueue(PendingOpen(metricID: "42"))
-        try store.writeMetricWatches([
-            MetricWatch(
-                id: "synthetic-watch",
-                metricID: "42",
-                title: "Example metric",
-                condition: .above(100)
-            )
-        ])
-        try store.writeBreachingWatchIDs(["synthetic-watch"])
+        try store.writeSnapshotRefreshStatus(.init(attemptedAt: Date(), failure: .offline))
 
         store.clearProjectData()
 
         #expect(store.loadOrNil() == nil)
         #expect(store.pendingFlagWrite() == nil)
         #expect(store.pendingOpen() == nil)
-        #expect(store.metricWatches().isEmpty)
-        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(store.snapshotRefreshStatus() == nil)
+    }
+
+    @Test("opening the store removes files from the retired local alert subsystem")
+    func initializationRemovesLegacyMetricAlertFiles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SharedSnapshotLegacyCleanup-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let legacyNames = [
+            "metric-watches.json",
+            "metric-watch-breaches.json",
+            "watch-demo-seeded-watches.json",
+        ]
+        for name in legacyNames {
+            try Data("retired-synthetic-state".utf8).write(
+                to: directory.appendingPathComponent(name)
+            )
+        }
+
+        _ = SharedSnapshotStore(directory: directory)
+
+        for name in legacyNames {
+            #expect(!FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent(name).path
+            ))
+        }
     }
 
     @Test("strict clearing removes every project artifact")
@@ -572,23 +589,14 @@ struct SharedSnapshotTests {
         try store.write(sample())
         try store.enqueue(PendingFlagWrite(flagID: 7, key: "synthetic-flag", desiredActive: true))
         try store.enqueue(PendingOpen(metricID: "42"))
-        try store.writeMetricWatches([
-            MetricWatch(
-                id: "synthetic-watch",
-                metricID: "42",
-                title: "Example metric",
-                condition: .above(100)
-            )
-        ])
-        try store.writeBreachingWatchIDs(["synthetic-watch"])
+        try store.writeSnapshotRefreshStatus(.init(attemptedAt: Date(), failure: .offline))
 
         try store.clearProjectDataStrict()
 
         #expect(store.loadOrNil() == nil)
         #expect(store.pendingFlagWrite() == nil)
         #expect(store.pendingOpen() == nil)
-        #expect(store.metricWatches().isEmpty)
-        #expect(store.breachingWatchIDs().isEmpty)
+        #expect(store.snapshotRefreshStatus() == nil)
     }
 
     @Test("strict clearing attempts every artifact and accepts only file-not-found as absent")
@@ -599,8 +607,11 @@ struct SharedSnapshotTests {
             "snapshot.json",
             "pending-flag.json",
             "pending-open.json",
+            "snapshot-refresh-status.json",
+            "snapshot-refresh-lease.json",
             "metric-watches.json",
             "metric-watch-breaches.json",
+            "watch-demo-seeded-watches.json",
         ]
         var attempted: [String] = []
 
@@ -840,8 +851,11 @@ struct SharedSnapshotTests {
             "snapshot.json",
             "pending-flag.json",
             "pending-open.json",
+            "snapshot-refresh-status.json",
+            "snapshot-refresh-lease.json",
             "metric-watches.json",
             "metric-watch-breaches.json",
+            "watch-demo-seeded-watches.json",
         ]
         let cocoaAbsence = NSError(
             domain: NSCocoaErrorDomain,
@@ -904,7 +918,7 @@ struct SharedSnapshotTests {
                     code: 52
                 ),
                 .init(
-                    artifact: "metric-watches",
+                    artifact: "legacy-metric-watches",
                     domain: "app.gethog.tests.unknown-terminal",
                     code: 55
                 ),
@@ -922,8 +936,11 @@ struct SharedSnapshotTests {
             "snapshot.json",
             "pending-flag.json",
             "pending-open.json",
+            "snapshot-refresh-status.json",
+            "snapshot-refresh-lease.json",
             "metric-watches.json",
             "metric-watch-breaches.json",
+            "watch-demo-seeded-watches.json",
         ]
         var attempted: [String] = []
 
@@ -955,12 +972,12 @@ struct SharedSnapshotTests {
                     code: CocoaError.fileWriteNoPermission.rawValue
                 ),
                 .init(
-                    artifact: "metric-watches",
+                    artifact: "legacy-metric-watches",
                     domain: NSCocoaErrorDomain,
                     code: CocoaError.fileReadCorruptFile.rawValue
                 ),
                 .init(
-                    artifact: "metric-watch-breaches",
+                    artifact: "legacy-metric-watch-breaches",
                     domain: NSPOSIXErrorDomain,
                     code: Int(POSIXError.Code.EACCES.rawValue)
                 ),

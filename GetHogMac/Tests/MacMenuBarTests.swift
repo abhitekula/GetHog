@@ -74,44 +74,23 @@ struct MenuBarHeadlineTests {
         )
     }
 
-    @Test("an explicit choice outranks every watch")
+    @Test("an explicit choice outranks the fallback")
     func chosenMetricWins() {
         let snapshot = snapshot(metrics: [metric("1"), metric("2")])
-        let watches = [MetricWatch(id: "w", metricID: "1", title: "", condition: .above(1))]
-        #expect(MenuBarHeadline.metric(in: snapshot, watches: watches, chosenID: "2")?.id == "2")
+        #expect(MenuBarHeadline.metric(in: snapshot, chosenID: "2")?.id == "2")
     }
 
-    @Test("a choice the snapshot no longer carries falls back to the first watched metric")
-    func staleChoiceFallsBackToWatch() {
+    @Test("a choice the snapshot no longer carries falls back to the first metric")
+    func staleChoiceFallsBackToFirstMetric() {
         let snapshot = snapshot(metrics: [metric("1"), metric("2")])
-        let watches = [MetricWatch(id: "w", metricID: "2", title: "", condition: .above(1))]
-        #expect(MenuBarHeadline.metric(in: snapshot, watches: watches, chosenID: "gone")?.id == "2")
-    }
-
-    @Test("a disabled watch elects nothing")
-    func disabledWatchIsSkipped() {
-        let snapshot = snapshot(metrics: [metric("1"), metric("2")])
-        let watches = [
-            MetricWatch(id: "w", metricID: "2", title: "", condition: .above(1), isEnabled: false)
-        ]
-        #expect(MenuBarHeadline.metric(in: snapshot, watches: watches, chosenID: nil)?.id == "1")
-    }
-
-    @Test("a watch whose metric left the snapshot is skipped, not honoured blind")
-    func orphanWatchIsSkipped() {
-        let snapshot = snapshot(metrics: [metric("1")])
-        let watches = [
-            MetricWatch(id: "a", metricID: "gone", title: "", condition: .above(1)),
-            MetricWatch(id: "b", metricID: "1", title: "", condition: .above(1)),
-        ]
-        #expect(MenuBarHeadline.metric(in: snapshot, watches: watches, chosenID: nil)?.id == "1")
+        #expect(MenuBarHeadline.metric(in: snapshot, chosenID: "gone")?.id == "1")
     }
 
     @Test("no snapshot, or no metrics, means no headline")
     func emptyElection() {
-        #expect(MenuBarHeadline.metric(in: nil, watches: [], chosenID: "1") == nil)
+        #expect(MenuBarHeadline.metric(in: nil, chosenID: "1") == nil)
         #expect(
-            MenuBarHeadline.metric(in: snapshot(metrics: []), watches: [], chosenID: nil) == nil
+            MenuBarHeadline.metric(in: snapshot(metrics: []), chosenID: nil) == nil
         )
     }
 

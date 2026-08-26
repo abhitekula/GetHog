@@ -25,7 +25,6 @@ let sourceSymbolManifest: [String] = [
     "bell",
     "bell.badge",
     "bell.slash",
-    "bell.slash.fill",
     "bolt",
     "bolt.fill",
     "bolt.slash",

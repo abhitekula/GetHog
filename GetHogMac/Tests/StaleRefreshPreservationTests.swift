@@ -132,6 +132,12 @@ private func staleRefreshClient(
     )
 }
 
+private let staleRefreshAuthority = ResourceRequestAuthority(
+    projectID: 1,
+    region: .usCloud,
+    authSessionID: UUID(uuidString: "018f0000-0000-7000-8000-000000000001")!
+)
+
 @MainActor
 @Suite("Mac stale refresh preservation", .serialized)
 struct StaleRefreshPreservationTests {
@@ -190,11 +196,11 @@ struct StaleRefreshPreservationTests {
         let transport = SessionsRefreshTransport()
         let client = staleRefreshClient(transport)
 
-        await store.load(client: client, projectID: 1)
+        await store.load(client: client, authority: staleRefreshAuthority)
         let ids = store.recordings.map(\.id)
         #expect(ids.count == 3)
 
-        await store.load(client: client, projectID: 1)
+        await store.load(client: client, authority: staleRefreshAuthority)
 
         #expect(store.recordings.map(\.id) == ids)
         #expect(store.hasMore)
@@ -269,10 +275,10 @@ struct StaleRefreshPreservationTests {
         let transport = SessionsRefreshTransport()
         let client = staleRefreshClient(transport)
 
-        await store.load(client: client, projectID: 1)
+        await store.load(client: client, authority: staleRefreshAuthority)
         store.filter.signal = .rageClick
 
-        await store.loadMore(client: client, projectID: 1)
+        await store.loadMore(client: client, authority: staleRefreshAuthority)
 
         #expect(await transport.requests() == 1)
         #expect(store.recordings.isEmpty)
@@ -288,12 +294,12 @@ struct StaleRefreshPreservationTests {
         let transport = SessionsFilterChangeTransport()
         let client = staleRefreshClient(transport)
 
-        await store.load(client: client, projectID: 1)
+        await store.load(client: client, authority: staleRefreshAuthority)
         #expect(store.recordings.map(\.id) == ["synthetic-mac-initial"])
         #expect(store.hasMore)
 
         let staleRefresh = Task {
-            await store.load(client: client, projectID: 1)
+            await store.load(client: client, authority: staleRefreshAuthority)
         }
         while await transport.requests() < 2 { await Task.yield() }
         #expect(store.isLoading)
@@ -314,7 +320,7 @@ struct StaleRefreshPreservationTests {
         #expect(store.recordings.isEmpty)
         #expect(store.isLoading)
 
-        await store.load(client: client, projectID: 1)
+        await store.load(client: client, authority: staleRefreshAuthority)
 
         #expect(store.recordings.map(\.id) == ["synthetic-mac-replacement"])
         #expect(store.hasMore)

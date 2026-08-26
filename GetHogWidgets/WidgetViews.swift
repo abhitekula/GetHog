@@ -251,7 +251,7 @@ struct MetricTile: View {
     }
 }
 
-/// "Updated 20m ago", plus the only refresh a widget can honestly offer.
+/// "Updated 20m ago", plus a direct refresh that leaves the app closed.
 struct FreshnessFooter: View {
     let freshness: WidgetFreshness
     var showsRefresh = true
@@ -272,12 +272,12 @@ struct FreshnessFooter: View {
             .accessibilityLabel(freshness.spokenLabel)
             if showsRefresh, supportsInteraction {
                 Spacer(minLength: 2)
-                Button(intent: RefreshInAppIntent()) {
+                Button(intent: RefreshWidgetIntent()) {
                     Image(systemName: "arrow.clockwise")
                         .imageScale(.small)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open GetHog to sync")
+                .accessibilityLabel("Refresh from PostHog")
             }
         }
         .font(.caption2)

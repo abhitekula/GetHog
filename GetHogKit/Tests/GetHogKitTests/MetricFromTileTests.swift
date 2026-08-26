@@ -49,7 +49,7 @@ struct MetricFromTileTests {
         let metric = try #require(SharedSnapshot.Metric(tile: tile, dashboardID: 9))
 
         // The id is the *insight's*, stringified, because that is what widget
-        // configuration and `MetricWatch.metricID` round-trip.
+        // configuration round-trips.
         #expect(metric.id == "78")
         #expect(metric.title == tile.title)
         #expect(metric.value == 1234)
@@ -154,37 +154,6 @@ struct MetricFromTileTests {
         #expect(metric.direction == .unknown)
         // "Oldest to newest" is the contract; a step profile is not a time axis.
         #expect(metric.sparkline.isEmpty)
-    }
-
-    @Test("a funnel cannot fire a percentage-change notification")
-    func funnelNeverFiresAChangeAlert() throws {
-        // The end of the chain, and the one that reached the Lock Screen.
-        // `MetricWatchEvaluator` refuses to invent a baseline for exactly this
-        // reason, and was being handed one from a layer up — so this pins the
-        // seam rather than either side of it.
-        let tile = try Self.tile(named: "Example signup funnel by browser")
-        let metric = try #require(SharedSnapshot.Metric(tile: tile, dashboardID: 9))
-        let evaluation = MetricWatchEvaluator.evaluate(
-            snapshot: SharedSnapshot(
-                projectID: 42,
-                projectName: "Example Analytics",
-                metrics: [metric],
-                flags: [],
-                capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
-            ),
-            watches: [
-                MetricWatch(
-                    id: "w1",
-                    metricID: metric.id,
-                    title: metric.title,
-                    condition: .changesByPercent(10)
-                )
-            ],
-            breaching: []
-        )
-
-        #expect(evaluation.alerts.isEmpty)
-        #expect(evaluation.breaching.isEmpty)
     }
 
     @Test("the shapes with no single headline figure are simply not offered")

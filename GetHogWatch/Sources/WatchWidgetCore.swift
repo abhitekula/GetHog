@@ -52,10 +52,6 @@ struct WatchWidgetCache {
     /// `ActivityFeed.capturedAt`, never by `SharedSnapshot.capturedAt`.
     func activity() -> ActivityFeed? { WatchActivity.read(from: store) }
 
-    /// The user's metric watches, written by `WatchSessionListener` from the
-    /// phone hand-off. Read for firing state and for ranking only — this
-    /// process posts no notification and writes no latch.
-    func watches() -> [MetricWatch] { store.metricWatches() }
 }
 
 // MARK: - Refresh policy
@@ -114,10 +110,8 @@ struct WatchMetricEntry: TimelineEntry, Equatable {
     let metrics: [SharedSnapshot.Metric]
     /// `nil` until the watch has written its first snapshot.
     let capturedAt: Date?
-    /// Computed in the provider, where the watch list is one file read away,
-    /// rather than here: an entry is a value WidgetKit copies around and
-    /// re-reads, and touching the file system from a property it reads would
-    /// turn one read into one per render.
+    /// Computed in the provider so entry relevance decays with its authored
+    /// date without touching the file system during rendering.
     let relevanceScore: Float
 
     var primary: SharedSnapshot.Metric? { metrics.first }
@@ -125,40 +119,6 @@ struct WatchMetricEntry: TimelineEntry, Equatable {
     /// A synced project with nothing to show is a different problem from a
     /// project that has never synced, and it needs different words.
     var isEmptyProject: Bool { capturedAt != nil && metrics.isEmpty }
-    var freshness: WidgetFreshness { WidgetFreshness(capturedAt: capturedAt, now: date) }
-
-    var relevance: TimelineEntryRelevance? {
-        TimelineEntryRelevance(score: relevanceScore, duration: WatchWidgetRefresh.step)
-    }
-}
-
-/// The health complication's state at one instant.
-///
-/// **Watch-local evaluation only.** The snapshot the watch writes carries no
-/// `ingestion` and no `quota` — those are two requests the wrist deliberately
-/// does not spend — so `SharedSnapshot.healthVerdict` on it is always
-/// `.unchecked`, and rendering that as a verdict would be a claim nobody
-/// checked. What this reports is the user's own `MetricWatch` set, evaluated
-/// against the cached snapshot at zero cost. The app's error pulse is not here
-/// either: it is in-memory in the app process and never persisted, so this
-/// process cannot see it and does not pretend to.
-struct WatchHealthEntry: TimelineEntry, Equatable {
-
-    /// One firing watch, named the way the wrist will draw it.
-    struct Row: Equatable, Identifiable {
-        let id: String
-        let title: String
-    }
-
-    let date: Date
-    let capturedAt: Date?
-    /// Enabled watches this watch knows about — the denominator of "N firing".
-    let watchCount: Int
-    let firingRows: [Row]
-    let relevanceScore: Float
-
-    var hasSynced: Bool { capturedAt != nil }
-    var firingCount: Int { firingRows.count }
     var freshness: WidgetFreshness { WidgetFreshness(capturedAt: capturedAt, now: date) }
 
     var relevance: TimelineEntryRelevance? {
@@ -174,9 +134,7 @@ struct WatchHealthEntry: TimelineEntry, Equatable {
 struct WatchStackEntry: TimelineEntry, Equatable {
 
     enum Mode: Equatable {
-        /// At least one of the user's watches is over its line.
-        case alert(title: String, count: Int)
-        /// Nothing firing: the headline number and the newest event.
+        /// The headline number and the newest event.
         ///
         /// `eventCapturedAt` is the **feed's** own stamp, not the snapshot's.
         /// The two files are written by different branches of one refresh and a
@@ -214,7 +172,7 @@ struct WatchStackEntry: TimelineEntry, Equatable {
 
 // MARK: - Derivation
 
-/// Snapshot plus watch list plus feed, in — entries out. Pure, so every rule
+/// Snapshot plus feed, in — entries out. Pure, so every rule
 /// below is pinned by `WatchComplicationCoreTests` rather than by looking at a
 /// watch face.
 enum WatchComplicationCore {
@@ -239,7 +197,6 @@ enum WatchComplicationCore {
     static func metricEntry(
         snapshot: SharedSnapshot?,
         chosenMetricID: String?,
-        watches: [MetricWatch],
         date: Date
     ) -> WatchMetricEntry {
         guard let snapshot else {
@@ -258,55 +215,7 @@ enum WatchComplicationCore {
             // decays with `date`, so the four entries in one timeline rank lower
             // as the snapshot behind them ages, without the provider being woken
             // to say so.
-            relevanceScore: SnapshotRelevance.metric(
-                metrics.first, in: snapshot, watches: watches, now: date
-            )
-        )
-    }
-
-    // MARK: Health
-
-    /// Which of the user's watches are over their line **in this snapshot**.
-    ///
-    /// Evaluated with an empty prior breach set, never against
-    /// `metric-watch-breaches.json`. That file is anti-spam state: it
-    /// deliberately keeps an id whose metric has gone missing, so a
-    /// disappearance can never be mistaken for a recovery and buy a second
-    /// notification. Reading it here would let a complication claim urgency
-    /// about a number the snapshot no longer contains. See
-    /// `SnapshotRelevance.isBreaching`, which is careful about exactly this.
-    ///
-    /// The title is the metric's current name when the snapshot has it and the
-    /// watch's saved title when it does not — the rule `WatchHealth.derive`
-    /// applies on the Health page, so the two surfaces name a watch the same
-    /// way.
-    static func firingRows(
-        snapshot: SharedSnapshot?, watches: [MetricWatch]
-    ) -> [WatchHealthEntry.Row] {
-        guard let snapshot else { return [] }
-        let enabled = watches.filter(\.isEnabled)
-        let breaching = MetricWatchEvaluator.evaluate(
-            snapshot: snapshot, watches: enabled, breaching: []
-        ).breaching
-        return enabled
-            .filter { breaching.contains($0.id) }
-            .map { watch in
-                WatchHealthEntry.Row(
-                    id: watch.id,
-                    title: snapshot.metric(id: watch.metricID)?.title ?? watch.title
-                )
-            }
-    }
-
-    static func healthEntry(
-        snapshot: SharedSnapshot?, watches: [MetricWatch], date: Date
-    ) -> WatchHealthEntry {
-        WatchHealthEntry(
-            date: date,
-            capturedAt: snapshot?.capturedAt,
-            watchCount: watches.count(where: \.isEnabled),
-            firingRows: firingRows(snapshot: snapshot, watches: watches),
-            relevanceScore: score(snapshot: snapshot, watches: watches, now: date)
+            relevanceScore: SnapshotRelevance.metric(metrics.first, in: snapshot, now: date)
         )
     }
 
@@ -314,25 +223,19 @@ enum WatchComplicationCore {
 
     static func stackEntry(
         snapshot: SharedSnapshot?,
-        watches: [MetricWatch],
         activity: ActivityFeed?,
         date: Date
     ) -> WatchStackEntry {
         let mode: WatchStackEntry.Mode
         if let snapshot {
-            let firing = firingRows(snapshot: snapshot, watches: watches)
-            if let first = firing.first {
-                mode = .alert(title: first.title, count: firing.count)
-            } else {
-                let headline = snapshot.metrics.first
-                mode = .quiet(
-                    metricTitle: headline?.title,
-                    valueText: headline.map { WidgetNumber.compact($0.value, unit: $0.unit) },
-                    latestEvent: activity?.lines.first?.event,
-                    // The feed's stamp travels with the line it belongs to.
-                    eventCapturedAt: activity?.capturedAt
-                )
-            }
+            let headline = snapshot.metrics.first
+            mode = .quiet(
+                metricTitle: headline?.title,
+                valueText: headline.map { WidgetNumber.compact($0.value, unit: $0.unit) },
+                latestEvent: activity?.lines.first?.event,
+                // The feed's stamp travels with the line it belongs to.
+                eventCapturedAt: activity?.capturedAt
+            )
         } else {
             mode = .unsynced
         }
@@ -340,7 +243,7 @@ enum WatchComplicationCore {
             date: date,
             capturedAt: snapshot?.capturedAt,
             mode: mode,
-            relevanceScore: score(snapshot: snapshot, watches: watches, now: date)
+            relevanceScore: score(snapshot: snapshot, now: date)
         )
     }
 
@@ -349,42 +252,18 @@ enum WatchComplicationCore {
     /// The loudest thing the snapshot has to say, on the kit's scale.
     ///
     /// `max` over `SnapshotRelevance.metric` across every cached metric rather
-    /// than a second scale of this file's own: the health and stack surfaces
-    /// speak for the whole watch list, not for one configured tile, and one
-    /// scoring rule that a kit test already runs beats two that agree by
-    /// accident. `SnapshotRelevance.health` is deliberately **not** consulted —
+    /// than a second scale of this file's own: the Smart Stack card speaks for
+    /// the whole snapshot, not for one configured tile, and one scoring rule
+    /// that a kit test already runs beats two that agree by accident.
+    /// `SnapshotRelevance.health` is deliberately **not** consulted —
     /// it reads `ingestion` and `quota`, which a watch-written snapshot never
     /// carries, so it would return a hard zero on every wrist snapshot and say
     /// nothing at all.
-    static func score(snapshot: SharedSnapshot?, watches: [MetricWatch], now: Date) -> Float {
+    static func score(snapshot: SharedSnapshot?, now: Date) -> Float {
         guard let snapshot else { return 0 }
         return snapshot.metrics.reduce(Float(0)) { best, metric in
-            max(best, SnapshotRelevance.metric(metric, in: snapshot, watches: watches, now: now))
+            max(best, SnapshotRelevance.metric(metric, in: snapshot, now: now))
         }
-    }
-
-    /// The window the Smart Stack should treat this widget as relevant in, for
-    /// `WidgetRelevance` — the second, coarser API beside the per-entry score.
-    ///
-    /// `nil` when nothing is firing or nothing is cached: there is no "alert"
-    /// context in `RelevantContext`, so a date interval while firing is the
-    /// entire vocabulary available, and offering one while quiet would be this
-    /// widget asking for the top of the stack on the strength of existing.
-    ///
-    /// The interval ends where the *score* would have decayed to nothing —
-    /// `capturedAt + SnapshotRelevance.decayHorizon` — so the two relevance
-    /// APIs cannot disagree: they are computed from the same firing state and
-    /// expire on the same clock. `nil` when that end is not after `now`, since
-    /// a `DateInterval` ending in the past claims a relevance already over.
-    static func stackRelevanceWindow(
-        snapshot: SharedSnapshot?, watches: [MetricWatch], now: Date
-    ) -> DateInterval? {
-        guard let snapshot,
-              !firingRows(snapshot: snapshot, watches: watches).isEmpty
-        else { return nil }
-        let end = snapshot.capturedAt.addingTimeInterval(SnapshotRelevance.decayHorizon)
-        guard end > now else { return nil }
-        return DateInterval(start: now, end: end)
     }
 }
 
@@ -440,17 +319,6 @@ enum WatchWidgetSample {
         capturedAt: Date()
     )
 
-    /// One watch, quiet against the sample. The gallery must not show an alarm:
-    /// a firing sample would teach the user that a red card means nothing.
-    static let watches: [MetricWatch] = [
-        MetricWatch(
-            id: "sample-watch-1",
-            metricID: "1",
-            title: "Active users",
-            condition: .above(100_000)
-        ),
-    ]
-
     // Every sample entry carries `relevanceScore: 0`, deliberately. These feed
     // the gallery and the redacted placeholder, which are not a ranking — a
     // sample that claimed urgency would be this widget arguing for the top of a
@@ -462,16 +330,6 @@ enum WatchWidgetSample {
             projectName: snapshot.projectName,
             metrics: snapshot.metrics,
             capturedAt: date,
-            relevanceScore: 0
-        )
-    }
-
-    static func healthEntry(at date: Date = Date()) -> WatchHealthEntry {
-        WatchHealthEntry(
-            date: date,
-            capturedAt: date,
-            watchCount: watches.count,
-            firingRows: [],
             relevanceScore: 0
         )
     }

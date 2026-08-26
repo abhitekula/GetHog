@@ -119,8 +119,6 @@ struct AppModelTests {
         let snapshot: SharedSnapshot
         let flagWrite: PendingFlagWrite
         let open: PendingOpen
-        let watches: [MetricWatch]
-        let breaching: Set<String>
     }
 
     private func makeSnapshotStore() -> (SharedSnapshotStore, URL) {
@@ -151,28 +149,14 @@ struct AppModelTests {
             metricID: "synthetic-metric",
             requestedAt: Date(timeIntervalSince1970: 1_700_000_200)
         )
-        let watches = [
-            MetricWatch(
-                id: "synthetic-watch",
-                metricID: "synthetic-metric",
-                title: "Synthetic metric",
-                condition: .above(100)
-            )
-        ]
-        let breaching: Set<String> = ["synthetic-watch"]
-
         try store.write(snapshot)
         try store.enqueue(flagWrite)
         try store.enqueue(open)
-        try store.writeMetricWatches(watches)
-        try store.writeBreachingWatchIDs(breaching)
 
         return SeededProjectRecords(
             snapshot: snapshot,
             flagWrite: flagWrite,
-            open: open,
-            watches: watches,
-            breaching: breaching
+            open: open
         )
     }
 
@@ -325,8 +309,6 @@ struct AppModelTests {
         #expect(snapshots.loadOrNil() != nil)
         #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)
         #expect(snapshots.pendingOpen() == seeded.open)
-        #expect(snapshots.metricWatches() == seeded.watches)
-        #expect(snapshots.breachingWatchIDs() == seeded.breaching)
 
         model.signOut()
 
@@ -337,8 +319,6 @@ struct AppModelTests {
         #expect(snapshots.loadOrNil() == nil)
         #expect(snapshots.pendingFlagWrite() == nil)
         #expect(snapshots.pendingOpen() == nil)
-        #expect(snapshots.metricWatches().isEmpty)
-        #expect(snapshots.breachingWatchIDs().isEmpty)
     }
 
     @Test("a snapshot refresh held across sign out cannot republish project data")
@@ -453,8 +433,6 @@ struct AppModelTests {
         #expect(snapshots.loadOrNil() == seeded.snapshot)
         #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)
         #expect(snapshots.pendingOpen() == seeded.open)
-        #expect(snapshots.metricWatches() == seeded.watches)
-        #expect(snapshots.breachingWatchIDs() == seeded.breaching)
     }
 
     @Test("self-hosted regions are preserved, since OAuth can never reach them")
@@ -815,61 +793,6 @@ struct TileMetricTests {
         // not a time axis, and `MetricWidget.legend` labels its ends
         // "low"/"high" next to a legend item named `prev`.
         #expect(metric.sparkline.isEmpty)
-    }
-
-    /// The end of the chain, and the one that reached the Lock Screen.
-    ///
-    /// `MetricWatch.verdict` carries a comment refusing to invent a baseline
-    /// for precisely this reason — and was being handed one from `AppModel`,
-    /// one layer up. This drives the real evaluator over a real snapshot, so it
-    /// pins the seam rather than either side of it.
-    @Test("a funnel cannot fire a percentage-change notification")
-    func funnelNeverFiresAChangeAlert() throws {
-        let metric = try #require(
-            SharedSnapshot.Metric(tile: Self.tile(Self.funnelJSON), dashboardID: 9)
-        )
-        let snapshot = SharedSnapshot(
-            projectID: 42, projectName: "Prod",
-            metrics: [metric], flags: [], capturedAt: Date()
-        )
-        let watch = MetricWatch(
-            id: "w1", metricID: metric.id, title: metric.title,
-            condition: .changesByPercent(10)
-        )
-
-        let evaluation = MetricWatchEvaluator.evaluate(
-            snapshot: snapshot, watches: [watch], breaching: []
-        )
-
-        // Before the fix this produced a local notification reading
-        // "Signup funnel is 750, down 85% from 5,000." — a claim about a
-        // change that never happened, pushed to the Lock Screen.
-        #expect(evaluation.alerts.isEmpty)
-        #expect(evaluation.breaching.isEmpty)
-    }
-
-    /// A threshold watch still works. The fix removes an invented comparison,
-    /// and must not quietly remove the two conditions that never needed one.
-    @Test("a funnel still fires an absolute threshold notification")
-    func funnelStillFiresThresholdAlerts() throws {
-        let metric = try #require(
-            SharedSnapshot.Metric(tile: Self.tile(Self.funnelJSON), dashboardID: 9)
-        )
-        let snapshot = SharedSnapshot(
-            projectID: 42, projectName: "Prod",
-            metrics: [metric], flags: [], capturedAt: Date()
-        )
-        let watch = MetricWatch(
-            id: "w1", metricID: metric.id, title: metric.title,
-            condition: .below(1000)
-        )
-
-        let evaluation = MetricWatchEvaluator.evaluate(
-            snapshot: snapshot, watches: [watch], breaching: []
-        )
-
-        #expect(evaluation.alerts.count == 1)
-        #expect(evaluation.alerts.first?.body.contains("750") == true)
     }
 
     /// The branch the funnel one should have matched all along.

@@ -151,23 +151,20 @@ struct MetricProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: SelectMetricIntent, in context: Context) async -> Timeline<MetricEntry> {
         let now = Date()
+        await WidgetSnapshotRefresh.run(.automaticWidget)
         // Every entry carries the same cached values; only `date` moves, so the
         // "Updated Xm ago" line stays truthful without another provider call.
         // See `WidgetRefresh` for why this is not a 15-minute reload loop.
         let snapshot = WidgetCache.snapshot()
-        // Read once for the whole timeline, alongside the snapshot, for the same
-        // reason: four entries built from one pair of file reads.
-        let watches = WidgetCache.metricWatches()
         return WidgetRefresh.timeline(from: now) { date in
-            entry(for: configuration, at: date, snapshot: snapshot, watches: watches)
+            entry(for: configuration, at: date, snapshot: snapshot)
         }
     }
 
     private func entry(
         for configuration: SelectMetricIntent,
         at date: Date,
-        snapshot: SharedSnapshot? = WidgetCache.snapshot(),
-        watches: [MetricWatch] = WidgetCache.metricWatches()
+        snapshot: SharedSnapshot? = WidgetCache.snapshot()
     ) -> MetricEntry {
         guard let snapshot else { return .empty(at: date) }
         let chosen = configuration.metric?.id
@@ -186,9 +183,7 @@ struct MetricProvider: AppIntentTimelineProvider {
             // and accessory families draw at all. The score decays with `date`, so
             // the four entries in a timeline rank lower as the snapshot behind
             // them ages, without the provider being woken to say so.
-            relevanceScore: SnapshotRelevance.metric(
-                ordered.first, in: snapshot, watches: watches, now: date
-            )
+            relevanceScore: SnapshotRelevance.metric(ordered.first, in: snapshot, now: date)
         )
     }
 }
@@ -223,7 +218,7 @@ struct MetricWidget: Widget {
                 .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Metric")
-        .description("A metric from your last sync. GetHog refreshes it — the widget never calls the API itself.")
+        .description("A metric from PostHog, refreshed directly without opening GetHog.")
         #if os(iOS)
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,

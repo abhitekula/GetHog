@@ -35,6 +35,7 @@ enum SignedWidgetDistributionVerifier {
 
     private static let groupKey = "com.apple.security.application-groups"
     private static let networkKey = "com.apple.security.network.client"
+    private static let keychainKey = "keychain-access-groups"
     private static let extensionRelativePath = "Contents/PlugIns/GetHogWidgets.appex"
 
     /// Finds the exact app product beside an actually loaded UI-test bundle.
@@ -88,31 +89,43 @@ enum SignedWidgetDistributionVerifier {
         let widgetEntitlements = try entitlements(at: widget, runCommand: runCommand)
         let appGroups = groupState(appEntitlements[groupKey])
         let widgetGroups = groupState(widgetEntitlements[groupKey])
-        let parity: Status = appGroups.value != nil && appGroups.value == widgetGroups.value
+        let groupParity: Status = appGroups.value != nil && appGroups.value == widgetGroups.value
+            ? .matching
+            : .mismatched
+        let appKeychain = groupState(appEntitlements[keychainKey])
+        let widgetKeychain = groupState(widgetEntitlements[keychainKey])
+        let keychainParity: Status = appKeychain.value != nil
+            && appKeychain.value == widgetKeychain.value
             ? .matching
             : .mismatched
         let appNetwork: Status = appEntitlements[networkKey] as? Bool == true
             ? .requiredPresent
             : .requiredMissing
-        let widgetNetwork: Status = widgetEntitlements[networkKey] == nil
-            ? .forbiddenAbsent
-            : .forbiddenPresent
+        let widgetNetwork: Status = widgetEntitlements[networkKey] as? Bool == true
+            ? .requiredPresent
+            : .requiredMissing
         let checks: [(String, String, Status)] = [
             ("app", "signature", appSignature ? .signatureValid : .signatureInvalid),
             ("extension", "signature", widgetSignature ? .signatureValid : .signatureInvalid),
             ("app", groupKey, appGroups.status),
             ("extension", groupKey, widgetGroups.status),
-            ("parity", groupKey, parity),
+            ("parity", groupKey, groupParity),
             ("app", networkKey, appNetwork),
             ("extension", networkKey, widgetNetwork),
+            ("app", keychainKey, appKeychain.status),
+            ("extension", keychainKey, widgetKeychain.status),
+            ("parity", keychainKey, keychainParity),
         ]
         let accepted = appSignature
             && widgetSignature
             && appGroups.status == .requiredSinglePresent
             && widgetGroups.status == .requiredSinglePresent
-            && parity == .matching
+            && groupParity == .matching
             && appNetwork == .requiredPresent
-            && widgetNetwork == .forbiddenAbsent
+            && widgetNetwork == .requiredPresent
+            && appKeychain.status == .requiredSinglePresent
+            && widgetKeychain.status == .requiredSinglePresent
+            && keychainParity == .matching
         return Result(
             isAccepted: accepted,
             report: checks.map { "\($0.0).\($0.1): \($0.2.rawValue)" }.joined(separator: "; ")

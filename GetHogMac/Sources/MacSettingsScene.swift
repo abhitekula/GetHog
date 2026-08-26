@@ -9,7 +9,7 @@ enum MacSettingsWindow {
 /// test can check for coverage rather than a layout a screenshot has to.
 enum SettingsSectionID: String, CaseIterable, Hashable {
     case account, project, permissions, apiKey
-    case navigation, alerts
+    case navigation
     case usage, sdkHealth, about
 }
 
@@ -25,7 +25,7 @@ enum MacSettingsPane: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .account: "Account"
         case .display: "Display"
-        case .refresh: "Refresh & Notifications"
+        case .refresh: "Refresh"
         case .advanced: "Advanced"
         }
     }
@@ -43,22 +43,20 @@ enum MacSettingsPane: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .account: [.account, .project, .permissions, .apiKey]
         case .display: [.navigation]
-        case .refresh: [.alerts]
-        case .advanced: [.usage, .sdkHealth, .about]
+        case .refresh: [.usage]
+        case .advanced: [.sdkHealth, .about]
         }
     }
 }
 
-/// The two detail screens shown by the Mac Settings window. Their route is
+/// The detail screen shown by the Mac Settings window. Its route is
 /// state owned by `MacSettingsRoot`, above the dynamic tab content, so leaving
 /// a detail cannot make `TabView` infer another pane.
 enum MacSettingsDestination: Hashable {
-    case metricAlerts
     case about
 
     var pane: MacSettingsPane {
         switch self {
-        case .metricAlerts: .refresh
         case .about: .advanced
         }
     }
@@ -133,8 +131,6 @@ struct MacSettingsRoot: View {
             Divider()
             Group {
                 switch destination {
-                case .metricAlerts:
-                    MetricAlertsView(snapshotStore: MacSharedSnapshotPolicy.store)
                 case .about:
                     AboutView()
                 }
@@ -151,14 +147,6 @@ struct MacSettingsRoot: View {
         case .permissions: SettingsPermissionsSection()
         case .apiKey: SettingsAPIKeySection()
         case .navigation: SettingsNavigationSection()
-        case .alerts:
-            SettingsAlertsSection(
-                snapshotStore: MacSharedSnapshotPolicy.store,
-                openMetricAlerts: {
-                    selectedPane = .refresh
-                    destination = .metricAlerts
-                }
-            )
         case .usage: SettingsUsageSection(quotaStore: quotaStore)
         case .sdkHealth: SettingsSDKHealthSection(store: sdkHealthStore)
         case .about:

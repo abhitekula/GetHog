@@ -24,13 +24,10 @@ struct RateLimitUsageView: View {
                 meter(for: category)
             }
 
-            // The one part of this consumption nobody is present for. Naming its
-            // ceiling is the same honesty the meters above are for: unattended
-            // spending should be the easiest number in the app to find.
-            Text(backgroundCost)
+            Text(ambientRefreshCost)
                 .font(.footnote)
                 .foregroundStyle(Theme.Ink.secondary)
-                .accessibilityLabel("Background refresh. \(backgroundCost)")
+                .accessibilityLabel("Ambient refresh. \(ambientRefreshCost)")
         }
         .padding(.vertical, 4)
         .task { await poll() }
@@ -82,15 +79,27 @@ struct RateLimitUsageView: View {
     /// twelve times is forty-eight, and the total says fifty — and a consumption
     /// figure a reader can catch out is worse than no figure, on the one screen
     /// that exists to be trusted about spending.
-    private var backgroundCost: String {
-        let hours = Int(BackgroundRefreshPolicy.minimumInterval / 3_600)
+    private var ambientRefreshCost: String {
         let quotaHours = Int(SharedSnapshot.QuotaDigest.refreshInterval / 3_600)
+        #if os(macOS)
+        let hours = Int(SnapshotRefreshPolicy.macBackgroundInterval / 3_600)
         return """
-            Background refresh runs at most once every \(hours) hours, and each run \
-            costs \(BackgroundRefreshPolicy.requestsPerRefresh) requests. Quota is \
-            re-read only every \(quotaHours) hours on top of that — \
-            \(BackgroundRefreshPolicy.maximumRequestsPerDay) a day at the very most.
+            While GetHog remains running on this Mac, its system-scheduled refresh runs \
+            at most once every \(hours) hours. A refresh uses four requests, plus quota \
+            when its separate \(quotaHours)-hour cache is due.
             """
+        #elseif os(iOS) || os(visionOS)
+        let minutes = Int(SnapshotRefreshPolicy.automaticWidgetInterval / 60)
+        return """
+            GetHog does not schedule iPhone or iPad background refreshes. A widget may \
+            refresh when WidgetKit asks for a timeline and the snapshot is at least \
+            \(minutes) minutes old; its refresh button always asks immediately. One \
+            coalesced refresh uses four requests, plus quota when its separate \
+            \(quotaHours)-hour cache is due.
+            """
+        #else
+        return "GetHog performs no unattended refresh on this device."
+        #endif
     }
 
     /// Named for what the user sees in the app, not for the endpoint families

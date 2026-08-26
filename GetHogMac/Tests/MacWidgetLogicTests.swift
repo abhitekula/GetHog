@@ -29,6 +29,7 @@ private struct EntitlementCheck: Equatable, Sendable, CustomStringConvertible {
 private struct DistributionEntitlementParity: Equatable, Sendable {
     private static let applicationGroupsKey = "com.apple.security.application-groups"
     private static let networkClientKey = "com.apple.security.network.client"
+    private static let keychainGroupsKey = "keychain-access-groups"
 
     let checks: [EntitlementCheck]
 
@@ -47,6 +48,8 @@ private struct DistributionEntitlementParity: Equatable, Sendable {
     static func inspect(app: [String: Any], extension widget: [String: Any]) -> Self {
         let appGroups = groupState(in: app)
         let widgetGroups = groupState(in: widget)
+        let appKeychainGroups = groupState(in: app, key: keychainGroupsKey)
+        let widgetKeychainGroups = groupState(in: widget, key: keychainGroupsKey)
         return Self(checks: [
             EntitlementCheck(
                 target: "app",
@@ -74,16 +77,39 @@ private struct DistributionEntitlementParity: Equatable, Sendable {
             EntitlementCheck(
                 target: "extension",
                 key: networkClientKey,
-                status: widget[networkClientKey] == nil ? .forbiddenAbsent : .forbiddenPresent
+                status: widget[networkClientKey] as? Bool == true
+                    ? .requiredPresent
+                    : .requiredMissing
+            ),
+            EntitlementCheck(
+                target: "app",
+                key: keychainGroupsKey,
+                status: appKeychainGroups.status
+            ),
+            EntitlementCheck(
+                target: "extension",
+                key: keychainGroupsKey,
+                status: widgetKeychainGroups.status
+            ),
+            EntitlementCheck(
+                target: "parity",
+                key: keychainGroupsKey,
+                status: appKeychainGroups.singleValue != nil
+                    && appKeychainGroups.singleValue == widgetKeychainGroups.singleValue
+                    ? .matching
+                    : .mismatched
             ),
         ])
     }
 
-    private static func groupState(in entitlements: [String: Any]) -> (
+    private static func groupState(
+        in entitlements: [String: Any],
+        key: String = applicationGroupsKey
+    ) -> (
         status: EntitlementCheckStatus,
         singleValue: String?
     ) {
-        guard let raw = entitlements[applicationGroupsKey] else {
+        guard let raw = entitlements[key] else {
             return (.requiredSingleMissing, nil)
         }
         guard let groups = raw as? [String] else {
@@ -109,7 +135,12 @@ private struct DistributionEntitlementParity: Equatable, Sendable {
         ),
         EntitlementCheck(target: "parity", key: applicationGroupsKey, status: .matching),
         EntitlementCheck(target: "app", key: networkClientKey, status: .requiredPresent),
-        EntitlementCheck(target: "extension", key: networkClientKey, status: .forbiddenAbsent),
+        EntitlementCheck(target: "extension", key: networkClientKey, status: .requiredPresent),
+        EntitlementCheck(target: "app", key: keychainGroupsKey, status: .requiredSinglePresent),
+        EntitlementCheck(
+            target: "extension", key: keychainGroupsKey, status: .requiredSinglePresent
+        ),
+        EntitlementCheck(target: "parity", key: keychainGroupsKey, status: .matching),
     ]
 
     static let ownerConflictChecks = [
@@ -125,7 +156,12 @@ private struct DistributionEntitlementParity: Equatable, Sendable {
         ),
         EntitlementCheck(target: "parity", key: applicationGroupsKey, status: .mismatched),
         EntitlementCheck(target: "app", key: networkClientKey, status: .requiredPresent),
-        EntitlementCheck(target: "extension", key: networkClientKey, status: .forbiddenAbsent),
+        EntitlementCheck(target: "extension", key: networkClientKey, status: .requiredPresent),
+        EntitlementCheck(target: "app", key: keychainGroupsKey, status: .requiredSinglePresent),
+        EntitlementCheck(
+            target: "extension", key: keychainGroupsKey, status: .requiredSinglePresent
+        ),
+        EntitlementCheck(target: "parity", key: keychainGroupsKey, status: .matching),
     ]
 }
 
@@ -519,7 +555,7 @@ struct SignedWidgetAcceptanceBuildBoundaryTests {
 @Suite("Mac widget Distribution entitlements")
 struct MacWidgetDistributionEntitlementTests {
 
-    @Test("the app and extension can share one snapshot container without giving the widget network access")
+    @Test("the app and extension share snapshot, network, and credential capabilities")
     func signedSnapshotSharingBoundary() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // Tests
@@ -556,13 +592,17 @@ struct MacWidgetDistributionEntitlementTests {
     func diagnosticsAreValueFree() {
         let appGroup = "fictional-app-group-value"
         let extensionGroup = "fictional-extension-group-value"
+        let keychainGroup = "fictional-keychain-group-value"
         let parity = DistributionEntitlementParity.inspect(
             app: [
                 "com.apple.security.application-groups": [appGroup],
                 "com.apple.security.network.client": true,
+                "keychain-access-groups": [keychainGroup],
             ],
             extension: [
                 "com.apple.security.application-groups": [extensionGroup],
+                "com.apple.security.network.client": true,
+                "keychain-access-groups": [keychainGroup],
             ]
         )
 
@@ -576,19 +616,31 @@ struct MacWidgetDistributionEntitlementTests {
     func ownerConflictSignatureIsExact() {
         let key = "com.apple.security.application-groups"
         let network = "com.apple.security.network.client"
-        let widget: [String: Any] = [key: ["fictional-widget-group"]]
+        let keychain = "keychain-access-groups"
+        let keychainGroup = ["fictional-keychain-group"]
+        let widget: [String: Any] = [
+            key: ["fictional-widget-group"],
+            network: true,
+            keychain: keychainGroup,
+        ]
 
         let empty = DistributionEntitlementParity.inspect(
-            app: [key: [String](), network: true], extension: widget
+            app: [key: [String](), network: true, keychain: keychainGroup], extension: widget
         )
         let missing = DistributionEntitlementParity.inspect(
-            app: [network: true], extension: widget
+            app: [network: true, keychain: keychainGroup], extension: widget
         )
         let wrongType = DistributionEntitlementParity.inspect(
-            app: [key: "fictional-wrong-type", network: true], extension: widget
+            app: [key: "fictional-wrong-type", network: true, keychain: keychainGroup],
+            extension: widget
         )
         let multiple = DistributionEntitlementParity.inspect(
-            app: [key: ["fictional-one", "fictional-two"], network: true], extension: widget
+            app: [
+                key: ["fictional-one", "fictional-two"],
+                network: true,
+                keychain: keychainGroup,
+            ],
+            extension: widget
         )
 
         #expect(empty.isExpectedOwnerConflict)

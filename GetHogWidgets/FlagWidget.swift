@@ -187,13 +187,19 @@ struct FlagProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: SelectFlagIntent, in context: Context) async -> Timeline<FlagEntry> {
-        WidgetRefresh.timeline(from: Date()) { date in
-            entry(for: configuration, at: date)
+        let now = Date()
+        await WidgetSnapshotRefresh.run(.automaticWidget)
+        let snapshot = WidgetCache.snapshot()
+        return WidgetRefresh.timeline(from: now) { date in
+            entry(for: configuration, at: date, snapshot: snapshot)
         }
     }
 
-    private func entry(for configuration: SelectFlagIntent, at date: Date) -> FlagEntry {
-        let snapshot = WidgetCache.snapshot()
+    private func entry(
+        for configuration: SelectFlagIntent,
+        at date: Date,
+        snapshot: SharedSnapshot? = WidgetCache.snapshot()
+    ) -> FlagEntry {
         let allowed = snapshot?.quickToggleFlags ?? []
         let match = configuration.flag.flatMap { chosen in allowed.first { $0.id == chosen.id } } ?? allowed.first
         return FlagEntry(
@@ -217,7 +223,7 @@ struct FlagWidget: Widget {
                 .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Feature Flag")
-        .description("Shows a flag's state and asks GetHog to change it. Only flags you allow quick toggling for appear here.")
+        .description("Shows a PostHog flag and refreshes it without opening GetHog. Only quick-toggle flags appear here.")
         // Home Screen only: an interactive toggle on a Lock Screen accessory
         // would draw a control the user cannot press.
         .supportedFamilies([.systemSmall, .systemMedium])

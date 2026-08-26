@@ -11,7 +11,7 @@ import Testing
 /// daemon this process does not own, and a test that scheduled one would leave
 /// that registration behind. Everything the scheduler would ask is a pure
 /// function in `MacRefreshSchedule`, so the cadence is pinned the way
-/// `BackgroundRefreshPolicy`'s is in the kit.
+/// `SnapshotRefreshPolicy`'s is in the kit.
 ///
 /// The class's registration bookkeeping is exercised in
 /// `MacBackgroundRefreshRegistrationTests` below, through a factory seam that
@@ -23,14 +23,14 @@ struct MacRefreshScheduleTests {
 
     private let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
-    @Test("the activity mirrors the iOS task identifier")
+    @Test("the activity keeps the established snapshot refresh identifier")
     func identifier() {
         #expect(MacBackgroundRefresh.activityIdentifier == "app.gethog.refresh.snapshot")
     }
 
     @Test("the interval is the policy's floor between unattended refreshes")
     func intervalMirrorsPolicy() {
-        #expect(MacRefreshSchedule.interval == BackgroundRefreshPolicy.minimumInterval)
+        #expect(MacRefreshSchedule.interval == SnapshotRefreshPolicy.macBackgroundInterval)
         // Pinned as a number too, so a kit-side change to the budget shows up
         // here as a decision rather than passing silently through the mirror.
         #expect(MacRefreshSchedule.interval == 2 * 60 * 60)
@@ -38,7 +38,7 @@ struct MacRefreshScheduleTests {
 
     @Test("the tolerance is the policy's due tolerance")
     func toleranceMirrorsPolicy() {
-        #expect(MacRefreshSchedule.tolerance == BackgroundRefreshPolicy.dueTolerance)
+        #expect(MacRefreshSchedule.tolerance == SnapshotRefreshPolicy.macBackgroundEarlyTolerance)
         #expect(MacRefreshSchedule.tolerance == 5 * 60)
     }
 
@@ -103,9 +103,9 @@ struct MacRefreshScheduleTests {
 
 // MARK: - Why the wake itself is not driven here
 //
-// `BackgroundRefreshTests` on iOS drives `performBackgroundRefresh` end to end
-// and reads the published snapshot back out of the App Group. The twin of that
-// suite was written for this target and then removed, because in a Mac *Debug*
+// The shared coordinator tests drive publication end to end and read the
+// resulting snapshot back out. A second copy of that suite was considered for
+// this target and then removed, because in a Mac *Debug*
 // test host it cannot measure what it claims to — for reasons that are a fact
 // about the platform rather than about the refresh path:
 //
@@ -131,7 +131,7 @@ struct MacRefreshScheduleTests {
 // it does not mean. `AppModel` now has the seam needed by the Mac shell, but a
 // test-host private directory still cannot prove cross-process publication.
 //
-// The wake path is shared code fully covered by `BackgroundRefreshTests`; what
+// The wake path is shared code fully covered by `SnapshotRefreshCoordinatorTests`; what
 // is Mac-specific is the cadence, and that is entirely above. The Wave 5
 // migration to `appGroupIdentifier(teamIDPrefix:)` is what makes a Mac
 // snapshot cross a process boundary — and what makes this suite worth

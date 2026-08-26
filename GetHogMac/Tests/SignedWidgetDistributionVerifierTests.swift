@@ -28,6 +28,7 @@ struct SignedWidgetDistributionVerifierTests {
         let app = products.appending(path: "GetHogMac.app")
         let widget = app.appending(path: "Contents/PlugIns/GetHogWidgets.appex")
         let group = "fictional-team.group.app.gethog"
+        let keychainGroup = "fictional-team.app.gethog.shared"
 
         let result = try SignedWidgetDistributionVerifier.verify(
             testBundleURL: testBundle,
@@ -40,8 +41,11 @@ struct SignedWidgetDistributionVerifierTests {
                 let entitlements: [String: Any] = target == app.path ? [
                     "com.apple.security.application-groups": [group],
                     "com.apple.security.network.client": true,
+                    "keychain-access-groups": [keychainGroup],
                 ] : [
                     "com.apple.security.application-groups": [group],
+                    "com.apple.security.network.client": true,
+                    "keychain-access-groups": [keychainGroup],
                 ]
                 return .init(
                     status: 0,
@@ -67,6 +71,7 @@ struct SignedWidgetDistributionVerifierTests {
         let widget = app.appending(path: "Contents/PlugIns/GetHogWidgets.appex")
         let appGroup = "fictional-app-group"
         let widgetGroup = "fictional-widget-group"
+        let keychainGroup = "fictional-keychain-group"
 
         let result = try SignedWidgetDistributionVerifier.verify(
             testBundleURL: testBundle,
@@ -78,7 +83,8 @@ struct SignedWidgetDistributionVerifierTests {
                 let isApp = arguments.last == app.path
                 let entitlements: [String: Any] = [
                     "com.apple.security.application-groups": [isApp ? appGroup : widgetGroup],
-                    "com.apple.security.network.client": isApp,
+                    "com.apple.security.network.client": true,
+                    "keychain-access-groups": [keychainGroup],
                 ]
                 return .init(
                     status: 0,

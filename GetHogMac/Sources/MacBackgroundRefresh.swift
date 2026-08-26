@@ -2,14 +2,13 @@ import Foundation
 import GetHogKit
 import os
 
-/// The Mac twin of the iOS `BackgroundRefresh` (excluded from this target):
-/// keeps the shared snapshot from going stale while the app runs.
+/// Keeps the shared snapshot from going stale while the Mac app remains alive.
 ///
 /// macOS has no `BGTaskScheduler`. What it has is
 /// `NSBackgroundActivityScheduler`, which runs repeating work while the process
 /// is alive and lets the system pick the energy-cheap moment. The cadence and
 /// the "is this wake worth spending requests on" decision stay pure and tested
-/// — `BackgroundRefreshPolicy` in the kit, restated for this scheduler by
+/// — `SnapshotRefreshPolicy` in the kit, restated for this scheduler by
 /// `MacRefreshSchedule` below. Everything in this class is the part only the
 /// scheduler can exercise: registration, the deferral handshake, and the hop
 /// onto the main actor.
@@ -17,14 +16,14 @@ import os
 /// Every request a wake spends goes through
 /// `AppModel.performBackgroundRefresh`, hence through the model's own
 /// `RateLimitGovernor` and into `SharedSnapshotStore` — the same single
-/// coalesced fetch as iOS, one dashboard read feeding every ambient surface.
+/// coalesced fetch, one dashboard read feeding every ambient surface.
 /// Nothing here fetches, decides what to fetch, or writes a file itself.
 @MainActor
 final class MacBackgroundRefresh {
 
     /// The app-wide instance. `GetHogMacApp` starts it once the model has
     /// bootstrapped and re-starts it whenever the scene goes active; sign-out
-    /// stops it through `BackgroundRefresh.cancel`. Nothing else constructs one
+    /// stops it through the shared Mac adapter. Nothing else constructs one
     /// except a test, through `init(makeScheduler:)`.
     static let shared = MacBackgroundRefresh()
 
@@ -71,7 +70,7 @@ final class MacBackgroundRefresh {
         activity.interval = MacRefreshSchedule.interval
         // The scheduler's tolerance and the policy's due tolerance are the same
         // number on purpose: any wake the system may legally deliver early is a
-        // wake `BackgroundRefreshPolicy.isDue` will still count as due, so no
+        // wake `SnapshotRefreshPolicy.shouldRefresh` will still count as due, so no
         // granted opportunity is ever turned away over minutes of purity.
         activity.tolerance = MacRefreshSchedule.tolerance
         // Unattended maintenance, not user-initiated work.
@@ -120,19 +119,19 @@ final class MacBackgroundRefresh {
 
 /// The schedule decision, pure and apart from the scheduler that acts on it.
 ///
-/// Restates `BackgroundRefreshPolicy` in the vocabulary
+/// Restates `SnapshotRefreshPolicy` in the vocabulary
 /// `NSBackgroundActivityScheduler` speaks — one function from facts to an
 /// action, so the cadence is testable without registering an activity, exactly
-/// as the iOS cadence is testable without a `BGTaskScheduler`.
+/// without registering a scheduler.
 enum MacRefreshSchedule {
 
     /// The floor between two unattended refreshes — the kit's number, resold
     /// under the name the scheduler configuration reads.
-    static var interval: TimeInterval { BackgroundRefreshPolicy.minimumInterval }
+    static var interval: TimeInterval { SnapshotRefreshPolicy.macBackgroundInterval }
 
     /// How far the system may move a wake, matched to how early a wake may
     /// arrive and still count as due.
-    static var tolerance: TimeInterval { BackgroundRefreshPolicy.dueTolerance }
+    static var tolerance: TimeInterval { SnapshotRefreshPolicy.macBackgroundEarlyTolerance }
 
     /// What one wake should do.
     enum Action: Equatable {
@@ -153,11 +152,13 @@ enum MacRefreshSchedule {
         lastRefreshedAt: Date?,
         now: Date
     ) -> Action {
-        guard BackgroundRefreshPolicy.shouldSchedule(hasCredential: hasCredential) else {
-            return .standDown
-        }
+        guard hasCredential else { return .standDown }
         if systemWantsDeferral { return .deferred }
-        guard BackgroundRefreshPolicy.isDue(lastRefreshedAt: lastRefreshedAt, now: now) else {
+        guard SnapshotRefreshPolicy.shouldRefresh(
+            trigger: .macBackground,
+            capturedAt: lastRefreshedAt,
+            now: now
+        ) else {
             return .standDown
         }
         return .refresh
@@ -166,8 +167,7 @@ enum MacRefreshSchedule {
 
 /// A value the compiler cannot prove is safe to move between isolation
 /// domains, vouched for at the one call site that knows it is. The same shape
-/// the iOS `BackgroundRefresh` declares privately for `BGTask`; that file is
-/// excluded from this target, so the twin carries its own copy.
+/// the scheduler callback hands to an asynchronous task.
 private struct UncheckedSendable<T>: @unchecked Sendable {
     let value: T
 

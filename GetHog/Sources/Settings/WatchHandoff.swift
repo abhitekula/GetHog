@@ -261,8 +261,7 @@ final class WatchHandoffController {
     func send(
         organization: OrganizationSummary?,
         project: Project?,
-        headlineMetricID: String?,
-        watches: [MetricWatch]
+        headlineMetricID: String?
     ) {
         guard let credential = try? credentials.load() else {
             status = .failed("There's no API key on this iPhone to send.")
@@ -283,8 +282,7 @@ final class WatchHandoffController {
             organizationName: organization.name,
             projectID: project.id,
             projectName: project.name,
-            headlineMetricID: headlineMetricID,
-            watches: watches
+            headlineMetricID: headlineMetricID
         )
         guard let data = try? transfer.encoded() else {
             status = .failed("Couldn't package the key for transfer.")
@@ -350,8 +348,7 @@ struct SettingsWatchSection: View {
                         handoff.send(
                             organization: model.selectedOrganization,
                             project: model.selectedProject,
-                            headlineMetricID: headlineMetricID.isEmpty ? nil : headlineMetricID,
-                            watches: SharedSnapshotStore.shared.metricWatches()
+                            headlineMetricID: headlineMetricID.isEmpty ? nil : headlineMetricID
                         )
                     } label: {
                         Label(
@@ -366,7 +363,7 @@ struct SettingsWatchSection: View {
                     SectionLabel(text: "Apple Watch", systemImage: "applewatch")
                 } footer: {
                     Text(
-                        "Sends this iPhone's key, the current organization and project, and your thresholds to GetHog on your Apple Watch, where the key is stored in that watch's Keychain, device-only. Until the watch collects it, iOS holds the queued copy in WatchConnectivity's own on-disk queue — outside the Keychain, for a window this app doesn't control. Sending again cancels the copy that was waiting and replaces it, and so does signing out."
+                        "Sends this iPhone's key and current organization and project to GetHog on your Apple Watch, where the key is stored in that watch's Keychain, device-only. Until the watch collects it, iOS holds the queued copy in WatchConnectivity's own on-disk queue — outside the Keychain, for a window this app doesn't control. Sending again cancels the copy that was waiting and replaces it, and so does signing out."
                     )
                 }
             }

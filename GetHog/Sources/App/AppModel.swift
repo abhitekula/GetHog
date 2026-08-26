@@ -125,6 +125,7 @@ final class AppModel {
     let cache = ResponseCache()
     private let governor = RateLimitGovernor()
     private let snapshotStore: SharedSnapshotStore
+    private let snapshotRefresher: SnapshotRefreshCoordinator
     private var activeRegion: PostHogRegion?
     /// Changes whenever session state that authorizes snapshot side effects
     /// changes. A publication retains this alongside its full scope and must
@@ -190,6 +191,7 @@ final class AppModel {
         self.baseTransport = transport
         self.transport = transport
         self.snapshotStore = snapshotStore
+        self.snapshotRefresher = SnapshotRefreshCoordinator(store: snapshotStore)
     }
 
     // MARK: - Bootstrap
@@ -478,21 +480,9 @@ final class AppModel {
 
     /// Publishes the values widgets and Control Center read.
     ///
-    /// Extensions never call the API themselves — the rate-limit budget is
-    /// organisation-wide and shared with the user's own integrations, so N
-    /// widgets each fetching would multiply request volume against a budget that
-    /// isn't ours. Everything they show is computed here, once, and written to
-    /// the App Group container.
-    ///
-    /// Returns whether anything was actually fetched, which is what a background
-    /// wake reports back to `BGTaskScheduler`.
-    ///
-    /// **Cost.** Four requests, plus a fifth at most twice a day:
-    /// the dashboard list, the pinned dashboard, the feature flags, the ingestion
-    /// warnings, and — on its own twelve-hour clock — the quota limits. Every one
-    /// is `.crud`, so none of them touches the scarce analytics budget. See
-    /// `SnapshotHealth.swift` for why the last two are worth what they cost, and
-    /// `BackgroundRefreshPolicy` for what a day of that adds up to.
+    /// Foreground publication and out-of-process widget refreshes share the same
+    /// coordinator and App Group lease, so they cannot race to publish different
+    /// snapshots. Opening the app remains an unconditional refresh.
     @discardableResult
     func publishWidgetSnapshot() async -> Bool {
         // The widget cache renders the user's real workspace on their home
@@ -513,6 +503,7 @@ final class AppModel {
             projectID: project.id,
             projectName: project.name,
             projectRegion: activeRegion,
+            trigger: .foreground,
             context: context
         )
     }
@@ -549,173 +540,55 @@ final class AppModel {
         projectID: Int,
         projectName: String,
         projectRegion: PostHogRegion,
+        trigger: SnapshotRefreshTrigger,
+        now: Date = Date(),
         context: SnapshotPublicationContext
     ) async -> Bool {
         guard snapshotPublicationIsCurrent(context) else { return false }
-        var metrics: [SharedSnapshot.Metric] = []
-        var metricSource: SharedSnapshot.MetricSource = .unknown
-        var flags: [SharedSnapshot.Flag] = []
-        var reachedTheAPI = false
-
-        // Read once, for three separate jobs: the guard below, and carrying both
-        // health sections forward when their own fetch is skipped or refused.
-        let previous = snapshotStore.loadOrNil()
-        // Project ids are only meaningful inside one PostHog installation. A
-        // same-numbered project on another region is a different security
-        // scope, just as surely as a different id is.
-        let carried = previous?.projectID == projectID
-            && previous?.projectRegion == projectRegion ? previous : nil
-        if previous != nil, carried == nil {
-            clearPublishedProjectData()
-        }
-
-        // Reuse the dashboard the user pinned; its tiles already carry results,
-        // so this costs one request rather than one per metric.
-        let dashboardSummaries: Page<DashboardSummary>? = try? await client.send(
-            PostHogAPI.dashboards(projectID: projectID, limit: 50)
-        )
-        guard snapshotPublicationIsCurrent(context) else { return false }
-        if let summaries = dashboardSummaries {
-            reachedTheAPI = true
-            // The pinned dashboard is already being resolved for the widgets, so
-            // handing it to the home screen menu as well costs no request. Only
-            // a genuinely pinned one is recorded — the fallback below is "the
-            // first dashboard", which is not the same claim.
-            if let pinned = summaries.results.first(where: \.pinned) {
-                QuickActions.recordPinnedDashboard(
-                    id: pinned.id,
-                    title: pinned.title,
-                    projectID: projectID
-                )
-                // The project this publish is for, not the selected one: a
-                // background wake runs with no session, and rebuilding the menu
-                // for a nil project would empty the home screen instead.
-                QuickActions.refresh(projectID: projectID)
-            }
-            let pinnedDashboard = summaries.results.first(where: \.pinned)
-            if let dashboardSummary = pinnedDashboard ?? summaries.results.first {
-                metricSource = pinnedDashboard == nil ? .deterministicFallback : .pinnedDashboard
-                let dashboard: Dashboard? = try? await client.send(
-                    PostHogAPI.dashboard(projectID: projectID, dashboardID: dashboardSummary.id)
-                )
-                guard snapshotPublicationIsCurrent(context) else { return false }
-                if let dashboard {
-                    metrics = dashboard.tiles.compactMap {
-                        SharedSnapshot.Metric(tile: $0, dashboardID: dashboardSummary.id)
-                    }
-                }
-            }
-        }
-
-        let flagPage: Page<FeatureFlag>? = try? await client.send(
-            PostHogAPI.featureFlags(projectID: projectID, limit: 100)
-        )
-        guard snapshotPublicationIsCurrent(context) else { return false }
-        if let page = flagPage {
-            reachedTheAPI = true
-            let quickToggleScope = FlagQuickToggle.Scope(
-                projectID: projectID,
-                region: projectRegion
-            )
-            flags = page.results
-                .filter { !$0.deleted && !$0.archived }
-                .map {
-                    SharedSnapshot.Flag(
-                        id: $0.id,
-                        key: $0.key,
-                        active: $0.active,
-                        // Only an explicit in-app opt-in exposes a flag to
-                        // Control Center or an interactive widget.
-                        quickToggleAllowed: FlagQuickToggle.isAllowed(
-                            flagID: $0.id,
-                            scope: quickToggleScope
-                        )
-                    )
-                }
-        }
-
-        let now = Date()
-
-        // Ingestion warnings. One request for the whole section: PostHog
-        // pre-aggregates severity, a count and a sparkline per row, so there is
-        // nothing to follow up and nothing to roll up here.
-        //
-        // Seven days, matching the Ingestion screen's own default — a widget
-        // that disagreed with the screen it sends you to would be worse than no
-        // widget. The response is a bare JSON array, not a `Page`.
-        var ingestion = carried?.ingestion
-        let ingestionData = try? await client.data(
-            for: PostHogAPI.ingestionWarnings(projectID: projectID, window: Self.snapshotIngestionWindow)
-        )
-        guard snapshotPublicationIsCurrent(context) else { return false }
-        if let ingestionData,
-           let warnings = try? IngestionWarning.decodeList(from: ingestionData) {
-            reachedTheAPI = true
-            ingestion = SharedSnapshot.IngestionDigest(
-                warnings: warnings, window: Self.snapshotIngestionWindow, capturedAt: now
-            )
-        }
-        // A refused or unreachable request leaves the previous digest in place
-        // rather than blanking it. The digest carries its own capture time, so
-        // the widget states that age instead of inheriting the snapshot's — an
-        // old warning count labelled as old beats no answer at all.
-
-        // Quota, on its own twelve-hour clock. A monthly allowance does not move
-        // between two-hourly wakes, and this is a request against somebody's
-        // production budget, so it is carried forward until it is genuinely due.
-        var quota = carried?.quota
-        if SharedSnapshot.QuotaDigest.isDue(previous: quota, now: now) {
-            let limits: QuotaLimits? = try? await client.send(
-                PostHogAPI.quotaLimits(projectID: projectID)
-            )
-            guard snapshotPublicationIsCurrent(context) else { return false }
-            if let limits {
-                reachedTheAPI = true
-                quota = SharedSnapshot.QuotaDigest(limits, capturedAt: now)
-            }
-        }
-
-        // A wake that found no network must not overwrite a good snapshot with
-        // an empty one: the widget would go blank and claim to be current,
-        // which is worse than showing older numbers with an honest age on them.
-        guard reachedTheAPI || previous == nil else { return false }
-        guard snapshotPublicationIsCurrent(context) else { return false }
-
-        let snapshot = SharedSnapshot(
+        let refreshScope = SnapshotRefreshScope(
             projectID: projectID,
             projectName: projectName,
-            metrics: metrics,
-            metricSource: metricSource,
-            flags: flags,
-            ingestion: ingestion,
-            quota: quota,
-            projectRegion: projectRegion,
-            authSessionID: context.authority.authSessionID,
-            capturedAt: now
+            region: projectRegion,
+            authSessionID: context.authority.authSessionID
         )
-        try? snapshotStore.write(snapshot)
-        #if !os(tvOS)
-        // Every publish evaluates, foreground included. A background wake is the
-        // usual trigger, but a user who opens the app and watches a metric
-        // recover would otherwise leave its watch latched, and the next real
-        // crossing would pass in silence.
-        //
-        // Alerts/ is not compiled into the tvOS target at all: the platform
-        // cannot present the notification an evaluation exists to send
-        // (`UNMutableNotificationContent`'s title, body, sound and thread
-        // fields are all unavailable there), so evaluating would latch state
-        // for a delivery that can never happen.
-        guard snapshotPublicationIsCurrent(context) else { return false }
-        await MetricAlertDelivery.evaluate(snapshot: snapshot, store: snapshotStore)
-        #endif
-        guard snapshotPublicationIsCurrent(context) else { return false }
-        #if canImport(WidgetKit)
-        WidgetCenter.shared.reloadAllTimelines()
-        #endif
-        // tvOS has no WidgetKit to reload. Its Top Shelf reads the snapshot
-        // file the line above this block just wrote, so the write is the
-        // whole of the hand-off there.
-        return reachedTheAPI
+        let quickToggleScope = FlagQuickToggle.Scope(
+            projectID: projectID,
+            region: projectRegion
+        )
+        let result = await snapshotRefresher.refresh(
+            trigger: trigger,
+            client: client,
+            scope: refreshScope,
+            now: now,
+            quickToggleAllowed: { flagID in
+                FlagQuickToggle.isAllowed(flagID: flagID, scope: quickToggleScope)
+            },
+            isAuthorized: { [weak self] in
+                guard let self else { return false }
+                return await self.snapshotPublicationIsCurrent(context)
+            }
+        )
+
+        switch result {
+        case .refreshed(_, let pinnedDashboard):
+            guard snapshotPublicationIsCurrent(context) else { return false }
+            if let pinnedDashboard {
+                QuickActions.recordPinnedDashboard(
+                    id: pinnedDashboard.id,
+                    title: pinnedDashboard.title,
+                    projectID: projectID
+                )
+                QuickActions.refresh(projectID: projectID)
+            }
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+            return true
+        case .current, .coalesced:
+            return true
+        case .failed, .superseded:
+            return false
+        }
     }
 
     // MARK: - Background refresh
@@ -729,18 +602,11 @@ final class AppModel {
     /// no separate bookkeeping that could disagree with it.
     var lastSnapshotDate: Date? { snapshotStore.loadOrNil()?.capturedAt }
 
-    /// One coalesced refresh for a background wake.
+    /// One coalesced refresh for the retained Mac background scheduler.
     ///
-    /// *One* refresh per wake, not one per widget: a single dashboard fetch
-    /// feeds every metric the extensions render, exactly as it does in the
-    /// foreground, and everything still passes the rate-limit governor.
-    ///
-    /// A background launch is a fresh process with no session, and rebuilding
-    /// one the way `bootstrap()` does would cost an identity request plus four
-    /// scope probes before the first useful byte. None of that tells a wake
-    /// anything: the last snapshot already names the project, so the client is
-    /// rebuilt from the stored credential alone and the wake costs exactly the
-    /// three requests the refresh needs.
+    /// A background launch is a fresh process with no session. The last
+    /// snapshot identifies the project, so this rebuilds only the scoped API
+    /// client needed by the shared coordinator.
     func performBackgroundRefresh(now: Date = Date()) async -> Bool {
         guard !isRuntimeDemo else { return false }
         let previous = snapshotStore.loadOrNil()
@@ -771,17 +637,28 @@ final class AppModel {
             clearPublishedProjectData()
         }
 
-        let lastRefreshedAt = previous?.capturedAt
-
-        // The app may have been in the foreground minutes ago and published a
-        // snapshot itself. Then this wake has nothing to add, and the cheapest
-        // correct thing it can do is nothing.
-        guard BackgroundRefreshPolicy.isDue(lastRefreshedAt: lastRefreshedAt, now: now) else {
+        guard SnapshotRefreshPolicy.shouldRefresh(
+            trigger: .macBackground,
+            capturedAt: previous?.capturedAt,
+            now: now
+        ) else {
             return !projectChanged
         }
 
-        if client != nil, selectedProject != nil, activeRegion != nil {
-            return await publishWidgetSnapshot()
+        if let client, let selectedProject, let activeRegion, let scope = flagWriteScope {
+            let context = SnapshotPublicationContext(
+                generation: snapshotPublicationGeneration,
+                authority: .live(scope)
+            )
+            return await publish(
+                using: client,
+                projectID: selectedProject.id,
+                projectName: selectedProject.name,
+                projectRegion: activeRegion,
+                trigger: .macBackground,
+                now: now,
+                context: context
+            )
         }
 
         guard let credential = storedCredential,
@@ -817,6 +694,8 @@ final class AppModel {
             projectID: projectID,
             projectName: projectName,
             projectRegion: credential.region,
+            trigger: .macBackground,
+            now: now,
             context: context
         )
     }
@@ -827,7 +706,7 @@ final class AppModel {
     /// current but would miss a problem that started three days ago and never
     /// stopped, and — more importantly — a widget that reported a different
     /// number from the screen it opens would make both of them untrustworthy.
-    static let snapshotIngestionWindow: IngestionWarningWindow = .sevenDays
+    static let snapshotIngestionWindow = SnapshotRefreshCoordinator.ingestionWindow
 
     /// The out-of-process widget and menu-bar hand-off owns the same feature-
     /// flag mutation as the on-screen controller. Keep its unnamed-403 fallback
@@ -942,9 +821,11 @@ final class AppModel {
         transport = baseTransport
         isRuntimeDemo = false
         try? store.clear()
-        // A pending wake would otherwise launch the app in the background with
-        // nothing to authenticate as, teaching iOS that its requests are futile.
+        // The retained Mac scheduler must stop with the credential. iOS has no
+        // app-owned background scheduler; widgets refresh independently.
+        #if os(macOS)
         BackgroundRefresh.cancel()
+        #endif
         // Dashboard and flag names are project data — they name a customer's
         // business — and must not survive on the home screen past the credential
         // that could read them. A runtime demo has no credential to revoke and

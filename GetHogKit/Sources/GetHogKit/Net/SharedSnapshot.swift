@@ -654,8 +654,9 @@ public struct SharedSnapshotStore: Sendable {
     private static let snapshotFileName = "snapshot.json"
     private static let pendingFlagFileName = "pending-flag.json"
     private static let pendingOpenFileName = "pending-open.json"
-    private static let metricWatchesFileName = "metric-watches.json"
-    private static let breachingWatchIDsFileName = "metric-watch-breaches.json"
+    private static let legacyMetricWatchesFileName = "metric-watches.json"
+    private static let legacyMetricWatchBreachesFileName = "metric-watch-breaches.json"
+    private static let legacyWatchDemoMarkerFileName = "watch-demo-seeded-watches.json"
 
     public let directory: URL
 
@@ -667,6 +668,7 @@ public struct SharedSnapshotStore: Sendable {
     public init(directory: URL, isSharedContainer: Bool = false) {
         self.directory = directory
         self.isSharedContainer = isSharedContainer
+        clearLegacyMetricAlertData()
     }
 
     /// The store both processes use in production, on every platform.
@@ -750,10 +752,16 @@ public struct SharedSnapshotStore: Sendable {
 
     public var pendingOpenURL: URL { directory.appendingPathComponent(Self.pendingOpenFileName) }
 
-    public var metricWatchesURL: URL { directory.appendingPathComponent(Self.metricWatchesFileName) }
+    private var legacyMetricWatchesURL: URL {
+        directory.appendingPathComponent(Self.legacyMetricWatchesFileName)
+    }
 
-    public var breachingWatchIDsURL: URL {
-        directory.appendingPathComponent(Self.breachingWatchIDsFileName)
+    private var legacyMetricWatchBreachesURL: URL {
+        directory.appendingPathComponent(Self.legacyMetricWatchBreachesFileName)
+    }
+
+    private var legacyWatchDemoMarkerURL: URL {
+        directory.appendingPathComponent(Self.legacyWatchDemoMarkerFileName)
     }
 
     private static let encoder: JSONEncoder = {
@@ -836,52 +844,27 @@ public struct SharedSnapshotStore: Sendable {
         try? FileManager.default.removeItem(at: pendingOpenURL)
     }
 
-    // MARK: Metric watches
-
-    /// Beside the snapshot rather than in `UserDefaults`, for the same reason
-    /// the snapshot is: a future notification-service or widget extension can
-    /// read the user's watches without the app being running, and the file
-    /// format is then the whole contract between the two processes.
-    public func writeMetricWatches(_ watches: [MetricWatch]) throws {
-        try writeJSON(watches, to: metricWatchesURL)
-    }
-
-    /// Non-throwing: a background wake has nowhere to report a decoding failure,
-    /// and a corrupt watch list must not be able to stop the snapshot itself
-    /// from being published.
-    public func metricWatches() -> [MetricWatch] {
-        (try? readJSON([MetricWatch].self, from: metricWatchesURL)) ?? []
-    }
-
-    /// The latch that stops a two-hourly wake re-notifying about one bad number.
-    ///
-    /// Kept in its own file, as the two pending-write records are: editing a
-    /// watch rewrites the list, and folding the latch into the same file would
-    /// make every edit a chance to lose it.
-    public func writeBreachingWatchIDs(_ ids: Set<String>) throws {
-        try writeJSON(ids, to: breachingWatchIDsURL)
-    }
-
-    public func breachingWatchIDs() -> Set<String> {
-        (try? readJSON(Set<String>.self, from: breachingWatchIDsURL)) ?? []
-    }
-
-    public func clearBreachingWatchIDs() {
-        try? FileManager.default.removeItem(at: breachingWatchIDsURL)
+    /// One-time migration cleanup for builds that previously stored local metric
+    /// thresholds and their notification latch beside the snapshot.
+    private func clearLegacyMetricAlertData() {
+        try? FileManager.default.removeItem(at: legacyMetricWatchesURL)
+        try? FileManager.default.removeItem(at: legacyMetricWatchBreachesURL)
+        try? FileManager.default.removeItem(at: legacyWatchDemoMarkerURL)
     }
 
     /// Removes every record whose meaning belongs to the selected project.
     ///
     /// These files are deliberately separate for atomic hand-offs, but their
-    /// security boundary is one unit. Keeping a pending flag id, metric watch,
-    /// or breach latch while replacing the snapshot can apply one customer's
-    /// intent to another project that happens to reuse the same numeric ids.
+    /// security boundary is one unit. Keeping a pending id while replacing the
+    /// snapshot can apply one customer's intent to another project that happens
+    /// to reuse the same numeric ids.
     public func clearProjectData() {
         clearSnapshot()
         clearPendingFlagWrite()
         clearPendingOpen()
-        try? FileManager.default.removeItem(at: metricWatchesURL)
-        clearBreachingWatchIDs()
+        clearSnapshotRefreshStatus()
+        SnapshotRefreshLeaseStore(directory: directory).releaseCurrentLease()
+        clearLegacyMetricAlertData()
     }
 
     /// Strict variant for boundaries that must prove no previous project's
@@ -902,8 +885,11 @@ public struct SharedSnapshotStore: Sendable {
             ("snapshot", fileURL),
             ("pending-flag", pendingFlagURL),
             ("pending-open", pendingOpenURL),
-            ("metric-watches", metricWatchesURL),
-            ("metric-watch-breaches", breachingWatchIDsURL),
+            ("snapshot-refresh-status", snapshotRefreshStatusURL),
+            ("snapshot-refresh-lease", SnapshotRefreshLeaseStore(directory: directory).fileURL),
+            ("legacy-metric-watches", legacyMetricWatchesURL),
+            ("legacy-metric-watch-breaches", legacyMetricWatchBreachesURL),
+            ("legacy-watch-demo-marker", legacyWatchDemoMarkerURL),
         ]
         var failures: [ProjectDataClearError.Failure] = []
         var snapshotRemoved = false

@@ -95,14 +95,10 @@ private struct MacDebugFlagWidget: Widget {
 /// not seamed. The Lock Screen accessory families are gone for the same kind of
 /// reason: the SDK marks every one of them `@available(macOS, unavailable)`.
 ///
-/// Everything here renders from the snapshot the app writes to the App Group
-/// container. No surface in this process calls the PostHog API: rate limits are
-/// organisation-wide and shared with the user's own integrations, so N widgets
-/// fetching independently would spend a budget that isn't ours, from a process
-/// the user never launched. The entitlements make that structural rather than
-/// merely intended — this target carries no `com.apple.security.network.client`
-/// at all. See `WidgetCache`: the rule and its consequences are identical on
-/// every platform that grows a widget.
+/// Everything renders from the shared snapshot. A signed Release extension may
+/// refresh that file directly through `WidgetSnapshotRefresh`; its App Group
+/// lease coalesces simultaneous providers. Teamless Debug has neither shared
+/// storage nor network access and registers the neutral variants above.
 @main
 struct GetHogMacWidgetBundle: WidgetBundle {
 

@@ -14,8 +14,7 @@ struct WatchHandoffTests {
         controller.send(
             organization: organization(),
             project: try project(),
-            headlineMetricID: "720101",
-            watches: []
+            headlineMetricID: "720101"
         )
 
         let transfer = try decodedTransfer(from: sender)
@@ -29,44 +28,13 @@ struct WatchHandoffTests {
         #expect(transfer.version == WatchKeyTransfer.currentVersion)
     }
 
-    @Test("the payload carries every threshold through its wire form")
-    func payloadCarriesEveryThreshold() throws {
-        let (controller, sender, _) = makeController()
-        let watches = [
-            MetricWatch(id: "watch-1", metricID: "720101", title: "Signups", condition: .above(40)),
-            MetricWatch(id: "watch-2", metricID: "720102", title: "Errors", condition: .below(2)),
-            MetricWatch(id: "watch-3", metricID: "720103", title: "Revenue", condition: .changesByPercent(10)),
-        ]
-
-        controller.send(
-            organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: watches
-        )
-
-        let transfer = try decodedTransfer(from: sender)
-        #expect(transfer.watches.count == 3)
-        #expect(transfer.watches[1].condition == .below(2))
-    }
-
-    @Test("the wire never claims threshold degradation")
-    func theWireNeverClaimsDegradation() throws {
-        let (controller, sender, _) = makeController()
-
-        controller.send(
-            organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
-        )
-
-        #expect(try decodedTransfer(from: sender).watchesDegraded == false)
-    }
-
     @Test("the queued dictionary is shaped the way the watch reads")
     func theQueuedDictionaryIsShapedTheWayTheWatchReads() throws {
         let (controller, sender, _) = makeController()
 
         controller.send(
             organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         let payload = try queuedPayload(from: sender)
@@ -134,7 +102,7 @@ struct WatchHandoffTests {
 
         controller.send(
             organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         #expect(sender.calls.count == 2)
@@ -153,14 +121,14 @@ struct WatchHandoffTests {
 
         controller.send(
             organization: organization(), project: project,
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
         #expect(controller.status == .queued)
         #expect(controller.canSend)
         try credentials.save(StoredCredential(key: "test-key-0002", region: .euCloud))
         controller.send(
             organization: organization(), project: project,
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         #expect(sender.calls.count == 4)
@@ -179,14 +147,14 @@ struct WatchHandoffTests {
 
         controller.send(
             organization: organization(), project: project,
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
         let canceledID = try #require(sender.latestQueuedID)
 
         try credentials.save(StoredCredential(key: "test-key-0002", region: .euCloud))
         controller.send(
             organization: organization(), project: project,
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
         let replacementID = try #require(sender.latestQueuedID)
         #expect(replacementID != canceledID)
@@ -210,7 +178,7 @@ struct WatchHandoffTests {
 
         controller.send(
             organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         #expect(sender.calls.isEmpty)
@@ -227,7 +195,7 @@ struct WatchHandoffTests {
 
         controller.send(
             organization: organization(), project: nil,
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         #expect(sender.calls.isEmpty)
@@ -244,7 +212,7 @@ struct WatchHandoffTests {
 
         controller.send(
             organization: nil, project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         #expect(sender.calls.isEmpty)
@@ -261,7 +229,7 @@ struct WatchHandoffTests {
         controller.start()
         controller.send(
             organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         sender.finishLatest(failure: nil)
@@ -279,7 +247,7 @@ struct WatchHandoffTests {
         controller.start()
         controller.send(
             organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
 
         sender.finishLatest(failure: "The watch could not receive it.")
@@ -334,7 +302,7 @@ struct WatchHandoffTests {
         var statuses: [WatchHandoffController.Status] = [controller.status]
         controller.send(
             organization: organization(), project: try project(),
-            headlineMetricID: nil, watches: []
+            headlineMetricID: nil
         )
         let transferID = try #require(sender.latestQueuedID)
         statuses.append(controller.status)

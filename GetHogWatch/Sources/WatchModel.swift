@@ -14,12 +14,6 @@ enum WatchSettings {
     static let organizationIDKey = "watchOrganizationID"
     static let organizationNameKey = "watchOrganizationName"
     static let projectNameKey = "watchProjectName"
-    /// Set when the last hand-off carried a watch list this build could not
-    /// read — a phone running a newer GetHog than the wrist. The key still
-    /// landed; the thresholds did not, and the Health page has to say so
-    /// rather than draw the healthy-looking empty state that would otherwise
-    /// be indistinguishable from "you have no watches".
-    static let watchesDegradedKey = "watchThresholdsDegraded"
 }
 
 // MARK: - Health
@@ -28,63 +22,19 @@ enum WatchSettings {
 /// clock, a keychain, or a network.
 struct WatchHealth: Equatable, Sendable {
 
-    struct WatchRow: Equatable, Identifiable, Sendable {
-        let id: String
-        let title: String
-        let summary: String
-        let isFiring: Bool
-    }
-
     struct ErrorPulse: Equatable, Sendable {
         let activeCount: Int
         let topIssueName: String?
         let topOccurrences: Double
     }
 
-    let rows: [WatchRow]
     /// `nil` means **not checked**, which is a different claim from "healthy"
     /// and must never render as one.
     let errorPulse: ErrorPulse?
 
-    static let empty = WatchHealth(rows: [], errorPulse: nil)
+    static let empty = WatchHealth(errorPulse: nil)
 
-    var firingCount: Int { rows.count(where: \.isFiring) }
-
-    /// Evaluates the user's watches against the snapshot with the kit's own
-    /// evaluator, so firing/quiet on the wrist is the same verdict the phone's
-    /// notifications are built from — and costs **no request at all**, because
-    /// the snapshot is already in hand.
-    ///
-    /// Returns the latch to persist alongside the health, which is the same
-    /// anti-spam contract `SharedSnapshotStore.writeBreachingWatchIDs` holds:
-    /// a watch leaves the set only when its metric is *seen* to be back inside
-    /// the threshold, never because it was missing.
-    static func derive(
-        snapshot: SharedSnapshot?,
-        watches: [MetricWatch],
-        previouslyBreaching: Set<String>,
-        issues: [ErrorIssue]?
-    ) -> (health: WatchHealth, breaching: Set<String>) {
-        var rows: [WatchRow] = []
-        var breaching = previouslyBreaching
-        if let snapshot {
-            breaching = MetricWatchEvaluator.evaluate(
-                snapshot: snapshot,
-                watches: watches,
-                breaching: previouslyBreaching
-            ).breaching
-        }
-        for watch in watches where watch.isEnabled {
-            rows.append(WatchRow(
-                id: watch.id,
-                // The current metric's name when the snapshot has it, the
-                // watch's saved title when it does not — the same rule the
-                // kit's evaluator applies to a notification title.
-                title: snapshot?.metric(id: watch.metricID)?.title ?? watch.title,
-                summary: watch.condition.summary,
-                isFiring: breaching.contains(watch.id)
-            ))
-        }
+    static func derive(issues: [ErrorIssue]?) -> WatchHealth {
         let pulse = issues.map { issues -> ErrorPulse in
             let active = issues.filter { $0.status == "active" }
             let top = active.max { $0.occurrences < $1.occurrences }
@@ -94,7 +44,7 @@ struct WatchHealth: Equatable, Sendable {
                 topOccurrences: top?.occurrences ?? 0
             )
         }
-        return (WatchHealth(rows: rows, errorPulse: pulse), breaching)
+        return WatchHealth(errorPulse: pulse)
     }
 }
 
@@ -125,8 +75,6 @@ struct WatchHandoff: Sendable, Equatable {
     let organizationName: String?
     let projectName: String?
     let headlineMetricID: String?
-    let watches: [MetricWatch]
-    let watchesDegraded: Bool
 
     init(
         credential: StoredCredential?,
@@ -135,9 +83,7 @@ struct WatchHandoff: Sendable, Equatable {
         organizationID: String? = nil,
         organizationName: String? = nil,
         projectName: String?,
-        headlineMetricID: String?,
-        watches: [MetricWatch],
-        watchesDegraded: Bool
+        headlineMetricID: String?
     ) {
         self.credential = credential
         self.credentialSource = credentialSource
@@ -146,8 +92,6 @@ struct WatchHandoff: Sendable, Equatable {
         self.organizationName = organizationName
         self.projectName = projectName
         self.headlineMetricID = headlineMetricID
-        self.watches = watches
-        self.watchesDegraded = watchesDegraded
     }
 
     /// What the three stores say right now.
@@ -184,9 +128,7 @@ struct WatchHandoff: Sendable, Equatable {
                 organizationID: defaults.string(forKey: WatchSettings.organizationIDKey),
                 organizationName: defaults.string(forKey: WatchSettings.organizationNameKey),
                 projectName: defaults.string(forKey: WatchSettings.projectNameKey),
-                headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey),
-                watches: snapshots.metricWatches(),
-                watchesDegraded: defaults.bool(forKey: WatchSettings.watchesDegradedKey)
+                headlineMetricID: defaults.string(forKey: WatchSettings.headlineMetricKey)
             )
         }
     }
@@ -514,13 +456,8 @@ final class WatchModel {
     /// this process happens to still be holding.
     private var renders: [String: InsightRenderModel] = [:]
 
-    /// All five change when a hand-off arrives while the app is running, so
-    /// none of them can be `let`. See `adopt(_:)`.
+    /// Changes when a hand-off arrives while the app is running.
     private(set) var headlineMetricID: String?
-    /// True when the phone's last hand-off carried thresholds this build could
-    /// not decode. See `WatchSettings.watchesDegradedKey`; `watches` is then
-    /// empty for a reason the user can act on, and the Health page names it.
-    private(set) var watchesDegraded: Bool
     /// Confirms device ownership before a flag write. Injected: live is the
     /// `LAContext` gate below; demo and tests substitute their own verdict, so
     /// no test has to satisfy a passcode prompt.
@@ -549,7 +486,6 @@ final class WatchModel {
     private var projectID: Int?
     private var projectRegion: PostHogRegion?
     private var projectName: String
-    private var watches: [MetricWatch]
     private let transport: any HTTPTransport
     private let store: SharedSnapshotStore
     private let credentialStore: (any CredentialStoring)?
@@ -576,7 +512,6 @@ final class WatchModel {
         let snapshot: SharedSnapshot?
         let flagsReceipt: WatchFlagsReceipt?
         let activity: ActivityFeed?
-        let breachingWatchIDs: Set<String>
     }
 
     var canRetryRefresh: Bool {
@@ -591,7 +526,6 @@ final class WatchModel {
         credential: StoredCredential?,
         projectName: String?,
         headlineMetricID: String?,
-        watches: [MetricWatch],
         transport: any HTTPTransport,
         store: SharedSnapshotStore,
         credentialStore: (any CredentialStoring)? = nil,
@@ -599,7 +533,6 @@ final class WatchModel {
         credentialRevision: UInt64? = nil,
         mutationCoordinator: WatchCredentialMutationCoordinator = .init(),
         authenticate: @escaping @Sendable (String) async -> Bool,
-        watchesDegraded: Bool = false,
         snapshotDidChange: @escaping () -> Void = { WatchRefresh.snapshotDidPublish() },
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -609,7 +542,6 @@ final class WatchModel {
         self.projectRegion = credential?.region
         self.projectName = projectName ?? "PostHog"
         self.headlineMetricID = headlineMetricID
-        self.watches = watches
         self.transport = transport
         self.store = store
         self.credentialStore = credentialStore
@@ -619,7 +551,6 @@ final class WatchModel {
             ?? mutationCoordinator.currentRevision
         self.snapshotDidChange = snapshotDidChange
         self.authenticate = authenticate
-        self.watchesDegraded = watchesDegraded
         self.now = now
         self.refreshGuidance = nil
         self.refreshFailure = nil
@@ -632,7 +563,6 @@ final class WatchModel {
         let stored = store.loadOrNil()
         let storedFlagsReceipt = WatchFlagsReceipt.read(from: store)
         let storedActivity = WatchActivity.read(from: store)
-        let storedBreaches = store.breachingWatchIDs()
         let isAwaitingProjectVerification = credential != nil && credential?.projectID == nil
         let carried: SharedSnapshot?
         if let stored,
@@ -655,7 +585,6 @@ final class WatchModel {
         let hasStoredProjectData = stored != nil
             || storedFlagsReceipt != nil
             || storedActivity != nil
-            || !storedBreaches.isEmpty
         // A manually entered or DEBUG-only key has no project id until `/me`
         // answers. Capture prior files privately, then remove the active copies
         // before any widget or complication can render them under an unverified
@@ -664,8 +593,7 @@ final class WatchModel {
             quarantinedProjectData = QuarantinedProjectData(
                 snapshot: stored,
                 flagsReceipt: storedFlagsReceipt,
-                activity: storedActivity,
-                breachingWatchIDs: storedBreaches
+                activity: storedActivity
             )
         }
         let clearedActiveProjectData = carried == nil && hasStoredProjectData
@@ -673,7 +601,6 @@ final class WatchModel {
             store.clearSnapshot()
             WatchFlagsReceipt.clear(from: store)
             WatchActivity.clear(from: store)
-            store.clearBreachingWatchIDs()
         }
         self.snapshot = carried
         // A manual credential has no selection payload to persist a project
@@ -688,14 +615,6 @@ final class WatchModel {
             self.activityCapturedAt = feed.capturedAt
         }
         self.phase = credential == nil ? .needsKey : Self.idlePhase(for: carried)
-        if carried != nil {
-            health = WatchHealth.derive(
-                snapshot: carried,
-                watches: watches,
-                previouslyBreaching: storedBreaches,
-                issues: nil
-            ).health
-        }
         if clearedActiveProjectData {
             snapshotDidChange()
         }
@@ -715,12 +634,6 @@ final class WatchModel {
     /// for authorized manual live testing — in memory, dying with the process,
     /// never written to the keychain. Without that override, keychain wins.
     static func live() -> WatchModel {
-        // First, before anything reads the watch list — including
-        // `WatchHandoff.current()` two branches down. A demo launch puts its
-        // thresholds where the complication process can read them; a live
-        // launch takes them straight back out. See
-        // `WatchDemoMode.reconcileSeededWatches`.
-        WatchDemoMode.reconcileSeededWatches(in: .shared)
         #if DEBUG
         if let scenario = WatchDemoMode.syntheticScenario {
             WatchDemoMode.prepareSyntheticScenario(scenario, in: .shared)
@@ -728,7 +641,6 @@ final class WatchModel {
                 credential: scenario.credential,
                 projectName: scenario.projectName,
                 headlineMetricID: nil,
-                watches: scenario.watches,
                 transport: WatchDemoMode.syntheticScenarioTransport(for: scenario),
                 store: .shared,
                 mutationCoordinator: .shared,
@@ -741,7 +653,6 @@ final class WatchModel {
                 credential: WatchDemoMode.credential,
                 projectName: WatchDemoMode.projectName,
                 headlineMetricID: nil,
-                watches: WatchDemoMode.seededWatches,
                 transport: WatchDemoMode.transport(),
                 // The same container a live launch writes, which is what the
                 // phone's demo does too: a demo the widgets cannot see is a
@@ -762,15 +673,13 @@ final class WatchModel {
             credential: handoff.credential,
             projectName: handoff.projectName,
             headlineMetricID: handoff.headlineMetricID,
-            watches: handoff.watches,
             transport: URLSessionTransport(),
             store: .shared,
             credentialStore: credentials,
             credentialSource: handoff.credentialSource,
             credentialRevision: handoff.credentialRevision,
             mutationCoordinator: mutationCoordinator,
-            authenticate: WatchModel.deviceOwnerGate,
-            watchesDegraded: handoff.watchesDegraded
+            authenticate: WatchModel.deviceOwnerGate
         )
     }
 
@@ -791,13 +700,13 @@ final class WatchModel {
     ///
     /// Without this the Metrics page went on saying "Open GetHog on your iPhone
     /// to hand this watch its key" after the phone had done exactly that: the
-    /// credential and the thresholds were read once, in `init`, and a transfer
+    /// credential and selection were read once, in `init`, and a transfer
     /// that landed while the app was running only reached the keychain and the
     /// defaults. The user's remedy was to force-quit the app they had just been
     /// told to wait on.
     ///
     /// Forced, because the throttle is about not re-asking for numbers we
-    /// already have and this is a different project, key or threshold set. A
+    /// already have and this is a different project or key. A
     /// hand-off that changed nothing still costs five requests, which is the
     /// right trade for the one that changed everything.
     func adopt(_ handoff: WatchHandoff) async {
@@ -815,17 +724,12 @@ final class WatchModel {
         projectRegion = incomingProjectRegion
         projectName = handoff.projectName ?? "PostHog"
         headlineMetricID = handoff.headlineMetricID
-        watches = handoff.watches
-        watchesDegraded = handoff.watchesDegraded
         refreshGuidance = nil
         refreshFailure = nil
         refreshFailureMessage = nil
         flagsRefreshFailure = nil
         healthRefreshFailure = nil
         activityRefreshFailure = nil
-        // The rows in hand were evaluated against the *previous* thresholds,
-        // so they are not merely stale, they are answers to a question nobody
-        // is asking any more.
         health = .empty
         phase = handoff.credential == nil ? .needsKey : Self.idlePhase(for: snapshot)
         guard handoff.credential != nil else { return }
@@ -849,7 +753,7 @@ final class WatchModel {
     }
 
     /// A stale snapshot is useful only inside one project. When identity
-    /// changes, metrics, flags, events, and breach latches all belong to the
+    /// changes, metrics, flags, and events all belong to the
     /// previous scope and must leave both the running UI and widget container
     /// before the new network request begins.
     private func clearProjectScopedState() {
@@ -863,7 +767,6 @@ final class WatchModel {
         store.clearSnapshot()
         WatchFlagsReceipt.clear(from: store)
         WatchActivity.clear(from: store)
-        store.clearBreachingWatchIDs()
         snapshotDidChange()
     }
 
@@ -898,16 +801,12 @@ final class WatchModel {
             if let storedActivity = quarantinedProjectData.activity {
                 try WatchActivity.write(storedActivity, to: store)
             }
-            try store.writeBreachingWatchIDs(
-                quarantinedProjectData.breachingWatchIDs
-            )
         } catch {
             // Restoration is all-or-nothing from the extension's point of
             // view. Remove any prefix that landed before the failed write.
             store.clearSnapshot()
             WatchFlagsReceipt.clear(from: store)
             WatchActivity.clear(from: store)
-            store.clearBreachingWatchIDs()
             return true
         }
 
@@ -917,12 +816,6 @@ final class WatchModel {
             activity = storedActivity.lines
             activityCapturedAt = storedActivity.capturedAt
         }
-        health = WatchHealth.derive(
-            snapshot: stored,
-            watches: watches,
-            previouslyBreaching: quarantinedProjectData.breachingWatchIDs,
-            issues: nil
-        ).health
         return true
     }
 
@@ -1352,7 +1245,6 @@ final class WatchModel {
             // Metrics and flags merge independently with same-project carry.
             let carried = snapshot?.projectID == projectID
                 && snapshot?.projectRegion == projectRegion ? snapshot : nil
-            var publishedSnapshot = carried
             if fetchedMetrics != nil || fetchedFlags != nil {
                 let complete = fetchedMetrics != nil && fetchedFlags != nil
                 let merged = SharedSnapshot(
@@ -1366,7 +1258,6 @@ final class WatchModel {
                     capturedAt: complete ? now() : carried?.capturedAt ?? now()
                 )
                 snapshot = merged
-                publishedSnapshot = merged
                 let answeredFlagsReceipt = flagsCapturedAt.map {
                     WatchFlagsReceipt(
                         projectID: projectID,
@@ -1397,21 +1288,14 @@ final class WatchModel {
                 try? WatchActivity.write(fetchedActivity, to: store)
             }
 
-            let derived = WatchHealth.derive(
-                snapshot: publishedSnapshot,
-                watches: watches,
-                previouslyBreaching: store.breachingWatchIDs(),
-                issues: issues
-            )
-            health = derived.health
-            try? store.writeBreachingWatchIDs(derived.breaching)
+            health = WatchHealth.derive(issues: issues)
             phase = refreshFailure == .authentication
                 ? .failed(refreshFailureMessage ?? "Your API key was rejected.")
                 : .ready
         }
         guard didPublish else { return }
-        // Snapshot, activity, and breach state are three files read together by
-        // complications. Reload only after every answered section has landed,
+        // Snapshot and activity are read together by complications. Reload only
+        // after every answered section has landed,
         // so the extension cannot observe a half-published refresh.
         snapshotDidChange()
     }

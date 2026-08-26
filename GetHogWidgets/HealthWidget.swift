@@ -9,8 +9,9 @@ import WidgetKit
 // It exists because that question is the reason somebody checks an analytics
 // tool from a queue or a car, and because neither of the answers is visible
 // anywhere else on a phone's Home Screen. It reads the same `SharedSnapshot`
-// every other surface here reads — no network, ever — and it says how old that
-// answer is on every family, because the snapshot may be hours old and a health
+// every other surface here reads and may ask the shared coordinator to refresh
+// it when stale. It says how old that answer is on every family, because the
+// snapshot may be hours old and a health
 // verdict that hides its age is worse than none.
 
 // MARK: - Timeline
@@ -73,6 +74,18 @@ struct HealthEntry: TimelineEntry {
 /// No configuration: there is nothing to choose. The project is whichever one
 /// the app is looking at, and the checks are not opt-out — a health widget that
 /// let you hide the failing half would be a worse lie than showing nothing.
+private final class HealthTimelineCompletion: @unchecked Sendable {
+    private let callback: (Timeline<HealthEntry>) -> Void
+
+    init(_ callback: @escaping (Timeline<HealthEntry>) -> Void) {
+        self.callback = callback
+    }
+
+    func callAsFunction(_ timeline: Timeline<HealthEntry>) {
+        callback(timeline)
+    }
+}
+
 struct HealthProvider: TimelineProvider {
 
     func placeholder(in context: Context) -> HealthEntry { .sample() }
@@ -82,12 +95,20 @@ struct HealthProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<HealthEntry>) -> Void) {
-        let now = Date()
-        // One read, many entries: the values never change across a timeline, only
-        // the dates do, which is what keeps "Updated 40m ago" honest without
-        // waking the provider again. See `WidgetRefresh`.
-        let snapshot = WidgetCache.snapshot()
-        completion(WidgetRefresh.timeline(from: now) { date in entry(at: date, snapshot: snapshot) })
+        // WidgetKit's callback predates Swift's Sendable annotations. This box
+        // crosses it into the async refresh exactly once; the provider never
+        // reads or mutates it concurrently.
+        let completion = HealthTimelineCompletion(completion)
+        Task {
+            let now = Date()
+            await WidgetSnapshotRefresh.run(.automaticWidget)
+            // One read, many entries: the values never change across a timeline,
+            // only the dates do, which keeps "Updated 40m ago" honest.
+            let snapshot = WidgetCache.snapshot()
+            completion(WidgetRefresh.timeline(from: now) {
+                date in entry(at: date, snapshot: snapshot)
+            })
+        }
     }
 
     private func entry(at date: Date, snapshot: SharedSnapshot? = WidgetCache.snapshot()) -> HealthEntry {
@@ -108,7 +129,7 @@ struct HealthWidget: Widget {
                 .containerBackground(Theme.cardBackground, for: .widget)
         }
         .configurationDisplayName("Project Health")
-        .description("Ingestion warnings and quota from your last sync. GetHog refreshes it — the widget never calls the API itself.")
+        .description("Ingestion warnings and quota from PostHog, refreshed without opening GetHog.")
         #if os(iOS)
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,

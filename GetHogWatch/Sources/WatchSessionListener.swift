@@ -2,16 +2,12 @@ import Foundation
 import GetHogKit
 import WatchConnectivity
 
-/// The throwable snapshot operations a hand-off needs. Keeping this seam
-/// narrower than `SharedSnapshotStore` lets the receiver prove that a failed
-/// threshold write or project-data cleanup cannot publish a half-applied
-/// selection.
-protocol MetricWatchWriting: Sendable {
-    func writeMetricWatches(_ watches: [MetricWatch]) throws
+/// The throwable project-data cleanup a scope-changing hand-off needs.
+protocol ProjectScopedDataClearing: Sendable {
     func clearProjectScopedData() throws
 }
 
-extension SharedSnapshotStore: MetricWatchWriting {
+extension SharedSnapshotStore: ProjectScopedDataClearing {
     /// Removes every file a widget could render under the active project.
     /// All removals are attempted before the first error is rethrown, so a
     /// failed scope change leaves as little stale material as possible. The
@@ -22,8 +18,6 @@ extension SharedSnapshotStore: MetricWatchWriting {
         for url in [
             fileURL,
             WatchActivity.fileURL(in: self),
-            breachingWatchIDsURL,
-            metricWatchesURL,
         ] {
             do {
                 try FileManager.default.removeItem(at: url)
@@ -243,10 +237,8 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     ///
     /// Credential through the kit's ingestion helper — which trims, refuses an
     /// empty key *before* touching the store, and hands back only the
-    /// non-secret half. Watches go into the snapshot store's own file, where a
-    /// widget or a background wake can read them without the app running. The
-    /// selected organization, project, headline and degradation state go into
-    /// defaults.
+    /// non-secret half. The selected organization, project, and headline go
+    /// into defaults.
     ///
     /// Ingestion or snapshot writing failing aborts the whole apply. Because
     /// ingestion has already touched the keychain by the time the file write
@@ -258,7 +250,7 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     static func apply(
         _ transfer: WatchKeyTransfer,
         credentials: any CredentialStoring = KeychainTokenStore(),
-        snapshots: any MetricWatchWriting = SharedSnapshotStore.shared,
+        snapshots: any ProjectScopedDataClearing = SharedSnapshotStore.shared,
         defaults: UserDefaults = .standard,
         mutationCoordinator: WatchCredentialMutationCoordinator = .shared,
         mutationDidAnnounce: @Sendable (UInt64) -> Void = { _ in },
@@ -308,7 +300,7 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
     private static func applyStores(
         _ transfer: WatchKeyTransfer,
         credentials: any CredentialStoring,
-        snapshots: any MetricWatchWriting,
+        snapshots: any ProjectScopedDataClearing,
         defaults: UserDefaults
     ) -> ApplyOutcome {
         let previousCredential: StoredCredential?
@@ -362,30 +354,9 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
             )
         }
 
-        do {
-            try snapshots.writeMetricWatches(selection.watches)
-        } catch {
-            // Best-effort rollback across two stores that have no shared
-            // transaction primitive. The return value remains failure even if
-            // the keychain itself refuses this restoration.
-            restore(previousCredential, to: credentials)
-            return ApplyOutcome(
-                applied: false,
-                projectDataChanged: shouldClearProjectData,
-                credentialChangedAfterFailure: credentialDiffers(
-                    from: previousCredential, in: credentials
-                )
-            )
-        }
-
         replace(selection.organizationID, forKey: WatchSettings.organizationIDKey, in: defaults)
         replace(selection.organizationName, forKey: WatchSettings.organizationNameKey, in: defaults)
         replace(selection.projectName, forKey: WatchSettings.projectNameKey, in: defaults)
-        // Recorded rather than inferred. An empty watch list means "no
-        // thresholds" and a *degraded* one means "your phone sent thresholds
-        // this build cannot read" — the two look identical from here, and only
-        // the second is something the user can do anything about.
-        defaults.set(selection.watchesDegraded, forKey: WatchSettings.watchesDegradedKey)
         replace(selection.headlineMetricID, forKey: WatchSettings.headlineMetricKey, in: defaults)
         return ApplyOutcome(
             applied: true,
@@ -420,8 +391,8 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         }
     }
 
-    /// Metadata and thresholds are just as project-scoped as the rendered
-    /// snapshot. Once file cleanup succeeds, blank these before installing the
+    /// Metadata is just as project-scoped as the rendered snapshot. Once file
+    /// cleanup succeeds, blank it before installing the
     /// new credential so any later ingest/write failure leaves a relaunch with
     /// no old selection to pair with that replacement key.
     private static func clearScopeDefaults(in defaults: UserDefaults) {
@@ -429,7 +400,6 @@ final class WatchSessionListener: NSObject, WCSessionDelegate, @unchecked Sendab
         defaults.removeObject(forKey: WatchSettings.organizationNameKey)
         defaults.removeObject(forKey: WatchSettings.projectNameKey)
         defaults.removeObject(forKey: WatchSettings.headlineMetricKey)
-        defaults.removeObject(forKey: WatchSettings.watchesDegradedKey)
     }
 
     private static func replace(_ value: String?, forKey key: String, in defaults: UserDefaults) {
@@ -469,7 +439,7 @@ enum WatchManualKeyEntry {
         key: String,
         region: PostHogRegion,
         credentials: any CredentialStoring = KeychainTokenStore(),
-        snapshots: any MetricWatchWriting = SharedSnapshotStore.shared,
+        snapshots: any ProjectScopedDataClearing = SharedSnapshotStore.shared,
         defaults: UserDefaults = .standard,
         mutationCoordinator: WatchCredentialMutationCoordinator = .shared,
         notify: @Sendable () -> Void = WatchSessionListener.postAppliedNotification

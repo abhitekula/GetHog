@@ -522,9 +522,7 @@ enum WatchFixtures {
         transport: any HTTPTransport,
         store: SharedSnapshotStore,
         headline: String? = nil,
-        watches: [MetricWatch] = [],
         authenticate: @escaping @Sendable (String) async -> Bool = { _ in true },
-        watchesDegraded: Bool = false,
         snapshotDidChange: @escaping () -> Void = {},
         mutationCoordinator: WatchCredentialMutationCoordinator = .init(),
         now: @escaping @Sendable () -> Date = { WatchFixtures.now }
@@ -533,12 +531,10 @@ enum WatchFixtures {
             credential: credential,
             projectName: "Synthetic Analytics",
             headlineMetricID: headline,
-            watches: watches,
             transport: transport,
             store: store,
             mutationCoordinator: mutationCoordinator,
             authenticate: authenticate,
-            watchesDegraded: watchesDegraded,
             snapshotDidChange: snapshotDidChange,
             now: now
         )

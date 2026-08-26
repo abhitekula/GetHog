@@ -34,11 +34,6 @@ struct SettingsRoot: View {
             SettingsAccountSection()
             SettingsProjectSection()
             #if !os(tvOS)
-            // Alerts/ is not compiled into the tvOS target: the platform cannot
-            // present the notification these settings configure, and this
-            // section's footer promises background delivery it could not make
-            // good on.
-            SettingsAlertsSection(snapshotStore: alertsSnapshotStore)
             // Nothing on tvOS to arrange. There is no tab-slot preference, no
             // `TabViewCustomization` (unavailable on the platform), and the
             // sidebar is fixed — so this section would be a preferences row
@@ -76,14 +71,6 @@ struct SettingsRoot: View {
         Theme.Measure.televisionPair
         #else
         Theme.Measure.pair
-        #endif
-    }
-
-    private var alertsSnapshotStore: SharedSnapshotStore {
-        #if os(macOS)
-        MacSharedSnapshotPolicy.store
-        #else
-        SharedSnapshotStore.shared
         #endif
     }
 
@@ -171,43 +158,6 @@ struct SettingsProjectSection: View {
         }
     }
 }
-
-// MARK: - Alerts
-
-// The whole section, not just its call site in `SettingsRoot`: the screen it
-// links to lives in `Alerts/`, which the tvOS target does not compile at all
-// because that platform cannot present the notification an alert exists to
-// send. Compiling a section whose only row is a dead link would be a promise
-// this platform cannot keep.
-#if !os(tvOS)
-struct SettingsAlertsSection: View {
-    let snapshotStore: SharedSnapshotStore
-    var openMetricAlerts: (() -> Void)? = nil
-
-    var body: some View {
-        Section {
-            if let openMetricAlerts {
-                Button(action: openMetricAlerts) {
-                    Label("Metric alerts", systemImage: "bell.badge")
-                }
-            } else {
-                NavigationLink {
-                    MetricAlertsView(snapshotStore: snapshotStore)
-                } label: {
-                    Label("Metric alerts", systemImage: "bell.badge")
-                }
-            }
-        } header: {
-            SectionLabel(text: "Alerts", systemImage: "bell.badge")
-        } footer: {
-            // Stated here as well as on the screen itself, because a Settings
-            // row called "alerts" is exactly where someone forms the assumption
-            // that this app watches their numbers continuously. It does not.
-            Text("Thresholds on the metrics your widgets already read, checked when iOS wakes the app in the background. Notices arrive late rather than live, and nothing is sent to a server — the check runs on this device.")
-        }
-    }
-}
-#endif
 
 // MARK: - Navigation
 

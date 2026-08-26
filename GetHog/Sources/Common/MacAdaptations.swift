@@ -703,12 +703,9 @@ enum QuickActions {
     static func clear() {}
 }
 
-/// Mac twin of the iOS BGTaskScheduler wrapper (excluded from this target).
-///
 /// The Mac schedules through `NSBackgroundActivityScheduler` rather than
-/// `BGTaskScheduler`, so this forwards to `MacBackgroundRefresh` — which is in
-/// this target — instead of standing in for it. `AppModel.signOut` calls
-/// `cancel()` on both platforms and needs to know nothing about either.
+/// WidgetKit. This small adapter lets shared `AppModel` stop the Mac-only
+/// scheduler on sign-out without importing AppKit-shaped code on other shells.
 @MainActor
 enum BackgroundRefresh {
     static func cancel() { MacBackgroundRefresh.shared.stop() }

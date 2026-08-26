@@ -1,17 +1,14 @@
 import SwiftUI
 import WidgetKit
 
-/// The watchOS complications and the Smart Stack card.
+/// The watchOS metric complication and Smart Stack glance.
 ///
-/// Three widgets, and the set is deliberate rather than a subset of the phone's:
+/// Two widgets, and the set is deliberate rather than a subset of the phone's:
 ///
 /// - **Metric** — the number the user configured, on all four accessory
 ///   families, because a complication's whole job is one number at a glance.
-/// - **Health** — the user's own `MetricWatch` thresholds, firing or quiet.
-///   Watch-local evaluation only; see `WatchHealthEntry` for why this is not
-///   `SharedSnapshot.healthVerdict`.
-/// - **Alerts** — the rectangular Smart Stack card, the one surface that asks
-///   the system to promote it while something is over its line.
+/// - **Glance** — the rectangular Smart Stack card combining the headline
+///   metric with the newest cached event.
 ///
 /// There is **no flag widget**, and that is not an omission. Every flag the
 /// watch app writes carries `quickToggleAllowed: false` — the per-flag opt-in
@@ -26,7 +23,6 @@ import WidgetKit
 struct GetHogWatchWidgetBundle: WidgetBundle {
     var body: some Widget {
         WatchMetricComplication()
-        WatchHealthComplication()
         WatchStackWidget()
     }
 }

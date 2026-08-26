@@ -697,7 +697,6 @@ struct WatchModelTests {
             credential: nil,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: OfflineTransport(),
             store: WatchFixtures.tempStore(),
             authenticate: { _ in true },
@@ -812,7 +811,6 @@ struct WatchModelTests {
             ),
             projectName: "Different synthetic project",
             headlineMetricID: nil,
-            watches: [],
             transport: OfflineTransport(),
             store: projectStore,
             authenticate: { _ in true },
@@ -834,7 +832,6 @@ struct WatchModelTests {
             ),
             projectName: "Different synthetic region",
             headlineMetricID: nil,
-            watches: [],
             transport: OfflineTransport(),
             store: regionStore,
             authenticate: { _ in true },
@@ -1146,7 +1143,6 @@ struct WatchModelTests {
             credential: nil,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             mutationCoordinator: mutationCoordinator,
@@ -1157,19 +1153,13 @@ struct WatchModelTests {
         #expect(model.phase == .needsKey)
         #expect(await transport.requests.isEmpty)
 
-        // The phone's transfer lands: keychain, watch list, defaults.
+        // The phone's transfer lands: keychain and selected scope.
         let credentials = InMemoryTokenStore()
         let defaults = try #require(UserDefaults(suiteName: "GetHogWatchTests-\(UUID().uuidString)"))
         WatchSessionListener.apply(
             WatchKeyTransfer(
                 key: "test-key-0001", region: .usCloud, projectID: 1001,
-                projectName: "Synthetic Analytics", headlineMetricID: "502",
-                watches: [
-                    MetricWatch(
-                        id: "example-watch-1", metricID: "502",
-                        title: "Example total", condition: .above(40)
-                    ),
-                ]
+                projectName: "Synthetic Analytics", headlineMetricID: "502"
             ),
             credentials: credentials, snapshots: store, defaults: defaults,
             mutationCoordinator: mutationCoordinator, notify: {}
@@ -1189,10 +1179,7 @@ struct WatchModelTests {
         // Forced, so the hand-off is not swallowed by a snapshot that happens
         // to be fresh — this is a different project's numbers.
         #expect(await transport.requests.count == 5)
-        // The new thresholds were evaluated, not the ones the model was born
-        // with: 393 is above 40.
-        #expect(model.health.rows.count == 1)
-        #expect(model.health.firingCount == 1)
+        #expect(model.health.errorPulse != nil)
     }
 
     @Test("a refresh started before hand-off cannot overwrite the adopted project")
@@ -1213,9 +1200,7 @@ struct WatchModelTests {
                         key: "test-key-adopted-0002", region: .usCloud, projectID: 42
                     ),
                     projectName: "Adopted Synthetic Project",
-                    headlineMetricID: "502",
-                    watches: [],
-                    watchesDegraded: false
+                    headlineMetricID: "502"
                 )
             )
         }
@@ -1253,7 +1238,6 @@ struct WatchModelTests {
             ),
             to: store
         )
-        try store.writeBreachingWatchIDs(["project-a-watch"])
         var reloadCount = 0
         var everyReloadFollowedClearing = true
         let model = WatchFixtures.model(
@@ -1264,7 +1248,6 @@ struct WatchModelTests {
                 everyReloadFollowedClearing = everyReloadFollowedClearing
                     && store.loadOrNil() == nil
                     && WatchActivity.read(from: store) == nil
-                    && store.breachingWatchIDs().isEmpty
             }
         )
         #expect(model.headlineMetric != nil)
@@ -1276,9 +1259,7 @@ struct WatchModelTests {
                     key: "test-key-project-b", region: .usCloud, projectID: 42
                 ),
                 projectName: "Synthetic Project B",
-                headlineMetricID: nil,
-                watches: [],
-                watchesDegraded: false
+                headlineMetricID: nil
             )
         )
 
@@ -1289,7 +1270,6 @@ struct WatchModelTests {
         #expect(model.activityCapturedAt == nil)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(model.refreshGuidance == .iPhoneOffline)
         #expect(reloadCount == 1)
         #expect(everyReloadFollowedClearing)
@@ -1324,9 +1304,7 @@ struct WatchModelTests {
                     key: "eu-test-key", region: .euCloud, projectID: 1001
                 ),
                 projectName: "Synthetic EU Project",
-                headlineMetricID: nil,
-                watches: [],
-                watchesDegraded: false
+                headlineMetricID: nil
             )
         )
         let requestsAfterAdoption = await transport.requests.count
@@ -1364,7 +1342,6 @@ struct WatchModelTests {
             ),
             to: store
         )
-        try store.writeBreachingWatchIDs(["project-a-watch"])
         let transport = RouteTransport(routes: WatchFixtures.fullRefreshRoutes())
         var reloadCount = 0
         var reloadedAfterClearing = false
@@ -1374,7 +1351,6 @@ struct WatchModelTests {
             ),
             projectName: "Synthetic Project B",
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             authenticate: { _ in true },
@@ -1382,7 +1358,6 @@ struct WatchModelTests {
                 reloadCount += 1
                 reloadedAfterClearing = store.loadOrNil() == nil
                     && WatchActivity.read(from: store) == nil
-                    && store.breachingWatchIDs().isEmpty
             },
             now: { WatchFixtures.now }
         )
@@ -1393,7 +1368,6 @@ struct WatchModelTests {
         #expect(model.activity.isEmpty)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadCount == 1)
         #expect(reloadedAfterClearing)
 
@@ -1426,7 +1400,6 @@ struct WatchModelTests {
         )
         try store.write(seeded)
         try WatchActivity.write(feed, to: store)
-        try store.writeBreachingWatchIDs(["matching-project-watch"])
         let transport = RouteTransport(
             routes: [
                 .init(
@@ -1446,12 +1419,10 @@ struct WatchModelTests {
         )
         var reloadSnapshots: [SharedSnapshot?] = []
         var reloadActivities: [ActivityFeed?] = []
-        var reloadBreaches: [Set<String>] = []
         let model = WatchModel(
             credential: try credentials.load(),
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -1459,7 +1430,6 @@ struct WatchModelTests {
             snapshotDidChange: {
                 reloadSnapshots.append(store.loadOrNil())
                 reloadActivities.append(WatchActivity.read(from: store))
-                reloadBreaches.append(store.breachingWatchIDs())
             },
             now: { WatchFixtures.now }
         )
@@ -1473,11 +1443,9 @@ struct WatchModelTests {
         #expect(model.activity.isEmpty)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadSnapshots.count == 1)
         #expect(reloadSnapshots[0] == nil)
         #expect(reloadActivities[0] == nil)
-        #expect(reloadBreaches[0].isEmpty)
 
         await model.refresh()
 
@@ -1489,11 +1457,9 @@ struct WatchModelTests {
         #expect(model.refreshGuidance == .iPhoneOffline)
         #expect(store.loadOrNil() == seeded)
         #expect(WatchActivity.read(from: store) == feed)
-        #expect(store.breachingWatchIDs() == ["matching-project-watch"])
         #expect(reloadSnapshots.count == 2)
         #expect(reloadSnapshots[1] == seeded)
         #expect(reloadActivities[1] == feed)
-        #expect(reloadBreaches[1] == ["matching-project-watch"])
 
         let persisted = try #require(try credentials.load())
         #expect(persisted.projectID == 1001)
@@ -1507,7 +1473,6 @@ struct WatchModelTests {
             credential: persisted,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: OfflineTransport(),
             store: store,
             credentialStore: credentials,
@@ -1543,7 +1508,6 @@ struct WatchModelTests {
             ),
             to: store
         )
-        try store.writeBreachingWatchIDs(["old-project-watch"])
         let transport = RouteTransport(
             routes: [
                 .init(
@@ -1567,7 +1531,6 @@ struct WatchModelTests {
             credential: try credentials.load(),
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -1576,7 +1539,6 @@ struct WatchModelTests {
                 reloadCount += 1
                 reloadFollowedClearing = store.loadOrNil() == nil
                     && WatchActivity.read(from: store) == nil
-                    && store.breachingWatchIDs().isEmpty
             },
             now: { WatchFixtures.now }
         )
@@ -1584,7 +1546,6 @@ struct WatchModelTests {
         #expect(model.snapshot == nil)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadCount == 1)
         #expect(reloadFollowedClearing)
 
@@ -1598,7 +1559,6 @@ struct WatchModelTests {
         #expect(model.refreshGuidance == .iPhoneOffline)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadCount == 1)
         #expect(reloadFollowedClearing)
         let persisted = try #require(try credentials.load())
@@ -1628,7 +1588,6 @@ struct WatchModelTests {
             ),
             to: store
         )
-        try store.writeBreachingWatchIDs(["unverified-watch"])
         let transport = RouteTransport(
             routes: [],
             unmatchedError: .network(
@@ -1647,7 +1606,6 @@ struct WatchModelTests {
             credential: try credentials.load(),
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -1657,14 +1615,12 @@ struct WatchModelTests {
                 everyReloadSawEmptyActiveFiles = everyReloadSawEmptyActiveFiles
                     && store.loadOrNil() == nil
                     && WatchActivity.read(from: store) == nil
-                    && store.breachingWatchIDs().isEmpty
             },
             now: { WatchFixtures.now }
         )
 
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadCount == 1)
         #expect(everyReloadSawEmptyActiveFiles)
 
@@ -1681,7 +1637,6 @@ struct WatchModelTests {
         #expect(model.refreshGuidance == .iPhoneOffline)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(flagFailure == "Not signed in.")
         #expect(await transport.requests.count == requestCount)
         #expect(reloadCount == 1)
@@ -1716,7 +1671,6 @@ struct WatchModelTests {
             ),
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: emptyKeychain,
@@ -1750,7 +1704,6 @@ struct WatchModelTests {
         )
         try store.write(seeded)
         try WatchActivity.write(seededActivity, to: store)
-        try store.writeBreachingWatchIDs(["missing-key-watch"])
         let unresolved = StoredCredential(
             key: "removed-manual-key", region: .usCloud, projectID: nil
         )
@@ -1765,12 +1718,10 @@ struct WatchModelTests {
         )
         var reloadSnapshots: [SharedSnapshot?] = []
         var reloadActivities: [ActivityFeed?] = []
-        var reloadBreaches: [Set<String>] = []
         let model = WatchModel(
             credential: unresolved,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -1779,7 +1730,6 @@ struct WatchModelTests {
             snapshotDidChange: {
                 reloadSnapshots.append(store.loadOrNil())
                 reloadActivities.append(WatchActivity.read(from: store))
-                reloadBreaches.append(store.breachingWatchIDs())
             },
             now: { WatchFixtures.now }
         )
@@ -1794,10 +1744,8 @@ struct WatchModelTests {
         #expect(model.activity.isEmpty)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadSnapshots == [nil])
         #expect(reloadActivities == [nil])
-        #expect(reloadBreaches == [[]])
         #expect(try credentials.load() == nil)
         #expect(await transport.requests.count == 1)
         #expect(model.phase == .needsKey)
@@ -1825,7 +1773,6 @@ struct WatchModelTests {
             credential: unresolved,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: ThrowingCredentialLoadStore(),
@@ -1873,7 +1820,6 @@ struct WatchModelTests {
             credential: unresolved,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -1925,15 +1871,12 @@ struct WatchModelTests {
         )
         try store.write(seeded)
         try WatchActivity.write(seededActivity, to: store)
-        try store.writeBreachingWatchIDs(["old-project-watch"])
         var reloadSnapshots: [SharedSnapshot?] = []
         var reloadActivities: [ActivityFeed?] = []
-        var reloadBreaches: [Set<String>] = []
         let model = WatchModel(
             credential: oldCredential,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: RouteTransport(
                 routes: [
                     .init(
@@ -1953,7 +1896,6 @@ struct WatchModelTests {
             snapshotDidChange: {
                 reloadSnapshots.append(store.loadOrNil())
                 reloadActivities.append(WatchActivity.read(from: store))
-                reloadBreaches.append(store.breachingWatchIDs())
             },
             now: { WatchFixtures.now }
         )
@@ -1962,7 +1904,6 @@ struct WatchModelTests {
 
         #expect(reloadSnapshots == [nil])
         #expect(reloadActivities == [nil])
-        #expect(reloadBreaches == [[]])
 
         let coordination = Task.detached { () throws -> (UInt64, StoredCredential?, Bool) in
             try credentials.waitUntilHeldLoadIsCaptured()
@@ -2013,10 +1954,8 @@ struct WatchModelTests {
         #expect(model.activity.isEmpty)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadSnapshots == [nil])
         #expect(reloadActivities == [nil])
-        #expect(reloadBreaches == [[]])
         #expect(!credentials.didSynchronizationTimeout)
     }
 
@@ -2037,7 +1976,6 @@ struct WatchModelTests {
             ),
             to: store
         )
-        try store.writeBreachingWatchIDs(["queued-old-watch"])
         let oldCredential = StoredCredential(
             key: "queued-old-key", region: .usCloud, projectID: nil
         )
@@ -2055,7 +1993,6 @@ struct WatchModelTests {
             credential: oldCredential,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -2098,7 +2035,6 @@ struct WatchModelTests {
         #expect(model.activity.isEmpty)
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadSnapshots == [nil])
 
         pause.resume()
@@ -2111,7 +2047,6 @@ struct WatchModelTests {
         ))
         #expect(store.loadOrNil() == nil)
         #expect(WatchActivity.read(from: store) == nil)
-        #expect(store.breachingWatchIDs().isEmpty)
         #expect(reloadSnapshots == [nil])
         #expect(!pause.didSynchronizationTimeout)
     }
@@ -2128,7 +2063,6 @@ struct WatchModelTests {
             credential: nil,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -2189,7 +2123,6 @@ struct WatchModelTests {
             credential: oldCredential,
             projectName: "Old Synthetic Project",
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -2205,8 +2138,6 @@ struct WatchModelTests {
         // remains beside the deliberately blanked project files and defaults.
         store.clearSnapshot()
         WatchActivity.clear(from: store)
-        store.clearBreachingWatchIDs()
-        try store.writeMetricWatches([])
         try credentials.save(replacement)
 
         let failedRollbackHandoff = WatchHandoff.current(
@@ -2245,7 +2176,6 @@ struct WatchModelTests {
             credential: WatchFixtures.credential,
             projectName: "Synthetic Analytics",
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -2280,7 +2210,6 @@ struct WatchModelTests {
             credential: nil,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: store,
             credentialStore: credentials,
@@ -2393,9 +2322,7 @@ struct WatchModelTests {
                     key: "rotated-test-key", region: .usCloud, projectID: 1001
                 ),
                 projectName: "Synthetic Analytics",
-                headlineMetricID: nil,
-                watches: [],
-                watchesDegraded: false
+                headlineMetricID: nil
             )
         )
 
@@ -2416,8 +2343,7 @@ struct WatchModelTests {
 
         await model.adopt(
             WatchHandoff(
-                credential: nil, projectName: nil, headlineMetricID: nil,
-                watches: [], watchesDegraded: false
+                credential: nil, projectName: nil, headlineMetricID: nil
             )
         )
 
@@ -2434,7 +2360,6 @@ struct WatchModelTests {
             credential: nil,
             projectName: nil,
             headlineMetricID: nil,
-            watches: [],
             transport: transport,
             store: WatchFixtures.tempStore(),
             authenticate: { _ in true },

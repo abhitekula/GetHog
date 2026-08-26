@@ -37,7 +37,7 @@ enum WatchWidgetDirection {
     /// on a screen this size, not worth spelling.
     static func changeLabel(for metric: SharedSnapshot.Metric) -> String? {
         if let fraction = metric.deltaFraction {
-            return MetricWatch.format(abs(fraction * 100)) + "%"
+            return WidgetNumber.full(abs(fraction * 100)) + "%"
         }
         if let delta = metric.delta {
             return WidgetNumber.compact(abs(delta), unit: metric.unit)

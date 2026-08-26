@@ -1,38 +1,8 @@
 import Foundation
 
-// Setting and snoozing one of PostHog's **own** alerts.
-//
-// ## Why this is not the metric-alert feature this app already ships
-//
-// `MetricWatch` / `MetricAlertsView` are *local* notifications: GetHog reads
-// the widget snapshot when iOS wakes it, compares a number to a line the user
-// drew, and posts a `UNNotification` on this device. Nothing leaves the phone,
-// nobody else on the team sees the watch, and the cadence is whatever iOS grants
-// — "every couple of hours at best", as that screen says in its own footer.
-//
-// What is in this file is the opposite of that in every dimension: the threshold
-// lives on PostHog's servers, PostHog evaluates it on PostHog's schedule, and
-// PostHog e-mails `subscribed_users` or posts to a configured destination. The
-// phone is the thing that *writes* the alert, and then has no further part in it.
-//
-// The two are complements, not competitors, and the difference that decides
-// between them is who is being told:
-//
-// | | Metric alerts (`MetricWatch`) | PostHog alerts (this file) |
-// |---|---|---|
-// | Evaluated by | this device, on a background wake | PostHog, on a schedule |
-// | Tells | you, on this phone | everyone in `subscribed_users`, by e-mail |
-// | Works when the phone is off | no | yes |
-// | Watches | any metric in the widget snapshot | any Trends / Funnel / SQL insight |
-// | Requests | **4 every 2 hours, forever** | **1 to create, 1 to snooze, 0 after** |
-//
-// That last row is the argument. This app treats the organisation-wide rate
-// limit as a correctness requirement, and a server-evaluated alert is *strictly
-// cheaper* than the client-polled one already shipped — it has no recurring cost
-// at all. `AutomationRoot`'s alerts footer used to give "GetHog has no server
-// to receive a notification" as the reason alerts were read-only. That sentence
-// is true and is not a reason: nothing is ever delivered *to* GetHog either
-// way.
+// Setting and snoozing PostHog's server-side insight alerts. The threshold lives
+// on PostHog's servers, PostHog evaluates it on its own schedule, and GetHog has
+// no recurring polling role after the write.
 //
 // ## Everything here is source-derived and **none of it has been executed**
 //

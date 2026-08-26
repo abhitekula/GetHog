@@ -15,7 +15,7 @@ struct GetHogProductIdentitySourceTests {
         checkout.appending(path: "GetHog")
     }
 
-    @Test("the source plist declares GetHog deep links and background work")
+    @Test("the source plist declares GetHog deep links without iOS background work")
     func sourcePlistIdentity() throws {
         let plist = try propertyList(at: appRoot.appending(path: "Support/GetHog-Info.plist"))
 
@@ -24,10 +24,8 @@ struct GetHogProductIdentitySourceTests {
         #expect(urlTypes.count == 1)
         #expect(urlType["CFBundleURLName"] as? String == "app.gethog.GetHog")
         #expect(urlType["CFBundleURLSchemes"] as? [String] == ["gethog"])
-        #expect(
-            plist["BGTaskSchedulerPermittedIdentifiers"] as? [String]
-                == ["app.gethog.refresh.snapshot"]
-        )
+        #expect(plist["BGTaskSchedulerPermittedIdentifiers"] == nil)
+        #expect(plist["UIBackgroundModes"] == nil)
         #expect(plist["NSUserActivityTypes"] as? [String] == ["app.gethog.browsing"])
     }
 
@@ -48,6 +46,19 @@ struct GetHogProductIdentitySourceTests {
             )
         }
         #expect(app as NSDictionary == widgets as NSDictionary)
+    }
+
+    @Test("server-side alert copy does not advertise the removed local alert system")
+    func serverAlertCopyNamesItsBoundary() throws {
+        let source = try String(
+            contentsOf: appRoot.appending(path: "Sources/Alerts/InsightAlertsView.swift"),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("PostHog evaluates these on its own servers"))
+        #expect(source.contains("does not deliver a separate local alert"))
+        #expect(!source.contains("use Metric alerts"))
+        #expect(!source.contains("watches the widget snapshot"))
     }
 
     @Test("launch controls use the GetHog namespace")

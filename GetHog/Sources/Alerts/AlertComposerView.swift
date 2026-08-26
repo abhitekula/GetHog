@@ -287,11 +287,8 @@ struct AlertComposerView: View {
     /// the list — so an empty field would have been a required field with no
     /// default, for a value the screen already knows.
     ///
-    /// The threshold half is the same correction `MetricWatchEditor.seed(for:)`
-    /// makes, one direction over. That editor starts at the metric's own value
-    /// "rather than at zero, which every metric is already above and which would
-    /// arm a watch that fires on the very next wake". Here the default direction
-    /// is *below*, so a zero is the mirror failure: "drops below 0" is a perfectly
+    /// The threshold starts at the insight's current value. Here the default
+    /// direction is *below*, so a zero is a bad default: "drops below 0" is a perfectly
     /// legal alert that a count metric can essentially never satisfy, and the Set
     /// button was live over it. Photographed at zero before this existed
     /// (`build/Screenshots/…/insight-alert-composer.png`, 2026-07-31).

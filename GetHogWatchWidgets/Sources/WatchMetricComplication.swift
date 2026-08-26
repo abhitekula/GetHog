@@ -131,27 +131,24 @@ struct WatchMetricProvider: AppIntentTimelineProvider {
         for configuration: SelectWatchMetricIntent, in context: Context
     ) async -> Timeline<WatchMetricEntry> {
         let now = Date()
-        // Read once for the whole timeline: four entries from one pair of file
-        // reads. Only `date` moves between them, which is what keeps the age
+        // Read once for the whole timeline. Only `date` moves between entries,
+        // which is what keeps the age
         // label truthful without another provider call. See
         // `WatchWidgetRefresh`.
         let snapshot = cache.snapshot()
-        let watches = cache.watches()
         return WatchWidgetRefresh.timeline(from: now) { date in
-            entry(for: configuration, at: date, snapshot: snapshot, watches: watches)
+            entry(for: configuration, at: date, snapshot: snapshot)
         }
     }
 
     private func entry(
         for configuration: SelectWatchMetricIntent,
         at date: Date,
-        snapshot: SharedSnapshot? = nil,
-        watches: [MetricWatch] = []
+        snapshot: SharedSnapshot? = nil
     ) -> WatchMetricEntry {
         WatchComplicationCore.metricEntry(
             snapshot: snapshot ?? cache.snapshot(),
             chosenMetricID: configuration.metric?.id,
-            watches: watches,
             date: date
         )
     }

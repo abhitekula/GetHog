@@ -25,9 +25,6 @@ struct GetHogApp: App {
     init() {
         let model = GetHogApp.makeModel()
         _model = State(initialValue: model)
-        // `BGTaskScheduler` requires every handler to be registered before the
-        // app finishes launching, so this cannot wait for a `.task` on a view.
-        BackgroundRefresh.register(model: model)
     }
 
     var body: some Scene {
@@ -108,12 +105,6 @@ struct GetHogApp: App {
                         // governor and somewhere to surface a 403 — all of which
                         // exist here and not in the extension.
                         Task { await model.consumePendingIntentWork() }
-                    case .background:
-                        // The only moment the system accepts a request for the
-                        // next wake. Dated from the snapshot the app has just
-                        // been keeping current, so a session spent looking at
-                        // live data does not also buy a background refresh of it.
-                        BackgroundRefresh.schedule(model: model, refreshedAt: model.lastSnapshotDate)
                     default:
                         break
                     }

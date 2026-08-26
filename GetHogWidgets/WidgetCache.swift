@@ -18,19 +18,13 @@ enum WidgetMetricRoute {
     }
 }
 
-/// The widget extension's entire view of the outside world.
+/// The widget extension's shared cache and refresh dependencies.
 ///
-/// **This extension never calls the PostHog API.** Rate limits are billed per
-/// *organisation* and that budget is shared with the user's own production
-/// integrations — a few installed widgets, each waking on its own schedule,
-/// would multiply request volume against an allowance that isn't ours to spend,
-/// from a process the user never launched. The app fetches, reduces the result
-/// to `SharedSnapshot`, and writes it to the App Group container; everything
-/// here is a read of that file.
-///
-/// The consequence is deliberate: when the snapshot is missing or old, the
-/// widget says so and offers to open the app. It does not quietly go and get
-/// fresher data.
+/// Rendering remains a local file read. A timeline request may opportunistically
+/// refresh a stale snapshot, and the explicit refresh button always asks
+/// PostHog, but both go through one cross-process lease and one full-snapshot
+/// coordinator. Installing several widgets therefore does not multiply one
+/// provider wake into several simultaneous API refreshes.
 enum WidgetCache {
 
     static var store: SharedSnapshotStore {
@@ -47,23 +41,22 @@ enum WidgetCache {
 
     static func snapshot() -> SharedSnapshot? { store.loadOrNil() }
 
+    static var selectedProjectID: Int? {
+        #if os(macOS) && GETHOG_UNSHARED_MAC_WIDGETS
+        nil
+        #else
+        let defaults = UserDefaults(suiteName: SharedSnapshotStore.bundleAppGroupIdentifier)
+        let id = defaults?.integer(forKey: "selectedProjectID") ?? 0
+        return id == 0 ? nil : id
+        #endif
+    }
+
     /// Only flags the user opted in to. Outside the app there is no confirmation
     /// dialog to answer, so a flag stays invisible to widgets and Control Center
     /// until the user deliberately allows it.
     static func quickToggleFlags() -> [SharedSnapshot.Flag] {
         snapshot()?.quickToggleFlags ?? []
     }
-
-    /// The user's metric watches, read for Smart Stack ranking only.
-    ///
-    /// The extension never evaluates a watch for *delivery* — that belongs to the
-    /// app, which owns the notification centre and the breach latch that keeps a
-    /// single incident from being announced every two hours. All this read buys is
-    /// the answer to "did the user ask to be told about this number", which is the
-    /// strongest signal available for whether the widget deserves the top of a
-    /// stack. See `SnapshotRelevance.isBreaching`, which is careful to ask that
-    /// question without touching the latch.
-    static func metricWatches() -> [MetricWatch] { store.metricWatches() }
 
     static func quickToggleFlag(id: Int?) -> SharedSnapshot.Flag? {
         let candidates = quickToggleFlags()
@@ -208,22 +201,75 @@ enum WidgetRefresh {
     }
 }
 
-// MARK: - Hand-off to the app
+// MARK: - Direct refresh
 
-/// The only "refresh" a widget can honestly offer: open the app, which holds the
-/// credentials, the rate-limit governor, and somewhere to show a failure.
-struct RefreshInAppIntent: AppIntent {
+enum WidgetSnapshotRefresh {
 
-    static var title: LocalizedStringResource { "Open GetHog to sync" }
+    @discardableResult
+    static func run(_ trigger: SnapshotRefreshTrigger) async -> SnapshotRefreshResult {
+        let store = WidgetCache.store
+        guard store.isSharedContainer else { return .current(nil) }
+        guard let credential = try? KeychainTokenStore().load(),
+              let authSessionID = credential.authSessionID else {
+            return .failed(.unauthorized, retained: store.loadOrNil())
+        }
+
+        let previous = store.loadOrNil()
+        guard let projectID = WidgetCache.selectedProjectID
+                ?? credential.projectID
+                ?? previous?.projectID else {
+            return .failed(.unavailable, retained: previous)
+        }
+        let projectName = previous?.projectID == projectID
+            ? previous?.projectName ?? "Project \(projectID)"
+            : "Project \(projectID)"
+        let scope = SnapshotRefreshScope(
+            projectID: projectID,
+            projectName: projectName,
+            region: credential.region,
+            authSessionID: authSessionID
+        )
+        let allowedFlagIDs = Set(
+            previous?.projectID == projectID
+                ? previous?.quickToggleFlags.map(\.id) ?? []
+                : []
+        )
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region)
+        )
+        return await SnapshotRefreshCoordinator(store: store).refresh(
+            trigger: trigger,
+            client: client,
+            scope: scope,
+            quickToggleAllowed: { allowedFlagIDs.contains($0) },
+            isAuthorized: {
+                guard let latest = try? KeychainTokenStore().load(),
+                      latest.region == scope.region,
+                      latest.authSessionID == scope.authSessionID else {
+                    return false
+                }
+                return WidgetCache.selectedProjectID.map { $0 == scope.projectID } ?? true
+            }
+        )
+    }
+}
+
+/// Refreshes from the widget extension without opening GetHog. WidgetKit reloads
+/// the originating widget after the intent completes; intentionally no
+/// `reloadAllTimelines` or kind-wide reload is requested here.
+struct RefreshWidgetIntent: AppIntent {
+
+    static var title: LocalizedStringResource { "Refresh widget" }
     static var description: IntentDescription {
-        IntentDescription("Opens GetHog so it can refresh the data your widgets show.")
+        IntentDescription("Refreshes this widget's shared PostHog snapshot without opening GetHog.")
     }
 
-    /// The whole point. The extension has no business fetching, so "refresh"
-    /// can only mean "hand this to the process that can".
-    static var openAppWhenRun: Bool { true }
+    static var openAppWhenRun: Bool { false }
 
-    func perform() async throws -> some IntentResult { .result() }
+    func perform() async throws -> some IntentResult {
+        await WidgetSnapshotRefresh.run(.manualWidget)
+        return .result()
+    }
 }
 
 extension SharedSnapshotStore {

@@ -166,17 +166,15 @@ final class WatchPagesUITests: XCTestCase {
         )
     }
 
-    func testHealthPageShowsTheWatchesAndTheErrorPulse() {
+    func testHealthPageShowsTheErrorPulse() {
         let app = DemoLaunch.launch(environment: ["GETHOG_WATCH_PAGE": "health"])
 
-        let metricWatches = app.staticTexts["Metric watches"]
-        let headlineWatch = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Example daily engagement")
+        let activeIssues = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "active issue")
         ).firstMatch
         let errorsHeader = app.staticTexts["Errors, last 24 h"]
 
-        XCTAssertTrue(DemoLaunch.wait(for: metricWatches, timeout: 60))
-        XCTAssertTrue(DemoLaunch.wait(for: headlineWatch, timeout: 30))
+        XCTAssertTrue(DemoLaunch.wait(for: activeIssues, timeout: 60))
 
         let healthNavigation = app.navigationBars["Health"]
         scrollUntilFullyVisible(

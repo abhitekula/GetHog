@@ -4,25 +4,9 @@ import SwiftUI
 
 /// The alerts PostHog is running on one insight — see them, set one, silence one.
 ///
-/// ## Why this exists beside the metric-alert screen and does not replace it
-///
-/// `MetricAlertsView` is a **local** watch: this device compares a number in the
-/// widget snapshot to a line you drew, and posts a notification to this phone.
 /// This screen writes a threshold onto PostHog's servers, where PostHog evaluates
-/// it on a schedule and e-mails the people subscribed to it.
-///
-/// They answer different questions and the difference is *who is told*. A metric
-/// alert tells you, on this phone, when iOS gets round to waking the app. A
-/// PostHog alert tells your team, by e-mail, whether or not your phone is on. So
-/// both screens say plainly which one they are — this one's footer says nothing
-/// arrives here, and `MetricAlertsView`'s says nothing leaves the device — and
-/// neither pretends to be the other.
-///
-/// The request arithmetic says the same thing. A metric watch costs four requests
-/// every two hours for as long as it exists. An alert set here costs **one**
-/// `.crud` to create and **one** to snooze, and nothing afterwards. On a budget
-/// that is organisation-wide and shared with the user's production integrations,
-/// the server-evaluated one is the cheap option, not the expensive one.
+/// it on a schedule and notifies the configured subscribers. GetHog spends one
+/// request to create or change it and performs no recurring local polling.
 ///
 /// ## What has and has not been seen
 ///
@@ -319,8 +303,8 @@ struct InsightAlertsView: View {
     private var footer: String {
         """
         PostHog evaluates these on its own servers and e-mails the people listed on each one. \
-        Nothing is delivered to this phone — for a notification on this device, use Metric alerts \
-        in Settings, which watches the widget snapshot instead.
+        GetHog manages those server-side alerts, but does not deliver a separate local alert \
+        notification on this device.
         """
     }
 

@@ -12,8 +12,8 @@ import Foundation
 /// **What it must not be.** A constant. A widget that reports 50 forever has told
 /// the system precisely nothing, and every rotation it then wins was won on noise.
 /// Every number here is read out of the App Group file the app already writes:
-/// the health verdict and its two digests, the user's own metric watches, and how
-/// old the file is. Nothing is fetched, guessed, or held constant.
+/// the health verdict and its two digests, metric movement, and file age.
+/// Nothing is fetched, guessed, or held constant.
 ///
 /// **Why it lives in the kit.** The widget extension is not unit-tested — it is a
 /// separate binary that the app's test target does not compile — and a scoring
@@ -114,13 +114,6 @@ public enum SnapshotRelevance {
 
     // MARK: - Metric
 
-    /// What a metric with one of the user's own watches in breach starts from.
-    ///
-    /// Far above anything an unwatched metric can reach, because a watch is the
-    /// only thing in this app that is an explicit request to be told. Everything
-    /// below it is the app's inference; this is the user's instruction.
-    static let watchedBreachBase: Float = 80
-
     /// Below this, a move is the ordinary breathing of a metric and earns nothing.
     ///
     /// Ten per cent, which is at the low end of what users actually type into
@@ -136,41 +129,15 @@ public enum SnapshotRelevance {
     ///
     /// Scored against the *configured* metric only — the one every family leads
     /// with, and the only one the small and accessory families draw at all. The
-    /// large family shows up to six, so a breach in the fourth of them does not
-    /// lift this widget; promoting a card for a number that card might not be
-    /// showing is a worse failure than missing a rotation.
+    /// large family shows up to six, but only the configured lead metric decides
+    /// whether this widget's movement deserves a rotation.
     public static func metric(
         _ metric: SharedSnapshot.Metric?,
         in snapshot: SharedSnapshot?,
-        watches: [MetricWatch],
         now: Date
     ) -> Float {
         guard let snapshot, let metric else { return 0 }
-        let base: Float = isBreaching(metric, in: snapshot, watches: watches) ? watchedBreachBase : 0
-        return clamped((base + moveBonus(metric)) * weight(age: snapshot.staleness(now: now)))
-    }
-
-    /// Whether any enabled watch on this metric is in breach **of this snapshot**.
-    ///
-    /// Asked of `MetricWatchEvaluator` with an empty prior breach set, rather than
-    /// read out of `breachingWatchIDs`. That file is anti-spam state: it
-    /// deliberately keeps an id whose metric has gone missing, so that a
-    /// disappearance can never be mistaken for a recovery and buy a second
-    /// notification. Reading it here would let the widget claim urgency about a
-    /// number the snapshot no longer contains. Evaluating against an empty set
-    /// asks the narrower question this needs — is it over the line right now, in
-    /// the file I am about to render — and it is pure: no alert is posted, no
-    /// latch is written, nothing is fetched.
-    public static func isBreaching(
-        _ metric: SharedSnapshot.Metric,
-        in snapshot: SharedSnapshot,
-        watches: [MetricWatch]
-    ) -> Bool {
-        let mine = watches.filter { $0.metricID == metric.id && $0.isEnabled }
-        guard !mine.isEmpty else { return false }
-        return !MetricWatchEvaluator.evaluate(
-            snapshot: snapshot, watches: mine, breaching: []
-        ).breaching.isEmpty
+        return clamped(moveBonus(metric) * weight(age: snapshot.staleness(now: now)))
     }
 
     /// How far the metric moved against its comparison period, mapped onto the

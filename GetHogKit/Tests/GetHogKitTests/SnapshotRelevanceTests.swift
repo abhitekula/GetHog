@@ -180,74 +180,20 @@ struct SnapshotRelevanceTests {
         #expect(drifted == SnapshotRelevance.health(critical, now: capturedAt))
     }
 
-    // MARK: - Metric: the user's own watches
-
-    @Test("a watched metric in breach outranks any unwatched move")
-    func breachOutranksMovement() {
-        let watched = metric(value: 5_000, previous: 4_900)
-        let snap = snapshot(metrics: [watched, metric(id: "99", value: 200, previous: 10)])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "42", title: "Weekly active users",
-                        condition: .above(1_000))
-        ]
-
-        let breaching = SnapshotRelevance.metric(watched, in: snap, watches: watches, now: capturedAt)
-        // A twentyfold rise, which is as much movement as the scale can register.
-        let moved = SnapshotRelevance.metric(
-            snap.metric(id: "99"), in: snap, watches: watches, now: capturedAt
-        )
-
-        #expect(breaching > moved)
-        #expect(moved > 0)
-    }
-
-    @Test("a watch that is not in breach earns nothing on its own")
-    func watchWithinThresholdScoresNothing() {
-        let quiet = metric(value: 500)
-        let snap = snapshot(metrics: [quiet])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "42", title: "Weekly active users",
-                        condition: .above(1_000))
-        ]
-        #expect(SnapshotRelevance.metric(quiet, in: snap, watches: watches, now: capturedAt) == 0)
-    }
-
-    @Test("a paused watch cannot promote the widget")
-    func disabledWatchIsIgnored() {
-        let breaching = metric(value: 5_000)
-        let snap = snapshot(metrics: [breaching])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "42", title: "Weekly active users",
-                        condition: .above(1_000), isEnabled: false)
-        ]
-        #expect(SnapshotRelevance.metric(breaching, in: snap, watches: watches, now: capturedAt) == 0)
-    }
-
-    @Test("a watch on some other metric does not promote this one")
-    func watchOnAnotherMetricIsIgnored() {
-        let subject = metric(value: 5_000)
-        let snap = snapshot(metrics: [subject])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "999", title: "Something else",
-                        condition: .above(1))
-        ]
-        #expect(SnapshotRelevance.metric(subject, in: snap, watches: watches, now: capturedAt) == 0)
-    }
-
     // MARK: - Metric: movement
 
     @Test("an ordinary wobble is not news")
     func smallMovesScoreNothing() {
         let barelyMoved = metric(value: 1_040, previous: 1_000)
         let snap = snapshot(metrics: [barelyMoved])
-        #expect(SnapshotRelevance.metric(barelyMoved, in: snap, watches: [], now: capturedAt) == 0)
+        #expect(SnapshotRelevance.metric(barelyMoved, in: snap, now: capturedAt) == 0)
     }
 
     @Test("bigger moves rank above smaller ones")
     func biggerMovesRankHigher() {
         let scores = [1_200.0, 1_400, 1_800].map { value -> Float in
             let m = metric(value: value, previous: 1_000)
-            return SnapshotRelevance.metric(m, in: snapshot(metrics: [m]), watches: [], now: capturedAt)
+            return SnapshotRelevance.metric(m, in: snapshot(metrics: [m]), now: capturedAt)
         }
         #expect(scores == scores.sorted())
         #expect(Set(scores).count == 3)
@@ -260,8 +206,8 @@ struct SnapshotRelevanceTests {
         let up = metric(value: 1_500, previous: 1_000)
         let down = metric(value: 500, previous: 1_000)
         #expect(
-            SnapshotRelevance.metric(up, in: snapshot(metrics: [up]), watches: [], now: capturedAt)
-                == SnapshotRelevance.metric(down, in: snapshot(metrics: [down]), watches: [], now: capturedAt)
+            SnapshotRelevance.metric(up, in: snapshot(metrics: [up]), now: capturedAt)
+                == SnapshotRelevance.metric(down, in: snapshot(metrics: [down]), now: capturedAt)
         )
     }
 
@@ -269,14 +215,14 @@ struct SnapshotRelevanceTests {
     func noBaselineScoresNothing() {
         let lonely = metric(value: 9_999_999)
         let snap = snapshot(metrics: [lonely])
-        #expect(SnapshotRelevance.metric(lonely, in: snap, watches: [], now: capturedAt) == 0)
+        #expect(SnapshotRelevance.metric(lonely, in: snap, now: capturedAt) == 0)
     }
 
     @Test("a zero baseline does not become an infinite percentage")
     func zeroBaselineScoresNothing() {
         let fromNothing = metric(value: 500, previous: 0)
         let snap = snapshot(metrics: [fromNothing])
-        let score = SnapshotRelevance.metric(fromNothing, in: snap, watches: [], now: capturedAt)
+        let score = SnapshotRelevance.metric(fromNothing, in: snap, now: capturedAt)
         #expect(score == 0)
     }
 
@@ -285,7 +231,7 @@ struct SnapshotRelevanceTests {
         for value in [Double.infinity, -.infinity, .nan] {
             let broken = metric(value: value, previous: 1_000)
             let snap = snapshot(metrics: [broken])
-            let score = SnapshotRelevance.metric(broken, in: snap, watches: [], now: capturedAt)
+            let score = SnapshotRelevance.metric(broken, in: snap, now: capturedAt)
             #expect(score.isFinite)
             #expect(score >= 0)
             #expect(score <= SnapshotRelevance.ceiling)
@@ -294,56 +240,39 @@ struct SnapshotRelevanceTests {
 
     @Test("a metric the snapshot does not contain scores zero")
     func missingMetricScoresZero() {
-        #expect(SnapshotRelevance.metric(nil, in: snapshot(), watches: [], now: capturedAt) == 0)
+        #expect(SnapshotRelevance.metric(nil, in: snapshot(), now: capturedAt) == 0)
     }
 
-    @Test("a breach on a stale snapshot decays like every other claim")
-    func breachDecaysWithAge() {
-        let breaching = metric(value: 5_000)
-        let snap = snapshot(metrics: [breaching])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "42", title: "Weekly active users",
-                        condition: .above(1_000))
-        ]
-
-        let fresh = SnapshotRelevance.metric(breaching, in: snap, watches: watches, now: capturedAt)
+    @Test("movement on a stale snapshot decays like every other claim")
+    func movementDecaysWithAge() {
+        let moved = metric(value: 1_500, previous: 1_000)
+        let snap = snapshot(metrics: [moved])
+        let fresh = SnapshotRelevance.metric(moved, in: snap, now: capturedAt)
         let old = SnapshotRelevance.metric(
-            breaching, in: snap, watches: watches,
+            moved, in: snap,
             now: capturedAt.addingTimeInterval(SnapshotRelevance.decayHorizon)
         )
         #expect(fresh > 0)
         #expect(old == 0)
     }
 
-    @Test("a watched breach on a metric that also moved reaches the ceiling")
+    @Test("an extreme move saturates inside the metric band")
     func metricStaysInsideTheCeiling() {
         let both = metric(value: 5_000, previous: 100)
         let snap = snapshot(metrics: [both])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "42", title: "Weekly active users",
-                        condition: .above(1_000))
-        ]
-        let score = SnapshotRelevance.metric(both, in: snap, watches: watches, now: capturedAt)
-        #expect(score == SnapshotRelevance.ceiling)
+        let score = SnapshotRelevance.metric(both, in: snap, now: capturedAt)
+        #expect(score == SnapshotRelevance.moveBonusCeiling)
+        #expect(score <= SnapshotRelevance.ceiling)
     }
 
     // MARK: - Purity
 
-    @Test("scoring a breach posts nothing and latches nothing")
+    @Test("movement scoring is deterministic and side-effect free")
     func scoringHasNoSideEffects() {
-        // The breach question is answered by running the notification evaluator
-        // with an empty prior set. That evaluator returns alerts to post; nothing
-        // here may act on them, and a second identical call must give the same
-        // answer rather than latching itself quiet.
-        let breaching = metric(value: 5_000)
-        let snap = snapshot(metrics: [breaching])
-        let watches = [
-            MetricWatch(id: "w1", metricID: "42", title: "Weekly active users",
-                        condition: .above(1_000))
-        ]
-
-        let first = SnapshotRelevance.metric(breaching, in: snap, watches: watches, now: capturedAt)
-        let second = SnapshotRelevance.metric(breaching, in: snap, watches: watches, now: capturedAt)
+        let moved = metric(value: 1_500, previous: 1_000)
+        let snap = snapshot(metrics: [moved])
+        let first = SnapshotRelevance.metric(moved, in: snap, now: capturedAt)
+        let second = SnapshotRelevance.metric(moved, in: snap, now: capturedAt)
         #expect(first == second)
         #expect(first > 0)
     }

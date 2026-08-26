@@ -168,14 +168,6 @@ struct WatchFlagsView: View {
                     }
                 }
 
-                if model.watchesDegraded {
-                    // Same fact the Health page states, said once more where a
-                    // write is possible: an out-of-date watch app took only
-                    // part of what the phone sent.
-                    Text(WatchHealthCopy.degradedFooter)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Ink.tertiary)
-                }
             }
             .navigationTitle("Flags")
             .confirmationDialog(

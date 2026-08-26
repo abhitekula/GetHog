@@ -446,9 +446,9 @@ enum WatchDeltaText {
                 // would be infinite. State the absolute move instead of a
                 // number nobody can act on.
                 let delta = metric.delta ?? 0
-                return "\(word) \(MetricWatch.format(abs(delta))) vs previous"
+                return "\(word) \(WidgetNumber.full(abs(delta))) vs previous"
             }
-            return "\(word) \(MetricWatch.format(abs(fraction * 100)))% vs previous"
+            return "\(word) \(WidgetNumber.full(abs(fraction * 100)))% vs previous"
         }
     }
 
