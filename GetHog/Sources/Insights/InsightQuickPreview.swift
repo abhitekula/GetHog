@@ -18,6 +18,7 @@ final class InsightQuickPreviewStore {
         let id: UInt64
         let scope: InsightPreviewScope
         let task: Task<Void, Never>
+        var waiters: [UInt64: CheckedContinuation<Void, Never>] = [:]
     }
 
     private static let reuseInterval: TimeInterval = 5 * 60
@@ -27,6 +28,7 @@ final class InsightQuickPreviewStore {
     private var activeScope: InsightPreviewScope?
     private var operationToken: UInt64 = 0
     private var nextFlightID: UInt64 = 0
+    private var nextWaiterID: UInt64 = 0
     private var loadFlight: LoadFlight?
 
     init(now: @escaping @MainActor () -> Date = Date.init) {
@@ -46,7 +48,7 @@ final class InsightQuickPreviewStore {
         }
 
         if let loadFlight, loadFlight.scope == scope {
-            await loadFlight.task.value
+            await waitForFlight(loadFlight.id)
             return
         }
         if activeScope == scope,
@@ -60,7 +62,7 @@ final class InsightQuickPreviewStore {
         if activeScope == scope {
             retained = retainedValue
         } else {
-            loadFlight?.task.cancel()
+            cancelLoadFlight()
             retained = (nil, nil)
         }
 
@@ -78,18 +80,14 @@ final class InsightQuickPreviewStore {
                 previous: retained.insight,
                 previousLoadedAt: retained.loadedAt
             )
+            self.finishFlight(flightID)
         }
         loadFlight = LoadFlight(id: flightID, scope: scope, task: task)
-        await task.value
-        if loadFlight?.id == flightID {
-            loadFlight = nil
-        }
+        await waitForFlight(flightID)
     }
 
     func invalidate() {
-        operationToken &+= 1
-        loadFlight?.task.cancel()
-        loadFlight = nil
+        cancelLoadFlight()
         activeScope = nil
         state = .idle
     }
@@ -145,6 +143,70 @@ final class InsightQuickPreviewStore {
 
     private func owns(scope: InsightPreviewScope, token: UInt64) -> Bool {
         activeScope == scope && operationToken == token
+    }
+
+    /// Each mounted preview is one waiter on a shared same-scope flight. A
+    /// cancelled waiter returns immediately; only the last waiter's departure
+    /// cancels the underlying request.
+    private func waitForFlight(_ flightID: UInt64) async {
+        nextWaiterID &+= 1
+        let waiterID = nextWaiterID
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard var flight = loadFlight, flight.id == flightID else {
+                    continuation.resume()
+                    return
+                }
+                flight.waiters[waiterID] = continuation
+                loadFlight = flight
+                if Task.isCancelled {
+                    cancelWaiter(waiterID, from: flightID)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                self.cancelWaiter(waiterID, from: flightID)
+            }
+        }
+    }
+
+    private func cancelWaiter(_ waiterID: UInt64, from flightID: UInt64) {
+        guard var flight = loadFlight,
+              flight.id == flightID,
+              let continuation = flight.waiters.removeValue(forKey: waiterID)
+        else { return }
+
+        if flight.waiters.isEmpty {
+            operationToken &+= 1
+            flight.task.cancel()
+            loadFlight = nil
+            let retained = retainedValue
+            if let insight = retained.insight, let loadedAt = retained.loadedAt {
+                state = .loaded(insight, loadedAt: loadedAt)
+            } else {
+                activeScope = nil
+                state = .idle
+            }
+        } else {
+            loadFlight = flight
+        }
+        continuation.resume()
+    }
+
+    private func finishFlight(_ flightID: UInt64) {
+        guard let flight = loadFlight, flight.id == flightID else { return }
+        loadFlight = nil
+        flight.waiters.values.forEach { $0.resume() }
+    }
+
+    /// Scope replacement and explicit invalidation also release every caller;
+    /// no activation may remain suspended behind a request it no longer owns.
+    private func cancelLoadFlight() {
+        operationToken &+= 1
+        guard let flight = loadFlight else { return }
+        flight.task.cancel()
+        loadFlight = nil
+        flight.waiters.values.forEach { $0.resume() }
     }
 }
 
@@ -240,7 +302,10 @@ enum InsightQuickPreviewResult: Equatable {
                 seriesCount: chart.series.count
             )
         case .heatmap:
-            guard visualization.configurationIssue == nil else {
+            guard visualization.configurationIssue == nil,
+                  let heatmap = visualization.heatmap,
+                  !heatmap.cells.isEmpty
+            else {
                 return tableResult(visualization)
             }
             return .chart(display: "Heatmap", seriesCount: 1)

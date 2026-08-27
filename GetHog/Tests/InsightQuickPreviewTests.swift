@@ -76,6 +76,16 @@ private actor ControlledInsightPreviewTransport: HTTPTransport {
     func cancelledRequests() -> Int { cancellationCount }
 }
 
+private actor InsightPreviewActivationProbe {
+    private var didReturn = false
+
+    func markReturned() {
+        didReturn = true
+    }
+
+    func hasReturned() -> Bool { didReturn }
+}
+
 @Suite("Insight Quick Preview")
 @MainActor
 struct InsightQuickPreviewTests {
@@ -137,6 +147,12 @@ struct InsightQuickPreviewTests {
         #expect(InsightQuickPreviewResult(insight: insight) == .table(rows: 2, columns: 2))
     }
 
+    @Test("a nonempty heatmap with no plottable cells falls back to its real table")
+    func unplottableHeatmapFallsBackToTable() throws {
+        let insight = try Self.insight(Self.unplottableHeatmapInsight)
+        #expect(InsightQuickPreviewResult(insight: insight) == .table(rows: 1, columns: 3))
+    }
+
     @Test("a computed result with no values is empty")
     func emptyResultIsHonest() throws {
         let insight = try Self.insight(Self.emptyInsight)
@@ -181,6 +197,84 @@ struct InsightQuickPreviewTests {
             return
         }
         #expect(insight.title == "Joined preview")
+    }
+
+    @Test("cancelling the sole activation waiter cancels and fences its flight")
+    func soleCancelledWaiterCancelsFlight() async {
+        let transport = ControlledInsightPreviewTransport(
+            replies: [.ok(Self.cachedInsight(id: 7_201, title: "Late dismissed preview"))],
+            heldRequests: [1],
+            deliversCancelledResponses: true
+        )
+        let store = InsightQuickPreviewStore()
+        let scope = Self.scope(projectID: 1, insightID: 7_201)
+        let probe = InsightPreviewActivationProbe()
+        let activation = Task {
+            await store.activate(client: Self.client(transport: transport), scope: scope)
+            await probe.markReturned()
+        }
+        await transport.waitForRequests(1)
+
+        activation.cancel()
+        #expect(await Self.waitForReturn(probe))
+        guard case .idle = store.state(for: scope) else {
+            Issue.record("A dismissed sole activation left visible loading or loaded state.")
+            await transport.release(1)
+            await activation.value
+            return
+        }
+
+        await transport.release(1)
+        #expect(await Self.waitForCancellation(transport))
+        await activation.value
+        guard case .idle = store.state(for: scope) else {
+            Issue.record("A late response published after sole-waiter cancellation.")
+            return
+        }
+        #expect(await transport.requestCount() == 1)
+    }
+
+    @Test("cancelling one same-scope waiter preserves the remaining waiter")
+    func cancellingOneJoinedWaiterPreservesFlight() async {
+        let transport = ControlledInsightPreviewTransport(
+            replies: [.ok(Self.cachedInsight(id: 7_201, title: "Shared preview"))],
+            heldRequests: [1],
+            deliversCancelledResponses: true
+        )
+        let store = InsightQuickPreviewStore()
+        let scope = Self.scope(projectID: 1, insightID: 7_201)
+        let client = Self.client(transport: transport)
+        let cancelledProbe = InsightPreviewActivationProbe()
+        let cancelled = Task {
+            await store.activate(client: client, scope: scope)
+            await cancelledProbe.markReturned()
+        }
+        await transport.waitForRequests(1)
+        let remaining = Task { await store.activate(client: client, scope: scope) }
+        await Task.yield()
+        await Task.yield()
+
+        cancelled.cancel()
+        #expect(await Self.waitForReturn(cancelledProbe))
+        guard case .loading = store.state(for: scope) else {
+            Issue.record("Cancelling one joiner ended the shared flight.")
+            await transport.release(1)
+            await cancelled.value
+            await remaining.value
+            return
+        }
+
+        await transport.release(1)
+        await cancelled.value
+        await remaining.value
+
+        #expect(await transport.requestCount() == 1)
+        #expect(await transport.cancelledRequests() == 0)
+        guard case .loaded(let insight, _) = store.state(for: scope) else {
+            Issue.record("The legitimate same-scope waiter did not receive the shared result.")
+            return
+        }
+        #expect(insight.title == "Shared preview")
     }
 
     @Test("a completed preview is reused for less than five minutes")
@@ -401,6 +495,24 @@ struct InsightQuickPreviewTests {
         try JSONDecoder().decode(Insight.self, from: Data(json.utf8))
     }
 
+    private static func waitForReturn(_ probe: InsightPreviewActivationProbe) async -> Bool {
+        for _ in 0..<1_000 {
+            if await probe.hasReturned() { return true }
+            await Task.yield()
+        }
+        return false
+    }
+
+    private static func waitForCancellation(
+        _ transport: ControlledInsightPreviewTransport
+    ) async -> Bool {
+        for _ in 0..<1_000 {
+            if await transport.cancelledRequests() == 1 { return true }
+            await Task.yield()
+        }
+        return false
+    }
+
     private static func cachedInsight(id: Int, title: String) -> Data {
         Data(
             """
@@ -490,6 +602,24 @@ struct InsightQuickPreviewTests {
       "columns": ["synthetic_name", "synthetic_count"],
       "types": [["synthetic_name", "String"], ["synthetic_count", "Int64"]],
       "result": [["Alpha", 7], ["Beta", 5]]
+    }
+    """#
+
+    private static let unplottableHeatmapInsight = #"""
+    {
+      "id": 7207,
+      "query": {
+        "kind": "DataVisualizationNode",
+        "source": {"kind":"HogQLQuery"},
+        "display": "TwoDimensionalHeatmap"
+      },
+      "columns": ["synthetic_x", "synthetic_y", "synthetic_value"],
+      "types": [
+        ["synthetic_x", "String"],
+        ["synthetic_y", "String"],
+        ["synthetic_value", "Int64"]
+      ],
+      "result": [["Alpha", "Beta", "not-a-number"]]
     }
     """#
 
