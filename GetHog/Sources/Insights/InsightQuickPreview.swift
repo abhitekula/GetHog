@@ -107,12 +107,13 @@ final class InsightQuickPreviewStore {
         previousLoadedAt: Date?
     ) async {
         do {
-            let loaded: Insight = try await client.send(
+            let loaded: Insight = try await client.sendCached(
                 PostHogAPI.insight(
                     projectID: scope.authority.projectID,
                     insightID: scope.insightID,
                     refresh: false
-                )
+                ),
+                ttl: Self.reuseInterval
             )
             guard owns(scope: scope, token: token), !Task.isCancelled else { return }
             state = .loaded(loaded, loadedAt: now())

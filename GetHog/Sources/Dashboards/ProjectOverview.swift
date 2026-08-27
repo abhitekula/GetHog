@@ -117,12 +117,13 @@ final class DashboardPreviewStore {
         previousLoadedAt: Date?
     ) async {
         do {
-            let loaded: Dashboard = try await client.send(
+            let loaded: Dashboard = try await client.sendCached(
                 PostHogAPI.dashboard(
                     projectID: scope.authority.projectID,
                     dashboardID: scope.dashboardID,
                     refresh: false
-                )
+                ),
+                ttl: Self.reuseInterval
             )
             guard owns(scope: scope, token: token), !Task.isCancelled else { return }
             state = .loaded(loaded, loadedAt: now())

@@ -181,9 +181,20 @@ final class DashboardDetailStore {
             }
         }
         do {
-            let loaded: Dashboard = try await client.send(
-                PostHogAPI.dashboard(projectID: projectID, dashboardID: dashboardID, refresh: refresh)
+            let endpoint = PostHogAPI.dashboard(
+                projectID: projectID,
+                dashboardID: dashboardID,
+                refresh: refresh
             )
+            let loaded: Dashboard
+            if refresh {
+                loaded = try await client.send(endpoint)
+            } else {
+                loaded = try await client.sendCached(
+                    endpoint,
+                    ttl: ResponseCache.TTL.dashboards
+                )
+            }
             guard generation == loadGeneration, !Task.isCancelled else { return }
             // The old range calculation belongs to the old dashboard only once
             // a replacement has actually arrived. A failed refresh keeps the

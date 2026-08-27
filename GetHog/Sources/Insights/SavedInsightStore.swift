@@ -11,6 +11,8 @@ import GetHogKit
 @Observable
 final class SavedInsightStore {
 
+    private static let cachedResultTTL: TimeInterval = 5 * 60
+
     private(set) var insight: Insight?
     private(set) var isLoading = false
     private(set) var isComputing = false
@@ -69,8 +71,9 @@ final class SavedInsightStore {
 
         do {
             if let numericID = Int(identifier) {
-                insight = try await client.send(
-                    PostHogAPI.insight(projectID: projectID, insightID: numericID)
+                insight = try await client.sendCached(
+                    PostHogAPI.insight(projectID: projectID, insightID: numericID),
+                    ttl: Self.cachedResultTTL
                 )
             } else {
                 let page: Page<Insight> = try await client.send(
@@ -120,8 +123,9 @@ final class SavedInsightStore {
         defer { isLoading = false }
 
         do {
-            let cached: Insight = try await client.send(
-                PostHogAPI.insight(projectID: projectID, insightID: insight.id)
+            let cached: Insight = try await client.sendCached(
+                PostHogAPI.insight(projectID: projectID, insightID: insight.id),
+                ttl: Self.cachedResultTTL
             )
             self.insight = cached
             failure = nil

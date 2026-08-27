@@ -1012,6 +1012,42 @@ struct DashboardConsistencyTests {
         #expect(dashboard.id == 9_001)
     }
 
+    @Test("a completed dashboard preview supplies detail without a second request")
+    func completedDashboardPreviewSuppliesDetailFromResponseCache() async {
+        let cache = ResponseCache(
+            subdirectory: "DashboardPreviewDetailTests-\(UUID().uuidString)"
+        )
+        let authority = ResourceRequestAuthority(
+            projectID: 1_001,
+            region: .usCloud,
+            authSessionID: UUID(
+                uuidString: "018F9000-0000-7000-8000-000000000720"
+            )!
+        )
+        let transport = DashboardConsistencyTransport(
+            dashboardReplies: [.ok(Self.savedDashboard), .ok(Self.savedDashboard)]
+        )
+        let client = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+            transport: transport,
+            responseCache: cache,
+            responseCacheNamespace: authority.authSessionID.uuidString
+        )
+        let preview = DashboardPreviewStore()
+        let detail = DashboardDetailStore()
+
+        await preview.activate(
+            client: client,
+            scope: DashboardPreviewScope(authority: authority, dashboardID: 9_001)
+        )
+        await detail.loadIfNeeded(client: client, projectID: 1_001, dashboardID: 9_001)
+
+        #expect(await transport.dashboardRequestCount == 1)
+        #expect(detail.dashboard?.title == "Synthetic operations")
+        #expect(detail.dashboard?.id == 9_001)
+        await cache.clear()
+    }
+
     @Test("same-scope dashboard preview activations join one store-owned flight")
     func sameScopeDashboardPreviewActivationsJoin() async {
         let transport = HeldCancelableDashboardTransport(responseBody: Self.savedDashboard)

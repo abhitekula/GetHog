@@ -96,6 +96,33 @@ private actor RecordingDemoTransport: HTTPTransport {
     }
 }
 
+private actor ForegroundCacheTransport: HTTPTransport {
+    private let base = DemoTransport()
+    private var dashboardDetailCount = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        if path == "/api/projects/1001/dashboards/9001/" {
+            dashboardDetailCount += 1
+            let body = """
+            {"id":9001,"name":"Session \(dashboardDetailCount) dashboard","tiles":[]}
+            """
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        }
+        return try await base.send(request)
+    }
+
+    func count() -> Int { dashboardDetailCount }
+}
+
 private let meJSON = """
 {"email":"a@example.com","first_name":"Ada","distinct_id":"d1",
  "team":{"id":42,"name":"Prod","api_token":"phc_x","timezone":"UTC"},
@@ -186,6 +213,35 @@ struct AppModelTests {
         #expect(model.selectedProject?.id == 42)
         // The key must be persisted so the next launch skips onboarding.
         #expect(try store.load()?.key == "phx_abc")
+    }
+
+    @Test("the foreground response cache follows the persisted authentication epoch")
+    func foregroundCacheIsFencedByAuthenticationEpoch() async throws {
+        let cache = ResponseCache(
+            subdirectory: "AppModelForegroundCacheTests-\(UUID().uuidString)"
+        )
+        let transport = ForegroundCacheTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            cache: cache
+        )
+        let endpoint = PostHogAPI.dashboard(projectID: 1_001, dashboardID: 9_001)
+
+        try await model.connect(key: "synthetic-first-session", region: .usCloud)
+        let firstClient = try #require(model.client)
+        let first: Dashboard = try await firstClient.sendCached(endpoint, ttl: 300)
+        let reused: Dashboard = try await firstClient.sendCached(endpoint, ttl: 300)
+        #expect(first.title == "Session 1 dashboard")
+        #expect(reused.title == first.title)
+
+        try await model.connect(key: "synthetic-replacement-session", region: .usCloud)
+        let replacementClient = try #require(model.client)
+        let replacement: Dashboard = try await replacementClient.sendCached(endpoint, ttl: 300)
+
+        #expect(replacement.title == "Session 2 dashboard")
+        #expect(await transport.count() == 2)
+        await cache.clear()
     }
 
     @Test("a rejected key does not persist a credential")

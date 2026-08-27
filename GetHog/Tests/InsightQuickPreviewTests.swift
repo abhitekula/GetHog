@@ -74,6 +74,14 @@ private actor ControlledInsightPreviewTransport: HTTPTransport {
 
     func requestCount() -> Int { requests.count }
     func cancelledRequests() -> Int { cancellationCount }
+
+    func requestCount(refresh: String) -> Int {
+        requests.count { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .contains { $0.name == "refresh" && $0.value == refresh } == true
+        }
+    }
 }
 
 private actor InsightPreviewActivationProbe {
@@ -297,6 +305,69 @@ struct InsightQuickPreviewTests {
             return
         }
         #expect(loadedAt == Date(timeIntervalSince1970: 1_787_738_400))
+    }
+
+    @Test("a drawable preview supplies detail without another cached-result GET")
+    func drawablePreviewSuppliesDetailFromResponseCache() async throws {
+        let cache = ResponseCache(
+            subdirectory: "InsightPreviewDetailTests-\(UUID().uuidString)"
+        )
+        let transport = ControlledInsightPreviewTransport(
+            replies: [
+                .ok(Self.cachedInsight(id: 7_201, title: "Preview result")),
+                .ok(Self.cachedInsight(id: 7_201, title: "Duplicate detail result")),
+            ]
+        )
+        let scope = Self.scope(projectID: 1, insightID: 7_201)
+        let client = Self.client(
+            transport: transport,
+            cache: cache,
+            cacheNamespace: scope.authority.authSessionID.uuidString
+        )
+        let preview = InsightQuickPreviewStore()
+        let detail = SavedInsightStore()
+        detail.seed(try Self.insight(Self.detailSeedInsight))
+
+        await preview.activate(client: client, scope: scope)
+        await detail.loadResults(client: client, projectID: 1)
+
+        #expect(await transport.requestCount(refresh: "force_cache") == 1)
+        #expect(await transport.requestCount(refresh: "blocking") == 0)
+        #expect(detail.insight?.title == "Preview result")
+        #expect(detail.insight?.hasDrawableResult == true)
+        await cache.clear()
+    }
+
+    @Test("an empty preview is reused before detail performs one intentional compute")
+    func emptyPreviewIsReusedBeforeIntentionalCompute() async throws {
+        let cache = ResponseCache(
+            subdirectory: "InsightPreviewComputeTests-\(UUID().uuidString)"
+        )
+        let empty = Data(Self.detailSeedInsight.utf8)
+        let computed = Self.cachedInsight(id: 7_201, title: "Computed detail result")
+        let transport = ControlledInsightPreviewTransport(
+            replies: [.ok(empty), .ok(computed)]
+        )
+        let scope = Self.scope(projectID: 1, insightID: 7_201)
+        let client = Self.client(
+            transport: transport,
+            cache: cache,
+            cacheNamespace: scope.authority.authSessionID.uuidString
+        )
+        let preview = InsightQuickPreviewStore()
+        let detail = SavedInsightStore()
+        detail.seed(try Self.insight(Self.detailSeedInsight))
+
+        await preview.activate(client: client, scope: scope)
+        await detail.loadResults(client: client, projectID: 1)
+
+        #expect(await transport.requestCount(refresh: "force_cache") == 1)
+        #expect(await transport.requestCount(refresh: "blocking") == 1)
+        #expect(await transport.requestCount() == 2)
+        #expect(detail.insight?.title == "Computed detail result")
+        #expect(detail.insight?.hasDrawableResult == true)
+        #expect(detail.didCompute)
+        await cache.clear()
     }
 
     @Test("the five-minute expiry triggers one replacement request")
@@ -545,10 +616,16 @@ struct InsightQuickPreviewTests {
         )
     }
 
-    private static func client(transport: some HTTPTransport) -> PostHogClient {
+    private static func client(
+        transport: some HTTPTransport,
+        cache: ResponseCache? = nil,
+        cacheNamespace: String? = nil
+    ) -> PostHogClient {
         PostHogClient(
             auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
+            transport: transport,
+            responseCache: cache,
+            responseCacheNamespace: cacheNamespace
         )
     }
 
@@ -565,6 +642,21 @@ struct InsightQuickPreviewTests {
       "query": {
         "kind": "InsightVizNode",
         "source": {"kind":"TrendsQuery","trendsFilter":{"display":"BoldNumber"}}
+      },
+      "result": []
+    }
+    """#
+
+    private static let detailSeedInsight = #"""
+    {
+      "id": 7201,
+      "name": "Synthetic activation trend",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "kind":"TrendsQuery",
+          "trendsFilter":{"display":"ActionsLineGraph"}
+        }
       },
       "result": []
     }

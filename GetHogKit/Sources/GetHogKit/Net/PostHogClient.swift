@@ -64,16 +64,22 @@ public actor PostHogClient {
     private let auth: any AuthProvider
     private let transport: any HTTPTransport
     private let governor: RateLimitGovernor
+    private let responseCache: ResponseCache?
+    private let responseCacheNamespace: String?
     private let decoder = JSONDecoder()
 
     public init(
         auth: any AuthProvider,
         transport: any HTTPTransport = URLSessionTransport(),
-        governor: RateLimitGovernor = RateLimitGovernor()
+        governor: RateLimitGovernor = RateLimitGovernor(),
+        responseCache: ResponseCache? = nil,
+        responseCacheNamespace: String? = nil
     ) {
         self.auth = auth
         self.transport = transport
         self.governor = governor
+        self.responseCache = responseCache
+        self.responseCacheNamespace = responseCacheNamespace
     }
 
     /// Immutable configuration, so it is safe to read without actor hops —
@@ -84,6 +90,68 @@ public actor PostHogClient {
     /// Performs a request and decodes the response.
     public func send<T: Decodable & Sendable>(_ endpoint: Endpoint) async throws -> T {
         let data = try await data(for: endpoint)
+        return try decode(T.self, from: data)
+    }
+
+    /// Performs an explicitly cacheable GET and decodes its response.
+    ///
+    /// This is opt-in rather than an `Endpoint` default: most reads represent a
+    /// deliberate refresh, paging cursor, replay payload, or background snapshot
+    /// whose owner has a different freshness contract. Dashboard and Insight
+    /// cached-result routes are the narrow callers that can safely share their
+    /// completed body across preview and detail owners.
+    public func sendCached<T: Decodable & Sendable>(
+        _ endpoint: Endpoint,
+        ttl: TimeInterval
+    ) async throws -> T {
+        guard endpoint.method == "GET", endpoint.body == nil,
+              let responseCache, let responseCacheNamespace else {
+            return try await send(endpoint)
+        }
+
+        try Task.checkCancellation()
+        let request = try await request(for: endpoint)
+        let cacheKey = Self.cacheKey(
+            namespace: responseCacheNamespace,
+            method: endpoint.method,
+            url: request.url
+        )
+
+        try Task.checkCancellation()
+        if let entry = await responseCache.entry(for: cacheKey), entry.isFresh(ttl: ttl) {
+            try Task.checkCancellation()
+            do {
+                return try decode(T.self, from: entry.data)
+            } catch {
+                // A response that was valid for an older model can become
+                // undecodable after an app update. It must not poison this URL
+                // until TTL expiry; evict it and make one ordinary request.
+                try Task.checkCancellation()
+                await responseCache.remove(cacheKey)
+                try Task.checkCancellation()
+            }
+        }
+
+        let data = try await perform(endpoint, request: request)
+        try Task.checkCancellation()
+        let decoded = try decode(T.self, from: data)
+        try Task.checkCancellation()
+        await responseCache.store(data, for: cacheKey)
+        do {
+            try Task.checkCancellation()
+        } catch {
+            // A transport may ignore cooperative cancellation and answer late.
+            // Do not let that cancelled owner leave a reusable publication.
+            await responseCache.remove(cacheKey)
+            throw error
+        }
+        return decoded
+    }
+
+    private func decode<T: Decodable & Sendable>(
+        _ type: T.Type,
+        from data: Data
+    ) throws -> T {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
@@ -94,8 +162,11 @@ public actor PostHogClient {
     /// Performs a request and returns the raw body — used for `application/jsonl`
     /// replay snapshots, which are not JSON documents.
     public func data(for endpoint: Endpoint) async throws -> Data {
-        try await governor.waitForSlot(endpoint.category)
+        let request = try await request(for: endpoint)
+        return try await perform(endpoint, request: request)
+    }
 
+    private func request(for endpoint: Endpoint) async throws -> URLRequest {
         var components = URLComponents(
             url: auth.region.host.appending(path: endpoint.path),
             resolvingAgainstBaseURL: false
@@ -117,8 +188,15 @@ public actor PostHogClient {
         if endpoint.body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        return request
+    }
 
+    private func perform(_ endpoint: Endpoint, request: URLRequest) async throws -> Data {
+        try Task.checkCancellation()
+        try await governor.waitForSlot(endpoint.category)
+        try Task.checkCancellation()
         let (data, response) = try await transport.send(request)
+        try Task.checkCancellation()
 
         switch response.statusCode {
         case 200..<300:
@@ -194,6 +272,10 @@ public actor PostHogClient {
             }
             throw PostHogError.http(status: response.statusCode, detail: envelope?.detail)
         }
+    }
+
+    private static func cacheKey(namespace: String, method: String, url: URL?) -> String {
+        [namespace, method, url?.absoluteString ?? "<invalid-url>"].joined(separator: "\n")
     }
 
     public func usage() async -> [RateLimitGovernor.Category: Double] {

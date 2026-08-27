@@ -122,7 +122,7 @@ final class AppModel {
     static let organizationReadScope = "organization:read"
 
     let store: any CredentialStoring
-    let cache = ResponseCache()
+    let cache: ResponseCache
     private let governor = RateLimitGovernor()
     private let snapshotStore: SharedSnapshotStore
     private let snapshotRefresher: SnapshotRefreshCoordinator
@@ -185,13 +185,15 @@ final class AppModel {
     init(
         store: any CredentialStoring = KeychainTokenStore(),
         transport: any HTTPTransport = URLSessionTransport(),
-        snapshotStore: SharedSnapshotStore = .shared
+        snapshotStore: SharedSnapshotStore = .shared,
+        cache: ResponseCache = ResponseCache()
     ) {
         self.store = store
         self.baseTransport = transport
         self.transport = transport
         self.snapshotStore = snapshotStore
         self.snapshotRefresher = SnapshotRefreshCoordinator(store: snapshotStore)
+        self.cache = cache
     }
 
     // MARK: - Bootstrap
@@ -290,7 +292,9 @@ final class AppModel {
         let client = PostHogClient(
             auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region),
             transport: transport,
-            governor: governor
+            governor: governor,
+            responseCache: cache,
+            responseCacheNamespace: credential.authSessionID?.uuidString
         )
 
         let me: MeResponse = try await client.send(PostHogAPI.me())
