@@ -46,46 +46,139 @@ private actor QuickPreviewRequestRecorder: HTTPTransport {
 }
 
 /// Synchronizes a real SwiftUI preview lifecycle without guessing a delay.
-/// Later metadata-only previews can reuse this host and assertion window.
-private actor QuickPreviewLifecycleProbe {
-    private var hasSettledAppearance = false
+/// Later metadata-only previews declare their descendant task count and use the
+/// tracked modifier, so the host cannot return before those tasks have run.
+private actor QuickPreviewLifecycleBarrier {
+    private let expectedDescendantTasks: Int
+    private var hostTaskStarted = false
+    private var startedDescendantTasks = 0
+    private var finishedDescendantTasks = 0
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    func settledAppearance() {
-        hasSettledAppearance = true
+    init(expectedDescendantTasks: Int) {
+        self.expectedDescendantTasks = expectedDescendantTasks
+    }
+
+    func hostTaskDidStart() {
+        hostTaskStarted = true
+        resumeWaitersIfSettled()
+    }
+
+    func descendantTaskDidStart() {
+        startedDescendantTasks += 1
+    }
+
+    func descendantTaskDidFinish() {
+        finishedDescendantTasks += 1
+        resumeWaitersIfSettled()
+    }
+
+    func waitForSettledLifecycle() async {
+        guard !isSettled else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    private var isSettled: Bool {
+        hostTaskStarted
+            && startedDescendantTasks == expectedDescendantTasks
+            && finishedDescendantTasks == expectedDescendantTasks
+    }
+
+    private func resumeWaitersIfSettled() {
+        guard isSettled else { return }
         let currentWaiters = waiters
         waiters.removeAll()
         currentWaiters.forEach { $0.resume() }
     }
-
-    func waitForSettledAppearance() async {
-        guard !hasSettledAppearance else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
 }
 
 private struct QuickPreviewLifecycleHost<Content: View>: View {
-    let probe: QuickPreviewLifecycleProbe
+    let barrier: QuickPreviewLifecycleBarrier
     let content: Content
 
-    init(probe: QuickPreviewLifecycleProbe, @ViewBuilder content: () -> Content) {
-        self.probe = probe
-        self.content = content()
+    init(
+        barrier: QuickPreviewLifecycleBarrier,
+        @ViewBuilder content: (QuickPreviewLifecycleBarrier) -> Content
+    ) {
+        self.barrier = barrier
+        self.content = content(barrier)
     }
 
     var body: some View {
-        content.onAppear {
-            Task {
-                await Task.yield()
-                await probe.settledAppearance()
-            }
+        content.task {
+            await barrier.hostTaskDidStart()
         }
+    }
+}
+
+private struct QuickPreviewDescendantTask: ViewModifier {
+    let barrier: QuickPreviewLifecycleBarrier
+    let action: @MainActor () async -> Void
+
+    func body(content: Content) -> some View {
+        content.task {
+            await barrier.descendantTaskDidStart()
+            await action()
+            await barrier.descendantTaskDidFinish()
+        }
+    }
+}
+
+private extension View {
+    func quickPreviewDescendantTask(
+        barrier: QuickPreviewLifecycleBarrier,
+        action: @escaping @MainActor () async -> Void
+    ) -> some View {
+        modifier(QuickPreviewDescendantTask(barrier: barrier, action: action))
+    }
+}
+
+private struct RequestingQuickPreviewPositiveControl: View {
+    let barrier: QuickPreviewLifecycleBarrier
+    let recorder: QuickPreviewRequestRecorder
+
+    var body: some View {
+        Text("Quick Preview request control")
+            .quickPreviewDescendantTask(barrier: barrier) {
+                let client = PostHogClient(
+                    auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
+                    transport: recorder
+                )
+                let _: MeResponse? = try? await client.send(PostHogAPI.me())
+            }
     }
 }
 
 @Suite("Quick Preview request boundaries")
 @MainActor
 struct QuickPreviewBoundaryTests {
+    @Test("the lifecycle host waits for a descendant task request")
+    func lifecycleHostObservesDescendantRequest() async throws {
+        let recorder = QuickPreviewRequestRecorder(forwarding: DemoTransport())
+        let barrier = QuickPreviewLifecycleBarrier(expectedDescendantTasks: 1)
+        let controller = UIHostingController(rootView: AnyView(
+            QuickPreviewLifecycleHost(barrier: barrier) { barrier in
+                RequestingQuickPreviewPositiveControl(barrier: barrier, recorder: recorder)
+            }
+        ))
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            Issue.record("The iOS test host has no window scene for the preview lifecycle.")
+            return
+        }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+
+        await barrier.waitForSettledLifecycle()
+        let requests = await recorder.recordedRequests()
+        #expect(requests.count == 1)
+        #expect(requests.first?.httpMethod == "GET")
+        #expect(requests.first?.url?.path == "/api/users/@me")
+        window.isHidden = true
+    }
+
     @Test("an event preview lifecycle emits no requests")
     func eventPreviewEmitsNoRequests() async throws {
         let recorder = QuickPreviewRequestRecorder(forwarding: DemoTransport())
@@ -104,9 +197,9 @@ struct QuickPreviewBoundaryTests {
         #expect(model.client != nil)
         await recorder.reset()
 
-        let probe = QuickPreviewLifecycleProbe()
+        let barrier = QuickPreviewLifecycleBarrier(expectedDescendantTasks: 0)
         let controller = UIHostingController(rootView: AnyView(
-            QuickPreviewLifecycleHost(probe: probe) {
+            QuickPreviewLifecycleHost(barrier: barrier) { _ in
                 EventQuickPreview(row: Self.event)
                     .environment(model)
             }
@@ -122,7 +215,7 @@ struct QuickPreviewBoundaryTests {
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
 
-        await probe.waitForSettledAppearance()
+        await barrier.waitForSettledLifecycle()
         #expect(await recorder.recordedRequests().isEmpty)
         window.isHidden = true
     }
