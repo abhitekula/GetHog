@@ -168,11 +168,14 @@ public actor PostHogClient {
     /// Binds this client to the cache generation current at the call's actor
     /// turn. AppModel awaits it before publishing a foreground client and may
     /// repeat it when an older sign-out boundary overlapped replacement setup.
-    public func refreshCachePublicationLease() async {
-        guard let responseCache, let responseCacheNamespace else { return }
-        responseCacheLease = await responseCache.issuePublicationLease(
+    @discardableResult
+    public func refreshCachePublicationLease() async -> UInt64? {
+        guard let responseCache, let responseCacheNamespace else { return nil }
+        let lease = await responseCache.issuePublicationLease(
             namespace: responseCacheNamespace
         )
+        responseCacheLease = lease
+        return lease.generation
     }
 
     private func cachePublicationLease() async -> ResponseCache.PublicationLease? {

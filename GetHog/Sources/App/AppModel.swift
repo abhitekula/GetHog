@@ -131,6 +131,10 @@ final class AppModel {
     /// changes. A publication retains this alongside its full scope and must
     /// still match both after every suspension.
     private var snapshotPublicationGeneration: UInt64 = 0
+    /// Lower bound for the cache generation a foreground client may publish
+    /// with. Sign-out advances it before crossing to the cache actor; activation
+    /// rechecks it after binding so no suspension can publish a stale lease.
+    private var requiredResponseCachePublicationGeneration: UInt64?
 
     private enum SnapshotPublicationAuthority {
         case live(FlagWriteScope)
@@ -296,9 +300,31 @@ final class AppModel {
             responseCache: cache,
             responseCacheNamespace: credential.authSessionID?.uuidString
         )
-        await client.refreshCachePublicationLease()
 
         let me: MeResponse = try await client.send(PostHogAPI.me())
+
+        // Invalid authentication never receives cache authority. After `/me`
+        // succeeds, bind as close as possible to the non-suspending session
+        // publication below. A sign-out announces its next cache generation on
+        // the MainActor before advancing the cache actor; if that boundary races
+        // this await, discard the stale lease and bind again.
+        while true {
+            let requiredGeneration = requiredResponseCachePublicationGeneration
+            guard let boundGeneration = await client.refreshCachePublicationLease() else {
+                break
+            }
+            guard requiredResponseCachePublicationGeneration == requiredGeneration else {
+                continue
+            }
+            if let requiredGeneration, boundGeneration < requiredGeneration {
+                continue
+            }
+            requiredResponseCachePublicationGeneration = max(
+                requiredGeneration ?? boundGeneration,
+                boundGeneration
+            )
+            break
+        }
 
         // Authentication succeeded, so a legacy payload may now be migrated;
         // a brand-new replacement is saved at the same boundary. Persist before
@@ -830,6 +856,9 @@ final class AppModel {
     private func signOut(ifCurrentAuthSessionID expectedAuthSessionID: UUID?) async -> Bool {
         guard authSessionID == expectedAuthSessionID else { return false }
 
+        requiredResponseCachePublicationGeneration =
+            (requiredResponseCachePublicationGeneration ?? 0) &+ 1
+
         // ResponseCache advances one instance-wide generation before its first
         // suspension, invalidating the current client and every retained prior
         // credential client. The clear follows in the same actor operation.
@@ -842,7 +871,24 @@ final class AppModel {
         guard authSessionID == expectedAuthSessionID else {
             let replacementAuthSessionID = authSessionID
             let replacementClient = client
-            await replacementClient?.refreshCachePublicationLease()
+            while let replacementClient {
+                let requiredGeneration = requiredResponseCachePublicationGeneration
+                guard let boundGeneration =
+                    await replacementClient.refreshCachePublicationLease() else { break }
+                guard authSessionID == replacementAuthSessionID,
+                      client === replacementClient else { return false }
+                guard requiredResponseCachePublicationGeneration == requiredGeneration else {
+                    continue
+                }
+                if let requiredGeneration, boundGeneration < requiredGeneration {
+                    continue
+                }
+                requiredResponseCachePublicationGeneration = max(
+                    requiredGeneration ?? boundGeneration,
+                    boundGeneration
+                )
+                break
+            }
             guard authSessionID == replacementAuthSessionID,
                   client === replacementClient else { return false }
             return false

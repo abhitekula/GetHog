@@ -182,6 +182,57 @@ private actor HeldForegroundCacheTransport: HTTPTransport {
     func count() -> Int { dashboardDetailCount }
 }
 
+private actor HeldReplacementAuthenticationTransport: HTTPTransport {
+    private let base = DemoTransport()
+    private var authenticationCount = 0
+    private var dashboardDetailCount = 0
+    private var replacementAuthenticationHeld = false
+    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+    private var release: CheckedContinuation<Void, Never>?
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        if path == "/api/users/@me/" {
+            authenticationCount += 1
+            if authenticationCount == 2 {
+                replacementAuthenticationHeld = true
+                let waiters = arrivalWaiters
+                arrivalWaiters.removeAll()
+                waiters.forEach { $0.resume() }
+                await withCheckedContinuation { release = $0 }
+            }
+        }
+
+        if path == "/api/projects/1001/dashboards/9001/" {
+            dashboardDetailCount += 1
+            let body = #"{"id":9001,"name":"Replacement dashboard","tiles":[]}"#
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        }
+
+        return try await base.send(request)
+    }
+
+    func waitUntilReplacementAuthenticationHeld() async {
+        if replacementAuthenticationHeld { return }
+        await withCheckedContinuation { arrivalWaiters.append($0) }
+    }
+
+    func releaseReplacementAuthentication() {
+        release?.resume()
+        release = nil
+    }
+
+    func dashboardCount() -> Int { dashboardDetailCount }
+}
+
 private actor CacheGenerationBoundaryGate {
     private var hasArrived = false
     private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
@@ -511,6 +562,48 @@ struct AppModelTests {
         #expect(firstB.title == "Session 1 dashboard")
         #expect(reusedB.title == firstB.title)
         #expect(await transport.count() == 1)
+        await cache.clear()
+    }
+
+    @Test("replacement authentication finishing after an older teardown publishes a current cache lease")
+    func replacementAuthenticationAfterOlderTeardownPublishesCurrentCacheLease() async throws {
+        let cache = ResponseCache(
+            subdirectory: "AppModelReplacementAfterTeardownTests-\(UUID().uuidString)"
+        )
+        let transport = HeldReplacementAuthenticationTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            cache: cache
+        )
+        let endpoint = PostHogAPI.dashboard(projectID: 1_001, dashboardID: 9_001)
+
+        try await model.connect(key: "synthetic-session-a", region: .usCloud)
+        let scopeA = try #require(model.flagWriteScope)
+        await cache.store(Data("sentinel".utf8), for: "synthetic-inverse-order-sentinel")
+
+        let replacementAuthentication = Task {
+            try await model.connect(key: "synthetic-session-b", region: .usCloud)
+        }
+        await transport.waitUntilReplacementAuthenticationHeld()
+
+        await model.invalidateRejectedCredential(ifCurrent: scopeA)
+        #expect(model.phase == .onboarding)
+        #expect(await cache.totalSizeBytes() == 0)
+
+        await transport.releaseReplacementAuthentication()
+        try await replacementAuthentication.value
+
+        let clientB = try #require(model.client)
+        let scopeB = try #require(model.flagWriteScope)
+        #expect(model.phase == .ready)
+        #expect(scopeB.authSessionID != scopeA.authSessionID)
+
+        let first: Dashboard = try await clientB.sendCached(endpoint, ttl: 300)
+        let reused: Dashboard = try await clientB.sendCached(endpoint, ttl: 300)
+        #expect(first.title == "Replacement dashboard")
+        #expect(reused.title == first.title)
+        #expect(await transport.dashboardCount() == 1)
         await cache.clear()
     }
 
