@@ -626,6 +626,15 @@ struct TracingRoot: View {
                         TraceRowView(trace: trace)
                     }
                     .cardRow()
+                    .quickPreview {
+                        TraceQuickPreview(trace: trace)
+                    } menuItems: {
+                        Button {
+                            selection.wrappedValue = trace
+                        } label: {
+                            Label("Open Trace", systemImage: "arrow.right.circle")
+                        }
+                    }
                 }
             } header: {
                 SectionLabel(

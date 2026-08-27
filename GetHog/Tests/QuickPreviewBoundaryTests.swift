@@ -304,6 +304,49 @@ struct QuickPreviewBoundaryTests {
         window.isHidden = true
     }
 
+    @Test("a trace preview lifecycle emits no requests")
+    func tracePreviewEmitsNoRequests() async throws {
+        let recorder = QuickPreviewRequestRecorder(forwarding: DemoTransport())
+        let snapshotDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TraceQuickPreviewBoundary-\(UUID().uuidString)", isDirectory: true)
+        let model = AppModel(
+            store: InMemoryTokenStore(
+                credential: StoredCredential(key: "demo", region: .usCloud)
+            ),
+            transport: recorder,
+            snapshotStore: SharedSnapshotStore(directory: snapshotDirectory)
+        )
+        defer { try? FileManager.default.removeItem(at: snapshotDirectory) }
+
+        await model.bootstrap()
+        #expect(model.client != nil)
+        await recorder.reset()
+
+        let probe = QuickPreviewLifecycleProbe()
+        let trace = try Self.trace
+        let controller = UIHostingController(rootView: AnyView(
+            QuickPreviewLifecycleHost(probe: probe) {
+                TraceQuickPreview(trace: trace)
+                    .environment(model)
+            }
+        ))
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            Issue.record("The iOS test host has no window scene for the preview lifecycle.")
+            return
+        }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+
+        await probe.waitForAppearance()
+        await Self.observeQuiescence()
+        #expect(await recorder.recordedRequests().isEmpty)
+        window.isHidden = true
+    }
+
     private static func observeQuiescence() async {
         // A negative-observation interval after actual appearance gives normal
         // SwiftUI descendant tasks an execution opportunity without blocking
@@ -396,6 +439,30 @@ struct QuickPreviewBoundaryTests {
             #"{"id":"error-quick-preview-boundary","name":"SyntheticBoundaryFault","description":"Synthetic no-request preview.","status":"active","last_seen":"2026-08-27T12:00:00Z","aggregations":{"occurrences":42,"sessions":11,"users":7}}"#.utf8
         )
     )
+
+    private static var trace: TraceGroup {
+        get throws {
+            let root = try #require(TraceSpan(row: QueryRow(
+                columns: [
+                    "uuid", "trace_id", "span_id", "parent_span_id", "name",
+                    "service_name", "status_code", "timestamp", "duration_nano", "is_root_span",
+                ],
+                values: [
+                    .string("trace-quick-preview-boundary-root"),
+                    .string("trace-quick-preview-boundary"),
+                    .string("root"),
+                    .null,
+                    .string("GET /synthetic/checkout"),
+                    .string("synthetic-api"),
+                    .string("ok"),
+                    .string("2026-08-27T14:15:30Z"),
+                    .number(2_000_000),
+                    .bool(true),
+                ]
+            )))
+            return TraceGroup(id: "trace-quick-preview-boundary", spans: [root])
+        }
+    }
 
     private static var session: SessionRecording {
         get throws {
