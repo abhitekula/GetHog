@@ -22,6 +22,7 @@ struct InsightsRoot: View {
     @Environment(OpenDetails.self) private var openDetails
 
     @State private var store = InsightsStore()
+    @State private var quickPreviewStore = InsightQuickPreviewStore()
     @State private var search = ""
     @State private var kind: InsightKind?
     @State private var favoritesOnly = false
@@ -87,6 +88,19 @@ struct InsightsRoot: View {
 
     private var currentScopeFailure: LoadFailure? {
         store.failure(projectID: model.projectID, request: request)
+    }
+
+    private var requestAuthority: ResourceRequestAuthority? {
+        guard
+            let client = model.client,
+            let projectID = model.projectID,
+            let authSessionID = model.authSessionID
+        else { return nil }
+        return ResourceRequestAuthority(
+            projectID: projectID,
+            region: client.region,
+            authSessionID: authSessionID
+        )
     }
 
     private var usesHostNavigation: Bool {
@@ -203,6 +217,9 @@ struct InsightsRoot: View {
             .topLevelNavigationTitle("Insights")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
+            .onChange(of: requestAuthority, initial: true) { _, _ in
+                quickPreviewStore.invalidate()
+            }
             // Absent on tvOS for the reason `DashboardsRoot` records in
             // full: the field takes initial focus there and raises the
             // full-screen grid keyboard over the list it filters.
@@ -493,7 +510,10 @@ struct InsightsRoot: View {
     }
 
     private func row(_ insight: Insight) -> some View {
-        NavigationLink(value: insight.id) {
+        let scope = requestAuthority.map {
+            InsightPreviewScope(authority: $0, insightID: insight.id)
+        }
+        return NavigationLink(value: insight.id) {
             DataRow(
                 glyph: TileStyle.symbol(for: insight.renderModel),
                 // Favorites take the warm secondary, the same way generated
@@ -520,6 +540,21 @@ struct InsightsRoot: View {
         )
         .listRowSeparator(.hidden)
         .accessibilityIdentifier("gethog.insight-card.\(insight.id)")
+        .quickPreview {
+            InsightQuickPreview(
+                summary: insight,
+                state: quickPreviewStore.state(for: scope)
+            )
+            .task(id: scope) {
+                await quickPreviewStore.activate(client: model.client, scope: scope)
+            }
+        } menuItems: {
+            Button {
+                selectedID.wrappedValue = insight.id
+            } label: {
+                Label("Open Insight", systemImage: "arrow.right.circle")
+            }
+        }
         // The page after this one is fetched when its last row appears rather
         // than from a button, because 140 insights is three pages and a reader
         // scrolling a list should not have to ask for the rest of it. Guarded
@@ -529,23 +564,6 @@ struct InsightsRoot: View {
             if insight.id == store.insights.last?.id {
                 Task { await loadMore() }
             }
-        }
-        .contextMenu {
-            #if !os(tvOS)
-            // A browser to open into and a pasteboard to copy to: tvOS has
-            // neither, and a focusable row that does nothing is worse than no
-            // row at all.
-            if let url = model.webURL(path: "insights/\(insight.linkID)") {
-                Link(destination: url) {
-                    Label("Open in PostHog", systemImage: "arrow.up.forward.square")
-                }
-                Button {
-                    UIPasteboard.general.url = url
-                } label: {
-                    Label("Copy link", systemImage: "link")
-                }
-            }
-            #endif
         }
     }
 
