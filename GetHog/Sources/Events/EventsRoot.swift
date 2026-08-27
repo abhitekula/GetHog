@@ -895,6 +895,15 @@ struct EventsRoot: View {
                             NavigationLink(value: event.id) { EventRowView(event: event) }
                                 .listCardBackground(route: "events", id: event.id)
                                 .listRowSeparator(.hidden)
+                                .quickPreview {
+                                    EventQuickPreview(row: event)
+                                } menuItems: {
+                                    Button {
+                                        selectedID.wrappedValue = event.id
+                                    } label: {
+                                        Label("Open Event", systemImage: "arrow.right.circle")
+                                    }
+                                }
                         }
                     } header: {
                         SectionLabel(text: bucket.title, productMark: .event)
