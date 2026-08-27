@@ -65,7 +65,8 @@ public actor PostHogClient {
     private let transport: any HTTPTransport
     private let governor: RateLimitGovernor
     private let responseCache: ResponseCache?
-    private let responseCacheLease: ResponseCache.PublicationLease?
+    private let responseCacheNamespace: String?
+    private var responseCacheLease: ResponseCache.PublicationLease?
     private let decoder = JSONDecoder()
 
     public init(
@@ -79,9 +80,8 @@ public actor PostHogClient {
         self.transport = transport
         self.governor = governor
         self.responseCache = responseCache
-        self.responseCacheLease = responseCacheNamespace.map {
-            ResponseCache.PublicationLease(namespace: $0)
-        }
+        self.responseCacheNamespace = responseCacheNamespace
+        self.responseCacheLease = nil
     }
 
     /// Immutable configuration, so it is safe to read without actor hops —
@@ -107,10 +107,14 @@ public actor PostHogClient {
         ttl: TimeInterval
     ) async throws -> T {
         guard endpoint.method == "GET", endpoint.body == nil,
-              let responseCache, let responseCacheLease else {
+              let responseCache else {
             return try await send(endpoint)
         }
 
+        try Task.checkCancellation()
+        guard let responseCacheLease = await cachePublicationLease() else {
+            return try await send(endpoint)
+        }
         try Task.checkCancellation()
         let request = try await request(for: endpoint)
         let cacheKey = Self.cacheKey(
@@ -153,11 +157,30 @@ public actor PostHogClient {
     }
 
     /// Permanently withdraws this client's authority to read or publish through
-    /// its response-cache lease. AppModel awaits this before clearing cache data
-    /// and discarding the foreground client during sign-out.
+    /// its response-cache lease. Kept for owners that need a single-client
+    /// boundary; AppModel sign-out uses the cache-wide generation boundary.
     public func revokeCachePublication() async {
-        guard let responseCache, let responseCacheLease else { return }
+        guard let responseCache,
+              let responseCacheLease = await cachePublicationLease() else { return }
         await responseCache.revoke(responseCacheLease)
+    }
+
+    /// Binds this client to the cache generation current at the call's actor
+    /// turn. AppModel awaits it before publishing a foreground client and may
+    /// repeat it when an older sign-out boundary overlapped replacement setup.
+    public func refreshCachePublicationLease() async {
+        guard let responseCache, let responseCacheNamespace else { return }
+        responseCacheLease = await responseCache.issuePublicationLease(
+            namespace: responseCacheNamespace
+        )
+    }
+
+    private func cachePublicationLease() async -> ResponseCache.PublicationLease? {
+        if let responseCacheLease { return responseCacheLease }
+        guard let responseCache, let responseCacheNamespace else { return nil }
+        let lease = await responseCache.issuePublicationLease(namespace: responseCacheNamespace)
+        responseCacheLease = lease
+        return lease
     }
 
     private func decode<T: Decodable & Sendable>(

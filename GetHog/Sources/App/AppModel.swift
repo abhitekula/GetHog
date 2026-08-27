@@ -296,6 +296,7 @@ final class AppModel {
             responseCache: cache,
             responseCacheNamespace: credential.authSessionID?.uuidString
         )
+        await client.refreshCachePublicationLease()
 
         let me: MeResponse = try await client.send(PostHogAPI.me())
 
@@ -475,7 +476,10 @@ final class AppModel {
     func invalidateRejectedCredential(ifCurrent rejectedScope: FlagWriteScope) async {
         guard flagWriteScope == rejectedScope,
               let region = rejectedScope.projectRegion else { return }
-        await signOut()
+        let didSignOut = await signOut(
+            ifCurrentAuthSessionID: rejectedScope.authSessionID
+        )
+        guard didSignOut else { return }
         connectionError = PostHogError.unauthorized.localizedDescription
         storedCredentialRecovery = .replaceCredential(region)
     }
@@ -818,14 +822,31 @@ final class AppModel {
     }
 
     func signOut() async {
-        // The client remains retained until its lease is durably revoked. Cache
-        // publication and revocation serialize in ResponseCache: a publication
-        // that linearized first is removed by the ordered clear, while one that
-        // reaches the actor later observes revocation and cannot commit.
-        if let client {
-            await client.revokeCachePublication()
+        let expectedAuthSessionID = authSessionID
+        _ = await signOut(ifCurrentAuthSessionID: expectedAuthSessionID)
+    }
+
+    @discardableResult
+    private func signOut(ifCurrentAuthSessionID expectedAuthSessionID: UUID?) async -> Bool {
+        guard authSessionID == expectedAuthSessionID else { return false }
+
+        // ResponseCache advances one instance-wide generation before its first
+        // suspension, invalidating the current client and every retained prior
+        // credential client. The clear follows in the same actor operation.
+        await cache.revokeAllPublicationsAndClear()
+
+        // A replacement may have completed while the cache actor was suspended
+        // between revocation and clear. Never apply the older teardown to it.
+        // Refreshing its lease also covers the inverse actor ordering, where it
+        // captured the generation immediately before this boundary advanced.
+        guard authSessionID == expectedAuthSessionID else {
+            let replacementAuthSessionID = authSessionID
+            let replacementClient = client
+            await replacementClient?.refreshCachePublicationLease()
+            guard authSessionID == replacementAuthSessionID,
+                  client === replacementClient else { return false }
+            return false
         }
-        await cache.clear()
 
         snapshotPublicationGeneration &+= 1
         let preserveSharedProjectData = isRuntimeDemo
@@ -866,6 +887,7 @@ final class AppModel {
         organizationError = nil
         UserDefaults.standard.removeObject(forKey: "selectedOrganizationID")
         phase = .onboarding
+        return true
     }
 
     private func clearPublishedProjectData() {

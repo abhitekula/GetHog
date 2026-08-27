@@ -212,16 +212,38 @@ struct ClientTests {
             #expect(changedQuery.value == "first")
             #expect(await firstTransport.requestCount == 2)
 
-            let changedURL: StringValue = try await firstClient.sendCached(
+            let changedProject: StringValue = try await firstClient.sendCached(
                 Endpoint(
-                    path: "/api/projects/1002/insights/720002/",
+                    path: "/api/projects/1002/dashboards/725001/",
                     query: [URLQueryItem(name: "refresh", value: "force_cache")],
                     category: .analytics
                 ),
                 ttl: 300
             )
-            #expect(changedURL.value == "first")
+            #expect(changedProject.value == "first")
             #expect(await firstTransport.requestCount == 3)
+
+            let changedRouteKind: StringValue = try await firstClient.sendCached(
+                Endpoint(
+                    path: "/api/projects/1001/insights/725001/",
+                    query: [URLQueryItem(name: "refresh", value: "force_cache")],
+                    category: .analytics
+                ),
+                ttl: 300
+            )
+            #expect(changedRouteKind.value == "first")
+            #expect(await firstTransport.requestCount == 4)
+
+            let changedObject: StringValue = try await firstClient.sendCached(
+                Endpoint(
+                    path: "/api/projects/1001/dashboards/725002/",
+                    query: [URLQueryItem(name: "refresh", value: "force_cache")],
+                    category: .analytics
+                ),
+                ttl: 300
+            )
+            #expect(changedObject.value == "first")
+            #expect(await firstTransport.requestCount == 5)
 
             let replacementTransport = StubTransport(
                 status: 200,

@@ -9,7 +9,8 @@ import Foundation
 public actor ResponseCache {
     struct PublicationLease: Hashable, Sendable {
         let namespace: String
-        let id = UUID()
+        let id: UUID
+        let generation: UInt64
     }
 
     enum LeaseLookup: Sendable {
@@ -29,6 +30,8 @@ public actor ResponseCache {
     private let directory: URL
     private let fileManager = FileManager.default
     private let beforePublicationCommit: @Sendable () async -> Void
+    private let beforeGenerationClear: @Sendable () async -> Void
+    private var publicationGeneration: UInt64 = 0
     private var revokedPublicationLeases: Set<UUID> = []
 
     /// Replay blobs are immutable once written, so they never expire; a rewatch
@@ -49,6 +52,7 @@ public actor ResponseCache {
 
     public init(appGroupID: String? = nil, subdirectory: String = "PostHogCache") {
         self.beforePublicationCommit = {}
+        self.beforeGenerationClear = {}
         self.directory = Self.directory(appGroupID: appGroupID, subdirectory: subdirectory)
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true
@@ -57,15 +61,18 @@ public actor ResponseCache {
 
     /// Internal injection point for deterministic actor-ordering tests.
     ///
-    /// The public initializer always installs an immediate no-op. Tests can
-    /// suspend immediately before the final validity check without adding a
-    /// debug branch or changing any app-visible cache behavior.
+    /// The public initializer always installs immediate no-ops. Tests can
+    /// suspend immediately before the final publication validity check or after
+    /// generation revocation but before clear, without adding a debug branch or
+    /// changing any app-visible cache behavior.
     init(
         appGroupID: String? = nil,
         subdirectory: String = "PostHogCache",
-        beforePublicationCommit: @escaping @Sendable () async -> Void
+        beforePublicationCommit: @escaping @Sendable () async -> Void,
+        beforeGenerationClear: @escaping @Sendable () async -> Void = {}
     ) {
         self.beforePublicationCommit = beforePublicationCommit
+        self.beforeGenerationClear = beforeGenerationClear
         self.directory = Self.directory(appGroupID: appGroupID, subdirectory: subdirectory)
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true
@@ -123,8 +130,17 @@ public actor ResponseCache {
         return try? JSONDecoder().decode(Entry.self, from: data)
     }
 
+    func issuePublicationLease(namespace: String) -> PublicationLease {
+        PublicationLease(
+            namespace: namespace,
+            id: UUID(),
+            generation: publicationGeneration
+        )
+    }
+
     func entry(for key: String, lease: PublicationLease) -> LeaseLookup {
-        guard !revokedPublicationLeases.contains(lease.id) else { return .revoked }
+        guard lease.generation == publicationGeneration,
+              !revokedPublicationLeases.contains(lease.id) else { return .revoked }
         return .available(entry(for: key))
     }
 
@@ -145,6 +161,7 @@ public actor ResponseCache {
     func publish(_ data: Data, for key: String, lease: PublicationLease) async -> Bool {
         await beforePublicationCommit()
         guard !Task.isCancelled,
+              lease.generation == publicationGeneration,
               !revokedPublicationLeases.contains(lease.id) else { return false }
         store(data, for: key)
         return true
@@ -155,8 +172,23 @@ public actor ResponseCache {
     }
 
     func remove(_ key: String, lease: PublicationLease) {
-        guard !revokedPublicationLeases.contains(lease.id) else { return }
+        guard lease.generation == publicationGeneration,
+              !revokedPublicationLeases.contains(lease.id) else { return }
         remove(key)
+    }
+
+    /// Invalidates every publication lease issued by this cache before the
+    /// boundary, then removes the data those leases could read.
+    ///
+    /// Generation advance is synchronous actor work and is therefore the
+    /// revocation linearization point. The internal wait is an immediate no-op
+    /// in production; deterministic tests can suspend after revocation but
+    /// before the ordered clear to exercise AppModel replacement races.
+    public func revokeAllPublicationsAndClear() async {
+        publicationGeneration &+= 1
+        revokedPublicationLeases.removeAll()
+        await beforeGenerationClear()
+        clear()
     }
 
     public func remove(_ key: String) {

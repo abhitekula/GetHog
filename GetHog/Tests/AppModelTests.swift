@@ -1,8 +1,8 @@
 import Foundation
-import GetHogKit
 import Testing
 
 @testable import GetHog
+@testable import GetHogKit
 
 /// Replays scripted HTTP responses so session state can be tested without network.
 private actor ScriptedTransport: HTTPTransport {
@@ -126,6 +126,7 @@ private actor ForegroundCacheTransport: HTTPTransport {
 private actor HeldForegroundCacheTransport: HTTPTransport {
     private let base = DemoTransport()
     private var hasHeldDashboard = false
+    private var dashboardDetailCount = 0
     private var arrivals: [CheckedContinuation<Void, Never>] = []
     private var release: CheckedContinuation<Void, Never>?
 
@@ -133,6 +134,22 @@ private actor HeldForegroundCacheTransport: HTTPTransport {
         let path = request.url?.path(percentEncoded: false) ?? ""
         guard path == "/api/projects/1001/dashboards/9001/" else {
             return try await base.send(request)
+        }
+
+        dashboardDetailCount += 1
+        guard dashboardDetailCount == 1 else {
+            let body = """
+            {"id":9001,"name":"Session \(dashboardDetailCount) dashboard","tiles":[]}
+            """
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
         }
 
         hasHeldDashboard = true
@@ -158,6 +175,32 @@ private actor HeldForegroundCacheTransport: HTTPTransport {
     }
 
     func releaseHeldDashboard() {
+        release?.resume()
+        release = nil
+    }
+
+    func count() -> Int { dashboardDetailCount }
+}
+
+private actor CacheGenerationBoundaryGate {
+    private var hasArrived = false
+    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+    private var release: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        hasArrived = true
+        let waiters = arrivalWaiters
+        arrivalWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        await withCheckedContinuation { release = $0 }
+    }
+
+    func waitUntilHeld() async {
+        if hasArrived { return }
+        await withCheckedContinuation { arrivalWaiters.append($0) }
+    }
+
+    func releaseBoundary() {
         release?.resume()
         release = nil
     }
@@ -323,6 +366,151 @@ struct AppModelTests {
 
         #expect(recovered.title == "Session 1 dashboard")
         #expect(await probeTransport.count() == 1)
+        await cache.clear()
+    }
+
+    @Test("sign out revokes cache publications from every prior credential epoch")
+    func signOutRevokesAllPriorCachePublications() async throws {
+        let cache = ResponseCache(
+            subdirectory: "AppModelAllPriorLeaseTests-\(UUID().uuidString)"
+        )
+        let transport = HeldForegroundCacheTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            cache: cache
+        )
+        let endpoint = PostHogAPI.dashboard(projectID: 1_001, dashboardID: 9_001)
+
+        try await model.connect(key: "synthetic-session-a", region: .usCloud)
+        let clientA = try #require(model.client)
+        let namespaceA = try #require(model.authSessionID).uuidString
+        let staleRequestA = Task {
+            try await clientA.sendCached(endpoint, ttl: 300) as Dashboard
+        }
+        await transport.waitUntilHeld()
+
+        try await model.connect(key: "synthetic-session-b", region: .usCloud)
+        await model.signOut()
+
+        await transport.releaseHeldDashboard()
+        _ = try? await staleRequestA.value
+
+        let probeTransport = ForegroundCacheTransport()
+        let probe = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic-probe-session", region: .usCloud),
+            transport: probeTransport,
+            responseCache: cache,
+            responseCacheNamespace: namespaceA
+        )
+        let recovered: Dashboard = try await probe.sendCached(endpoint, ttl: 300)
+
+        #expect(recovered.title == "Session 1 dashboard")
+        #expect(await probeTransport.count() == 1)
+        await cache.clear()
+    }
+
+    @Test("a replacement session survives an older unauthorized cache teardown")
+    func replacementSurvivesUnauthorizedCacheTeardown() async throws {
+        let boundary = CacheGenerationBoundaryGate()
+        let cache = ResponseCache(
+            subdirectory: "AppModelReplacementDuringTeardownTests-\(UUID().uuidString)",
+            beforePublicationCommit: {},
+            beforeGenerationClear: { await boundary.wait() }
+        )
+        let transport = HeldForegroundCacheTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            cache: cache
+        )
+        let endpoint = PostHogAPI.dashboard(projectID: 1_001, dashboardID: 9_001)
+
+        try await model.connect(key: "synthetic-session-a", region: .usCloud)
+        let scopeA = try #require(model.flagWriteScope)
+        let clientA = try #require(model.client)
+        let namespaceA = try #require(model.authSessionID).uuidString
+        let staleRequestA = Task {
+            try await clientA.sendCached(endpoint, ttl: 300) as Dashboard
+        }
+        await transport.waitUntilHeld()
+
+        let teardownA = Task {
+            await model.invalidateRejectedCredential(ifCurrent: scopeA)
+        }
+        await boundary.waitUntilHeld()
+
+        try await model.connect(key: "synthetic-session-b", region: .usCloud)
+        let scopeB = try #require(model.flagWriteScope)
+        let clientB = try #require(model.client)
+
+        await boundary.releaseBoundary()
+        await teardownA.value
+
+        #expect(model.phase == .ready)
+        #expect(model.flagWriteScope == scopeB)
+        #expect(model.client === clientB)
+        #expect(model.connectionError == nil)
+        #expect(model.storedCredentialRecovery == nil)
+
+        await transport.releaseHeldDashboard()
+        _ = try? await staleRequestA.value
+
+        let firstB: Dashboard = try await clientB.sendCached(endpoint, ttl: 300)
+        let reusedB: Dashboard = try await clientB.sendCached(endpoint, ttl: 300)
+        #expect(firstB.title == "Session 2 dashboard")
+        #expect(reusedB.title == firstB.title)
+        #expect(await transport.count() == 2)
+
+        let probeTransport = ForegroundCacheTransport()
+        let probeA = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic-probe-session", region: .usCloud),
+            transport: probeTransport,
+            responseCache: cache,
+            responseCacheNamespace: namespaceA
+        )
+        let recoveredA: Dashboard = try await probeA.sendCached(endpoint, ttl: 300)
+        #expect(recoveredA.title == "Session 1 dashboard")
+        #expect(await probeTransport.count() == 1)
+        await cache.clear()
+    }
+
+    @Test("a replacement session survives an older user-initiated sign out")
+    func replacementSurvivesUserInitiatedSignOut() async throws {
+        let boundary = CacheGenerationBoundaryGate()
+        let cache = ResponseCache(
+            subdirectory: "AppModelReplacementDuringSignOutTests-\(UUID().uuidString)",
+            beforePublicationCommit: {},
+            beforeGenerationClear: { await boundary.wait() }
+        )
+        let transport = ForegroundCacheTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            cache: cache
+        )
+
+        try await model.connect(key: "synthetic-session-a", region: .usCloud)
+        let signOutA = Task { await model.signOut() }
+        await boundary.waitUntilHeld()
+
+        try await model.connect(key: "synthetic-session-b", region: .usCloud)
+        let scopeB = try #require(model.flagWriteScope)
+        let clientB = try #require(model.client)
+
+        await boundary.releaseBoundary()
+        await signOutA.value
+
+        #expect(model.phase == .ready)
+        #expect(model.flagWriteScope == scopeB)
+        #expect(model.client === clientB)
+
+        let endpoint = PostHogAPI.dashboard(projectID: 1_001, dashboardID: 9_001)
+        let firstB: Dashboard = try await clientB.sendCached(endpoint, ttl: 300)
+        let reusedB: Dashboard = try await clientB.sendCached(endpoint, ttl: 300)
+        #expect(firstB.title == "Session 1 dashboard")
+        #expect(reusedB.title == firstB.title)
+        #expect(await transport.count() == 1)
         await cache.clear()
     }
 
