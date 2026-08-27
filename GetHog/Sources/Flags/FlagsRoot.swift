@@ -329,6 +329,15 @@ struct FlagsRoot: View {
                             NavigationLink(value: flag.id) {
                                 FlagRowView(flag: flag, group: group)
                             }
+                            .quickPreview {
+                                FlagQuickPreview(flag: flag)
+                            } menuItems: {
+                                Button {
+                                    selectedID.wrappedValue = flag.id
+                                } label: {
+                                    Label("Open Flag", systemImage: "arrow.right.circle")
+                                }
+                            }
                             .listRowBackground(
                                 Theme.cardBackground
                                     .clipShape(.rect(cornerRadius: Theme.Radius.medium, style: .continuous))
