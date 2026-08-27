@@ -1,44 +1,55 @@
 # Task 9 — Quick Preview interaction verification
 
 Date: 2026-08-27
-Reviewed base: `6a2fff58a0bb352ae283439d6eb81a36881ac18d`
-Scope: tests and test helpers only; no production feature or demo-transport fixture was changed.
+Fix-round base: `1b0e17e1260c20d711adcd9917608f33f6c55105`
 
-## Owned result
+## Result
 
-- `GetHogUITests/QuickPreviewInteractionTests.swift` covers Dashboard, Insight, Event, Session, Flag, Error, and the fixture-gated Trace journey. Each runnable journey long-presses a real row, verifies the system Preview host and semantic card fact, verifies the object-specific in-app action, excludes actionable Open in PostHog/Copy link controls, dismisses to the same list, and proves ordinary activation still opens in-app detail.
-- Sessions cover the already-loaded Replay Vision digest and the unplayable mobile recording.
-- `GetHogUITests/DemoLaunch.swift` adds prefix/semantic row queries and the measured iOS 26.5 Preview-host fallback.
-- `GetHog/Tests/QuickPreviewRenderingTests.swift` renders Dashboard and Insight loading, loaded, unavailable, and stale states, plus Event, Session, Flag, Error, and Trace metadata cards. It exercises 320pt/520pt, light/dark, accessibility5, and deliberately long fictional content; Dashboard/Insight AX5 geometry is taller than ordinary type at 320pt.
-- `GetHogMac/UITests/MacNavigationTests.swift` preserves Dashboard row tear-off, replaces recording Copy-link coverage with Open Session/Open in new window and external-action absence, and adds Event, Dashboard, and Insight menu assertions. It does not require a custom Mac preview.
-- No fixture, `project.yml`, or generated-project change is included. `xcodegen generate` completed successfully and left generated files clean.
+- Dashboard, Insights, Events, Sessions, Flags, Errors, and Tracing now execute as seven required synthetic demo journeys on iPhone and regular-width iPad; none is skipped.
+- Every journey long-presses a real row, accepts the authored preview identifier or the measured iOS 26.5 `Preview` host, verifies object semantics and an object-specific in-app Open action, proves zero `Open in PostHog` and `Copy link` controls inside the presented menu, dismisses to the same list, then relaunches cleanly and proves ordinary activation opens the target detail.
+- Dashboard verifies enriched `7 tiles` and `Example weekly engagement pulse` facts. Insight verifies the enriched `Cached line chart, 2 series` fact.
+- Sessions verify the already-loaded Alex Example Replay Vision digest and the unplayable Riley Example mobile recording. Ordinary activation requires the matching person navigation title as well as `gethog.session-detail-primary`, so an already-present generic detail cannot satisfy the test.
+- The new deterministic `TraceSpansQuery` fixture produces one fictional three-span trace with one error. The exact route precedes the generic `TracesQuery` fallback, and its contract decodes through `TraceSpan` into the expected `TraceGroup`.
+- Rendering coverage pins Dashboard/Insight loading, loaded, unavailable, and stale states plus representative metadata cards at 320pt/520pt, light/dark, accessibility5, and long fictional text. A compact long-content AX5 card must grow taller than a short ordinary card.
+- All seven exact authored `gethog.quick-preview.*` identifiers are independently checked from constructed SwiftUI accessibility modifier graphs; no source grep is used.
+- Mac test source was not changed in this fix round. The existing reviewed Dashboard tear-off, Session Open/Open in New Window, forbidden-action absence, and representative metadata/Dashboard/Insight menu assertions remain intact.
+- `xcodegen generate` completed after adding the resource. Neither `project.yml` nor generated project files changed.
 
-## RED → GREEN evidence
+## RED to GREEN evidence
 
-Focused REDs were captured before the corresponding test harness changes:
+1. **Trace fixture contract:** the focused 70-test DemoTransport run executed the new contract and failed with empty columns, zero spans, and zero groups (exit 65). After adding `trace_spans.json` and routing exact `"kind":"TraceSpansQuery"` before `TracesQuery`, the same suite passed 70/70.
+2. **Scoped forbidden actions:** Dashboard initially failed to compile because `DemoLaunch.contextMenu` did not exist (exit 65, zero tests). The helper now selects the system collection containing the object-specific action; both forbidden labels are asserted to have exactly zero matching buttons in that collection. Dashboard then passed 1/1.
+3. **Authored-or-system host:** the first gate change failed to compile because `DemoLaunch.previewHost` did not exist (exit 65, zero tests). The helper now prefers an exposed authored identifier and otherwise returns the generic iOS 26.5 host.
+4. **Enrichment facts:** Insight first executed and failed against an incorrect one-series expectation; the exposed semantic result was `Cached line chart, 2 series`. The corrected focused journey passed 1/1. Dashboard's enriched tile count/title focused journey also passed 1/1.
+5. **Genuine ordinary activation:** the first clean-state assertion failed to compile because `DemoLaunch.relaunch` did not exist (exit 65, zero tests). The helper preserves demo arguments/environment while discarding split selection. Every journey now proves its target detail is absent before tapping and present afterward.
+6. **All seven authored identifiers:** the new unit contract first failed to compile without its harness, then a hosted UIKit accessibility-tree attempt executed four tests and failed all seven identifiers because iOS returned an empty local AX tree. The final behavior contract evaluates each concrete view body and checks the authored accessibility modifier value; the focused rendering suite passed all identifier cases.
+7. **Long-content growth:** the geometry case initially failed to compile because the short ordinary fixture did not exist. After adding the fictional short event, the rendering suite passed 5/5, including the height-growth assertion.
+8. **Trace journey:** removing the former skip made Tracing a required interaction. With the exact fixture in place, its focused UI run passed 1/1 with `3 spans`, `1 error`, `Open Trace`, dismissal, and target-specific activation.
+9. **Regular-width Insight semantics:** the first full installed-iPad run executed all seven and finished 6 passed/1 failed because the iOS 26.5 host froze Insight's initial summary label. A captured host tree proved enrichment was absent rather than mis-scoped. The condition-based remount reads the completed store state; focused Insight then passed 1/1 and the full iPad suite passed 7/7.
 
-1. The initial interaction suite did not compile because `DemoLaunch.element(in:identifierStartingWith:)` did not exist (exit 65, 0 tests). The helper was then added.
-2. Dashboard executed 1 test and failed because the authored preview identifier was not exposed by the iOS 26.5 context-menu host. AX/video evidence showed a generic `Preview` host, the complete combined semantic card label, and `Open Dashboard`. A second RED showed a status-bar coordinate did not dismiss. The semantic-host fallback and dimmed-list dismissal made the isolated Dashboard run GREEN: 1/1.
-3. The initial rendering test did not compile because `QuickPreviewRenderingTests.render` did not exist (exit 65). After adding the ImageRenderer harness and the remaining concrete states/cards, the focused suite was GREEN: `Test run with 3 tests in 1 suite passed`.
-4. Event initially did not compile because the semantic row helper did not exist (exit 65, 0 tests). After adding it, Event was GREEN: 1/1.
-5. Sessions executed 1 test and failed only while returning from `Alex Example`; video showed the iPhone back control was icon-only. The corrected navigation helper made Sessions GREEN: 1/1, including loaded digest and unplayable mobile coverage.
-6. Flags executed 1 test and failed at the list title (`Feature Flags` versus authored `Flags`). The corrected expectation made Flags GREEN: 1/1.
-7. Tracing executed 1 test and failed exactly at `The demo Tracing list offered no real trace row.` The journey now skips only when the authored `No spans in the last 24 hours` terminal state is present, and will run automatically when a deterministic trace fixture exists.
-8. The first installed-iPad run executed 7 tests and exposed three test-driver REDs: regular-width Flag/Error split selection consumed the first long press, the detail toolbar's obscured PostHog control polluted an app-global absence query, and Sessions selected Share instead of returning to a list that was already visible. Video/AX evidence drove test-only fixes. Flag, Error, and Sessions then passed 1/1 individually, and the complete installed-iPad run passed.
-
-No product defect requiring production-source modification was found.
+No production Quick Preview feature source was changed.
 
 ## Verification matrix
 
-Commands were serialized and used shared DerivedData (no `-derivedDataPath`).
+All commands were serialized and used shared DerivedData; none used `-derivedDataPath`.
 
-### Rendered suite
+### DemoTransport contract
+
+```text
+xcodebuild test -project GetHog.xcodeproj -scheme GetHog -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:GetHogTests/DemoTransportTests
+```
+
+PASS — Swift Testing `Test run with 70 tests in 1 suite passed` after the final catalog-owned UUID normalization.
+Result: `~/Library/Developer/Xcode/DerivedData/GetHog-fjvkqllynybffkfvdazvsxihaaib/Logs/Test/Test-GetHog-2026.08.27_06-35-00-+0200.xcresult`
+
+### Rendering and identifier contracts
 
 ```text
 xcodebuild test -project GetHog.xcodeproj -scheme GetHog -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:GetHogTests/QuickPreviewRenderingTests
 ```
 
-Result: PASS — Swift Testing `3 tests in 1 suite`, 0 failures.
+PASS — the controller completed the exact post-normalization command with exit 0 and `TEST SUCCEEDED`; Swift Testing reports `Test run with 5 tests in 1 suite passed`, 0 failures.
+Result: `~/Library/Developer/Xcode/DerivedData/GetHog-fjvkqllynybffkfvdazvsxihaaib/Logs/Test/Test-GetHog-2026.08.27_06-42-06-+0200.xcresult`
 
 ### iPhone 17 UI wrapper
 
@@ -46,63 +57,85 @@ Result: PASS — Swift Testing `3 tests in 1 suite`, 0 failures.
 WORKERS=1 scripts/run-ui-tests GetHogUITests/QuickPreviewInteractionTests
 ```
 
-Result: PASS — authoritative xcresult total 7; 6 passed, 1 skipped, 0 failed. The skip is the demonstrated Trace fixture gap.
-Bundle: `build/TestResults/GetHogUITests-20260827-052932.RnY2zM/Test.xcresult`
+PASS — authoritative xcresult: 7 passed, 0 failed, 0 skipped, total 7; elapsed 127s.
+Result: `build/TestResults/GetHogUITests-20260827-062354.BWKJa3/Test.xcresult`
 
-### Required iPad Air 11-inch (M4) wrapper
-
-```text
-DESTINATION_NAME='iPad Air 11-inch (M4)' WORKERS=1 scripts/run-ui-tests GetHogUITests/QuickPreviewInteractionTests
-```
-
-Environment failure: Xcode exit 70, authoritative total 0. The requested simulator is not installed. Xcode listed iPad Pro 13-inch (M5) as the only available iPad destination.
-Bundle: `build/TestResults/GetHogUITests-20260827-051913.6dMIzU/Test.xcresult`
-
-Supplemental installed-iPad proof:
+### Installed regular-width iPad Pro M5 UI wrapper
 
 ```text
 DESTINATION_NAME='iPad Pro 13-inch (M5)' WORKERS=1 scripts/run-ui-tests GetHogUITests/QuickPreviewInteractionTests
 ```
 
-Result: PASS — authoritative xcresult total 7; 6 passed, 1 skipped, 0 failed.
-Bundle: `build/TestResults/GetHogUITests-20260827-053109.AYBv3h/Test.xcresult`
+PASS — authoritative xcresult: 7 passed, 0 failed, 0 skipped, total 7; elapsed 155s.
+Result: `build/TestResults/GetHogUITests-20260827-062108.tAFwNi/Test.xcresult`
 
-### Shared-platform builds
+The initially requested 11-inch M5 spelling matched no installed device; Xcode listed the installed regular-width destination as `iPad Pro 13-inch (M5)`, which is the destination used above.
+
+### Resource-membership builds
 
 ```text
 xcodebuild build -project GetHog.xcodeproj -scheme GetHogVision -destination 'platform=visionOS Simulator,name=Apple Vision Pro'
 xcodebuild build -project GetHog.xcodeproj -scheme GetHogTV -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation) (at 1080p)'
 ```
 
-Result: PASS — `BUILD SUCCEEDED` for visionOS and tvOS.
+PASS — `BUILD SUCCEEDED` for both Vision and TV with the generated trace resource membership.
 
 ### Focused Mac UI suite
+
+Exact command:
 
 ```text
 xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS' -only-testing:GetHogMacUITests/MacNavigationTests
 ```
 
-Environment failure before test launch: 0 tests executed. Xcode reports `GetHogMac has entitlements that require signing with a development certificate`. This is a signing gate, not a locked-screen pass or a test result. The unrelated dirty entitlement files were preserved and not staged. A non-signing compile check completed with `TEST BUILD SUCCEEDED`:
+ENVIRONMENT FAILURE — exit 65 before test execution because `GetHogMac` has entitlements requiring a development certificate.
+Result: `~/Library/Developer/Xcode/DerivedData/GetHog-fjvkqllynybffkfvdazvsxihaaib/Logs/Test/Test-GetHogMac-2026.08.27_06-27-50-+0200.xcresult`
+
+Permitted nonpersistent fallback:
 
 ```text
-xcodebuild build-for-testing -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+xcodebuild test -project GetHog.xcodeproj -scheme GetHogMac -destination 'platform=macOS' -only-testing:GetHogMacUITests/MacNavigationTests CODE_SIGN_ENTITLEMENTS=/tmp/gethog-task9-empty-entitlements.plist CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
 ```
 
-## Scoped Trace fixture gap
+ENVIRONMENT FAILURE — the empty temporary entitlement/ad-hoc override built and launched `GetHogMacUITests-Runner`, but UI automation initialization failed with `System authentication is running`, `Authentication canceled` (exit 65, zero executed-test proof). This is a locked/authentication desktop failure, not a pass and not compile-only execution proof.
+Result: `~/Library/Developer/Xcode/DerivedData/GetHog-fjvkqllynybffkfvdazvsxihaaib/Logs/Test/Test-GetHogMac-2026.08.27_06-28-20-+0200.xcresult`
 
-The actual Tracing UI reaches its documented empty state because `DemoTransport` returns empty `columns` and `results` for `PostHogAPI.traceSpans`, query kind `TraceSpansQuery`; `DemoTransportTests.refusedQueryKindIsEmpty` currently pins that behavior. Consequently there is no real row to long-press on either phone or tablet.
+The user-owned entitlement files were neither changed by this task nor staged.
 
-Smallest proposed separately owned change: add one deterministic fictional `TraceSpansQuery` response routed by `DemoTransport`, with columns `uuid`, `trace_id`, `span_id`, `parent_span_id`, `name`, `service_name`, `status_code`, `timestamp`, `end_time`, `duration_nano`, `is_root_span`, `matched_filter`, and `attributes`; then update the transport contract test to prove that exact query resolves only that trace fixture. No such change was made in this task.
+### Remaining iPad Air M4 gap
+
+`iPad Air 11-inch (M4)` remains unavailable. The prior exact wrapper attempt exited 70 with authoritative total zero, and current Xcode destinations still list only the iPad Pro 13-inch M5. No simulator was created or mutated out of band.
+
+## Privacy conformance
+
+The ownership expansion authorized the evidence-backed catalog edit. The four added suffixes map to deterministic fictional Quick Preview tests: 710 is the default Insight preview authority; 711 and 712 are the old/new authority-fencing scopes; and 720 is the cached-detail boundary request scope. `trace_spans.json` is now declared as a demo-only fixture.
+
+The real package privacy suite was then rerun:
+
+```text
+swift test --package-path GetHogKit --filter FixturePrivacyTests
+```
+
+PASS — `Test run with 25 tests in 1 suite passed`, 0 failures.
+
+The dedicated catalog suite also passed:
+
+```text
+swift test --package-path GetHogKit --filter SyntheticFixtureCatalogTests
+```
+
+PASS — `Test run with 2 tests in 1 suite passed`, 0 failures.
 
 ## Ruling candidate — iOS 26.5 context-menu accessibility
 
-Observed on iOS 26.5: SwiftUI's context-menu host can replace the preview subtree in XCUITest with a system element labelled `Preview` and one child carrying the card's complete combined semantic label. The stable authored `gethog.quick-preview.*` identifier is then not observable through UI automation even though the card and menu are visibly present. The interaction suite therefore asserts the generic Preview host, complete object semantics, and object-specific action. Authored identifiers remain covered by adapter/rendering/lifecycle tests. This is platform hosting behavior, not a production workaround.
+Observed on iOS 26.5: SwiftUI's context-menu host can replace the authored preview subtree in XCUITest with a system element labelled `Preview`. The stable `gethog.quick-preview.*` identifier is then absent from remote UI automation even though the semantic card and menu are visible. UI tests therefore require either the authored identifier or this generic host, prefer the authored element when exposed, and independently assert complete card semantics plus the object-specific action. Exact authored identifier contracts remain pinned in behavior-level rendering tests.
 
-On regular-width iPad, an unselected NavigationLink can also consume the first deliberate long press as split-view selection; the row remains visible and a second deliberate long press opens the same authored context menu. The test driver permits that single measured retry and uses no timing sleeps.
+On regular-width iPad, the system host can freeze Insight's first summary-only semantic snapshot while its cache request completes. A condition-gated remount exposes the completed enrichment without changing production behavior. An unselected split-view NavigationLink can also consume the first deliberate long press as selection; the test permits one measured retry while the row remains visible. These are platform-host behaviors, not production workarounds.
 
 ## Privacy and scope review
 
-- All new data is deterministic and fictional (`example.com`, fictional people, observatories, and synthetic identifiers).
-- Tests use condition polling; the only fixed duration is the deliberate 1.0-second long press.
-- No credentials, customer payloads, network fixtures, production feature source, `project.yml`, or generated project file changed.
-- Unrelated pre-existing edits were preserved: `GetHog/Tests/AnnotationComposerTests.swift`, `GetHogMac/Support/GetHogMac-Distribution.entitlements`, and `GetHogMac/Support/GetHogMac.entitlements`.
+- `trace_spans.json` contains only deterministic fictional UUIDs, services, routes, timestamps, attributes, and synthetic concepts. No customer data, credential, or copied payload is present.
+- Test data is likewise fictional (`example.com`, fictional people, observatories, and synthetic identifiers).
+- New waits are condition polls. The only deliberate fixed interaction duration is the 1.0-second long press.
+- Exact owned repo paths are `GetHogUITests/QuickPreviewInteractionTests.swift`, `GetHogUITests/DemoLaunch.swift`, `GetHog/Tests/QuickPreviewRenderingTests.swift`, `GetHog/Resources/DemoData/trace_spans.json`, `GetHog/Sources/App/DemoTransport.swift`, `GetHog/Tests/DemoTransportTests.swift`, and `GetHogKit/Tests/GetHogKitTests/Support/SyntheticFixtureCatalog.swift`; this report is also updated.
+- Unrelated edits remain preserved and unstaged: `GetHog/Tests/AnnotationComposerTests.swift`, `GetHogMac/Support/GetHogMac-Distribution.entitlements`, and `GetHogMac/Support/GetHogMac.entitlements`.

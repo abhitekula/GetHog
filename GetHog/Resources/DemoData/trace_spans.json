@@ -1,0 +1,75 @@
+{
+  "columns": [
+    "uuid",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "name",
+    "service_name",
+    "status_code",
+    "timestamp",
+    "end_time",
+    "duration_nano",
+    "is_root_span",
+    "matched_filter",
+    "attributes"
+  ],
+  "types": [],
+  "results": [
+    [
+      "018f9000-0000-7000-8000-000000000505",
+      "018f9000-0000-7000-8000-000000000508",
+      "synthetic-root-span",
+      null,
+      "GET /synthetic/orbital-map",
+      "synthetic-orbit-api",
+      "ok",
+      "2026-01-18T12:02:00.000Z",
+      "2026-01-18T12:02:04.500Z",
+      4500000000,
+      true,
+      true,
+      {
+        "http.method": "GET",
+        "http.route": "/synthetic/orbital-map",
+        "synthetic.region": "test-east"
+      }
+    ],
+    [
+      "018f9000-0000-7000-8000-000000000506",
+      "018f9000-0000-7000-8000-000000000508",
+      "synthetic-cache-span",
+      "synthetic-root-span",
+      "read fictional orbital cache",
+      "synthetic-orbit-cache",
+      "ok",
+      "2026-01-18T12:02:00.100Z",
+      "2026-01-18T12:02:01.300Z",
+      1200000000,
+      false,
+      true,
+      {
+        "cache.system": "fictional-memory-grid",
+        "synthetic.region": "test-east"
+      }
+    ],
+    [
+      "018f9000-0000-7000-8000-000000000507",
+      "018f9000-0000-7000-8000-000000000508",
+      "synthetic-chart-span",
+      "synthetic-root-span",
+      "render fictional orbital chart",
+      "synthetic-chart-worker",
+      "error",
+      "2026-01-18T12:02:01.500Z",
+      "2026-01-18T12:02:02.300Z",
+      800000000,
+      false,
+      false,
+      {
+        "error.type": "SyntheticChartTimeout",
+        "synthetic.region": "test-east"
+      }
+    ]
+  ]
+}

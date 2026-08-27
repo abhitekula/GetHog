@@ -33,7 +33,7 @@ enum SyntheticFixtureCatalog {
         add("018f4400", [401])
         add("018f6600", [601])
         add("018f7e00", Array(1...6))
-        add("018f9000", Array(1...508) + Array(600...602))
+        add("018f9000", Array(1...508) + Array(600...602) + Array(710...712) + [720])
         add("018f9a00", Array(1...5) + Array(7...10) + Array(12...15)
             + Array(17...19) + [21, 22])
         return values
@@ -264,6 +264,7 @@ enum SyntheticFixtureCatalog {
         "schema_columns_persons.json", "schema_columns_sessions.json", "schema_tables.json",
         "replay_vision_observations.json", "replay_vision_summary_query.json",
         "survey_answers.json", "survey_results_summary.json", "surveys.json", "team_taxonomy.json",
+        "trace_spans.json",
         "users_me.json", "warehouse_saved_queries.json", "warehouse_saved_query_failed.json",
         "warehouse_saved_query_healthy.json", "warehouse_saved_query_modified.json",
         "warehouse_saved_query_plain.json",

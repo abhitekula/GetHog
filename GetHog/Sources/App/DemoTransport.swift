@@ -1045,6 +1045,13 @@ struct DemoTransport: HTTPTransport {
             }
 
             if body.contains("GroupsQuery") { return load("groups") }
+            // TraceSpansQuery and TracesQuery differ by one embedded word but
+            // decode into unrelated models. Keep the supported OTel span route
+            // exact and ahead of the LLM analytics route so neither can borrow
+            // the other's schema-shaped fixture.
+            if body.contains("\"kind\":\"TraceSpansQuery\"") {
+                return load("trace_spans")
+            }
             if body.contains("TracesQuery") { return load("llm_traces") }
 
             // Chart drill-down. One fixture answers every drill, which is the

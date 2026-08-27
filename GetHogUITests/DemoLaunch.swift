@@ -92,6 +92,26 @@ enum DemoLaunch {
         return app
     }
 
+    /// Starts the same configured demo application from a clean process state.
+    /// The existing arguments and launch environment stay attached to the
+    /// `XCUIApplication`, while any split-view selection from a context-menu
+    /// interaction is discarded.
+    @MainActor
+    static func relaunch(
+        _ app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(
+            waitForScreen(app),
+            "App never reached a rendered screen after a clean demo relaunch.",
+            file: file,
+            line: line
+        )
+    }
+
     /// Whether a real screen came up.
     ///
     /// `AppModel.phase` is `.loading` until `bootstrap()` has resolved the user
@@ -357,16 +377,33 @@ enum DemoLaunch {
     static func quickPreview(
         in app: XCUIApplication,
         identifierStartingWith prefix: String,
-        containing text: String
+        containing _: String
     ) -> XCUIElement {
         let authored = element(in: app, identifierStartingWith: prefix)
         if authored.exists { return authored }
 
-        let host = app.descendants(matching: .any)
+        return previewHost(in: app)
+    }
+
+    /// iOS 26.5's generic host when it does not preserve the authored preview
+    /// subtree in UI automation.
+    @MainActor
+    static func previewHost(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@", "Preview"))
             .firstMatch
-        return host.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", text))
+    }
+
+    /// The system-owned collection that contains one authored context-menu
+    /// action. Scoping negative assertions here excludes controls on the
+    /// dimmed detail view behind an iPad popover.
+    @MainActor
+    static func contextMenu(
+        in app: XCUIApplication,
+        containingAction action: String
+    ) -> XCUIElement {
+        app.collectionViews
+            .containing(.button, identifier: action)
             .firstMatch
     }
 }

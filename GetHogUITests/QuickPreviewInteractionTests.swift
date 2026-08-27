@@ -23,14 +23,22 @@ final class QuickPreviewInteractionTests: XCTestCase {
             action: "Open Dashboard",
             in: app
         )
-        assertFact("Pinned", in: preview, surface: "Dashboard")
+        assertFact("7 tiles", in: preview, surface: "Dashboard cached enrichment")
+        assertFact(
+            "Example weekly engagement pulse",
+            in: preview,
+            surface: "Dashboard cached enrichment"
+        )
         dismissPreview(preview, returningTo: "Dashboards", row: row, in: app)
 
-        row.tap()
+        DemoLaunch.relaunch(app)
         let detail = DemoLaunch.element(
             in: app,
             identifierStartingWith: "gethog.dashboard-detail."
         )
+        XCTAssertFalse(detail.exists, "Dashboard detail was already selected before activation.")
+        XCTAssertTrue(DemoLaunch.wait(for: row), "Dashboard row did not reload for activation.")
+        row.tap()
         XCTAssertTrue(
             DemoLaunch.wait(for: detail),
             "Ordinary dashboard activation did not open its in-app detail."
@@ -48,21 +56,41 @@ final class QuickPreviewInteractionTests: XCTestCase {
         )
         XCTAssertTrue(DemoLaunch.wait(for: row), "The demo Insights list offered no real row.")
 
-        let preview = openPreview(
+        var preview = openPreview(
             row: row,
             identifierStartingWith: "gethog.quick-preview.insight.",
             containing: "Example meteor report",
             action: "Open Insight",
             in: app
         )
-        assertFact("On 2 dashboards", in: preview, surface: "Insight")
+        if !waitForFact("Cached line chart, 2 series", in: preview, timeout: 3) {
+            // On regular-width iOS 26.5, the system Preview host can freeze the
+            // first semantic snapshot while the store-owned cache request
+            // completes. A remount reads that completed state immediately.
+            dismissPreview(preview, returningTo: "Insights", row: row, in: app)
+            preview = openPreview(
+                row: row,
+                identifierStartingWith: "gethog.quick-preview.insight.",
+                containing: "Example meteor report",
+                action: "Open Insight",
+                in: app
+            )
+        }
+        assertFact(
+            "Cached line chart, 2 series",
+            in: preview,
+            surface: "Insight cached enrichment"
+        )
         dismissPreview(preview, returningTo: "Insights", row: row, in: app)
 
-        row.tap()
+        DemoLaunch.relaunch(app)
         let detail = DemoLaunch.element(
             in: app,
             identifierStartingWith: "gethog.insight-detail.710101"
         )
+        XCTAssertFalse(detail.exists, "Insight detail was already selected before activation.")
+        XCTAssertTrue(DemoLaunch.wait(for: row), "Insight row did not reload for activation.")
+        row.tap()
         XCTAssertTrue(
             DemoLaunch.wait(for: detail),
             "Ordinary insight activation did not open its in-app detail."
@@ -87,6 +115,12 @@ final class QuickPreviewInteractionTests: XCTestCase {
         assertFact("person-example-meteor-201", in: preview, surface: "Event")
         dismissPreview(preview, returningTo: "Events", row: row, in: app)
 
+        DemoLaunch.relaunch(app)
+        XCTAssertFalse(
+            app.navigationBars["meteor_report_opened"].exists,
+            "Event detail was already selected before activation."
+        )
+        XCTAssertTrue(DemoLaunch.wait(for: row), "Event row did not reload for activation.")
         row.tap()
         XCTAssertTrue(
             DemoLaunch.wait(for: app.navigationBars["meteor_report_opened"]),
@@ -123,12 +157,25 @@ final class QuickPreviewInteractionTests: XCTestCase {
             in: app
         )
 
+        DemoLaunch.relaunch(app)
+        XCTAssertFalse(
+            app.navigationBars["Alex Example"].exists,
+            "Alex Example was already selected before ordinary activation."
+        )
+        XCTAssertTrue(
+            DemoLaunch.wait(for: loadedDigestRow),
+            "Alex Example did not reload for ordinary activation."
+        )
         loadedDigestRow.tap()
         XCTAssertTrue(
-            DemoLaunch.wait(for: app.descendants(matching: .any)["gethog.session-detail-primary"]),
+            DemoLaunch.wait(until: {
+                app.navigationBars["Alex Example"].exists
+                    && app.descendants(matching: .any)["gethog.session-detail-primary"].exists
+            }),
             "Ordinary loaded-digest session activation did not open its in-app detail."
         )
-        returnToListIfNeeded(from: "Alex Example", titled: "Sessions", in: app)
+
+        DemoLaunch.relaunch(app)
 
         let unplayableID = "018f1000-0000-7000-8000-000000000004"
         let unplayableRow = DemoLaunch.element(
@@ -152,9 +199,18 @@ final class QuickPreviewInteractionTests: XCTestCase {
             in: app
         )
 
+        DemoLaunch.relaunch(app)
+        reveal(unplayableRow, in: app, named: "Riley Example")
+        XCTAssertFalse(
+            app.navigationBars["Riley Example"].exists,
+            "Riley Example was already selected before ordinary activation."
+        )
         unplayableRow.tap()
         XCTAssertTrue(
-            DemoLaunch.wait(for: app.descendants(matching: .any)["gethog.session-detail-primary"]),
+            DemoLaunch.wait(until: {
+                app.navigationBars["Riley Example"].exists
+                    && app.descendants(matching: .any)["gethog.session-detail-primary"].exists
+            }),
             "Ordinary unplayable session activation did not open its in-app detail."
         )
     }
@@ -177,6 +233,12 @@ final class QuickPreviewInteractionTests: XCTestCase {
         assertFact("61% rollout", in: preview, surface: "Flag")
         dismissPreview(preview, returningTo: "Flags", row: row, in: app)
 
+        DemoLaunch.relaunch(app)
+        XCTAssertFalse(
+            app.navigationBars["example-navigation"].exists,
+            "Flag detail was already selected before activation."
+        )
+        XCTAssertTrue(DemoLaunch.wait(for: row), "Flag row did not reload for activation.")
         row.tap()
         XCTAssertTrue(
             DemoLaunch.wait(for: app.navigationBars["example-navigation"]),
@@ -202,6 +264,12 @@ final class QuickPreviewInteractionTests: XCTestCase {
         assertFact("29 occurrences", in: preview, surface: "Error")
         dismissPreview(preview, returningTo: "Errors", row: row, in: app)
 
+        DemoLaunch.relaunch(app)
+        XCTAssertFalse(
+            app.navigationBars["HarborRenderFault"].exists,
+            "Error detail was already selected before activation."
+        )
+        XCTAssertTrue(DemoLaunch.wait(for: row), "Error row did not reload for activation.")
         row.tap()
         XCTAssertTrue(
             DemoLaunch.wait(for: app.navigationBars["HarborRenderFault"]),
@@ -210,34 +278,13 @@ final class QuickPreviewInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testTracePreviewKeepsItsActionsAndNavigationInsideGetHog() throws {
+    func testTracePreviewKeepsItsActionsAndNavigationInsideGetHog() {
         let app = DemoLaunch.launch(tab: "tracing")
         XCTAssertTrue(DemoLaunch.wait(for: app.navigationBars["Tracing"]))
 
-        let row = app.buttons
-            .matching(NSPredicate(format: "label CONTAINS %@", " span"))
-            .firstMatch
-        let documentedEmptyState = app.staticTexts
-            .matching(NSPredicate(
-                format: "label BEGINSWITH %@",
-                "No spans in the last 24 hours"
-            ))
-            .firstMatch
-        XCTAssertTrue(
-            DemoLaunch.wait(until: { row.exists || documentedEmptyState.exists }),
-            "Tracing reached neither a real trace row nor its documented empty state."
-        )
-        XCTAssertTrue(
-            row.exists || documentedEmptyState.exists,
-            "The demo Tracing screen did not expose a terminal result."
-        )
-        try XCTSkipIf(
-            !row.exists,
-            "DemoTransport intentionally returns no rows for TraceSpansQuery; a fixture owner must add a deterministic trace before this interaction journey can run."
-        )
-
-        let operation = row.label.split(separator: ",", maxSplits: 1)
-            .first.map(String.init) ?? row.label
+        let operation = "GET /synthetic/orbital-map"
+        let row = DemoLaunch.element(in: app, labelContaining: operation)
+        XCTAssertTrue(DemoLaunch.wait(for: row), "The demo Tracing list offered no real row.")
         let preview = openPreview(
             row: row,
             identifierStartingWith: "gethog.quick-preview.trace.",
@@ -245,10 +292,16 @@ final class QuickPreviewInteractionTests: XCTestCase {
             action: "Open Trace",
             in: app
         )
-        assertFact("Status", in: preview, surface: "Trace")
-        assertFact("span", in: preview, surface: "Trace")
+        assertFact("3 spans", in: preview, surface: "Trace")
+        assertFact("1 error", in: preview, surface: "Trace")
         dismissPreview(preview, returningTo: "Tracing", row: row, in: app)
 
+        DemoLaunch.relaunch(app)
+        XCTAssertFalse(
+            app.navigationBars[operation].exists,
+            "Trace detail was already selected before activation."
+        )
+        XCTAssertTrue(DemoLaunch.wait(for: row), "Trace row did not reload for activation.")
         row.tap()
         XCTAssertTrue(
             DemoLaunch.wait(for: app.navigationBars[operation]),
@@ -266,19 +319,19 @@ final class QuickPreviewInteractionTests: XCTestCase {
     ) -> XCUIElement {
         row.press(forDuration: 1.0)
 
-        let host = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "Preview"))
-            .firstMatch
+        let authored = DemoLaunch.element(in: app, identifierStartingWith: prefix)
+        let host = DemoLaunch.previewHost(in: app)
         // In a regular-width split view, a NavigationLink that has no current
         // selection can consume the first long press by selecting its detail.
         // The row remains visible in the list column; a second deliberate long
         // press then reaches the same authored context menu.
-        if !DemoLaunch.wait(for: host, timeout: 3), row.exists && row.isHittable {
+        if !DemoLaunch.wait(timeout: 3, until: { authored.exists || host.exists }),
+           row.exists && row.isHittable {
             row.press(forDuration: 1.0)
         }
         XCTAssertTrue(
-            DemoLaunch.wait(for: host),
-            "The system Preview host never appeared for \(content)."
+            DemoLaunch.wait(until: { authored.exists || host.exists }),
+            "Neither the authored preview nor the system Preview host appeared for \(content)."
         )
 
         let preview = DemoLaunch.quickPreview(
@@ -288,8 +341,9 @@ final class QuickPreviewInteractionTests: XCTestCase {
         )
         XCTAssertTrue(
             DemoLaunch.wait(for: preview),
-            "The semantic Quick Preview content never appeared for \(content)."
+            "The Quick Preview surface never appeared for \(content)."
         )
+        assertFact(content, in: preview, surface: "semantic Quick Preview")
         assertInAppMenu(action: action, in: app)
         return preview
     }
@@ -297,9 +351,23 @@ final class QuickPreviewInteractionTests: XCTestCase {
     @MainActor
     private func assertFact(_ fact: String, in preview: XCUIElement, surface: String) {
         XCTAssertTrue(
-            DemoLaunch.wait(until: { preview.label.contains(fact) }),
+            waitForFact(fact, in: preview),
             "The \(surface) preview omitted \(fact)."
         )
+    }
+
+    @MainActor
+    private func waitForFact(
+        _ fact: String,
+        in preview: XCUIElement,
+        timeout: TimeInterval = 30
+    ) -> Bool {
+        let descendant = preview.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", fact))
+            .firstMatch
+        return DemoLaunch.wait(timeout: timeout) {
+            preview.label.contains(fact) || descendant.exists
+        }
     }
 
     @MainActor
@@ -340,31 +408,14 @@ final class QuickPreviewInteractionTests: XCTestCase {
     }
 
     @MainActor
-    private func returnToListIfNeeded(
-        from detailTitle: String,
-        titled listTitle: String,
-        in app: XCUIApplication
-    ) {
-        if app.navigationBars[listTitle].exists { return }
-
-        let detailBar = app.navigationBars[detailTitle]
-        let back = detailBar.buttons.firstMatch
-        if detailBar.exists && back.exists && back.isHittable {
-            back.tap()
-        }
-        XCTAssertTrue(
-            DemoLaunch.wait(for: app.navigationBars[listTitle]),
-            "Could not return from \(detailTitle) to \(listTitle)."
-        )
-    }
-
-    @MainActor
     private func assertInAppMenu(action: String, in app: XCUIApplication) {
-        XCTAssertTrue(DemoLaunch.wait(for: app.buttons[action]), "The menu omitted \(action).")
+        let menu = DemoLaunch.contextMenu(in: app, containingAction: action)
+        XCTAssertTrue(DemoLaunch.wait(for: menu), "The menu omitted \(action).")
+        XCTAssertTrue(menu.buttons[action].exists, "The menu omitted \(action).")
         for forbidden in ["Open in PostHog", "Copy link"] {
-            let control = app.buttons[forbidden]
-            XCTAssertFalse(
-                control.exists && control.isHittable,
+            XCTAssertEqual(
+                menu.buttons.matching(NSPredicate(format: "label == %@", forbidden)).count,
+                0,
                 "The Quick Preview menu exposed \(forbidden)."
             )
         }

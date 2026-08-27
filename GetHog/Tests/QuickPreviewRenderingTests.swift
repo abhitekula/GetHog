@@ -138,6 +138,101 @@ struct QuickPreviewRenderingTests {
         }
     }
 
+    @Test("Long compact accessibility metadata grows beyond a short ordinary card")
+    func longCompactAccessibilityMetadataGrowsBeyondShortOrdinaryCard() throws {
+        let short = try Self.render(
+            EventQuickPreview(row: try Self.shortEvent()),
+            width: 320,
+            scheme: .light,
+            dynamicTypeSize: .large
+        )
+        let long = try Self.render(
+            EventQuickPreview(row: try Self.event()),
+            width: 320,
+            scheme: .light,
+            dynamicTypeSize: .accessibility5
+        )
+
+        #expect(
+            long.size.height > short.size.height,
+            "Long AX5 metadata rendered at \(long.size.height)pt; short ordinary metadata was \(short.size.height)pt."
+        )
+    }
+
+    @Test("Every Quick Preview publishes its exact authored accessibility identifier")
+    func authoredAccessibilityIdentifiersAreStable() throws {
+        let dashboard = try Dashboard.decode(from: Data(Self.dashboardJSON.utf8))
+        let insight = try Self.insight(Self.insightLoadedJSON)
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.dashboard.720100",
+            in: DashboardQuickPreview(
+                summary: try Self.dashboardSummary(),
+                state: .loaded(dashboard, loadedAt: Date(timeIntervalSince1970: 1_787_738_400))
+            )
+        )
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.insight.7201",
+            in: InsightQuickPreview(
+                summary: try Self.insight(Self.insightSummaryJSON),
+                state: .loaded(insight, loadedAt: Date(timeIntervalSince1970: 1_787_738_400))
+            )
+        )
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.event.synthetic_observatory_calibration_completed_across_every_portable_display|2026-08-27T14:15:30Z|fictional-person-with-a-deliberately-long-distinct-identifier",
+            in: EventQuickPreview(row: try Self.event())
+        )
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.session.018f1000-0000-7000-8000-000000000099",
+            in: SessionQuickPreview(recording: try Self.mobileSession(), digest: try Self.digest())
+        )
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.flag.799001",
+            in: FlagQuickPreview(flag: try Self.flag())
+        )
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.error.018f3300-0000-7000-8000-000000000999",
+            in: ErrorQuickPreview(issue: try Self.issue())
+        )
+        Self.expectAuthoredIdentifier(
+            "gethog.quick-preview.trace.018f9000-0000-7000-8000-000000000508",
+            in: TraceQuickPreview(trace: try Self.trace())
+        )
+    }
+
+    /// iOS 26.5's context-menu host strips authored identifiers from the remote
+    /// XCUITest tree. This unit contract reads the identifiers from each fully
+    /// constructed SwiftUI modifier graph, independently of that system host and
+    /// without reducing the assertion to a source-text search.
+    private static func expectAuthoredIdentifier<Content: View>(_ expected: String, in content: Content) {
+        let identifiers = authoredAccessibilityIdentifierStrings(in: content)
+        #expect(
+            identifiers.contains(expected),
+            "Quick Preview modifier graph omitted \(expected); saw \(identifiers.sorted())."
+        )
+    }
+
+    private static func authoredAccessibilityIdentifierStrings<Content: View>(
+        in content: Content
+    ) -> Set<String> {
+        var identifiers: Set<String> = []
+
+        func visit(_ value: Any, depth: Int) {
+            guard depth < 80 else { return }
+            if let string = value as? String {
+                if string.hasPrefix("gethog.quick-preview.") {
+                    identifiers.insert(string)
+                }
+                return
+            }
+            for child in Mirror(reflecting: value).children {
+                visit(child.value, depth: depth + 1)
+            }
+        }
+
+        visit(content.body, depth: 0)
+        return identifiers
+    }
+
     private static func render<Content: View>(
         _ content: Content,
         width: CGFloat,
@@ -185,11 +280,24 @@ struct QuickPreviewRenderingTests {
         )))
     }
 
+    private static func shortEvent() throws -> EventRow {
+        try #require(EventRow(row: QueryRow(
+            columns: ["event", "timestamp", "distinct_id", "$current_url", "properties"],
+            values: [
+                .string("synthetic_ping"),
+                .string("2026-08-27T14:15:30Z"),
+                .string("fictional-user"),
+                .string("https://example.com/ping"),
+                .object(["synthetic_result": .string("ok")]),
+            ]
+        )))
+    }
+
     private static func mobileSession() throws -> SessionRecording {
         try JSONDecoder().decode(
             SessionRecording.self,
             from: Data(
-                #"{"id":"018f1000-0000-7000-8000-000000009901","distinct_id":"fictional-portable-observer","recording_duration":765,"active_seconds":601,"start_time":"2026-08-27T14:15:30Z","start_url":"https://example.com/observatory/calibration/portable-display/complete","click_count":19,"keypress_count":7,"console_error_count":2,"snapshot_source":"mobile","person":{"uuid":"018f0000-0000-7000-8000-000000009901","name":"Synthetic Portable Observatory Calibration Reviewer With Long Text","distinct_ids":["fictional-portable-observer"]}}"#.utf8
+                #"{"id":"018f1000-0000-7000-8000-000000000099","distinct_id":"fictional-portable-observer","recording_duration":765,"active_seconds":601,"start_time":"2026-08-27T14:15:30Z","start_url":"https://example.com/observatory/calibration/portable-display/complete","click_count":19,"keypress_count":7,"console_error_count":2,"snapshot_source":"mobile","person":{"uuid":"018f0000-0000-7000-8000-000000000201","name":"Synthetic Portable Observatory Calibration Reviewer With Long Text","distinct_ids":["fictional-portable-observer"]}}"#.utf8
             )
         )
     }
@@ -199,7 +307,7 @@ struct QuickPreviewRenderingTests {
         {
           "columns": ["session_id", "title", "summary", "intent", "outcome", "friction_points", "confidence", "model", "completed_at"],
           "results": [[
-            "018f1000-0000-7000-8000-000000009901",
+            "018f1000-0000-7000-8000-000000000099",
             "Synthetic portable calibration review found a narrow control",
             "The fictional reviewer compared every observatory display and found one narrow calibration control before completing the walkthrough.",
             "Review fictional calibration telemetry",
@@ -246,7 +354,7 @@ struct QuickPreviewRenderingTests {
             ErrorIssue.self,
             from: Data(#"""
             {
-              "id": "018f3300-0000-7000-8000-000000009901",
+              "id": "018f3300-0000-7000-8000-000000000999",
               "name": "SyntheticPortableObservatoryCalibrationLayoutFaultWithLongText",
               "description": "A fictional calibration control exceeded the compact preview width while every synthetic instrument remained safe.",
               "status": "active",
@@ -258,7 +366,7 @@ struct QuickPreviewRenderingTests {
     }
 
     private static func trace() throws -> TraceGroup {
-        let traceID = "018f9000-0000-7000-8000-000000009901"
+        let traceID = "018f9000-0000-7000-8000-000000000508"
         let root = try #require(TraceSpan(row: QueryRow(
             columns: [
                 "uuid", "trace_id", "span_id", "parent_span_id", "name",

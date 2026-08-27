@@ -496,7 +496,6 @@ struct DemoTransportTests {
     ///
     ///   `LogsQuery`              HTTP 400, "Access control failure. You don't
     ///                            have `viewer` access to the `logs` resource."
-    ///   `TraceSpansQuery`        HTTP 400, the same denial for `tracing`
     ///   `SessionsTimelineQuery`  HTTP 200, but no screen sends it
     ///
     /// — so there is nothing honest to serve, and this stays the assertion that
@@ -505,12 +504,6 @@ struct DemoTransportTests {
     /// for object-shaped results reject that outright, and Web Vitals rendered
     /// `DecodingError.typeMismatch … Expected Dictionary but found an array`
     /// where the honest answer was "the fixture contains no rows".
-    ///
-    /// `TraceSpansQuery` also covers the sharpest naming hazard in the new
-    /// routing: it and `TracesQuery` (LLM analytics, fixture-backed) differ only in the
-    /// case of one letter, and a `contains` match on the wrong one would hand the
-    /// tracing screen a page of LLM traces with no decoding error anywhere to
-    /// give it away.
     ///
     /// Deliberately built from kinds that still have a builder. Two further
     /// tracing kinds were measured the same day — the aggregated tree and the
@@ -522,7 +515,6 @@ struct DemoTransportTests {
     func refusedQueryKindIsEmpty() async throws {
         let refused: [(String, Endpoint)] = [
             ("LogsQuery", PostHogAPI.logs(projectID: Self.projectID)),
-            ("TraceSpansQuery", PostHogAPI.traceSpans(projectID: Self.projectID)),
             ("SessionsTimelineQuery", PostHogAPI.sessionsTimeline(projectID: Self.projectID)),
         ]
 
@@ -531,6 +523,34 @@ struct DemoTransportTests {
             #expect(response.rows.isEmpty, "\(kind) should be empty, not another kind's rows")
             #expect(response.columns.isEmpty, "\(kind) should carry no columns")
         }
+    }
+
+    /// Production mutation caught: removing this exact route would return the
+    /// generic empty query result; placing it below `TracesQuery` would decode
+    /// the unrelated LLM fixture instead of OpenTelemetry spans.
+    @Test("TraceSpansQuery serves its exact fictional span fixture")
+    func traceSpansQueryResolvesAndGroups() async throws {
+        let response = try QueryResponse.decode(
+            from: try await fixture(for: PostHogAPI.traceSpans(projectID: Self.projectID))
+        )
+
+        #expect(response.columns == [
+            "uuid", "trace_id", "span_id", "parent_span_id", "name",
+            "service_name", "status_code", "timestamp", "end_time",
+            "duration_nano", "is_root_span", "matched_filter", "attributes",
+        ])
+        let spans = TraceSpan.rows(from: response)
+        #expect(spans.count == 3)
+        let traces = TraceSpan.traces(from: spans)
+        #expect(traces.count == 1)
+        let trace = try #require(traces.first)
+        #expect(trace.id == "018f9000-0000-7000-8000-000000000508")
+        #expect(trace.name == "GET /synthetic/orbital-map")
+        #expect(trace.serviceName == "synthetic-orbit-api")
+        #expect(trace.spans.count == 3)
+        #expect(trace.errorCount == 1)
+        #expect(trace.root?.durationNanos == 4_500_000_000)
+        #expect(trace.spans.contains { $0.attributes["synthetic.region"]?.stringValue == "test-east" })
     }
 
     /// Web analytics loads six sections from six kinds against one path, so this
