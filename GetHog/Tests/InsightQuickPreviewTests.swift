@@ -130,7 +130,37 @@ struct InsightQuickPreviewTests {
 
         #expect(
             presentation.accessibilitySummary
-                == "Synthetic activation trend. A fictional product activation signal. Trends. Bold number. Favorite. On 2 dashboards. Edited Aug 26, 2026. Cached result. Cached headline, 12.5K."
+                == "Synthetic activation trend. A fictional product activation signal. Trends. Bold number. Favorite. On 2 dashboards. Edited Aug 26, 2026. Cached result. Cached headline, 12.5K. Result update time unavailable."
+        )
+    }
+
+    @Test("loaded enrichment without last refresh states that result time is unavailable")
+    func loadedResultWithoutRefreshTimeIsHonest() throws {
+        let presentation = InsightQuickPreviewPresentation(
+            summary: try Self.insight(Self.metadataInsight),
+            enriched: try Self.insight(Self.headlineInsight)
+        )
+
+        #expect(presentation.resultLastRefresh == nil)
+        #expect(presentation.unavailableResultUpdateText == "Result update time unavailable")
+        #expect(
+            presentation.accessibilitySummary
+                .hasSuffix("Result update time unavailable.")
+        )
+        #expect(!presentation.accessibilitySummary.contains("Not yet loaded"))
+    }
+
+    @Test("stale enrichment without last refresh states unavailable time and refresh failure")
+    func staleResultWithoutRefreshTimeIsHonest() throws {
+        let presentation = InsightQuickPreviewPresentation(
+            summary: try Self.insight(Self.metadataInsight),
+            enriched: try Self.insight(Self.headlineInsight)
+        )
+
+        #expect(presentation.resultLastRefresh == nil)
+        #expect(
+            presentation.accessibilitySummary(statusText: "Refresh failed")
+                .hasSuffix("Result update time unavailable. Refresh failed.")
         )
     }
 

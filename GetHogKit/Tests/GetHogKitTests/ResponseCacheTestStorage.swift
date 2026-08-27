@@ -19,6 +19,7 @@ final class ResponseCacheTestStorage: ResponseCacheStorage, @unchecked Sendable 
     private var files: [URL: StoredFile] = [:]
     private var blockedRemovalNames: Set<String> = []
     private var dataWritesFail = false
+    private var markerWritesFail = false
     private var listingsFail = false
 
     func createDirectory(at url: URL) throws {}
@@ -35,6 +36,9 @@ final class ResponseCacheTestStorage: ResponseCacheStorage, @unchecked Sendable 
     func write(_ data: Data, to url: URL) throws {
         try lock.withLock {
             if dataWritesFail, ResponseCache.isDataFilename(url.lastPathComponent) {
+                throw Failure.syntheticWrite
+            }
+            if markerWritesFail, !ResponseCache.isDataFilename(url.lastPathComponent) {
                 throw Failure.syntheticWrite
             }
             files[url] = StoredFile(data: data, modifiedAt: Date())
@@ -82,6 +86,10 @@ final class ResponseCacheTestStorage: ResponseCacheStorage, @unchecked Sendable 
 
     func setDataWritesFail(_ fail: Bool) {
         lock.withLock { dataWritesFail = fail }
+    }
+
+    func setMarkerWritesFail(_ fail: Bool) {
+        lock.withLock { markerWritesFail = fail }
     }
 
     func setListingsFail(_ fail: Bool) {

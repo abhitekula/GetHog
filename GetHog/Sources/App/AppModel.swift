@@ -207,6 +207,19 @@ final class AppModel {
         connectionError = nil
         storedCredentialRecovery = nil
         guard let storedCredential = try? store.load() else {
+            requiredResponseCachePublicationGeneration =
+                (requiredResponseCachePublicationGeneration ?? 0) &+ 1
+            // A missing credential is an independent privacy boundary. It must
+            // request a full clear on every launch because an earlier sign-out
+            // may have lost both its response removal and its marker write. One
+            // attempt is enough for launch: failure remains non-blocking, while
+            // the next credential-absent process repeats the boundary without
+            // depending on any in-memory or on-disk obligation.
+            _ = await cache.revokeAllPublicationsAndClear()
+            // A replacement connection can complete while the cache actor owns
+            // the clear turn. Its activation binds against the announced
+            // generation; do not overwrite its ready state with onboarding.
+            guard authSessionID == nil else { return }
             clearPublishedProjectData()
             phase = .onboarding
             return

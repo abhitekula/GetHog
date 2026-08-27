@@ -257,6 +257,95 @@ private actor CacheGenerationBoundaryGate {
     }
 }
 
+/// A persistent filesystem-shaped backend shared by reconstructed cache actors.
+/// It can independently lose the fixed marker write and reject response removal,
+/// reproducing the privacy gap without a test-only branch in `ResponseCache`.
+private final class MarkerLossResponseCacheStorage: ResponseCacheStorage, @unchecked Sendable {
+    enum Failure: Error {
+        case syntheticWrite
+        case syntheticRemoval
+    }
+
+    private struct StoredFile {
+        let data: Data
+        let modifiedAt: Date
+    }
+
+    private let lock = NSLock()
+    private var files: [URL: StoredFile] = [:]
+    private var markerWritesFail = false
+    private var responseRemovalsFail = false
+
+    func createDirectory(at url: URL) throws {}
+
+    func read(from url: URL) throws -> Data {
+        try lock.withLock {
+            guard let file = files[url] else {
+                throw CocoaError(.fileReadNoSuchFile)
+            }
+            return file.data
+        }
+    }
+
+    func write(_ data: Data, to url: URL) throws {
+        try lock.withLock {
+            if markerWritesFail, !ResponseCache.isDataFilename(url.lastPathComponent) {
+                throw Failure.syntheticWrite
+            }
+            files[url] = StoredFile(data: data, modifiedAt: Date())
+        }
+    }
+
+    func contents(of directory: URL) throws -> [ResponseCacheStoredFile] {
+        lock.withLock {
+            files.map { url, file in
+                ResponseCacheStoredFile(
+                    url: url,
+                    size: file.data.count,
+                    modifiedAt: file.modifiedAt
+                )
+            }
+        }
+    }
+
+    func remove(_ url: URL) throws {
+        try lock.withLock {
+            if responseRemovalsFail, ResponseCache.isDataFilename(url.lastPathComponent) {
+                throw Failure.syntheticRemoval
+            }
+            files.removeValue(forKey: url)
+        }
+    }
+
+    func failMarkerWritesAndResponseRemovals() {
+        lock.withLock {
+            markerWritesFail = true
+            responseRemovalsFail = true
+        }
+    }
+
+    func recover() {
+        lock.withLock {
+            markerWritesFail = false
+            responseRemovalsFail = false
+        }
+    }
+
+    func dataFilenames() -> Set<String> {
+        lock.withLock {
+            Set(files.keys.map(\.lastPathComponent).filter(ResponseCache.isDataFilename))
+        }
+    }
+
+    func markerFilenames() -> Set<String> {
+        lock.withLock {
+            Set(files.keys.map(\.lastPathComponent).filter { name in
+                !ResponseCache.isDataFilename(name)
+            })
+        }
+    }
+}
+
 private let meJSON = """
 {"email":"a@example.com","first_name":"Ada","distinct_id":"d1",
  "team":{"id":42,"name":"Prod","api_token":"phc_x","timezone":"UTC"},
@@ -329,6 +418,57 @@ struct AppModelTests {
         )
         await model.bootstrap()
         #expect(model.phase == .onboarding)
+    }
+
+    @Test("credential-absent bootstrap clears foreground response bytes")
+    func credentialAbsentBootstrapClearsForegroundResponseBytes() async {
+        let directory = URL(
+            fileURLWithPath: "/synthetic/credential-absent-bootstrap",
+            isDirectory: true
+        )
+        let storage = MarkerLossResponseCacheStorage()
+        let cache = ResponseCache(directory: directory, storage: storage)
+        #expect(await cache.store(Data("sensitive response".utf8), for: "synthetic-response"))
+
+        let model = AppModel(store: InMemoryTokenStore(), cache: cache)
+        await model.bootstrap()
+
+        #expect(model.phase == .onboarding)
+        #expect(storage.dataFilenames().isEmpty)
+    }
+
+    @Test("every credential-absent launch retries markerless cleanup after reconstruction")
+    func credentialAbsentRelaunchRetriesMarkerlessCleanupAfterRecovery() async {
+        let directory = URL(
+            fileURLWithPath: "/synthetic/credential-absent-reconstruction",
+            isDirectory: true
+        )
+        let storage = MarkerLossResponseCacheStorage()
+        let key = "synthetic-markerless-response"
+        let filename = ResponseCache.filename(for: key)
+        let original = ResponseCache(directory: directory, storage: storage)
+        #expect(await original.store(Data("sensitive response".utf8), for: key))
+        storage.failMarkerWritesAndResponseRemovals()
+
+        #expect(await original.revokeAllPublicationsAndClear() == false)
+        #expect(storage.dataFilenames() == [filename])
+        #expect(storage.markerFilenames().isEmpty)
+
+        let failedLaunchCache = ResponseCache(directory: directory, storage: storage)
+        let failedLaunch = AppModel(store: InMemoryTokenStore(), cache: failedLaunchCache)
+        await failedLaunch.bootstrap()
+        #expect(failedLaunch.phase == .onboarding)
+        #expect(storage.dataFilenames() == [filename])
+        #expect(storage.markerFilenames().isEmpty)
+
+        storage.recover()
+        let recoveredLaunchCache = ResponseCache(directory: directory, storage: storage)
+        let recoveredLaunch = AppModel(store: InMemoryTokenStore(), cache: recoveredLaunchCache)
+        await recoveredLaunch.bootstrap()
+
+        #expect(recoveredLaunch.phase == .onboarding)
+        #expect(storage.dataFilenames().isEmpty)
+        #expect(storage.markerFilenames().isEmpty)
     }
 
     @Test("connecting loads identity, projects and a selected project")

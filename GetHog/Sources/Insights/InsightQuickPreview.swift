@@ -472,6 +472,8 @@ struct InsightQuickPreviewPresentation: Equatable {
         }
         if let resultLastRefresh {
             parts.append("Result updated \(resultLastRefresh.formatted(Self.accessibilityDateStyle)).")
+        } else if let unavailableResultUpdateText {
+            parts.append(Self.sentence(unavailableResultUpdateText))
         }
         if let statusText {
             parts.append(Self.sentence(statusText))
@@ -482,6 +484,11 @@ struct InsightQuickPreviewPresentation: Equatable {
     func resultFreshness(isStale: Bool) -> ResultFreshness? {
         guard let resultLastRefresh else { return nil }
         return isStale ? .stale(resultLastRefresh) : .current(resultLastRefresh)
+    }
+
+    var unavailableResultUpdateText: String? {
+        guard result != nil, resultLastRefresh == nil else { return nil }
+        return "Result update time unavailable"
     }
 
     private static let accessibilityDateStyle = Date.FormatStyle(
@@ -620,6 +627,11 @@ struct InsightQuickPreview: View {
         if isStale,
            let freshness = presentation.resultFreshness(isStale: true) {
             ResultFreshnessLabel(freshness: freshness)
+        } else if let unavailable = presentation.unavailableResultUpdateText {
+            status(unavailable, systemImage: "clock")
+            if isStale {
+                status("Refresh failed", systemImage: "exclamationmark.triangle")
+            }
         } else {
             FreshnessLabel(
                 date: presentation.resultLastRefresh,

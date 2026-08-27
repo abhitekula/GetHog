@@ -15,10 +15,7 @@ final class QuickPreviewInteractionTests: XCTestCase {
             identifierStartingWith: "gethog.dashboard-card."
         )
         XCTAssertTrue(DemoLaunch.wait(for: row), "The demo dashboard list offered no real row.")
-        let detail = DemoLaunch.element(
-            in: app,
-            identifierStartingWith: "gethog.dashboard-detail."
-        )
+        let detail = app.descendants(matching: .any)["gethog.dashboard-detail.725101"]
 
         let preview = openPreview(
             row: row,

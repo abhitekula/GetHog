@@ -147,6 +147,31 @@ struct ResponseCacheKeyTests {
         #expect(!storage.names().contains(filename))
     }
 
+    @Test("an explicit full cleanup recovers after markerless reconstruction")
+    func explicitCleanupRecoversAfterMarkerlessReconstruction() async {
+        let directory = URL(
+            fileURLWithPath: "/synthetic/markerless-reconstruction",
+            isDirectory: true
+        )
+        let storage = ResponseCacheTestStorage()
+        let key = "synthetic-markerless-response"
+        let filename = ResponseCache.filename(for: key)
+        let initial = ResponseCache(directory: directory, storage: storage)
+        #expect(await initial.store(Data("sensitive response".utf8), for: key))
+        storage.blockRemoval(named: filename)
+        storage.setMarkerWritesFail(true)
+
+        #expect(await initial.revokeAllPublicationsAndClear() == false)
+        #expect(storage.names() == [filename])
+
+        let reconstructed = ResponseCache(directory: directory, storage: storage)
+        storage.unblockRemoval(named: filename)
+        storage.setMarkerWritesFail(false)
+
+        #expect(await reconstructed.revokeAllPublicationsAndClear())
+        #expect(storage.names().isEmpty)
+    }
+
     @Test("a rendered page is cached for a day, not for minutes")
     func renderTTL() {
         // The image only changes when a person re-renders the save in the web
