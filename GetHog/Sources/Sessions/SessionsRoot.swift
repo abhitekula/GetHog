@@ -802,47 +802,7 @@ struct SessionsRoot: View {
             }
 
             ForEach(store.recordings) { recording in
-                NavigationLink(value: recording.id) {
-                    SessionRowView(
-                        recording: recording,
-                        summary: store.summary(for: recording.id)
-                    )
-                }
-                .accessibilityIdentifier("gethog.session-card.\(recording.id)")
-                #if os(macOS)
-                .listRowInsets(EdgeInsets(
-                    top: Theme.Space.xs / 2,
-                    leading: Theme.Space.s,
-                    bottom: Theme.Space.xs / 2,
-                    trailing: Theme.Space.s
-                ))
-                #endif
-                .listCardBackground(route: "sessions", id: recording.id)
-                .listRowSeparator(.hidden)
-                // A recording row offered nothing on right-click at all, while
-                // the dashboard beside it offered two items and the replay
-                // already resolves as a window target. Mac-only for now: the
-                // whole menu is new, and adding it on iOS would be a product
-                // change rather than the platform fit this is.
-                #if os(macOS)
-                .contextMenu {
-                    Button {
-                        openWindow(value: WindowTarget.recording(id: recording.id))
-                    } label: {
-                        Label("Open in new window", systemImage: "macwindow.badge.plus")
-                    }
-                    if let url = model.webURL(path: "replay/\(recording.id)") {
-                        Link(destination: url) {
-                            Label("Open in PostHog", systemImage: "arrow.up.forward.square")
-                        }
-                        Button {
-                            UIPasteboard.general.url = url
-                        } label: {
-                            Label("Copy link", systemImage: "link")
-                        }
-                    }
-                }
-                #endif
+                sessionRow(recording)
             }
 
             if store.hasMore {
@@ -877,6 +837,47 @@ struct SessionsRoot: View {
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .skeleton(store.isLoading && store.recordings.isEmpty)
+    }
+
+    /// One row construction serves the host-navigation and split-view list
+    /// arrangements, keeping preview actions identical at both widths.
+    private func sessionRow(_ recording: SessionRecording) -> some View {
+        NavigationLink(value: recording.id) {
+            SessionRowView(
+                recording: recording,
+                summary: store.summary(for: recording.id)
+            )
+        }
+        .accessibilityIdentifier("gethog.session-card.\(recording.id)")
+        #if os(macOS)
+        .listRowInsets(EdgeInsets(
+            top: Theme.Space.xs / 2,
+            leading: Theme.Space.s,
+            bottom: Theme.Space.xs / 2,
+            trailing: Theme.Space.s
+        ))
+        #endif
+        .listCardBackground(route: "sessions", id: recording.id)
+        .listRowSeparator(.hidden)
+        .quickPreview {
+            SessionQuickPreview(
+                recording: recording,
+                digest: store.summary(for: recording.id)
+            )
+        } menuItems: {
+            Button {
+                selectedID.wrappedValue = recording.id
+            } label: {
+                Label("Open Session", systemImage: "arrow.right.circle")
+            }
+            #if os(macOS)
+            Button {
+                openWindow(value: WindowTarget.recording(id: recording.id))
+            } label: {
+                Label("Open in new window", systemImage: "macwindow.badge.plus")
+            }
+            #endif
+        }
     }
 
     private func load() async {
