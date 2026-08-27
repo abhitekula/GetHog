@@ -45,101 +45,53 @@ private actor QuickPreviewRequestRecorder: HTTPTransport {
     func recordedRequests() -> [URLRequest] { requests }
 }
 
-/// Synchronizes a real SwiftUI preview lifecycle without guessing a delay.
-/// Later metadata-only previews declare their descendant task count and use the
-/// tracked modifier, so the host cannot return before those tasks have run.
-private actor QuickPreviewLifecycleBarrier {
-    private let expectedDescendantTasks: Int
-    private var hostTaskStarted = false
-    private var startedDescendantTasks = 0
-    private var finishedDescendantTasks = 0
+/// Synchronizes a real SwiftUI preview lifecycle before a bounded negative
+/// observation interval. The interval is for observing ordinary descendant
+/// `.task` scheduling, not for guessing when appearance happens.
+private actor QuickPreviewLifecycleProbe {
+    private var didAppear = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    init(expectedDescendantTasks: Int) {
-        self.expectedDescendantTasks = expectedDescendantTasks
-    }
-
-    func hostTaskDidStart() {
-        hostTaskStarted = true
-        resumeWaitersIfSettled()
-    }
-
-    func descendantTaskDidStart() {
-        startedDescendantTasks += 1
-    }
-
-    func descendantTaskDidFinish() {
-        finishedDescendantTasks += 1
-        resumeWaitersIfSettled()
-    }
-
-    func waitForSettledLifecycle() async {
-        guard !isSettled else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    private var isSettled: Bool {
-        hostTaskStarted
-            && startedDescendantTasks == expectedDescendantTasks
-            && finishedDescendantTasks == expectedDescendantTasks
-    }
-
-    private func resumeWaitersIfSettled() {
-        guard isSettled else { return }
+    func appeared() {
+        didAppear = true
         let currentWaiters = waiters
         waiters.removeAll()
         currentWaiters.forEach { $0.resume() }
     }
+
+    func waitForAppearance() async {
+        guard !didAppear else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
 }
 
 private struct QuickPreviewLifecycleHost<Content: View>: View {
-    let barrier: QuickPreviewLifecycleBarrier
+    let probe: QuickPreviewLifecycleProbe
     let content: Content
 
     init(
-        barrier: QuickPreviewLifecycleBarrier,
-        @ViewBuilder content: (QuickPreviewLifecycleBarrier) -> Content
+        probe: QuickPreviewLifecycleProbe,
+        @ViewBuilder content: () -> Content
     ) {
-        self.barrier = barrier
-        self.content = content(barrier)
+        self.probe = probe
+        self.content = content()
     }
 
     var body: some View {
-        content.task {
-            await barrier.hostTaskDidStart()
+        content.onAppear {
+            Task {
+                await probe.appeared()
+            }
         }
     }
 }
 
-private struct QuickPreviewDescendantTask: ViewModifier {
-    let barrier: QuickPreviewLifecycleBarrier
-    let action: @MainActor () async -> Void
-
-    func body(content: Content) -> some View {
-        content.task {
-            await barrier.descendantTaskDidStart()
-            await action()
-            await barrier.descendantTaskDidFinish()
-        }
-    }
-}
-
-private extension View {
-    func quickPreviewDescendantTask(
-        barrier: QuickPreviewLifecycleBarrier,
-        action: @escaping @MainActor () async -> Void
-    ) -> some View {
-        modifier(QuickPreviewDescendantTask(barrier: barrier, action: action))
-    }
-}
-
-private struct RequestingQuickPreviewPositiveControl: View {
-    let barrier: QuickPreviewLifecycleBarrier
+private struct UntrackedRequestPositiveControl: View {
     let recorder: QuickPreviewRequestRecorder
 
     var body: some View {
-        Text("Quick Preview request control")
-            .quickPreviewDescendantTask(barrier: barrier) {
+        Text("Untracked Quick Preview request control")
+            .task {
                 let client = PostHogClient(
                     auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
                     transport: recorder
@@ -152,13 +104,15 @@ private struct RequestingQuickPreviewPositiveControl: View {
 @Suite("Quick Preview request boundaries")
 @MainActor
 struct QuickPreviewBoundaryTests {
-    @Test("the lifecycle host waits for a descendant task request")
-    func lifecycleHostObservesDescendantRequest() async throws {
+    private static let observationWindow = Duration.milliseconds(250)
+
+    @Test("the lifecycle host observes an ordinary descendant task request")
+    func lifecycleHostObservesUntrackedDescendantRequest() async throws {
         let recorder = QuickPreviewRequestRecorder(forwarding: DemoTransport())
-        let barrier = QuickPreviewLifecycleBarrier(expectedDescendantTasks: 1)
+        let probe = QuickPreviewLifecycleProbe()
         let controller = UIHostingController(rootView: AnyView(
-            QuickPreviewLifecycleHost(barrier: barrier) { barrier in
-                RequestingQuickPreviewPositiveControl(barrier: barrier, recorder: recorder)
+            QuickPreviewLifecycleHost(probe: probe) {
+                UntrackedRequestPositiveControl(recorder: recorder)
             }
         ))
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
@@ -171,7 +125,8 @@ struct QuickPreviewBoundaryTests {
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
 
-        await barrier.waitForSettledLifecycle()
+        await probe.waitForAppearance()
+        await Self.observeQuiescence()
         let requests = await recorder.recordedRequests()
         #expect(requests.count == 1)
         #expect(requests.first?.httpMethod == "GET")
@@ -197,9 +152,9 @@ struct QuickPreviewBoundaryTests {
         #expect(model.client != nil)
         await recorder.reset()
 
-        let barrier = QuickPreviewLifecycleBarrier(expectedDescendantTasks: 0)
+        let probe = QuickPreviewLifecycleProbe()
         let controller = UIHostingController(rootView: AnyView(
-            QuickPreviewLifecycleHost(barrier: barrier) { _ in
+            QuickPreviewLifecycleHost(probe: probe) {
                 EventQuickPreview(row: Self.event)
                     .environment(model)
             }
@@ -215,9 +170,17 @@ struct QuickPreviewBoundaryTests {
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
 
-        await barrier.waitForSettledLifecycle()
+        await probe.waitForAppearance()
+        await Self.observeQuiescence()
         #expect(await recorder.recordedRequests().isEmpty)
         window.isHidden = true
+    }
+
+    private static func observeQuiescence() async {
+        // A negative-observation interval after actual appearance gives normal
+        // SwiftUI descendant tasks an execution opportunity without blocking
+        // the main actor or treating elapsed time as appearance evidence.
+        try? await ContinuousClock().sleep(for: observationWindow)
     }
 
     @Test("insight activation emits one cached detail request and nothing else")
