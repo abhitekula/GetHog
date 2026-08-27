@@ -65,6 +65,8 @@ struct ErrorQuickPreviewPresentation: Equatable {
 struct ErrorQuickPreview: View {
     let issue: ErrorIssue
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var presentation: ErrorQuickPreviewPresentation {
         ErrorQuickPreviewPresentation(issue: issue)
     }
@@ -78,11 +80,7 @@ struct ErrorQuickPreview: View {
         ) {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 Label(presentation.status, systemImage: "circle.fill")
-                HStack(spacing: Theme.Space.m) {
-                    Label(presentation.occurrenceText, systemImage: "exclamationmark.triangle")
-                    Label(presentation.sessionText, systemImage: "rectangle.on.rectangle")
-                    Label(presentation.userText, systemImage: "person.2")
-                }
+                facts
                 if let lastSeen = presentation.lastSeen {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
@@ -108,5 +106,18 @@ struct ErrorQuickPreview: View {
             .foregroundStyle(Theme.Ink.secondary)
         }
         .accessibilityIdentifier("gethog.quick-preview.error.\(issue.id)")
+    }
+
+    private var facts: some View {
+        let layout = if QuickPreviewLayout.factsAxis(for: dynamicTypeSize) == .vertical {
+            AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.s))
+        } else {
+            AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.m))
+        }
+        return layout {
+            Label(presentation.occurrenceText, systemImage: "exclamationmark.triangle")
+            Label(presentation.sessionText, systemImage: "rectangle.on.rectangle")
+            Label(presentation.userText, systemImage: "person.2")
+        }
     }
 }
