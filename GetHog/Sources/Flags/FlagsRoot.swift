@@ -328,15 +328,18 @@ struct FlagsRoot: View {
                         ForEach(items) { flag in
                             NavigationLink(value: flag.id) {
                                 FlagRowView(flag: flag, group: group)
-                            }
-                            .quickPreview {
-                                FlagQuickPreview(flag: flag)
-                            } menuItems: {
-                                Button {
-                                    selectedID.wrappedValue = flag.id
-                                } label: {
-                                    Label("Open Flag", systemImage: "arrow.right.circle")
-                                }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(.rect)
+                                    .quickPreview {
+                                        FlagQuickPreview(flag: flag)
+                                    } menuItems: {
+                                        Button {
+                                            selectedID.wrappedValue = flag.id
+                                        } label: {
+                                            Label("Open Flag", systemImage: "arrow.right.circle")
+                                        }
+                                    }
+                                    .accessibilityIdentifier("gethog.flag-row.\(flag.id)")
                             }
                             .listRowBackground(
                                 Theme.cardBackground

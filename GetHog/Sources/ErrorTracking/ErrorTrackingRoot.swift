@@ -398,15 +398,18 @@ struct ErrorTrackingRoot: View {
                                 // gesture two pixels from a scroll is not a
                                 // shortcut worth having.
                                 ErrorIssueRow(issue: effectiveIssue)
-                            }
-                            .quickPreview {
-                                ErrorQuickPreview(issue: effectiveIssue)
-                            } menuItems: {
-                                Button {
-                                    selection.wrappedValue = issue
-                                } label: {
-                                    Label("Open Issue", systemImage: "arrow.right.circle")
-                                }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(.rect)
+                                    .quickPreview {
+                                        ErrorQuickPreview(issue: effectiveIssue)
+                                    } menuItems: {
+                                        Button {
+                                            selection.wrappedValue = issue
+                                        } label: {
+                                            Label("Open Issue", systemImage: "arrow.right.circle")
+                                        }
+                                    }
+                                    .accessibilityIdentifier("gethog.error-row.\(issue.id)")
                             }
                             .accessibilityRotorEntry(id: issue.id, in: issueRotor)
                             .id(issue.id)

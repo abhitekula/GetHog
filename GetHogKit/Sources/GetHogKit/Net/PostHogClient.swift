@@ -147,13 +147,22 @@ public actor PostHogClient {
         try Task.checkCancellation()
         let decoded = try decode(T.self, from: data)
         try Task.checkCancellation()
-        let published = await responseCache.publish(
+        let publication = await responseCache.publish(
             data,
             for: cacheKey,
             lease: responseCacheLease
         )
-        guard published else { throw CancellationError() }
-        return decoded
+        switch publication {
+        case .published:
+            return decoded
+        case .storageFailure:
+            // The request and decode succeeded. Disk availability must not turn
+            // a valid network response into a screen failure, but this body was
+            // not published and therefore cannot be claimed or reused later.
+            return decoded
+        case .revoked:
+            throw CancellationError()
+        }
     }
 
     /// Permanently withdraws this client's authority to read or publish through

@@ -143,21 +143,67 @@ struct SessionQuickPreviewTests {
         )
     }
 
+    @Test("valid JSON 1e300, integer range edges, and nonfinite durations never trap")
+    func extremeDurationsAreFormattedSafely() throws {
+        let extreme = SessionQuickPreviewPresentation(
+            recording: try Self.recording(
+                recordingDuration: "1e300",
+                activeSeconds: String(Double(Int.max))
+            ),
+            digest: nil
+        )
+
+        #expect(extreme.duration == "\(String(1e300)) seconds")
+        #expect(extreme.activeTime == "\(String(Double(Int.max))) seconds")
+
+        let largestInRange = Double(Int.max).nextDown
+        let inRange = SessionQuickPreviewPresentation(
+            recording: try Self.recording(
+                recordingDuration: String(largestInRange),
+                activeSeconds: "42"
+            ),
+            digest: nil
+        )
+        #expect(inRange.duration == Self.clock(Int(largestInRange)))
+
+        let nonfinite = SessionQuickPreviewPresentation(
+            recording: try Self.recording(
+                recordingDuration: #""Infinity""#,
+                activeSeconds: #""NaN""#,
+                decodeNonFinite: true
+            ),
+            digest: nil
+        )
+        #expect(nonfinite.duration == "Unavailable")
+        #expect(nonfinite.activeTime == "Unavailable")
+    }
+
     private static func recording(
         person: String = #"{"name":"Synthetic Person","distinct_ids":["person-distinct"]}"#,
         distinctID: String? = "recording-distinct",
-        snapshotSource: String = "web"
+        snapshotSource: String = "web",
+        recordingDuration: String = "125",
+        activeSeconds: String = "42",
+        decodeNonFinite: Bool = false
     ) throws -> SessionRecording {
         let distinctValue = distinctID.map { #""\#($0)""# } ?? "null"
-        return try JSONDecoder().decode(
+        let decoder = JSONDecoder()
+        if decodeNonFinite {
+            decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+                positiveInfinity: "Infinity",
+                negativeInfinity: "-Infinity",
+                nan: "NaN"
+            )
+        }
+        return try decoder.decode(
             SessionRecording.self,
             from: Data(
                 #"""
                 {
                   "id": "session-quick-preview-1",
                   "distinct_id": \#(distinctValue),
-                  "recording_duration": 125,
-                  "active_seconds": 42,
+                  "recording_duration": \#(recordingDuration),
+                  "active_seconds": \#(activeSeconds),
                   "start_time": "2026-08-27T10:00:00Z",
                   "end_time": "2026-08-27T10:02:05Z",
                   "start_url": "https://example.invalid/synthetic/checkout?step=1",
@@ -174,6 +220,15 @@ struct SessionQuickPreviewTests {
                 """#.utf8
             )
         )
+    }
+
+    private static func clock(_ total: Int) -> String {
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let seconds = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
     }
 
     private static func digest(

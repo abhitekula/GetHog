@@ -892,18 +892,20 @@ struct EventsRoot: View {
                 if !rows.isEmpty {
                     Section {
                         ForEach(rows) { event in
-                            NavigationLink(value: event.id) { EventRowView(event: event) }
-                                .listCardBackground(route: "events", id: event.id)
-                                .listRowSeparator(.hidden)
-                                .quickPreview {
-                                    EventQuickPreview(row: event)
-                                } menuItems: {
-                                    Button {
-                                        selectedID.wrappedValue = event.id
-                                    } label: {
-                                        Label("Open Event", systemImage: "arrow.right.circle")
+                            NavigationLink(value: event.id) {
+                                EventRowView(event: event)
+                                    .quickPreview {
+                                        EventQuickPreview(row: event)
+                                    } menuItems: {
+                                        Button {
+                                            selectedID.wrappedValue = event.id
+                                        } label: {
+                                            Label("Open Event", systemImage: "arrow.right.circle")
+                                        }
                                     }
-                                }
+                            }
+                            .listCardBackground(route: "events", id: event.id)
+                            .listRowSeparator(.hidden)
                         }
                     } header: {
                         SectionLabel(text: bucket.title, productMark: .event)

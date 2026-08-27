@@ -74,17 +74,45 @@ struct EventQuickPreviewTests {
         )
     }
 
+    @Test("a missing event timestamp remains unavailable instead of becoming the distant past")
+    func missingTimestampStaysOptional() throws {
+        let presentation = EventQuickPreviewPresentation(
+            row: try Self.event(properties: [:], timestamp: .null)
+        )
+
+        #expect(presentation.timestamp == nil)
+        #expect(presentation.accessibilitySummary.contains("Timestamp unavailable."))
+        #expect(!presentation.accessibilitySummary.contains("0001-01-01"))
+    }
+
+    @Test("valid JSON 1e300 and nonfinite range edges format without trapping")
+    func extremeNumericPropertiesAreSafe() throws {
+        let huge = try JSONDecoder().decode(JSONValue.self, from: Data("1e300".utf8))
+
+        #expect(Self.value("huge", huge) == String(1e300))
+        #expect(Self.value("int_edge", .number(Double(Int.max))) == String(Double(Int.max)))
+        #expect(
+            Self.value("finite_edge", .number(.greatestFiniteMagnitude))
+                == String(Double.greatestFiniteMagnitude)
+        )
+        #expect(Self.value("infinite", .number(.infinity)) == "Unavailable")
+        #expect(Self.value("nan", .number(.nan)) == "Unavailable")
+    }
+
     private static func value(_ key: String, _ value: JSONValue) -> String? {
         EventQuickPreviewPresentation(row: try! event(properties: [key: value])).properties.first?.value
     }
 
-    private static func event(properties: [String: JSONValue]) throws -> EventRow {
+    private static func event(
+        properties: [String: JSONValue],
+        timestamp: JSONValue = .string("2026-08-27T14:15:30Z")
+    ) throws -> EventRow {
         let row = EventRow(row: QueryRow(
             columns: ["uuid", "event", "timestamp", "distinct_id", "$current_url", "properties"],
             values: [
                 .string("event-quick-preview-1"),
                 .string("Synthetic signup"),
-                .string("2026-08-27T14:15:30Z"),
+                timestamp,
                 .string("synthetic-person-0001"),
                 .string("https://example.invalid/account"),
                 .object(properties),

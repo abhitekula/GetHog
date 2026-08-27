@@ -532,6 +532,21 @@ struct InsightsRoot: View {
                 footnoteLineLimit: 2,
                 accessory: .none
             )
+            .quickPreview {
+                InsightQuickPreview(
+                    summary: insight,
+                    state: quickPreviewStore.state(for: scope)
+                )
+                .task(id: scope) {
+                    await quickPreviewStore.activate(client: model.client, scope: scope)
+                }
+            } menuItems: {
+                Button {
+                    selectedID.wrappedValue = insight.id
+                } label: {
+                    Label("Open Insight", systemImage: "arrow.right.circle")
+                }
+            }
         }
         .listRowBackground(
             Theme.cardBackground
@@ -540,21 +555,6 @@ struct InsightsRoot: View {
         )
         .listRowSeparator(.hidden)
         .accessibilityIdentifier("gethog.insight-card.\(insight.id)")
-        .quickPreview {
-            InsightQuickPreview(
-                summary: insight,
-                state: quickPreviewStore.state(for: scope)
-            )
-            .task(id: scope) {
-                await quickPreviewStore.activate(client: model.client, scope: scope)
-            }
-        } menuItems: {
-            Button {
-                selectedID.wrappedValue = insight.id
-            } label: {
-                Label("Open Insight", systemImage: "arrow.right.circle")
-            }
-        }
         // The page after this one is fetched when its last row appears rather
         // than from a button, because 140 insights is three pages and a reader
         // scrolling a list should not have to ask for the rest of it. Guarded

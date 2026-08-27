@@ -134,6 +134,44 @@ struct InsightQuickPreviewTests {
         )
     }
 
+    @Test("result freshness and cache provenance come from the enriched result, not its definition")
+    func resultFreshnessIsSeparateFromDefinitionAge() throws {
+        let summary = try Self.insight(Self.metadataInsight)
+        let enriched = try Self.insight(Self.uncachedHeadlineInsight)
+
+        let presentation = InsightQuickPreviewPresentation(
+            summary: summary,
+            enriched: enriched
+        )
+
+        #expect(presentation.lastModifiedAt == Date(timeIntervalSince1970: 1_787_738_400))
+        #expect(presentation.resultLastRefresh == Date(timeIntervalSince1970: 1_787_648_400))
+        #expect(presentation.resultIsCached == false)
+        #expect(presentation.cacheState == "Not cached")
+        #expect(presentation.accessibilitySummary.contains("Edited Aug 26, 2026."))
+        #expect(presentation.accessibilitySummary.contains("Result updated Aug 25, 2026."))
+    }
+
+    @Test("stale retained enrichment reports refresh failure with the actual result age")
+    func staleRetainedResultKeepsItsActualFreshness() throws {
+        let summary = try Self.insight(Self.metadataInsight)
+        let enriched = try Self.insight(Self.cachedHeadlineInsight)
+        let presentation = InsightQuickPreviewPresentation(
+            summary: summary,
+            enriched: enriched
+        )
+        let resultDate = try #require(presentation.resultLastRefresh)
+
+        #expect(presentation.resultIsCached == true)
+        #expect(presentation.resultFreshness(isStale: false) == .current(resultDate))
+        #expect(presentation.resultFreshness(isStale: true) == .stale(resultDate))
+        #expect(
+            presentation.accessibilitySummary(statusText: "Refresh failed")
+                .contains("Result updated Aug 24, 2026. Refresh failed.")
+        )
+        #expect(resultDate != presentation.lastModifiedAt)
+    }
+
     @Test("a bold-number result becomes a formatted headline")
     func headlineResultIsHonest() throws {
         let insight = try Self.insight(Self.headlineInsight)
@@ -665,6 +703,33 @@ struct InsightQuickPreviewTests {
     private static let headlineInsight = #"""
     {
       "id": 7201,
+      "is_cached": true,
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {"kind":"TrendsQuery","trendsFilter":{"display":"BoldNumber"}}
+      },
+      "result": [{"label":"Synthetic activations","aggregated_value":12500,"data":[],"days":[]}]
+    }
+    """#
+
+    private static let uncachedHeadlineInsight = #"""
+    {
+      "id": 7201,
+      "last_refresh": "2026-08-25T09:00:00Z",
+      "is_cached": false,
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {"kind":"TrendsQuery","trendsFilter":{"display":"BoldNumber"}}
+      },
+      "result": [{"label":"Synthetic activations","aggregated_value":12500,"data":[],"days":[]}]
+    }
+    """#
+
+    private static let cachedHeadlineInsight = #"""
+    {
+      "id": 7201,
+      "last_refresh": "2026-08-24T08:00:00Z",
+      "is_cached": true,
       "query": {
         "kind": "InsightVizNode",
         "source": {"kind":"TrendsQuery","trendsFilter":{"display":"BoldNumber"}}

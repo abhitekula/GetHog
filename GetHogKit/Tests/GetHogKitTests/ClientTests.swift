@@ -185,6 +185,42 @@ struct ClientTests {
         }
     }
 
+    @Test("a cache write failure returns the network value without creating a reusable entry")
+    func cacheWriteFailureReturnsNetworkValueWithoutReuse() async throws {
+        let directory = URL(fileURLWithPath: "/synthetic/client-write-failure", isDirectory: true)
+        let storage = ResponseCacheTestStorage()
+        storage.setDataWritesFail(true)
+        let cache = ResponseCache(directory: directory, storage: storage)
+        let response = HTTPURLResponse(
+            url: URL(string: "https://us.posthog.com/")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        let transport = StubTransport(responses: [
+            (Data(#"{"value":"first network response"}"#.utf8), response),
+            (Data(#"{"value":"second network response"}"#.utf8), response),
+        ])
+        let client = makeClient(
+            transport: transport,
+            cache: cache,
+            cacheNamespace: "synthetic-auth-epoch-a"
+        )
+        let endpoint = Endpoint(
+            path: "/api/projects/1001/dashboards/725001/",
+            query: [URLQueryItem(name: "refresh", value: "force_cache")],
+            category: .analytics
+        )
+
+        let first: StringValue = try await client.sendCached(endpoint, ttl: 300)
+        let second: StringValue = try await client.sendCached(endpoint, ttl: 300)
+
+        #expect(first.value == "first network response")
+        #expect(second.value == "second network response")
+        #expect(await transport.requestCount == 2)
+        #expect(!storage.names().contains(where: ResponseCache.isDataFilename))
+    }
+
     @Test("cache identity fences authentication epoch and the full absolute URL")
     func cacheIdentityFencesAuthorityAndURL() async throws {
         try await withTemporaryCache { cache in

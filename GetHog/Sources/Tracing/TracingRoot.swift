@@ -624,17 +624,17 @@ struct TracingRoot: View {
                 ForEach(store.traces) { trace in
                     NavigationLink(value: trace) {
                         TraceRowView(trace: trace)
-                    }
-                    .cardRow()
-                    .quickPreview {
-                        TraceQuickPreview(trace: trace)
-                    } menuItems: {
-                        Button {
-                            selection.wrappedValue = trace
-                        } label: {
-                            Label("Open Trace", systemImage: "arrow.right.circle")
+                            .quickPreview {
+                                TraceQuickPreview(trace: trace)
+                            } menuItems: {
+                                Button {
+                                    selection.wrappedValue = trace
+                                } label: {
+                                    Label("Open Trace", systemImage: "arrow.right.circle")
+                                }
+                            }
                         }
-                    }
+                    .cardRow()
                 }
             } header: {
                 SectionLabel(

@@ -376,6 +376,8 @@ struct InsightQuickPreviewPresentation: Equatable {
     let lastModifiedAt: Date?
     let cacheState: String
     let result: InsightQuickPreviewResult?
+    let resultLastRefresh: Date?
+    let resultIsCached: Bool?
 
     init(
         title: String,
@@ -386,7 +388,9 @@ struct InsightQuickPreviewPresentation: Equatable {
         dashboardCount: Int,
         lastModifiedAt: Date?,
         cacheState: String,
-        result: InsightQuickPreviewResult?
+        result: InsightQuickPreviewResult?,
+        resultLastRefresh: Date? = nil,
+        resultIsCached: Bool? = nil
     ) {
         self.title = title
         self.description = description
@@ -397,9 +401,12 @@ struct InsightQuickPreviewPresentation: Equatable {
         self.lastModifiedAt = lastModifiedAt
         self.cacheState = cacheState
         self.result = result
+        self.resultLastRefresh = resultLastRefresh
+        self.resultIsCached = resultIsCached
     }
 
     init(summary: Insight, enriched: Insight?) {
+        let enriched = enriched.flatMap { $0.id == summary.id ? $0 : nil }
         title = summary.title
         description = summary.description
         queryKind = summary.kind?.title
@@ -411,15 +418,21 @@ struct InsightQuickPreviewPresentation: Equatable {
         isFavorite = summary.favorited
         dashboardCount = summary.dashboards.count
         lastModifiedAt = summary.lastModifiedAt
-        cacheState = summary.isCached ? "Cached result" : "Not cached"
-        result = if let enriched, enriched.id == summary.id {
+        cacheState = (enriched?.isCached ?? summary.isCached) ? "Cached result" : "Not cached"
+        result = if let enriched {
             InsightQuickPreviewResult(insight: enriched)
         } else {
             nil
         }
+        resultLastRefresh = enriched?.lastRefresh
+        resultIsCached = enriched?.isCached
     }
 
     var accessibilitySummary: String {
+        accessibilitySummary(statusText: nil)
+    }
+
+    func accessibilitySummary(statusText: String?) -> String {
         var parts = [Self.sentence(title)]
         if let description, !description.isEmpty {
             parts.append(Self.sentence(description))
@@ -433,34 +446,51 @@ struct InsightQuickPreviewPresentation: Equatable {
         case let count: parts.append("On \(count) dashboards.")
         }
         if let lastModifiedAt {
-            let style = Date.FormatStyle(
-                date: .abbreviated,
-                time: .omitted,
-                locale: Locale(identifier: "en_US_POSIX"),
-                calendar: Calendar(identifier: .gregorian),
-                timeZone: TimeZone(secondsFromGMT: 0)!
-            )
-            parts.append("Edited \(lastModifiedAt.formatted(style)).")
+            parts.append("Edited \(lastModifiedAt.formatted(Self.accessibilityDateStyle)).")
         }
         parts.append(Self.sentence(cacheState))
+        let resultLabel = resultIsCached == true ? "Cached" : "Result"
         switch result {
         case .headline(let value):
-            parts.append("Cached headline, \(value).")
+            parts.append("\(resultLabel) headline, \(value).")
         case .chart(let display, let seriesCount):
-            parts.append("Cached \(display.lowercased()) chart, \(seriesCount) series.")
+            parts.append("\(resultLabel) \(display.lowercased()) chart, \(seriesCount) series.")
         case .table(let rows, let columns):
-            parts.append("Cached table, \(rows) rows, \(columns) columns.")
+            parts.append("\(resultLabel) table, \(rows) rows, \(columns) columns.")
         case .empty:
-            parts.append("Cached result is empty.")
+            parts.append(resultIsCached == true ? "Cached result is empty." : "Result is empty.")
         case .pending:
-            parts.append("Cached result is pending.")
+            parts.append(resultIsCached == true ? "Cached result is pending." : "Result is pending.")
         case .unsupported:
-            parts.append("Cached result is not supported in Quick Preview.")
+            parts.append(
+                resultIsCached == true
+                    ? "Cached result is not supported in Quick Preview."
+                    : "Result is not supported in Quick Preview."
+            )
         case nil:
             break
         }
+        if let resultLastRefresh {
+            parts.append("Result updated \(resultLastRefresh.formatted(Self.accessibilityDateStyle)).")
+        }
+        if let statusText {
+            parts.append(Self.sentence(statusText))
+        }
         return parts.joined(separator: " ")
     }
+
+    func resultFreshness(isStale: Bool) -> ResultFreshness? {
+        guard let resultLastRefresh else { return nil }
+        return isStale ? .stale(resultLastRefresh) : .current(resultLastRefresh)
+    }
+
+    private static let accessibilityDateStyle = Date.FormatStyle(
+        date: .abbreviated,
+        time: .omitted,
+        locale: Locale(identifier: "en_US_POSIX"),
+        calendar: Calendar(identifier: .gregorian),
+        timeZone: TimeZone(secondsFromGMT: 0)!
+    )
 
     fileprivate static func sentence(_ value: String) -> String {
         guard let last = value.last, !".!?".contains(last) else { return value }
@@ -532,15 +562,19 @@ struct InsightQuickPreview: View {
         case .idle:
             EmptyView()
         case .loading(let previous, _):
-            if previous != nil { resultView }
+            if previous != nil {
+                resultView
+                resultFreshness(isStale: false)
+            }
             status("Loading cached details…", systemImage: "clock.arrow.circlepath")
         case .loaded:
             resultView
+            resultFreshness(isStale: false)
         case .unavailable:
             status("More details unavailable", systemImage: "exclamationmark.triangle")
         case .stale:
             resultView
-            status("Refresh failed", systemImage: "exclamationmark.triangle")
+            resultFreshness(isStale: true)
         }
     }
 
@@ -548,26 +582,60 @@ struct InsightQuickPreview: View {
     private var resultView: some View {
         switch presentation.result {
         case .headline(let value):
-            LabeledContent("Cached headline") {
+            LabeledContent(resultTitle("headline")) {
                 Text(value).font(.headline.monospacedDigit())
             }
         case .chart(let display, let seriesCount):
-            LabeledContent("Cached \(display.lowercased()) chart") {
+            LabeledContent(resultTitle("\(display.lowercased()) chart")) {
                 Text("\(seriesCount) series")
             }
         case .table(let rows, let columns):
-            LabeledContent("Cached table") {
+            LabeledContent(resultTitle("table")) {
                 Text("\(rows) rows · \(columns) columns")
             }
         case .empty:
-            status("Cached result is empty", systemImage: "tray")
+            status(
+                presentation.resultIsCached == true ? "Cached result is empty" : "Result is empty",
+                systemImage: "tray"
+            )
         case .pending:
-            status("Cached result is pending", systemImage: "clock")
+            status(
+                presentation.resultIsCached == true ? "Cached result is pending" : "Result is pending",
+                systemImage: "clock"
+            )
         case .unsupported:
-            status("Cached result isn't supported in Quick Preview", systemImage: "questionmark.square")
+            status(
+                presentation.resultIsCached == true
+                    ? "Cached result isn't supported in Quick Preview"
+                    : "Result isn't supported in Quick Preview",
+                systemImage: "questionmark.square"
+            )
         case nil:
             EmptyView()
         }
+    }
+
+    @ViewBuilder
+    private func resultFreshness(isStale: Bool) -> some View {
+        if isStale,
+           let freshness = presentation.resultFreshness(isStale: true) {
+            ResultFreshnessLabel(freshness: freshness)
+        } else {
+            FreshnessLabel(
+                date: presentation.resultLastRefresh,
+                isCached: presentation.resultIsCached ?? false
+            )
+            if isStale {
+                status("Refresh failed", systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    private func resultTitle(_ kind: String) -> String {
+        guard presentation.resultIsCached == true else {
+            return kind.prefix(1).uppercased() + kind.dropFirst()
+        }
+        return "Cached \(kind)"
     }
 
     private func status(_ text: String, systemImage: String) -> some View {
@@ -585,10 +653,6 @@ struct InsightQuickPreview: View {
     }
 
     private var accessibilitySummary: String {
-        guard let statusText = state.statusText else {
-            return presentation.accessibilitySummary
-        }
-        return presentation.accessibilitySummary + " "
-            + InsightQuickPreviewPresentation.sentence(statusText)
+        presentation.accessibilitySummary(statusText: state.statusText)
     }
 }

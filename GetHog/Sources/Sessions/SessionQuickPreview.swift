@@ -70,7 +70,13 @@ struct SessionQuickPreviewPresentation: Equatable {
 
     private static func clock(_ seconds: Double?) -> String {
         guard let seconds else { return "—" }
-        let total = max(0, Int(seconds))
+        guard seconds.isFinite else { return "Unavailable" }
+        let nonnegative = max(0, seconds)
+        guard nonnegative < Double(Int.max) else {
+            return JSONValue.number(nonnegative).stringValue.map { "\($0) seconds" }
+                ?? "Unavailable"
+        }
+        let total = Int(nonnegative)
         let hours = total / 3_600
         let minutes = (total % 3_600) / 60
         let remainder = total % 60

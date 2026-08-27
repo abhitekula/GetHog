@@ -353,6 +353,24 @@ enum DemoLaunch {
             .firstMatch
     }
 
+    /// A stable authored row whose visible semantic label identifies the
+    /// fixture object under test. This keeps regular-width presses on the
+    /// inner row host instead of falling back to a label-matched outer link.
+    @MainActor
+    static func element(
+        in app: XCUIApplication,
+        identifierStartingWith prefix: String,
+        labelContaining content: String
+    ) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                prefix,
+                content
+            ))
+            .firstMatch
+    }
+
     /// The first real row button whose combined semantic label contains text.
     /// Some list rows predate authored row identifiers; their visible fixture
     /// identity is still exposed by the NavigationLink button itself.

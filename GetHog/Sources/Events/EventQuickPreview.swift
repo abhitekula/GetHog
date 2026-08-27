@@ -9,14 +9,14 @@ struct EventQuickPreviewPresentation: Equatable {
     }
 
     let event: String
-    let timestamp: Date
+    let timestamp: Date?
     let distinctID: String
     let currentURL: String?
     let properties: [Property]
 
     init(row: EventRow) {
         event = row.event
-        timestamp = row.timestamp ?? .distantPast
+        timestamp = row.timestamp
         distinctID = row.distinctID ?? "Unknown person"
         currentURL = row.currentURL
 
@@ -28,11 +28,12 @@ struct EventQuickPreviewPresentation: Equatable {
     }
 
     var accessibilitySummary: String {
-        var parts = [
-            Self.sentence(event),
-            "Timestamp \(timestamp.ISO8601Format()).",
-            "Person \(distinctID).",
-        ]
+        var parts = [Self.sentence(event)]
+        parts.append(
+            timestamp.map { "Timestamp \($0.ISO8601Format())." }
+                ?? "Timestamp unavailable."
+        )
+        parts.append("Person \(distinctID).")
         if let currentURL {
             parts.append("URL \(currentURL).")
         }
@@ -68,7 +69,7 @@ struct EventQuickPreviewPresentation: Equatable {
         case .null: "null"
         case .bool(let value): String(value)
         case .string(let value): value
-        case .number(let value): value == value.rounded() ? String(Int(value)) : String(value)
+        case .number: value.stringValue ?? "Unavailable"
         case .array(let values): "[\(values.count) items]"
         case .object(let values): "{\(values.count) fields}"
         }
@@ -108,7 +109,10 @@ struct EventQuickPreview: View {
             AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Space.m))
         }
         return VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Label(presentation.timestamp.ISO8601Format(), systemImage: "clock")
+            Label(
+                presentation.timestamp?.ISO8601Format() ?? "Timestamp unavailable",
+                systemImage: "clock"
+            )
             layout {
                 Label(presentation.distinctID, systemImage: "person.crop.circle")
                 if let currentURL = presentation.currentURL {

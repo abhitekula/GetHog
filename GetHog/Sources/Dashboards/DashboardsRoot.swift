@@ -489,21 +489,21 @@ struct DashboardsRoot: View {
     }
 
     private func row(_ dashboard: DashboardSummary) -> some View {
-        dashboardQuickPreview(dashboard) {
-            NavigationLink(value: dashboard.id) {
+        NavigationLink(value: dashboard.id) {
+            dashboardQuickPreview(dashboard) {
                 dashboardRowContent(dashboard, in: .navigationLink)
             }
-            .dashboardRowSurface()
-            .listRowSeparator(.hidden)
-            .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
         }
+        .dashboardRowSurface()
+        .listRowSeparator(.hidden)
+        .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
     }
 
     private func dashboardHubRow(_ dashboard: DashboardSummary) -> some View {
-        dashboardQuickPreview(dashboard) {
-            Button {
-                selectedID.wrappedValue = dashboard.id
-            } label: {
+        Button {
+            selectedID.wrappedValue = dashboard.id
+        } label: {
+            dashboardQuickPreview(dashboard) {
                 Card(
                     padding: Theme.Space.m,
                     accent: dashboard.creationMode == .template ? Theme.accentWarm : Theme.accent
@@ -511,10 +511,10 @@ struct DashboardsRoot: View {
                     dashboardRowContent(dashboard, in: .button)
                 }
             }
-            .buttonStyle(.plain)
-            .pointerHighlight(cornerRadius: Theme.Radius.medium)
-            .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
         }
+        .buttonStyle(.plain)
+        .pointerHighlight(cornerRadius: Theme.Radius.medium)
+        .accessibilityIdentifier("gethog.dashboard-card.\(dashboard.id)")
     }
 
     private func dashboardQuickPreview<Row: View>(

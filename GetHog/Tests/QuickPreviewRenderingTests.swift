@@ -423,6 +423,8 @@ struct QuickPreviewRenderingTests {
     private static let insightLoadedJSON = #"""
     {
       "id": 7201,
+      "last_refresh": "2026-08-25T09:00:00Z",
+      "is_cached": true,
       "query": {
         "kind": "InsightVizNode",
         "source": {"kind":"TrendsQuery","trendsFilter":{"display":"BoldNumber"}}

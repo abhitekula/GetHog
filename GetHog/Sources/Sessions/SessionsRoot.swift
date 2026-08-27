@@ -847,6 +847,25 @@ struct SessionsRoot: View {
                 recording: recording,
                 summary: store.summary(for: recording.id)
             )
+            .quickPreview {
+                SessionQuickPreview(
+                    recording: recording,
+                    digest: store.summary(for: recording.id)
+                )
+            } menuItems: {
+                Button {
+                    selectedID.wrappedValue = recording.id
+                } label: {
+                    Label("Open Session", systemImage: "arrow.right.circle")
+                }
+                #if os(macOS)
+                Button {
+                    openWindow(value: WindowTarget.recording(id: recording.id))
+                } label: {
+                    Label("Open in new window", systemImage: "macwindow.badge.plus")
+                }
+                #endif
+            }
         }
         .accessibilityIdentifier("gethog.session-card.\(recording.id)")
         #if os(macOS)
@@ -859,25 +878,6 @@ struct SessionsRoot: View {
         #endif
         .listCardBackground(route: "sessions", id: recording.id)
         .listRowSeparator(.hidden)
-        .quickPreview {
-            SessionQuickPreview(
-                recording: recording,
-                digest: store.summary(for: recording.id)
-            )
-        } menuItems: {
-            Button {
-                selectedID.wrappedValue = recording.id
-            } label: {
-                Label("Open Session", systemImage: "arrow.right.circle")
-            }
-            #if os(macOS)
-            Button {
-                openWindow(value: WindowTarget.recording(id: recording.id))
-            } label: {
-                Label("Open in new window", systemImage: "macwindow.badge.plus")
-            }
-            #endif
-        }
     }
 
     private func load() async {

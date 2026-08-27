@@ -7,9 +7,9 @@ struct ErrorQuickPreviewPresentation: Equatable {
     let title: String
     let message: String?
     let status: String
-    let occurrences: Int
-    let sessions: Int
-    let users: Int
+    let occurrences: Double
+    let sessions: Double
+    let users: Double
     let lastSeen: Date?
     let assignment: String?
     let release: String?
@@ -19,9 +19,9 @@ struct ErrorQuickPreviewPresentation: Equatable {
         title = issue.name
         message = issue.issueDescription?.isEmpty == false ? issue.issueDescription : nil
         status = issue.statusTitle
-        occurrences = Int(issue.occurrences)
-        sessions = Int(issue.sessions)
-        users = Int(issue.users)
+        occurrences = issue.occurrences
+        sessions = issue.sessions
+        users = issue.users
         lastSeen = issue.lastSeen
         assignment = Self.assignment(for: issue.assignee)
         // ErrorIssue is the list model. It does not carry release or environment,
@@ -56,9 +56,13 @@ struct ErrorQuickPreviewPresentation: Equatable {
         return "\(kind) \(assignee.identifier.description)"
     }
 
-    private static func countText(_ count: Int, singular: String) -> String {
+    private static func countText(_ count: Double, singular: String) -> String {
+        guard let value = JSONValue.number(count).stringValue else {
+            let plural = singular + "s"
+            return plural.prefix(1).uppercased() + String(plural.dropFirst()) + " unavailable"
+        }
         let noun = count == 1 ? singular : singular + "s"
-        return "\(count) \(noun)"
+        return "\(value) \(noun)"
     }
 }
 

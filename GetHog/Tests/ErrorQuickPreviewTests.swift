@@ -61,9 +61,55 @@ struct ErrorQuickPreviewTests {
         #expect(!presentation.accessibilitySummary.contains("Assign issue"))
     }
 
-    private static func issue(id: String, status: String, assignee: String?) throws -> ErrorIssue {
+    @Test("valid JSON 1e300, range edges, and nonfinite counts never trap")
+    func extremeCountsAreFormattedSafely() throws {
+        let extreme = ErrorQuickPreviewPresentation(issue: try Self.issue(
+            id: "error-quick-preview-extreme",
+            status: "active",
+            assignee: nil,
+            occurrences: "1e300",
+            sessions: String(Double(Int.max)),
+            users: String(Double.greatestFiniteMagnitude)
+        ))
+
+        #expect(extreme.occurrenceText == "\(String(1e300)) occurrences")
+        #expect(extreme.sessionText == "\(String(Double(Int.max))) sessions")
+        #expect(extreme.userText == "\(String(Double.greatestFiniteMagnitude)) users")
+
+        let nonfinite = ErrorQuickPreviewPresentation(issue: try Self.issue(
+            id: "error-quick-preview-nonfinite",
+            status: "active",
+            assignee: nil,
+            occurrences: #""Infinity""#,
+            sessions: #""-Infinity""#,
+            users: #""NaN""#,
+            decodeNonFinite: true
+        ))
+
+        #expect(nonfinite.occurrenceText == "Occurrences unavailable")
+        #expect(nonfinite.sessionText == "Sessions unavailable")
+        #expect(nonfinite.userText == "Users unavailable")
+    }
+
+    private static func issue(
+        id: String,
+        status: String,
+        assignee: String?,
+        occurrences: String = "42",
+        sessions: String = "11",
+        users: String = "7",
+        decodeNonFinite: Bool = false
+    ) throws -> ErrorIssue {
         let assigneeField = assignee.map { ", \"assignee\": \($0)" } ?? ""
-        return try JSONDecoder().decode(
+        let decoder = JSONDecoder()
+        if decodeNonFinite {
+            decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+                positiveInfinity: "Infinity",
+                negativeInfinity: "-Infinity",
+                nan: "NaN"
+            )
+        }
+        return try decoder.decode(
             ErrorIssue.self,
             from: Data(
                 """
@@ -73,7 +119,11 @@ struct ErrorQuickPreviewTests {
                   "description": "Synthetic checkout request timed out.",
                   "status": "\(status)",
                   "last_seen": "2026-08-27T12:00:00Z",
-                  "aggregations": {"occurrences": 42, "sessions": 11, "users": 7}
+                  "aggregations": {
+                    "occurrences": \(occurrences),
+                    "sessions": \(sessions),
+                    "users": \(users)
+                  }
                   \(assigneeField)
                 }
                 """.utf8
