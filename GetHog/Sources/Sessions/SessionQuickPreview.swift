@@ -89,16 +89,47 @@ struct SessionQuickPreviewPresentation: Equatable {
 
     private static func digest(from digest: ReplayVisionSummaryDigest?) -> String? {
         guard let digest else { return nil }
-        if let summary = singleLine(digest.cardSummary), !summary.isEmpty {
-            return summary
+        if let title = singleLine(digest.title),
+           !title.isEmpty,
+           title.count <= maximumDigestCharacters {
+            return title
         }
-        if let friction = singleLine(digest.frictionPoints.first), !friction.isEmpty {
-            return "Friction: \(friction)"
+        if let summary = singleLine(digest.summary), !summary.isEmpty {
+            return boundedSummary(summary)
         }
+        let friction = digest.frictionPoints.lazy
+            .compactMap { singleLine($0) }
+            .first(where: { !$0.isEmpty })
+        if let friction { return bounded("Friction: \(friction)") }
         if let outcome = singleLine(digest.outcome), !outcome.isEmpty {
-            return "Outcome: \(outcome)"
+            return bounded("Outcome: \(outcome)")
         }
         return nil
+    }
+
+    private static let maximumDigestCharacters = 80
+
+    private static func boundedSummary(_ summary: String) -> String {
+        for index in summary.indices where ".!?".contains(summary[index]) {
+            let remainderStart = summary.index(after: index)
+            guard remainderStart == summary.endIndex
+                    || summary[remainderStart].isWhitespace
+            else { continue }
+
+            let sentence = String(summary[...index])
+            let hasRemainder = summary[remainderStart...]
+                .contains(where: { !$0.isWhitespace })
+            return bounded(sentence, omitted: hasRemainder)
+        }
+        return bounded(summary)
+    }
+
+    private static func bounded(_ value: String, omitted: Bool = false) -> String {
+        let requiresEllipsis = omitted || value.count > maximumDigestCharacters
+        guard requiresEllipsis else { return value }
+        let prefix = value.prefix(maximumDigestCharacters - 1)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return prefix + "…"
     }
 
     private static func singleLine(_ value: String?) -> String? {

@@ -59,24 +59,57 @@ struct SessionQuickPreviewTests {
         #expect(mobile.playability == "Not playable")
     }
 
-    @Test("an already-loaded Replay Vision summary becomes a single line")
-    func loadedDigestUsesSummary() throws {
+    @Test("an explicitly short loaded title is preferred over the loaded summary")
+    func loadedDigestPrefersShortTitle() throws {
         let digest = try Self.digest(
-            summary: "Synthetic checkout began.\nThe confirmation appeared."
+            title: "Reviewed synthetic checkout",
+            summary: "The synthetic checkout began and the confirmation appeared."
         )
 
         #expect(
             SessionQuickPreviewPresentation(
                 recording: try Self.recording(),
                 digest: digest
-            ).digest == "Synthetic checkout began. The confirmation appeared."
+            ).digest == "Reviewed synthetic checkout"
         )
     }
 
-    @Test("loaded friction is the fallback when summary and title are empty")
-    func loadedFrictionIsDigestFallback() throws {
+    @Test("a long multi-paragraph summary is bounded without exposing its full text")
+    func loadedSummaryIsDeterministicallyBounded() throws {
         let digest = try Self.digest(
-            frictionPoints: #"["The synthetic submit action needed a retry."]"#,
+            summary: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n\nPrivate second paragraph must not appear in the preview."
+        )
+        let presentation = SessionQuickPreviewPresentation(
+            recording: try Self.recording(),
+            digest: digest
+        )
+
+        #expect(
+            presentation.digest
+                == "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ABCDEFGHIJKLMNOP…"
+        )
+        #expect(presentation.digest?.count == 80)
+        #expect(presentation.digest?.contains("Private second paragraph") == false)
+    }
+
+    @Test("a multi-sentence summary uses only its first meaningful sentence")
+    func loadedSummaryUsesFirstMeaningfulSentence() throws {
+        let digest = try Self.digest(
+            summary: "Synthetic checkout opened. A second loaded sentence must not appear."
+        )
+
+        #expect(
+            SessionQuickPreviewPresentation(
+                recording: try Self.recording(),
+                digest: digest
+            ).digest == "Synthetic checkout opened.…"
+        )
+    }
+
+    @Test("the first nonempty loaded friction precedes the loaded outcome")
+    func firstNonemptyLoadedFrictionIsDigestFallback() throws {
+        let digest = try Self.digest(
+            frictionPoints: #"["  \n ","The synthetic submit action needed a retry."]"#,
             outcome: "Synthetic checkout eventually completed."
         )
 
