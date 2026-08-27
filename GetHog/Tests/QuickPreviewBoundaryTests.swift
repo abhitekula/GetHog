@@ -262,6 +262,48 @@ struct QuickPreviewBoundaryTests {
         window.isHidden = true
     }
 
+    @Test("an error preview lifecycle emits no requests")
+    func errorPreviewEmitsNoRequests() async throws {
+        let recorder = QuickPreviewRequestRecorder(forwarding: DemoTransport())
+        let snapshotDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ErrorQuickPreviewBoundary-\(UUID().uuidString)", isDirectory: true)
+        let model = AppModel(
+            store: InMemoryTokenStore(
+                credential: StoredCredential(key: "demo", region: .usCloud)
+            ),
+            transport: recorder,
+            snapshotStore: SharedSnapshotStore(directory: snapshotDirectory)
+        )
+        defer { try? FileManager.default.removeItem(at: snapshotDirectory) }
+
+        await model.bootstrap()
+        #expect(model.client != nil)
+        await recorder.reset()
+
+        let probe = QuickPreviewLifecycleProbe()
+        let controller = UIHostingController(rootView: AnyView(
+            QuickPreviewLifecycleHost(probe: probe) {
+                ErrorQuickPreview(issue: Self.errorIssue)
+                    .environment(model)
+            }
+        ))
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            Issue.record("The iOS test host has no window scene for the preview lifecycle.")
+            return
+        }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+
+        await probe.waitForAppearance()
+        await Self.observeQuiescence()
+        #expect(await recorder.recordedRequests().isEmpty)
+        window.isHidden = true
+    }
+
     private static func observeQuiescence() async {
         // A negative-observation interval after actual appearance gives normal
         // SwiftUI descendant tasks an execution opportunity without blocking
@@ -347,6 +389,13 @@ struct QuickPreviewBoundaryTests {
             )
         }
     }
+
+    private static let errorIssue = try! JSONDecoder().decode(
+        ErrorIssue.self,
+        from: Data(
+            #"{"id":"error-quick-preview-boundary","name":"SyntheticBoundaryFault","description":"Synthetic no-request preview.","status":"active","last_seen":"2026-08-27T12:00:00Z","aggregations":{"occurrences":42,"sessions":11,"users":7}}"#.utf8
+        )
+    )
 
     private static var session: SessionRecording {
         get throws {

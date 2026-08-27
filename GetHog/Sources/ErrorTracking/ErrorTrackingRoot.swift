@@ -387,6 +387,7 @@ struct ErrorTrackingRoot: View {
                 } else {
                     Section {
                         ForEach(visibleIssues, id: \.self) { issue in
+                            let effectiveIssue = triage.effective(issue)
                             NavigationLink(value: issue) {
                                 // The row is drawn from the issue *plus* anything we
                                 // have written since, so resolving something on the
@@ -396,7 +397,16 @@ struct ErrorTrackingRoot: View {
                                 // changes what PostHog stores, and a data-loss
                                 // gesture two pixels from a scroll is not a
                                 // shortcut worth having.
-                                ErrorIssueRow(issue: triage.effective(issue))
+                                ErrorIssueRow(issue: effectiveIssue)
+                            }
+                            .quickPreview {
+                                ErrorQuickPreview(issue: effectiveIssue)
+                            } menuItems: {
+                                Button {
+                                    selection.wrappedValue = issue
+                                } label: {
+                                    Label("Open Issue", systemImage: "arrow.right.circle")
+                                }
                             }
                             .accessibilityRotorEntry(id: issue.id, in: issueRotor)
                             .id(issue.id)
