@@ -69,7 +69,7 @@ DESTINATION_NAME='iPad Pro 13-inch (M5)' WORKERS=1 scripts/run-ui-tests GetHogUI
 PASS — authoritative xcresult: 7 passed, 0 failed, 0 skipped, total 7; elapsed 155s.
 Result: `build/TestResults/GetHogUITests-20260827-062108.tAFwNi/Test.xcresult`
 
-The initially requested 11-inch M5 spelling matched no installed device; Xcode listed the installed regular-width destination as `iPad Pro 13-inch (M5)`, which is the destination used above.
+The requested `iPad Air 11-inch (M4)` was not installed; Xcode listed the installed regular-width destination as `iPad Pro 13-inch (M5)`, which is the destination used above.
 
 ### Resource-membership builds
 
