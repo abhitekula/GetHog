@@ -1,4 +1,3 @@
-import AppKit
 import XCTest
 
 /// The Mac shell in demo mode, driven the way the iOS audit targets drive the
@@ -169,11 +168,17 @@ final class MacNavigationTests: XCTestCase {
         let windowsBefore = app.windows.count
         row.rightClick()
 
-        let tearOff = app.menuItems["Open in new window"]
+        let open = app.menuItems["Open Dashboard"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: open, timeout: 5),
+            "The dashboard row's context menu offered no Open Dashboard action."
+        )
+        let tearOff = app.menuItems["Open in New Window"]
         XCTAssertTrue(
             DemoLaunch.wait(for: tearOff, timeout: 5),
             "The dashboard row's context menu offered no tear-off."
         )
+        assertExternalActionsAreAbsent(in: app)
         tearOff.click()
 
         XCTAssertTrue(
@@ -182,16 +187,40 @@ final class MacNavigationTests: XCTestCase {
         )
     }
 
-    /// Copy link on a recording row, read back off the real pasteboard.
-    ///
-    /// The runner shares the login session's pasteboard, so what the menu item
-    /// wrote is readable here — which makes this an assertion about the link
-    /// the user gets, not about a menu item existing. Recording rows carried no
-    /// context menu at all before this.
-    func testRecordingRowCopiesItsReplayLink() {
+    func testInsightRowOffersOnlyItsInAppAction() {
         let app = DemoLaunch.launch()
 
-        NSPasteboard.general.clearContents()
+        openSidebarItem("Insights", in: app)
+        guard let row = DemoLaunch.waitForContent(containing: "Example meteor report", in: app) else {
+            return XCTFail("The Insights list never offered Example meteor report.")
+        }
+        row.rightClick()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.menuItems["Open Insight"], timeout: 5),
+            "The insight row's context menu offered no Open Insight action."
+        )
+        assertExternalActionsAreAbsent(in: app)
+    }
+
+    func testEventRowOffersOnlyItsMetadataAction() {
+        let app = DemoLaunch.launch()
+
+        openSidebarItem("Events", in: app)
+        guard let row = DemoLaunch.waitForContent(containing: "meteor_report_opened", in: app) else {
+            return XCTFail("The Events list never offered meteor_report_opened.")
+        }
+        row.rightClick()
+
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.menuItems["Open Event"], timeout: 5),
+            "The event row's context menu offered no Open Event action."
+        )
+        assertExternalActionsAreAbsent(in: app)
+    }
+
+    func testRecordingRowOffersOnlyInAppSessionActions() {
+        let app = DemoLaunch.launch()
 
         openSidebarItem("Sessions", in: app)
         guard let row = DemoLaunch.waitForContent(containing: Self.firstRecordingPerson, in: app) else {
@@ -199,29 +228,32 @@ final class MacNavigationTests: XCTestCase {
         }
         row.rightClick()
 
-        let copyLink = app.menuItems["Copy link"]
+        let open = app.menuItems["Open Session"]
         XCTAssertTrue(
-            DemoLaunch.wait(for: copyLink, timeout: 5),
-            "The recording row's context menu offered no Copy link."
+            DemoLaunch.wait(for: open, timeout: 5),
+            "The recording row's context menu offered no Open Session action."
         )
-        copyLink.click()
-
         XCTAssertTrue(
-            DemoLaunch.wait(until: {
-                NSPasteboard.general.string(forType: .string)?
-                    .contains("replay/\(Self.firstRecordingID)") == true
-            }),
-            """
-            Copy link never put the replay URL on the pasteboard \
-            (saw: \(NSPasteboard.general.string(forType: .string) ?? "nothing")).
-            """
+            app.menuItems["Open in new window"].exists,
+            "The recording row's context menu offered no session tear-off."
+        )
+        XCTAssertFalse(app.menuItems["Copy link"].exists)
+        XCTAssertFalse(app.menuItems["Open in PostHog"].exists)
+
+        open.click()
+        XCTAssertTrue(
+            DemoLaunch.wait(for: app.descendants(matching: .any)["gethog.session-detail-primary"]),
+            "Open Session did not keep navigation inside GetHog."
         )
     }
 
-    /// The pinned first row of `session_recordings.json`, and the id its replay
-    /// link has to carry.
+    /// The pinned first row of `session_recordings.json`.
     private static let firstRecordingPerson = "Alex Example"
-    private static let firstRecordingID = "018f1000-0000-7000-8000-000000000001"
+
+    private func assertExternalActionsAreAbsent(in app: XCUIApplication) {
+        XCTAssertFalse(app.menuItems["Copy link"].exists)
+        XCTAssertFalse(app.menuItems["Open in PostHog"].exists)
+    }
 
     func testSettingsOpensWithCommandComma() {
         let app = DemoLaunch.launch()

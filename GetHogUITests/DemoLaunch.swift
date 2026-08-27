@@ -318,6 +318,57 @@ enum DemoLaunch {
             .matching(NSPredicate(format: "label == %@", label))
         #endif
     }
+
+    /// The first rendered element whose authored accessibility identifier has
+    /// the supplied prefix. Quick Preview rows and cards append their stable
+    /// synthetic object id, so tests select the product contract without
+    /// copying fixture identifiers into their query mechanics.
+    @MainActor
+    static func element(
+        in app: XCUIApplication,
+        identifierStartingWith prefix: String
+    ) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix))
+            .firstMatch
+    }
+
+    /// The first real row button whose combined semantic label contains text.
+    /// Some list rows predate authored row identifiers; their visible fixture
+    /// identity is still exposed by the NavigationLink button itself.
+    @MainActor
+    static func element(
+        in app: XCUIApplication,
+        labelContaining text: String
+    ) -> XCUIElement {
+        app.buttons
+            .matching(NSPredicate(format: "label CONTAINS %@", text))
+            .firstMatch
+    }
+
+    /// The semantic content of a custom context-menu preview.
+    ///
+    /// SwiftUI authors a stable identifier on each preview card. iOS 26.5's
+    /// context-menu host preserves that identifier when it can, but can also
+    /// replace the hosted subtree with a system `Preview` container whose only
+    /// exposed child is the card's combined accessibility label. Prefer the
+    /// authored contract and fall back to that measured system representation.
+    @MainActor
+    static func quickPreview(
+        in app: XCUIApplication,
+        identifierStartingWith prefix: String,
+        containing text: String
+    ) -> XCUIElement {
+        let authored = element(in: app, identifierStartingWith: prefix)
+        if authored.exists { return authored }
+
+        let host = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "Preview"))
+            .firstMatch
+        return host.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", text))
+            .firstMatch
+    }
 }
 
 /// Data-free live-surface state shared by the iOS, Vision, TV, and Watch UI
