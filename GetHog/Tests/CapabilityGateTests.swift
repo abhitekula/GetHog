@@ -75,7 +75,7 @@ struct CapabilityGateTests {
 
         try await model.connect(key: "synthetic-replacement-key", region: .usCloud)
         let replacementEpoch = try #require(model.authSessionID)
-        model.invalidateRejectedCredential(ifCurrent: rejectedScope)
+        await model.invalidateRejectedCredential(ifCurrent: rejectedScope)
 
         #expect(model.phase == .ready)
         #expect(model.authSessionID == replacementEpoch)

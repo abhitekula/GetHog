@@ -844,13 +844,18 @@ struct DashboardConsistencyTests {
 
     @Test("an explicit dashboard refresh still fetches and reapplies a non-Saved range")
     func explicitRefreshBypassesMountDeduplication() async throws {
+        let cache = ResponseCache(
+            subdirectory: "DashboardExplicitRefreshTests-\(UUID().uuidString)"
+        )
         let transport = DashboardConsistencyTransport(
             dashboardReplies: [.ok(Self.savedDashboard), .ok(Self.refreshedDashboard)],
             queryReplies: [Self.totalSevenQuery, Self.totalThirtyQuery]
         )
         let client = PostHogClient(
             auth: PersonalKeyAuthProvider(key: "phx_synthetic", region: .usCloud),
-            transport: transport
+            transport: transport,
+            responseCache: cache,
+            responseCacheNamespace: "synthetic-auth-epoch-dashboard-refresh"
         )
         let store = DashboardDetailStore()
         await store.load(client: client, projectID: 1, dashboardID: 9_001, refresh: false)
@@ -858,12 +863,13 @@ struct DashboardConsistencyTests {
         await store.applySelectedRange(client: client, projectID: 1)
 
         await store.loadIfNeeded(client: client, projectID: 1, dashboardID: 9_001)
-        await store.load(client: client, projectID: 1, dashboardID: 9_001, refresh: false)
+        await store.load(client: client, projectID: 1, dashboardID: 9_001, refresh: true)
 
         let tile = try #require(store.dashboard?.tiles.first)
         #expect(await transport.dashboardRequestCount == 2)
         #expect(await transport.queryRequestCount == 2)
         #expect(store.presentation(for: tile).model == Self.totalThirtyModel)
+        await cache.clear()
     }
 
     @Test("a remounted dashboard survives cancellation of the outgoing mount task")

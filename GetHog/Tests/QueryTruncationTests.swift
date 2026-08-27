@@ -1671,7 +1671,7 @@ struct AsyncResourceRequestOwnershipTests {
 
         // No store invalidation and no replacement load: this is the gap
         // between the real authority mutation and SwiftUI's next update pass.
-        model.signOut()
+        await model.signOut()
         await transport.release(0)
         #expect(await pending.finishes())
 

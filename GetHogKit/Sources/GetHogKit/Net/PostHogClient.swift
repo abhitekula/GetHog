@@ -65,7 +65,7 @@ public actor PostHogClient {
     private let transport: any HTTPTransport
     private let governor: RateLimitGovernor
     private let responseCache: ResponseCache?
-    private let responseCacheNamespace: String?
+    private let responseCacheLease: ResponseCache.PublicationLease?
     private let decoder = JSONDecoder()
 
     public init(
@@ -79,7 +79,9 @@ public actor PostHogClient {
         self.transport = transport
         self.governor = governor
         self.responseCache = responseCache
-        self.responseCacheNamespace = responseCacheNamespace
+        self.responseCacheLease = responseCacheNamespace.map {
+            ResponseCache.PublicationLease(namespace: $0)
+        }
     }
 
     /// Immutable configuration, so it is safe to read without actor hops —
@@ -105,20 +107,25 @@ public actor PostHogClient {
         ttl: TimeInterval
     ) async throws -> T {
         guard endpoint.method == "GET", endpoint.body == nil,
-              let responseCache, let responseCacheNamespace else {
+              let responseCache, let responseCacheLease else {
             return try await send(endpoint)
         }
 
         try Task.checkCancellation()
         let request = try await request(for: endpoint)
         let cacheKey = Self.cacheKey(
-            namespace: responseCacheNamespace,
+            namespace: responseCacheLease.namespace,
             method: endpoint.method,
             url: request.url
         )
 
         try Task.checkCancellation()
-        if let entry = await responseCache.entry(for: cacheKey), entry.isFresh(ttl: ttl) {
+        let lookup = await responseCache.entry(for: cacheKey, lease: responseCacheLease)
+        try Task.checkCancellation()
+        guard case .available(let cachedEntry) = lookup else {
+            throw CancellationError()
+        }
+        if let entry = cachedEntry, entry.isFresh(ttl: ttl) {
             try Task.checkCancellation()
             do {
                 return try decode(T.self, from: entry.data)
@@ -127,7 +134,7 @@ public actor PostHogClient {
                 // undecodable after an app update. It must not poison this URL
                 // until TTL expiry; evict it and make one ordinary request.
                 try Task.checkCancellation()
-                await responseCache.remove(cacheKey)
+                await responseCache.remove(cacheKey, lease: responseCacheLease)
                 try Task.checkCancellation()
             }
         }
@@ -136,16 +143,21 @@ public actor PostHogClient {
         try Task.checkCancellation()
         let decoded = try decode(T.self, from: data)
         try Task.checkCancellation()
-        await responseCache.store(data, for: cacheKey)
-        do {
-            try Task.checkCancellation()
-        } catch {
-            // A transport may ignore cooperative cancellation and answer late.
-            // Do not let that cancelled owner leave a reusable publication.
-            await responseCache.remove(cacheKey)
-            throw error
-        }
+        let published = await responseCache.publish(
+            data,
+            for: cacheKey,
+            lease: responseCacheLease
+        )
+        guard published else { throw CancellationError() }
         return decoded
+    }
+
+    /// Permanently withdraws this client's authority to read or publish through
+    /// its response-cache lease. AppModel awaits this before clearing cache data
+    /// and discarding the foreground client during sign-out.
+    public func revokeCachePublication() async {
+        guard let responseCache, let responseCacheLease else { return }
+        await responseCache.revoke(responseCacheLease)
     }
 
     private func decode<T: Decodable & Sendable>(

@@ -106,6 +106,31 @@ struct ClientTests {
         func count() -> Int { requestCount }
     }
 
+    private actor FirstPublicationGate {
+        private var arrivals: [CheckedContinuation<Void, Never>] = []
+        private var release: CheckedContinuation<Void, Never>?
+        private var publicationCount = 0
+
+        func wait() async {
+            publicationCount += 1
+            guard publicationCount == 1 else { return }
+            let waiters = arrivals
+            arrivals.removeAll()
+            waiters.forEach { $0.resume() }
+            await withCheckedContinuation { release = $0 }
+        }
+
+        func waitForFirstPublication() async {
+            if publicationCount > 0 { return }
+            await withCheckedContinuation { arrivals.append($0) }
+        }
+
+        func releaseFirstPublication() {
+            release?.resume()
+            release = nil
+        }
+    }
+
     private func makeClient(
         transport: StubTransport,
         governor: RateLimitGovernor = RateLimitGovernor(),
@@ -176,6 +201,17 @@ struct ClientTests {
             )
             let _: StringValue = try await firstClient.sendCached(firstEndpoint, ttl: 300)
 
+            let changedQuery: StringValue = try await firstClient.sendCached(
+                Endpoint(
+                    path: "/api/projects/1001/dashboards/725001/",
+                    query: [URLQueryItem(name: "refresh", value: "blocking")],
+                    category: .analytics
+                ),
+                ttl: 300
+            )
+            #expect(changedQuery.value == "first")
+            #expect(await firstTransport.requestCount == 2)
+
             let changedURL: StringValue = try await firstClient.sendCached(
                 Endpoint(
                     path: "/api/projects/1002/insights/720002/",
@@ -185,7 +221,7 @@ struct ClientTests {
                 ttl: 300
             )
             #expect(changedURL.value == "first")
-            #expect(await firstTransport.requestCount == 2)
+            #expect(await firstTransport.requestCount == 3)
 
             let replacementTransport = StubTransport(
                 status: 200,
@@ -234,8 +270,8 @@ struct ClientTests {
         }
     }
 
-    @Test("cache-aware sends never cache writes or requests with bodies")
-    func writesBypassResponseCache() async throws {
+    @Test("bodyless non-GETs and GETs with bodies independently bypass the cache")
+    func methodAndBodyIndependentlyBypassResponseCache() async throws {
         try await withTemporaryCache { cache in
             let transport = StubTransport(status: 200, body: #"{"value":"written"}"#)
             let client = makeClient(
@@ -243,17 +279,24 @@ struct ClientTests {
                 cache: cache,
                 cacheNamespace: "synthetic-auth-epoch-a"
             )
-            let endpoint = Endpoint(
+            let bodylessWrite = Endpoint(
                 path: "/api/projects/1001/annotations/",
                 method: "POST",
+                category: .crud
+            )
+            let getWithBody = Endpoint(
+                path: "/api/projects/1001/annotations/",
+                method: "GET",
                 body: Data(#"{"content":"Synthetic note"}"#.utf8),
                 category: .crud
             )
 
-            let _: StringValue = try await client.sendCached(endpoint, ttl: 300)
-            let _: StringValue = try await client.sendCached(endpoint, ttl: 300)
+            let _: StringValue = try await client.sendCached(bodylessWrite, ttl: 300)
+            let _: StringValue = try await client.sendCached(bodylessWrite, ttl: 300)
+            let _: StringValue = try await client.sendCached(getWithBody, ttl: 300)
+            let _: StringValue = try await client.sendCached(getWithBody, ttl: 300)
 
-            #expect(await transport.requestCount == 2)
+            #expect(await transport.requestCount == 4)
         }
     }
 
@@ -312,6 +355,55 @@ struct ClientTests {
             #expect(recovered.value == "late")
             #expect(await transport.count() == 2)
         }
+    }
+
+    @Test("cancellation at publication cannot erase a newer owner's value")
+    func cancelledPublicationPreservesNewerOwner() async throws {
+        let gate = FirstPublicationGate()
+        let cache = ResponseCache(
+            subdirectory: "GetHogPublicationRaceTests-\(UUID().uuidString)",
+            beforePublicationCommit: { await gate.wait() }
+        )
+        let endpoint = Endpoint(
+            path: "/api/projects/1001/dashboards/725001/",
+            category: .analytics
+        )
+        let oldTransport = StubTransport(status: 200, body: #"{"value":"old"}"#)
+        let oldClient = makeClient(
+            transport: oldTransport,
+            cache: cache,
+            cacheNamespace: "synthetic-auth-epoch-a"
+        )
+        let oldPublication = Task {
+            try await oldClient.sendCached(endpoint, ttl: 300) as StringValue
+        }
+        await gate.waitForFirstPublication()
+
+        let newTransport = StubTransport(status: 200, body: #"{"value":"new"}"#)
+        let newClient = makeClient(
+            transport: newTransport,
+            cache: cache,
+            cacheNamespace: "synthetic-auth-epoch-a"
+        )
+        let newer: StringValue = try await newClient.sendCached(endpoint, ttl: 300)
+        #expect(newer.value == "new")
+
+        oldPublication.cancel()
+        await gate.releaseFirstPublication()
+        await #expect(throws: CancellationError.self) {
+            _ = try await oldPublication.value
+        }
+
+        let probeTransport = StubTransport(status: 200, body: #"{"value":"probe"}"#)
+        let probe = makeClient(
+            transport: probeTransport,
+            cache: cache,
+            cacheNamespace: "synthetic-auth-epoch-a"
+        )
+        let retained: StringValue = try await probe.sendCached(endpoint, ttl: 300)
+        #expect(retained.value == "new")
+        #expect(await probeTransport.requestCount == 0)
+        await cache.clear()
     }
 
     @Test("attaches the auth header and builds the URL from the region")

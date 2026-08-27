@@ -123,6 +123,46 @@ private actor ForegroundCacheTransport: HTTPTransport {
     func count() -> Int { dashboardDetailCount }
 }
 
+private actor HeldForegroundCacheTransport: HTTPTransport {
+    private let base = DemoTransport()
+    private var hasHeldDashboard = false
+    private var arrivals: [CheckedContinuation<Void, Never>] = []
+    private var release: CheckedContinuation<Void, Never>?
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let path = request.url?.path(percentEncoded: false) ?? ""
+        guard path == "/api/projects/1001/dashboards/9001/" else {
+            return try await base.send(request)
+        }
+
+        hasHeldDashboard = true
+        let waiters = arrivals
+        arrivals.removeAll()
+        waiters.forEach { $0.resume() }
+        await withCheckedContinuation { release = $0 }
+        let body = #"{"id":9001,"name":"Revoked dashboard","tiles":[]}"#
+        return (
+            Data(body.utf8),
+            HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+        )
+    }
+
+    func waitUntilHeld() async {
+        if hasHeldDashboard { return }
+        await withCheckedContinuation { arrivals.append($0) }
+    }
+
+    func releaseHeldDashboard() {
+        release?.resume()
+        release = nil
+    }
+}
+
 private let meJSON = """
 {"email":"a@example.com","first_name":"Ada","distinct_id":"d1",
  "team":{"id":42,"name":"Prod","api_token":"phc_x","timezone":"UTC"},
@@ -241,6 +281,48 @@ struct AppModelTests {
 
         #expect(replacement.title == "Session 2 dashboard")
         #expect(await transport.count() == 2)
+        await cache.clear()
+    }
+
+    @Test("sign out revokes an in-flight client's cache publication before clearing")
+    func signOutRevokesHeldCachePublication() async throws {
+        let cache = ResponseCache(
+            subdirectory: "AppModelSignOutCacheTests-\(UUID().uuidString)"
+        )
+        let transport = HeldForegroundCacheTransport()
+        let model = AppModel(
+            store: InMemoryTokenStore(),
+            transport: transport,
+            cache: cache
+        )
+        try await model.connect(key: "synthetic-first-session", region: .usCloud)
+        let oldClient = try #require(model.client)
+        let oldNamespace = try #require(model.authSessionID).uuidString
+        let endpoint = PostHogAPI.dashboard(projectID: 1_001, dashboardID: 9_001)
+        await cache.store(Data("sentinel".utf8), for: "synthetic-sign-out-sentinel")
+
+        let staleRequest = Task {
+            try await oldClient.sendCached(endpoint, ttl: 300) as Dashboard
+        }
+        await transport.waitUntilHeld()
+
+        await model.signOut()
+        #expect(await cache.totalSizeBytes() == 0)
+
+        await transport.releaseHeldDashboard()
+        _ = try? await staleRequest.value
+
+        let probeTransport = ForegroundCacheTransport()
+        let probe = PostHogClient(
+            auth: PersonalKeyAuthProvider(key: "synthetic-probe-session", region: .usCloud),
+            transport: probeTransport,
+            responseCache: cache,
+            responseCacheNamespace: oldNamespace
+        )
+        let recovered: Dashboard = try await probe.sendCached(endpoint, ttl: 300)
+
+        #expect(recovered.title == "Session 1 dashboard")
+        #expect(await probeTransport.count() == 1)
         await cache.clear()
     }
 
@@ -366,7 +448,7 @@ struct AppModelTests {
         #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)
         #expect(snapshots.pendingOpen() == seeded.open)
 
-        model.signOut()
+        await model.signOut()
 
         #expect(model.phase == .onboarding)
         #expect(model.me == nil)
@@ -398,7 +480,7 @@ struct AppModelTests {
         let staleRefresh = Task { await model.publishWidgetSnapshot() }
         await transport.waitUntilHeld()
 
-        model.signOut()
+        await model.signOut()
         #expect(snapshots.loadOrNil() == nil)
 
         await transport.release()
@@ -457,7 +539,7 @@ struct AppModelTests {
         let model = AppModel(store: store, transport: ScriptedTransport([(200, meJSON)]))
 
         await model.enterDemo()
-        model.signOut()
+        await model.signOut()
 
         #expect(model.phase == .onboarding)
         #expect(!model.isDemo)
@@ -484,7 +566,7 @@ struct AppModelTests {
 
         await model.enterDemo()
         #expect(snapshots.loadOrNil() == seeded.snapshot)
-        model.signOut()
+        await model.signOut()
 
         #expect(snapshots.loadOrNil() == seeded.snapshot)
         #expect(snapshots.pendingFlagWrite() == seeded.flagWrite)

@@ -458,7 +458,7 @@ final class AppModel {
             guard flagWriteScope == scope else { return }
             capabilities = report
         } catch PostHogError.unauthorized {
-            invalidateRejectedCredential(ifCurrent: scope)
+            await invalidateRejectedCredential(ifCurrent: scope)
         } catch {
             // ScopePreflight turns every non-authentication failure into a
             // capability-local `.failed` result. This remains defense-in-depth
@@ -472,10 +472,10 @@ final class AppModel {
     /// without holding a live transport request open. `signOut` remains the one
     /// owner of credential, session and customer-data teardown; restoring the
     /// rejection afterward preserves the reconnect reason for onboarding.
-    func invalidateRejectedCredential(ifCurrent rejectedScope: FlagWriteScope) {
+    func invalidateRejectedCredential(ifCurrent rejectedScope: FlagWriteScope) async {
         guard flagWriteScope == rejectedScope,
               let region = rejectedScope.projectRegion else { return }
-        signOut()
+        await signOut()
         connectionError = PostHogError.unauthorized.localizedDescription
         storedCredentialRecovery = .replaceCredential(region)
     }
@@ -817,7 +817,16 @@ final class AppModel {
         return .changed
     }
 
-    func signOut() {
+    func signOut() async {
+        // The client remains retained until its lease is durably revoked. Cache
+        // publication and revocation serialize in ResponseCache: a publication
+        // that linearized first is removed by the ordered clear, while one that
+        // reaches the actor later observes revocation and cannot commit.
+        if let client {
+            await client.revokeCachePublication()
+        }
+        await cache.clear()
+
         snapshotPublicationGeneration &+= 1
         let preserveSharedProjectData = isRuntimeDemo
         // Also the exit from a runtime demo: the fixtures must not answer the
@@ -839,7 +848,6 @@ final class AppModel {
         if !preserveSharedProjectData {
             clearPublishedProjectData()
         }
-        Task { await cache.clear() }
         client = nil
         activeRegion = nil
         authSessionID = nil

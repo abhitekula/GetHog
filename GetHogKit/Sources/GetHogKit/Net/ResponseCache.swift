@@ -7,6 +7,16 @@ import Foundation
 /// time it was stored so the UI can show an honest "Updated 5m ago" rather than
 /// implying data is live.
 public actor ResponseCache {
+    struct PublicationLease: Hashable, Sendable {
+        let namespace: String
+        let id = UUID()
+    }
+
+    enum LeaseLookup: Sendable {
+        case available(Entry?)
+        case revoked
+    }
+
     public struct Entry: Sendable, Codable {
         public let data: Data
         public let storedAt: Date
@@ -18,6 +28,8 @@ public actor ResponseCache {
 
     private let directory: URL
     private let fileManager = FileManager.default
+    private let beforePublicationCommit: @Sendable () async -> Void
+    private var revokedPublicationLeases: Set<UUID> = []
 
     /// Replay blobs are immutable once written, so they never expire; a rewatch
     /// costs zero requests. Everything else is short-lived.
@@ -36,6 +48,31 @@ public actor ResponseCache {
     }
 
     public init(appGroupID: String? = nil, subdirectory: String = "PostHogCache") {
+        self.beforePublicationCommit = {}
+        self.directory = Self.directory(appGroupID: appGroupID, subdirectory: subdirectory)
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+    }
+
+    /// Internal injection point for deterministic actor-ordering tests.
+    ///
+    /// The public initializer always installs an immediate no-op. Tests can
+    /// suspend immediately before the final validity check without adding a
+    /// debug branch or changing any app-visible cache behavior.
+    init(
+        appGroupID: String? = nil,
+        subdirectory: String = "PostHogCache",
+        beforePublicationCommit: @escaping @Sendable () async -> Void
+    ) {
+        self.beforePublicationCommit = beforePublicationCommit
+        self.directory = Self.directory(appGroupID: appGroupID, subdirectory: subdirectory)
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+    }
+
+    private static func directory(appGroupID: String?, subdirectory: String) -> URL {
         let base: URL
         if let appGroupID,
            let container = FileManager.default.containerURL(
@@ -45,10 +82,7 @@ public actor ResponseCache {
         } else {
             base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         }
-        self.directory = base.appendingPathComponent(subdirectory, isDirectory: true)
-        try? FileManager.default.createDirectory(
-            at: directory, withIntermediateDirectories: true
-        )
+        return base.appendingPathComponent(subdirectory, isDirectory: true)
     }
 
     /// Filename for a cache key.
@@ -89,10 +123,40 @@ public actor ResponseCache {
         return try? JSONDecoder().decode(Entry.self, from: data)
     }
 
+    func entry(for key: String, lease: PublicationLease) -> LeaseLookup {
+        guard !revokedPublicationLeases.contains(lease.id) else { return .revoked }
+        return .available(entry(for: key))
+    }
+
     public func store(_ data: Data, for key: String, now: Date = Date()) {
         let entry = Entry(data: data, storedAt: now)
         guard let encoded = try? JSONEncoder().encode(entry) else { return }
         try? encoded.write(to: url(for: key), options: .atomic)
+    }
+
+    /// Publishes only while this client still owns a live cache lease.
+    ///
+    /// The injected wait exists only in the package-internal initializer used
+    /// by deterministic tests. In every production instance it is an immediate
+    /// no-op. The cancellation and revocation check after that possible
+    /// suspension is the linearization point: `store` is synchronous actor work,
+    /// so no revocation, cancellation-aware publication, or competing commit can
+    /// interleave between the decision and the atomic file replacement.
+    func publish(_ data: Data, for key: String, lease: PublicationLease) async -> Bool {
+        await beforePublicationCommit()
+        guard !Task.isCancelled,
+              !revokedPublicationLeases.contains(lease.id) else { return false }
+        store(data, for: key)
+        return true
+    }
+
+    func revoke(_ lease: PublicationLease) {
+        revokedPublicationLeases.insert(lease.id)
+    }
+
+    func remove(_ key: String, lease: PublicationLease) {
+        guard !revokedPublicationLeases.contains(lease.id) else { return }
+        remove(key)
     }
 
     public func remove(_ key: String) {

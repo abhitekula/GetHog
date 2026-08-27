@@ -350,7 +350,7 @@ struct SettingsAPIKeySection: View {
                     // about to delete, so discard its old bearer key first.
                     WatchHandoffController().cancelQueued()
                     #endif
-                    model.signOut()
+                    Task { await model.signOut() }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
