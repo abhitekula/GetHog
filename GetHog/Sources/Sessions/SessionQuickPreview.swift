@@ -113,7 +113,7 @@ struct SessionQuickPreviewPresentation: Equatable {
         return nil
     }
 
-    private static let maximumDigestCharacters = 80
+    private static let maximumDigestCharacters = 160
 
     private static func boundedSummary(_ summary: String) -> String {
         for index in summary.indices where ".!?".contains(summary[index]) {

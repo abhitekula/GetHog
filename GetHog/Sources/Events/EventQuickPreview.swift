@@ -52,7 +52,7 @@ struct EventQuickPreviewPresentation: Equatable {
             guard !headerValues.contains(displayValue) else { return nil }
             return Property(key: key, value: displayValue)
         }
-        .prefix(4)
+        .prefix(5)
         .map { $0 }
     }
 

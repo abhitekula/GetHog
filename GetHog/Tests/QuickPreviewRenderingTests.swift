@@ -159,6 +159,88 @@ struct QuickPreviewRenderingTests {
         )
     }
 
+    @Test("The shared preview uses a larger adaptive canvas without forcing landscape height")
+    func sharedPreviewUsesLargerAdaptiveCanvas() throws {
+        let preview = FlagQuickPreview(flag: try Self.flag())
+        let phonePortrait = try Self.render(
+            preview,
+            width: 320,
+            scheme: .light,
+            dynamicTypeSize: .large,
+            horizontalSizeClass: .compact,
+            verticalSizeClass: .regular
+        )
+        let phoneLandscape = try Self.render(
+            preview,
+            width: 520,
+            scheme: .light,
+            dynamicTypeSize: .large,
+            horizontalSizeClass: .compact,
+            verticalSizeClass: .compact
+        )
+        let regularWidth = try Self.render(
+            preview,
+            width: 520,
+            scheme: .light,
+            dynamicTypeSize: .large,
+            horizontalSizeClass: .regular,
+            verticalSizeClass: .regular
+        )
+
+        #expect(phonePortrait.size.height >= 260)
+        #expect(regularWidth.size.height >= 316)
+        #expect(phoneLandscape.size.height < phonePortrait.size.height)
+    }
+
+    @Test("Quick Preview subtitles gain a second ordinary-type line")
+    func quickPreviewSubtitleCanUseTwoLines() throws {
+        let short = try Self.render(
+            QuickPreviewCard(
+                title: "Synthetic issue",
+                subtitle: "Short context",
+                systemImage: "ladybug.fill",
+                accessibilitySummary: "Synthetic issue. Short context."
+            ) {
+                Text("Open occurrence")
+            },
+            width: 320,
+            scheme: .light,
+            dynamicTypeSize: .large,
+            verticalSizeClass: .compact
+        )
+        let long = try Self.render(
+            QuickPreviewCard(
+                title: "Synthetic issue",
+                subtitle: "A deliberately long fictional error message that needs a useful second line before it is truncated.",
+                systemImage: "ladybug.fill",
+                accessibilitySummary: "Synthetic issue. Long fictional error message."
+            ) {
+                Text("Open occurrence")
+            },
+            width: 320,
+            scheme: .light,
+            dynamicTypeSize: .large,
+            verticalSizeClass: .compact
+        )
+
+        #expect(long.size.height > short.size.height + 8)
+    }
+
+    @Test("Quick Preview builders stay lazy until the system host requests them")
+    func quickPreviewBuildersStayLazy() {
+        let previewCounter = BuilderCounter()
+        let menuCounter = BuilderCounter()
+
+        _ = Text("Synthetic row").quickPreview {
+            previewCounter.view(label: "Synthetic preview")
+        } menuItems: {
+            menuCounter.view(label: "Synthetic action")
+        }
+
+        #expect(previewCounter.count == 0)
+        #expect(menuCounter.count == 0)
+    }
+
     @Test("Every Quick Preview publishes its exact authored accessibility identifier")
     func authoredAccessibilityIdentifiersAreStable() throws {
         let dashboard = try Dashboard.decode(from: Data(Self.dashboardJSON.utf8))
@@ -237,12 +319,16 @@ struct QuickPreviewRenderingTests {
         _ content: Content,
         width: CGFloat,
         scheme: ColorScheme,
-        dynamicTypeSize: DynamicTypeSize
+        dynamicTypeSize: DynamicTypeSize,
+        horizontalSizeClass: UserInterfaceSizeClass? = .compact,
+        verticalSizeClass: UserInterfaceSizeClass? = .regular
     ) throws -> UIImage {
         let renderer = ImageRenderer(
             content: content
                 .environment(\.colorScheme, scheme)
                 .environment(\.dynamicTypeSize, dynamicTypeSize)
+                .environment(\.horizontalSizeClass, horizontalSizeClass)
+                .environment(\.verticalSizeClass, verticalSizeClass)
                 .frame(width: width, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         )
@@ -432,4 +518,14 @@ struct QuickPreviewRenderingTests {
       "result": [{"label":"Synthetic activations","aggregated_value":12500,"data":[],"days":[]}]
     }
     """#
+}
+
+@MainActor
+private final class BuilderCounter {
+    private(set) var count = 0
+
+    func view(label: String) -> Text {
+        count += 1
+        return Text(label)
+    }
 }

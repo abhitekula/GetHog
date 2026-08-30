@@ -436,6 +436,16 @@ final class QuickPreviewInteractionTests: XCTestCase {
             DemoLaunch.wait(for: preview),
             "The Quick Preview surface never appeared for \(content)."
         )
+        XCTAssertGreaterThanOrEqual(
+            preview.frame.width,
+            320,
+            "The system-hosted Quick Preview remained \(preview.frame.width)×\(preview.frame.height)pt for \(content)."
+        )
+        XCTAssertGreaterThanOrEqual(
+            preview.frame.height,
+            240,
+            "The system-hosted Quick Preview remained \(preview.frame.width)×\(preview.frame.height)pt for \(content)."
+        )
         assertFact(content, in: preview, surface: "semantic Quick Preview")
         assertInAppMenu(action: action, in: app)
         return preview

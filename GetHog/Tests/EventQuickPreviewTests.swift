@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Event Quick Preview")
 struct EventQuickPreviewTests {
-    @Test("the preview keeps detail ordering, removes header duplicates, and caps properties")
+    @Test("the expanded preview keeps detail ordering, removes header duplicates, and caps properties")
     func orderedPropertiesExcludeHeaderDuplicates() throws {
         let row = try Self.event(
             properties: [
@@ -30,6 +30,7 @@ struct EventQuickPreviewTests {
                 .init(key: "beta", value: "false"),
                 .init(key: "gamma", value: "3"),
                 .init(key: "zeta", value: "fourth retained property"),
+                .init(key: "zz-over-limit", value: "not shown"),
             ]
         )
     }

@@ -74,10 +74,10 @@ struct SessionQuickPreviewTests {
         )
     }
 
-    @Test("a long multi-paragraph summary is bounded without exposing its full text")
-    func loadedSummaryIsDeterministicallyBounded() throws {
+    @Test("a long first sentence uses the expanded digest budget without exposing later text")
+    func loadedSummaryUsesExpandedBudget() throws {
         let digest = try Self.digest(
-            summary: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n\nPrivate second paragraph must not appear in the preview."
+            summary: "Fictional reviewer watched the complete checkout, corrected one address, retried payment, and reached confirmation safely. Private second sentence must not appear in the preview."
         )
         let presentation = SessionQuickPreviewPresentation(
             recording: try Self.recording(),
@@ -86,10 +86,10 @@ struct SessionQuickPreviewTests {
 
         #expect(
             presentation.digest
-                == "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ABCDEFGHIJKLMNOP…"
+                == "Fictional reviewer watched the complete checkout, corrected one address, retried payment, and reached confirmation safely.…"
         )
-        #expect(presentation.digest?.count == 80)
-        #expect(presentation.digest?.contains("Private second paragraph") == false)
+        #expect((presentation.digest?.count ?? 0) > 80)
+        #expect(presentation.digest?.contains("Private second sentence") == false)
     }
 
     @Test("a multi-sentence summary uses only its first meaningful sentence")

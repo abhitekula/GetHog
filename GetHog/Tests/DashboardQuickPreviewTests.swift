@@ -28,7 +28,7 @@ struct DashboardQuickPreviewTests {
     }
 
     @Test
-    func enrichedContentCountsEveryTileButSummarisesAtMostThree() throws {
+    func enrichedContentCountsEveryTileButSummarisesAtMostFour() throws {
         let summary = try Self.summary()
         let dashboard = try Dashboard.decode(from: Data(Self.orderedDashboard.utf8))
 
@@ -48,6 +48,7 @@ struct DashboardQuickPreviewTests {
                     .init(title: "Synthetic signups", detail: "42"),
                     .init(title: "Synthetic activity", detail: "7"),
                     .init(title: "Synthetic retention", detail: "Retention"),
+                    .init(title: "Synthetic paths", detail: "Paths"),
                 ]
             )
         )

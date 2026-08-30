@@ -587,6 +587,7 @@ struct CardHeader: View {
     let title: String
     var systemImage: String?
     var subtitle: String?
+    var subtitleLineLimit = 1
     var showsBrandStitch = false
 
     /// The glyph's column, which has to grow with the glyph in it.
@@ -689,7 +690,7 @@ struct CardHeader: View {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(Theme.Ink.secondary)
-                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : subtitleLineLimit)
                 }
             }
             .layoutPriority(1)

@@ -130,7 +130,7 @@ struct InsightQuickPreviewTests {
 
         #expect(
             presentation.accessibilitySummary
-                == "Synthetic activation trend. A fictional product activation signal. Trends. Bold number. Favorite. On 2 dashboards. Edited Aug 26, 2026. Cached result. Cached headline, 12.5K. Result update time unavailable."
+                == "Synthetic activation trend. A fictional product activation signal. Cached headline, 12.5K. Trends. Bold number. Favorite. On 2 dashboards. Edited Aug 26, 2026. Cached result. Result update time unavailable."
         )
     }
 

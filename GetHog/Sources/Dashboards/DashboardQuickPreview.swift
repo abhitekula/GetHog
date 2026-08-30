@@ -50,7 +50,7 @@ struct DashboardQuickPreviewPresentation: Equatable {
         tiles = dashboard.tiles
             .sorted { ($0.order ?? 0) < ($1.order ?? 0) }
             .compactMap(Self.tileSummary)
-            .prefix(3)
+            .prefix(4)
             .map { $0 }
     }
 

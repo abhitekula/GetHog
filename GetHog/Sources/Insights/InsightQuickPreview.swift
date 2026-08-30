@@ -437,18 +437,6 @@ struct InsightQuickPreviewPresentation: Equatable {
         if let description, !description.isEmpty {
             parts.append(Self.sentence(description))
         }
-        parts.append(Self.sentence(queryKind))
-        parts.append(Self.sentence(displayType))
-        parts.append(Self.sentence(isFavorite ? "Favorite" : "Not favorite"))
-        switch dashboardCount {
-        case 0: parts.append("Not on a dashboard.")
-        case 1: parts.append("On 1 dashboard.")
-        case let count: parts.append("On \(count) dashboards.")
-        }
-        if let lastModifiedAt {
-            parts.append("Edited \(lastModifiedAt.formatted(Self.accessibilityDateStyle)).")
-        }
-        parts.append(Self.sentence(cacheState))
         let resultLabel = resultIsCached == true ? "Cached" : "Result"
         switch result {
         case .headline(let value):
@@ -470,6 +458,18 @@ struct InsightQuickPreviewPresentation: Equatable {
         case nil:
             break
         }
+        parts.append(Self.sentence(queryKind))
+        parts.append(Self.sentence(displayType))
+        parts.append(Self.sentence(isFavorite ? "Favorite" : "Not favorite"))
+        switch dashboardCount {
+        case 0: parts.append("Not on a dashboard.")
+        case 1: parts.append("On 1 dashboard.")
+        case let count: parts.append("On \(count) dashboards.")
+        }
+        if let lastModifiedAt {
+            parts.append("Edited \(lastModifiedAt.formatted(Self.accessibilityDateStyle)).")
+        }
+        parts.append(Self.sentence(cacheState))
         if let resultLastRefresh {
             parts.append("Result updated \(resultLastRefresh.formatted(Self.accessibilityDateStyle)).")
         } else if let unavailableResultUpdateText {
@@ -522,8 +522,8 @@ struct InsightQuickPreview: View {
             systemImage: TileStyle.symbol(for: summary.renderModel),
             accessibilitySummary: accessibilitySummary
         ) {
-            baseFacts
             enrichment
+            baseFacts
         }
         .accessibilityIdentifier("gethog.quick-preview.insight.\(summary.id)")
     }
