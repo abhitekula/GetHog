@@ -2,6 +2,64 @@ import XCTest
 
 @MainActor
 final class SessionsFilterSummaryTests: XCTestCase {
+    func testScrollingPastFirstPageLoadsMoreSessions() {
+        let app = DemoLaunch.launch(
+            tab: "sessions",
+            environment: ["GETHOG_DEMO_PAGINATED_SESSIONS": "1"]
+        )
+        defer { app.terminate() }
+
+        let first = app.descendants(matching: .any)[
+            "gethog.session-card.synthetic-paged-session-001"
+        ]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: first),
+            "The deterministic first Sessions page never rendered."
+        )
+        let sessionsList = app.collectionViews["gethog.sessions-list"]
+        XCTAssertTrue(
+            DemoLaunch.wait(for: sessionsList),
+            "The Sessions rows were not hosted in a scrollable list."
+        )
+
+        let nextPage = app.descendants(matching: .any)[
+            "gethog.session-card.synthetic-paged-session-051"
+        ]
+        XCTAssertFalse(
+            DemoLaunch.wait(for: nextPage, timeout: 1),
+            "Sessions eagerly loaded offset 50 before the first-page tail became visible."
+        )
+        XCTAssertTrue(
+            scroll(sessionsList, until: nextPage),
+            "Scrolling through the first 50 Sessions rows never loaded offset 50."
+        )
+
+        let thirdPage = app.descendants(matching: .any)[
+            "gethog.session-card.synthetic-paged-session-101"
+        ]
+        XCTAssertFalse(
+            thirdPage.exists,
+            "Sessions loaded offset 100 before its replacement tail became visible."
+        )
+        XCTAssertTrue(
+            scroll(sessionsList, until: thirdPage),
+            "Scrolling through the second 50 Sessions rows never loaded offset 100."
+        )
+    }
+
+    private func scroll(
+        _ container: XCUIElement,
+        until element: XCUIElement,
+        maximumSwipes: Int = 32
+    ) -> Bool {
+        for _ in 0..<maximumSwipes {
+            if element.exists { return true }
+            container.swipeUp(velocity: .slow)
+            if DemoLaunch.wait(for: element, timeout: 0.5) { return true }
+        }
+        return element.exists
+    }
+
     private func isOn(_ toggle: XCUIElement) -> Bool {
         switch toggle.value {
         case let value as NSNumber:

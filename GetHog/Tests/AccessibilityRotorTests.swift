@@ -183,7 +183,8 @@ struct AccessibilityRotorTests {
     func errorTrackingRotor() async throws {
         let rotors = try await rotors(
             of: NavigationStack { ErrorTrackingRoot() },
-            waitingFor: "Unresolved issues"
+            waitingFor: "Unresolved issues",
+            compact: true
         )
 
         let unresolved = try #require(rotors["Unresolved issues"])
@@ -198,6 +199,20 @@ struct AccessibilityRotorTests {
                 "a rotor entry landed on an issue nobody has to look at: \(label)"
             )
         }
+    }
+
+    @Test("the regular error split offers the unresolved issues rotor")
+    func regularErrorTrackingRotor() async throws {
+        let rotors = try await rotors(
+            of: ErrorTrackingRoot(),
+            waitingFor: "Unresolved issues"
+        )
+
+        let unresolved = try #require(rotors["Unresolved issues"])
+        #expect(!unresolved.isEmpty)
+        #expect(unresolved.allSatisfy {
+            !$0.hasSuffix("Resolved") && !$0.hasSuffix("Suppressed")
+        })
     }
 
     @Test("an all-resolved issue list does not expose an empty rotor")
@@ -386,9 +401,9 @@ struct AccessibilityRotorTests {
             // harness traps in `DynamicBody.updateValue` before any body of ours
             // runs - a crash with no GetHog frame in it.
             .environment(Self.navPreferences())
-            .environment(\.horizontalSizeClass, compact ? .compact : nil)
+            .environment(\.horizontalSizeClass, compact ? .compact : .regular)
 
-        return Self.present(AnyView(hosted))
+        return Self.present(AnyView(hosted), compact: compact)
     }
 
     /// The one window every case in this suite renders into.
@@ -414,7 +429,13 @@ struct AccessibilityRotorTests {
         return window
     }()
 
-    private static func present(_ view: AnyView) -> UIHostingController<AnyView> {
+    private static func present(
+        _ view: AnyView,
+        compact: Bool
+    ) -> UIHostingController<AnyView> {
+        window.frame = compact
+            ? CGRect(x: 0, y: 0, width: 393, height: 852)
+            : CGRect(x: 0, y: 0, width: 1_024, height: 768)
         let host = UIHostingController(rootView: view)
         window.rootViewController = host
         window.layoutIfNeeded()

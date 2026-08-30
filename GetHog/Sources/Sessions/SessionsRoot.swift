@@ -401,6 +401,11 @@ struct SessionsRoot: View {
     #endif
     @State private var store = SessionsStore()
     @State private var showsFilters = false
+    /// The current page tail only while it remains on screen. A visibility
+    /// callback can arrive while Replay Vision enrichment still owns the page
+    /// load; remembering it lets the load-state transition retry instead of
+    /// permanently consuming that edge.
+    @State private var visiblePaginationTailID: String?
     #if os(macOS)
     @State private var showsPlaylists = false
     #endif
@@ -586,6 +591,7 @@ struct SessionsRoot: View {
                 #endif
                 .screenRefreshable { await load() }
                 .onChange(of: requestAuthority, initial: true) { _, authority in
+                    visiblePaginationTailID = nil
                     store.prepare(authority: authority)
                 }
                 // One task covers project switches, typing and every control on
@@ -601,7 +607,13 @@ struct SessionsRoot: View {
                     await load()
                 }
                 .onChange(of: store.requestSignature) { _, _ in
+                    visiblePaginationTailID = nil
                     selectedID.wrappedValue = nil
+                }
+                .onChange(of: store.isLoading || store.isLoadingMore) { wasBusy, isBusy in
+                    if wasBusy, !isBusy {
+                        requestMoreIfVisible()
+                    }
                 }
                 #if os(macOS)
                 .onChange(of: model.projectID) { _, _ in
@@ -806,9 +818,10 @@ struct SessionsRoot: View {
             }
 
             if store.hasMore {
-                // Explicit rather than automatic on appear: the rate-limit
-                // budget is organisation-wide, and a scroll that keeps fetching
-                // spends it without being asked to.
+                // The tail row starts ordinary scroll-driven paging. Keep an
+                // explicit control as well so keyboard and VoiceOver readers
+                // can request the next page without depending on scroll state,
+                // and so a failed page has somewhere stable to retry.
                 Group {
                     if store.isLoadingMore {
                         ProgressView()
@@ -834,6 +847,7 @@ struct SessionsRoot: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
         }
+        .accessibilityIdentifier("gethog.sessions-list")
         .listRowSpacing(Theme.Space.xs)
         .pageSurface()
         .skeleton(store.isLoading && store.recordings.isEmpty)
@@ -868,6 +882,21 @@ struct SessionsRoot: View {
             }
         }
         .accessibilityIdentifier("gethog.session-card.\(recording.id)")
+        // `List` may construct rows beyond the viewport while the first page is
+        // still loading. Visibility avoids spending a page on that prefetch.
+        // Keep the visible tail id across optional summary enrichment so its
+        // busy-to-idle transition can retry an edge that arrived in-flight.
+        // A new last id appears after every successful page, while the store
+        // owns the duplicate, filter, authority and end guards.
+        .onScrollVisibilityChange(threshold: 0.5) { visible in
+            if visible {
+                guard recording.id == store.recordings.last?.id else { return }
+                visiblePaginationTailID = recording.id
+                requestMoreIfVisible()
+            } else if visiblePaginationTailID == recording.id {
+                visiblePaginationTailID = nil
+            }
+        }
         #if os(macOS)
         .listRowInsets(EdgeInsets(
             top: Theme.Space.xs / 2,
@@ -888,6 +917,16 @@ struct SessionsRoot: View {
     private func loadMore() async {
         guard let client = model.client, let authority = requestAuthority else { return }
         await store.loadMore(client: client, authority: authority)
+    }
+
+    private func requestMoreIfVisible() {
+        guard store.hasMore,
+              store.pagingError == nil,
+              !store.isLoading,
+              !store.isLoadingMore,
+              visiblePaginationTailID == store.recordings.last?.id
+        else { return }
+        Task { await loadMore() }
     }
 }
 

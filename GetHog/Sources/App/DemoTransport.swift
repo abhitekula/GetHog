@@ -67,6 +67,7 @@ struct DemoTransport: HTTPTransport {
     static let populatedMaxConversationsEnvironment = "GETHOG_DEMO_MAX_CONVERSATIONS"
     static let populatedClickmapElementsEnvironment =
         "GETHOG_DEMO_POPULATED_CLICKMAP_ELEMENTS"
+    static let paginatedSessionsEnvironment = "GETHOG_DEMO_PAGINATED_SESSIONS"
     static let rendersStateEnvironment = "GETHOG_DEMO_RENDERS_STATE"
     static let rendersLoadingDelayEnvironment = "GETHOG_DEMO_RENDERS_LOADING_DELAY_MS"
     static let surfaceNoMatchEnvironment = "GETHOG_DEMO_SURFACE_NO_MATCH"
@@ -118,6 +119,7 @@ struct DemoTransport: HTTPTransport {
     private let dashboardRecomputeFailure: Bool
     private let populatedMaxConversations: Bool
     private let populatedClickmapElements: Bool
+    private let paginatedSessions: Bool
     private let rendersState: RendersState?
     private let rendersLoadingDelayMilliseconds: Int
     private let rendersRequests: DemoRendersScenarioState
@@ -135,6 +137,7 @@ struct DemoTransport: HTTPTransport {
         deniedResource: String? = nil,
         populatedMaxConversations: Bool? = nil,
         populatedClickmapElements: Bool? = nil,
+        paginatedSessions: Bool? = nil,
         rendersState: RendersState? = nil,
         rendersLoadingDelayMilliseconds: Int? = nil,
         surfaceNoMatchProbeEnabled: Bool? = nil
@@ -177,6 +180,8 @@ struct DemoTransport: HTTPTransport {
             ?? (ProcessInfo.processInfo.environment[
                 Self.populatedClickmapElementsEnvironment
             ] == "1")
+        self.paginatedSessions = paginatedSessions
+            ?? (ProcessInfo.processInfo.environment[Self.paginatedSessionsEnvironment] == "1")
         self.rendersState = rendersState
             ?? ProcessInfo.processInfo.environment[Self.rendersStateEnvironment]
                 .flatMap(RendersState.init(rawValue:))
@@ -398,7 +403,8 @@ struct DemoTransport: HTTPTransport {
                 body: body,
                 query: query,
                 populatedMaxConversations: populatedMaxConversations,
-                populatedClickmapElements: populatedClickmapElements
+                populatedClickmapElements: populatedClickmapElements,
+                paginatedSessions: paginatedSessions
             )
         }
         // A touch of latency so loading states actually render rather than
@@ -954,7 +960,8 @@ struct DemoTransport: HTTPTransport {
         body: String,
         query: String,
         populatedMaxConversations: Bool = false,
-        populatedClickmapElements: Bool = false
+        populatedClickmapElements: Bool = false,
+        paginatedSessions: Bool = false
     ) -> Reply {
         if path.hasSuffix("/elements/stats/"), populatedClickmapElements {
             return populatedClickmapElementStats()
@@ -1354,6 +1361,9 @@ struct DemoTransport: HTTPTransport {
         if path.contains("/session_recordings/") {
             guard path.hasSuffix("/session_recordings/") else {
                 return firstResult(in: "session_recordings")
+            }
+            if paginatedSessions {
+                return Self.paginatedRecordings(query: query)
             }
             return filteredRecordings(query: query)
         }
@@ -1817,6 +1827,57 @@ struct DemoTransport: HTTPTransport {
         object["next_cursor"] = NSNull()
         guard let filtered = try? JSONSerialization.data(withJSONObject: object) else { return page }
         return Reply(filtered)
+    }
+
+    /// A long, deterministic recording list for the one UI test that must
+    /// exercise real scrolling and page boundaries. It is opt-in so the
+    /// ordinary five authored demo sessions, screenshots and counts do not
+    /// change. Every expanded row remains fictional and derives from the same
+    /// checked-in synthetic fixture as the regular demo.
+    private static func paginatedRecordings(query: String) -> Reply {
+        let items = URLComponents(string: "?\(query)")?.queryItems ?? []
+        func integer(_ name: String, default fallback: Int) -> Int {
+            items.first { $0.name == name }?.value.flatMap(Int.init) ?? fallback
+        }
+
+        let limit = max(integer("limit", default: 50), 1)
+        let offset = max(integer("offset", default: 0), 0)
+        let total = 125
+        let end = min(offset + limit, total)
+
+        let fixture = load("session_recordings")
+        guard var object = try? JSONSerialization.jsonObject(with: fixture.data) as? [String: Any],
+              let templates = object["results"] as? [[String: Any]],
+              !templates.isEmpty
+        else { return fixture }
+
+        let rows: [[String: Any]] = offset < end ? (offset..<end).map { index in
+            var row = templates[index % templates.count]
+            let ordinal = index + 1
+            row["id"] = String(format: "synthetic-paged-session-%03d", ordinal)
+            let distinctID = String(format: "synthetic-paged-person-%03d", ordinal)
+            row["distinct_id"] = distinctID
+            if var person = row["person"] as? [String: Any] {
+                person["name"] = "Example replay visitor \(ordinal)"
+                person["distinct_ids"] = [distinctID]
+                if var properties = person["properties"] as? [String: Any] {
+                    properties["email"] = String(
+                        format: "replay.visitor.%03d@example.test", ordinal
+                    )
+                    person["properties"] = properties
+                }
+                row["person"] = person
+            }
+            return row
+        } : []
+
+        object["results"] = rows
+        object["has_next"] = end < total
+        object["next_cursor"] = NSNull()
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else {
+            return fixture
+        }
+        return Reply(data)
     }
 
     // MARK: - The two ways of having nothing
