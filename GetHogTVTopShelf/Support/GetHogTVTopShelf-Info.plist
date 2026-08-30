@@ -4,6 +4,10 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>GetHog</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
 	<!-- Top Shelf requires both keys nested inside NSExtension, the same way
 	     WidgetKit does for the widget targets: the extension point, and the
 	     principal class the system instantiates. $(PRODUCT_MODULE_NAME)

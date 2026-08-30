@@ -23,10 +23,11 @@ primitives shared across shells. `GetHogVision/`, `GetHogTV/`, and
 and Top Shelf extension read the shared snapshot and never call PostHog.
 
 `project.yml` is the source of truth; `GetHog.xcodeproj` is generated with
-XcodeGen 2.46.0 or newer. Its guarded `postGenCommand` temporarily rewrites the
-legacy watch embed into Xcode 26's `PlugIns/` destination (XcodeGen issue
-#1613); if that guard fails, inspect the generated phase instead of weakening
-the check or editing the project by hand. Tests
+XcodeGen 2.46.0 or newer. Its guarded `postGenCommand` temporarily makes the
+legacy watch embed configuration-aware (XcodeGen issue #1613): Debug uses
+Xcode 26's local-install `PlugIns/` destination, while Release keeps the App
+Store `Watch/` layout. If that guard fails, inspect the generated phase instead
+of weakening the check or editing the project by hand. Tests
 live beside each target, including `GetHogVision/{Tests,UITests}`,
 `GetHogTV/{Tests,UITests}`, and `GetHogWatch/{Tests,UITests}`.
 

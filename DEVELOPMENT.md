@@ -15,11 +15,13 @@ change to it or after adding project files; do not edit the generated project.
 
 Generation currently contains one guarded XcodeGen 2.46 workaround. XcodeGen
 still emits the watch-app embed into the legacy `Watch/` destination; the
-`postGenCommand` in `project.yml` verifies that exactly one legacy phase exists
-and rewrites it to Xcode 26's `PlugIns/` destination. If generation stops with
-an `XcodeGen#1613 patch` error, do not weaken the counts or hand-edit the
-project: inspect the generated phase and remove or revise the workaround only
-when XcodeGen's output has actually changed.
+`postGenCommand` in `project.yml` verifies that exactly one legacy destination
+exists and rewrites it to a configuration-driven path. Debug uses Xcode 26's
+local-install `PlugIns/` layout; Release retains the App Store distribution
+layout under `Watch/`. If generation stops with an `XcodeGen#1613 patch` error,
+do not weaken the guard or hand-edit the project: inspect the generated phase
+and remove or revise the workaround only when XcodeGen's output has actually
+changed.
 
 ```bash
 xcodegen generate

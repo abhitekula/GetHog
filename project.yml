@@ -8,22 +8,18 @@ options:
     tvOS: "26.0"
     visionOS: "26.0"
   createIntermediateGroups: true
-  # XcodeGen 2.46.0 still writes the pre-Xcode-26 watch embed: a copy phase
-  # into $(CONTENTS_FOLDER_PATH)/Watch with dstSubfolderSpec 16 (XcodeGen
-  # issue #1613). Xcode 26 installs and validates the watch app from PlugIns/
-  # — dstSubfolderSpec 13, the same destination the appex embeds already use —
-  # so the generated project is patched here until XcodeGen learns this.
+  # XcodeGen 2.46.0 writes the companion watch app into
+  # $(CONTENTS_FOLDER_PATH)/Watch with dstSubfolderSpec 16 (XcodeGen issue
+  # #1613). That is the App Store distribution layout, but Xcode 26 local
+  # device installation instead validates the app from PlugIns/. The generated
+  # copy phase therefore keeps its products-directory base while this patch
+  # replaces the fixed final directory with a configuration setting: Debug
+  # uses PlugIns and Release uses Watch.
   #
-  # The guard is the load-bearing half, not the sed. Counting *afterwards*
-  # proves nothing — the sed rewrites every spec-16 entry unconditionally, so
-  # "zero remain" is true by construction and stays true through all three
-  # ways this can drift: XcodeGen fixing #1613 (the sed silently no-ops and
-  # nobody learns the patch is dead), a second legitimate spec-16 phase
-  # appearing (an App Clip embed is exactly this shape — the sed would redirect
-  # it into PlugIns/ and break the archive), or the dstPath spelling changing
-  # (half the patch no-ops and the watch app lands where Xcode will not look
-  # for it). So both patterns are counted *before* the rewrite, and anything
-  # but exactly one of each fails generation with the counts in the message.
+  # The guard is the load-bearing half, not the sed. Counting the exact legacy
+  # path before rewriting catches XcodeGen fixing #1613, a schema/spelling
+  # change, or an accidental duplicate without touching unrelated spec-16 copy
+  # phases. The post-rewrite count proves the configurable path was emitted.
   #
   # Idempotent because XcodeGen rewrites project.pbxproj from this spec on
   # every run — the counts always see a fresh, unpatched file — not because
@@ -35,10 +31,11 @@ options:
   postGenCommand: |
     project=GetHog.xcodeproj/project.pbxproj
     [ -f "$project" ] || { echo "XcodeGen#1613 patch: $project not found — run xcodegen from the repository root" >&2; exit 1; }
-    phases=$(grep -c 'dstSubfolderSpec = 16;' "$project" || true)
     paths=$(grep -c 'dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";' "$project" || true)
-    [ "$phases" = 1 ] && [ "$paths" = 1 ] || { echo "XcodeGen#1613 patch: expected exactly one legacy watch embed, found $phases spec-16 phase(s) and $paths legacy dstPath(s) — read the comment in project.yml before changing the sed" >&2; exit 1; }
-    sed -i '' -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "";|' -e 's|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|' "$project"
+    [ "$paths" = 1 ] || { echo "XcodeGen#1613 patch: expected exactly one legacy watch destination, found $paths — read the comment in project.yml before changing the sed" >&2; exit 1; }
+    sed -i '' -e 's|dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";|dstPath = "$(CONTENTS_FOLDER_PATH)/$(GETHOG_WATCH_EMBED_DIRECTORY)";|' "$project"
+    configured=$(grep -c 'dstPath = "$(CONTENTS_FOLDER_PATH)/$(GETHOG_WATCH_EMBED_DIRECTORY)";' "$project" || true)
+    [ "$configured" = 1 ] || { echo "XcodeGen#1613 patch: configurable watch destination was not emitted exactly once" >&2; exit 1; }
 
 packages:
   GetHogKit:
@@ -53,8 +50,8 @@ settings:
     # Required, and required to MATCH between the app and its extension:
     # without them the installer cannot create the app-extension placeholder
     # and rejects the whole bundle with "Invalid placeholder attributes".
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.0.1"
+    CURRENT_PROJECT_VERSION: "1.0.1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -84,13 +81,20 @@ targets:
       - target: GetHogWidgets
         embed: true
       # The watch app ships inside the phone app: one submission, one install.
-      # XcodeGen writes this embed to the wrong destination for Xcode 26 —
-      # see the postGenCommand at the top of this file.
+      # XcodeGen cannot vary this destination by configuration — see the
+      # guarded postGenCommand and target settings below.
       - target: GetHogWatch
         embed: true
     settings:
       groups:
         - hostedAppDebug
+      configs:
+        # Xcode 26 local device installation expects the companion app here.
+        Debug:
+          GETHOG_WATCH_EMBED_DIRECTORY: PlugIns
+        # App Store validation rejects PlugIns/GetHogWatch.app with ITMS-90680.
+        Release:
+          GETHOG_WATCH_EMBED_DIRECTORY: Watch
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.gethog.GetHog
         PRODUCT_NAME: GetHog
@@ -407,7 +411,8 @@ targets:
 
   # watchOS: its own bundle id under the iOS app's, embedded in the iOS app.
   # The Info.plist carries the WK* keys that pair it to the phone and let it
-  # run without one. The embed lands in PlugIns/ via the postGenCommand above.
+  # run without one. The iOS host embeds it in PlugIns/ for Debug device
+  # installation and Watch/ for Release distribution.
   GetHogWatch:
     type: application
     platform: watchOS

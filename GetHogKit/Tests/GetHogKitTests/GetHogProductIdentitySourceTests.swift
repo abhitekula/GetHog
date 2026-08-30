@@ -135,6 +135,30 @@ struct GetHogProductIdentitySourceTests {
         )
     }
 
+    /// Xcode 26 installs a companion Watch app from PlugIns during local
+    /// development, while App Store distribution requires the documented
+    /// Watch directory. The authoritative graph must preserve both contracts.
+    @Test("Watch embedding separates local installs from distribution archives")
+    func watchEmbeddingSeparatesLocalAndDistributionDestinations() throws {
+        let project = try String(
+            contentsOf: checkout.appending(path: "project.yml"),
+            encoding: .utf8
+        )
+
+        #expect(project.contains("GETHOG_WATCH_EMBED_DIRECTORY: PlugIns"))
+        #expect(project.contains("GETHOG_WATCH_EMBED_DIRECTORY: Watch"))
+        #expect(
+            project.contains(
+                #"dstPath = "$(CONTENTS_FOLDER_PATH)/$(GETHOG_WATCH_EMBED_DIRECTORY)";"#
+            ),
+            "the generated Watch copy phase must defer its destination to the active configuration"
+        )
+        #expect(
+            !project.contains(#"s|dstSubfolderSpec = 16;|dstSubfolderSpec = 13;|"#),
+            "the generator patch must retain the Watch-products copy phase base"
+        )
+    }
+
     private func propertyList(at url: URL) throws -> [String: Any] {
         let data = try Data(contentsOf: url)
         let value = try PropertyListSerialization.propertyList(from: data, format: nil)
