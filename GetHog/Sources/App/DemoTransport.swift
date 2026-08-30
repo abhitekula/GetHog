@@ -1862,7 +1862,7 @@ struct DemoTransport: HTTPTransport {
                 person["distinct_ids"] = [distinctID]
                 if var properties = person["properties"] as? [String: Any] {
                     properties["email"] = String(
-                        format: "replay.visitor.%03d@example.test", ordinal
+                        format: "replay.visitor.%03d@example.com", ordinal
                     )
                     person["properties"] = properties
                 }
