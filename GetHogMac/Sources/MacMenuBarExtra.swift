@@ -172,11 +172,15 @@ final class MacMenuBarController {
         reload()
         snapshotChanges = NotificationCenter.default.publisher(
             for: SharedSnapshotStore.snapshotDidChangeNotification
-        ).sink { [weak self] notification in
+        )
+        // Snapshot refresh writes resume on a cooperative executor, and
+        // NotificationCenter delivers synchronously on that posting executor.
+        // Hop before entering this main-actor sink; a Task inside it is too late
+        // because Swift checks the closure's isolation at entry.
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] notification in
             guard let changedURL = notification.object as? URL else { return }
-            Task { @MainActor [weak self] in
-                self?.reload(afterSnapshotChangeAt: changedURL)
-            }
+            self?.reload(afterSnapshotChangeAt: changedURL)
         }
     }
 

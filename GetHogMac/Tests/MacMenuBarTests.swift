@@ -187,6 +187,29 @@ struct MenuBarHeadlineTests {
         #expect(controller.headline?.id == "replacement")
     }
 
+    @Test("a background snapshot write reaches the main-actor controller")
+    func controllerObservesBackgroundWrites() async throws {
+        let owned = try snapshotStore(holding: snapshot(metrics: [metric("old")]))
+        let controller = MacMenuBarController(
+            store: owned.store,
+            defaults: defaults(),
+            authSessionID: Self.authSessionID
+        )
+        let replacement = snapshot(metrics: [metric("background")])
+
+        try await Task.detached {
+            try owned.store.write(replacement)
+        }.value
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(1))
+        while controller.headline?.id != "background", clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(controller.snapshot == replacement)
+        #expect(controller.headline?.id == "background")
+    }
+
     @Test("a chosen metric survives the process it was chosen in")
     func chosenMetricIsPersisted() throws {
         let store = try snapshotStore(holding: snapshot(metrics: [metric("1"), metric("2")]))
