@@ -404,8 +404,8 @@ struct RendersRoot: View {
             }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $store.search, prompt: "Search filename or session")
             .screenRefreshable { await load() }
+            .searchable(text: $store.search, prompt: "Search filename or session")
             .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
     }

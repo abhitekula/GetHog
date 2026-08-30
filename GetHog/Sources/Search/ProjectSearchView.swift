@@ -82,6 +82,7 @@ struct ProjectSearchView: View {
         .navigationTitle("Search")
         .toolbar { ProjectSwitcher() }
         .projectSubtitle()
+        .screenRefreshable { await load(force: true) }
         // Pinned open, the way Events pins its filter, and for a stronger
         // reason: this field is the tab's entire purpose. Left to the default
         // drawer behaviour it rested *collapsed* — an empty grey capsule with
@@ -136,7 +137,6 @@ struct ProjectSearchView: View {
         .onAppear {
             if let term = LinkInbox.consumeQuery(for: .search) { query = term }
         }
-        .screenRefreshable { await load(force: true) }
         .task(id: model.projectID) { await load(force: false) }
         #if os(visionOS)
         .navigationDestination(item: $surveyRequest) { request in

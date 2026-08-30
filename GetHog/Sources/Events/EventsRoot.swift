@@ -731,6 +731,7 @@ struct EventsRoot: View {
                 // for the reason `DashboardsRoot` records in full: the field
                 // takes initial focus and raises the full-screen grid keyboard
                 // over the feed it filters.
+                .screenRefreshable { await reload() }
                 #if !os(tvOS)
                 .searchable(
                     text: $search,
@@ -756,7 +757,6 @@ struct EventsRoot: View {
                     if let term = LinkInbox.consumeQuery(for: .events) { search = term }
                 }
                 .onSubmit(of: .search) { Task { await reload() } }
-                .screenRefreshable { await reload() }
                 .task(id: filterSignature) {
                     AppTips.refresh(from: model)
                     await reload()

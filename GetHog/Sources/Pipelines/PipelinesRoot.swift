@@ -63,8 +63,8 @@ struct PipelinesRoot: View {
             .navigationTitle("Pipelines")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search pipelines")
             .screenRefreshable { await load() }
+            .searchable(text: $search, prompt: "Search pipelines")
             .task(id: model.projectID) { await load() }
     }
 

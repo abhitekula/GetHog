@@ -101,6 +101,62 @@ private actor RecordingsTransport: HTTPTransport {
     }
 }
 
+/// Models the current PostHog list contract: page one returns a cursor and the
+/// next page is selected by sending that cursor back as `after`.
+private actor CursorRecordingsTransport: HTTPTransport {
+    private(set) var requestedURLs: [URL] = []
+    private let repeatsCursor: Bool
+
+    init(repeatsCursor: Bool = false) {
+        self.repeatsCursor = repeatsCursor
+    }
+
+    func items(_ index: Int) -> [String: String] {
+        guard requestedURLs.indices.contains(index),
+              let components = URLComponents(
+                  url: requestedURLs[index],
+                  resolvingAgainstBaseURL: false
+              )
+        else { return [:] }
+        return Dictionary(
+            (components.queryItems ?? []).map { ($0.name, $0.value ?? "") },
+            uniquingKeysWith: { a, _ in a }
+        )
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let url = request.url!
+        let response = HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        if url.path(percentEncoded: false).hasSuffix("/query/") {
+            return (Data(#"{"columns":[],"results":[]}"#.utf8), response)
+        }
+        requestedURLs.append(url)
+
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let after = items.first { $0.name == "after" }?.value
+        let start = after == "page-2" && !repeatsCursor ? 51 : 1
+        let rows = (start..<(start + 50)).map { index in
+            """
+            {"id": "c-\(index)", "distinct_id": "d\(index)",
+             "recording_duration": \(index * 10), "active_seconds": \(index),
+             "start_time": "2026-01-15T10:00:00Z",
+             "click_count": \(index), "keypress_count": 0,
+             "console_log_count": 0, "console_warn_count": 0,
+             "console_error_count": 0, "snapshot_source": "web",
+             "ongoing": false, "viewed": false}
+            """
+        }
+        let nextCursor = start == 1 ? #", "next_cursor": "page-2""# : ""
+        let body = """
+        {"results": [\(rows.joined(separator: ","))],
+         "has_next": \(start == 1), "version": 4\(nextCursor)}
+        """
+        return (Data(body.utf8), response)
+    }
+}
+
 private func client(
     _ transport: some HTTPTransport,
     region: PostHogRegion = .usCloud
@@ -154,15 +210,17 @@ struct SessionsFilterScreenTests {
 
     // MARK: - What actually goes on the wire
 
-    @Test("an unfiltered load asks for exactly what it always did")
-    func unfilteredRequestIsUnchanged() async throws {
+    @Test("the default Any time load explicitly escapes PostHog's three-day default")
+    func anyTimeRequestIsExplicit() async throws {
         let transport = RecordingsTransport(total: 10)
         let store = sessionsStore()
         await store.load(client: client(transport), projectID: 1)
 
         let items = await transport.items(0)
         #expect(items["limit"] == "50")
-        #expect(items["offset"] == "0")
+        #expect(items["date_from"] == "1970-01-01T00:00:00Z")
+        #expect(items["offset"] == nil)
+        #expect(items["after"] == nil)
         #expect(items.count == 2)
     }
 
@@ -320,11 +378,12 @@ struct SessionsFilterScreenTests {
         store.filter.signal = .rageClick
         await store.load(client: client(transport), projectID: 1)
 
-        // The whole list is from the new filter, and paging restarted at zero.
+        // The whole list is from the new filter, and page one has no continuation.
         #expect(store.recordings.count == 50)
         #expect(store.recordings.allSatisfy { $0.id.hasPrefix("f-") })
         let items = await transport.items(2)
-        #expect(items["offset"] == "0")
+        #expect(items["offset"] == nil)
+        #expect(items["after"] == nil)
     }
 
     @Test("loading more appends the next page and asks for the right offset")
@@ -343,6 +402,38 @@ struct SessionsFilterScreenTests {
         await store.loadMore(client: client(transport), projectID: 1)
         #expect(store.recordings.count == 120)
         #expect(!store.hasMore)
+    }
+
+    @Test("loading more returns PostHog's cursor instead of restarting page one")
+    func loadMoreUsesCursor() async {
+        let transport = CursorRecordingsTransport()
+        let store = sessionsStore()
+
+        await store.load(client: client(transport), projectID: 1)
+        #expect(store.recordings.count == 50)
+        #expect(store.hasMore)
+        #expect(await transport.items(0)["offset"] == nil)
+
+        await store.loadMore(client: client(transport), projectID: 1)
+
+        #expect(store.recordings.count == 100)
+        #expect(await transport.items(1)["after"] == "page-2")
+        #expect(await transport.items(1)["offset"] == nil)
+        #expect(!store.hasMore)
+    }
+
+    @Test("a repeated cursor stops automatic paging and keeps the loaded rows retryable")
+    func repeatedCursorStopsAutomaticPaging() async {
+        let transport = CursorRecordingsTransport(repeatsCursor: true)
+        let store = sessionsStore()
+
+        await store.load(client: client(transport), projectID: 1)
+        await store.loadMore(client: client(transport), projectID: 1)
+
+        #expect(store.recordings.count == 50)
+        #expect(store.hasMore)
+        #expect(store.pagingError?.contains("did not advance") == true)
+        #expect(await transport.requestedURLs.count == 2)
     }
 
     @Test("a filter edit retires previous rows and paging before replacement load")

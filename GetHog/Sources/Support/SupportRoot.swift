@@ -162,7 +162,6 @@ struct SupportRoot: View {
             .navigationDestination(item: selection) { SupportTicketDetailView(ticket: $0) }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .screenRefreshable { await load() }
             .task(id: requestAuthority) { await load() }
     }
 
@@ -170,9 +169,11 @@ struct SupportRoot: View {
     private var searchOwnedContent: some View {
         @Bindable var store = store
         if store.resultState.ownsSearch {
-            content.searchable(text: $store.search, prompt: "Search tickets")
-        } else {
             content
+                .screenRefreshable { await load() }
+                .searchable(text: $store.search, prompt: "Search tickets")
+        } else {
+            content.screenRefreshable { await load() }
         }
     }
 

@@ -60,8 +60,8 @@ struct GroupListView: View {
                 GroupDetailView(group: group, groupType: groupType)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $search, prompt: "Search \(groupType.pluralName.lowercased())")
             .refreshable { await load() }
+            .searchable(text: $search, prompt: "Search \(groupType.pluralName.lowercased())")
             .task(id: model.projectID) { await load() }
     }
 

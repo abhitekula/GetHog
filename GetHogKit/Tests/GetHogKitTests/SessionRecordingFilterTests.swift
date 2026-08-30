@@ -14,12 +14,12 @@ struct SessionRecordingFilterTests {
         )
     }
 
-    // MARK: - The empty filter
+    // MARK: - The default filter
 
-    @Test("an untouched filter sends nothing, so the unfiltered list is byte-identical to before")
-    func emptyFilterIsSilent() {
+    @Test("an untouched filter explicitly asks for all retained recordings")
+    func defaultFilterEscapesTheServerDefault() {
         let filter = SessionRecordingFilter()
-        #expect(filter.queryItems.isEmpty)
+        #expect(items(filter) == ["date_from": "1970-01-01T00:00:00Z"])
         #expect(!filter.filterTestAccounts)
         #expect(!filter.isNarrowed)
         #expect(filter.activeCount == 0)
@@ -238,7 +238,7 @@ struct SessionRecordingFilterTests {
 
     // MARK: - Dates
 
-    @Test("a date window sends a relative date_from, which the API resolves server-side")
+    @Test("every date window sends the date_from that its label promises")
     func dateWindowEncodes() {
         var filter = SessionRecordingFilter()
         filter.dateWindow = .last7Days
@@ -248,7 +248,7 @@ struct SessionRecordingFilterTests {
         #expect(items(filter)["date_from"] == "-24h")
 
         filter.dateWindow = .allTime
-        #expect(items(filter)["date_from"] == nil)
+        #expect(items(filter)["date_from"] == "1970-01-01T00:00:00Z")
     }
 
     // MARK: - Counting, for the badge on the toolbar button
@@ -270,7 +270,7 @@ struct SessionRecordingFilterTests {
         #expect(filter.activeCount == 4)
     }
 
-    @Test("clearing returns exactly the empty filter")
+    @Test("clearing returns exactly the all-retention default filter")
     func clearing() {
         var filter = SessionRecordingFilter()
         filter.dateWindow = .last30Days
@@ -279,7 +279,7 @@ struct SessionRecordingFilterTests {
         filter.minimumDuration = 90
         filter.order = .duration
         filter.clear()
-        #expect(filter.queryItems.isEmpty)
+        #expect(items(filter) == ["date_from": "1970-01-01T00:00:00Z"])
         #expect(filter == SessionRecordingFilter())
     }
 
@@ -303,10 +303,11 @@ struct SessionRecordingFilterTests {
         #expect(endpoint.method == "GET")
     }
 
-    @Test("the unfiltered endpoint is unchanged from before filtering existed")
-    func endpointDefaultUnchanged() {
+    @Test("page one omits offset and carries the explicit all-retention date")
+    func endpointDefaultIsCursorReadyAndExplicitlyDated() {
         let endpoint = PostHogAPI.sessionRecordings(projectID: 1, limit: 50)
-        #expect(endpoint.query.map(\.name) == ["limit", "offset"])
+        #expect(endpoint.query.map(\.name) == ["limit", "date_from"])
+        #expect(endpoint.query.first { $0.name == "date_from" }?.value == "1970-01-01T00:00:00Z")
         #expect(endpoint.path == "/api/projects/1/session_recordings/")
     }
 

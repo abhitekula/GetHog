@@ -91,8 +91,8 @@ struct DashboardTemplatesRoot: View {
             }
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $store.search, prompt: "Search templates")
             .screenRefreshable { await load() }
+            .searchable(text: $store.search, prompt: "Search templates")
             .task(id: model.projectID) { await load() }
     }
 

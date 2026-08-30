@@ -257,10 +257,10 @@ struct DashboardsRoot: View {
             .toolbar { ProjectSwitcher() }
 #endif
             .projectSubtitle()
+            .screenRefreshable { await load() }
 #if !os(tvOS)
             .searchable(text: $search, prompt: "Search dashboards")
 #endif
-            .screenRefreshable { await load() }
             .task(id: loadScope) {
                 await loadScope.load(store: store, client: model.client)
                 applyDebugSelectionIfNeeded()
@@ -387,10 +387,10 @@ struct DashboardsRoot: View {
             // letters off a grid with a remote was never the affordance that
             // justified covering the screen. The same seam is on every ridden
             // root, each pointing here.
+            .screenRefreshable { await load() }
             #if !os(tvOS)
             .searchable(text: $search, prompt: "Search dashboards")
             #endif
-            .screenRefreshable { await load() }
             .task(id: loadScope) {
                 await loadScope.load(store: store, client: model.client)
                 applyDebugSelectionIfNeeded()

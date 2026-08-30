@@ -426,7 +426,6 @@ struct TracingRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .onSubmit(of: .search) { Task { await load() } }
-            .screenRefreshable { await load() }
             .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
             .navigationDestination(item: selection) { trace in
@@ -438,9 +437,11 @@ struct TracingRoot: View {
     private var searchOwnedContent: some View {
         @Bindable var store = store
         if model.isAvailable(.events) && store.ownsSearch {
-            content.searchable(text: $store.spanName, prompt: "Filter by span name")
-        } else {
             content
+                .screenRefreshable { await load() }
+                .searchable(text: $store.spanName, prompt: "Filter by span name")
+        } else {
+            content.screenRefreshable { await load() }
         }
     }
 

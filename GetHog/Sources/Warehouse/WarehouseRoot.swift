@@ -164,8 +164,8 @@ struct WarehouseRoot: View {
             .navigationTitle("Warehouse")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search sources, tables and views")
             .screenRefreshable { await load() }
+            .searchable(text: $search, prompt: "Search sources, tables and views")
             .task(id: model.projectID) { await load() }
             .navigationDestination(item: selection) { detail in
                 switch detail {

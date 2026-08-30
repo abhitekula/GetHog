@@ -333,13 +333,13 @@ struct PeopleRoot: View {
         // Absent on tvOS for the reason `DashboardsRoot` records in full: the
         // field takes initial focus there and raises the full-screen grid
         // keyboard over the list it filters.
+        .screenRefreshable { await refresh() }
         #if !os(tvOS)
         .searchable(
             text: $search,
             prompt: segment == .persons ? "Search persons" : "Filter cohorts"
         )
         #endif
-        .screenRefreshable { await refresh() }
         // One task covers project switches and typing. Persons search is
         // server-side, so a burst of keystrokes is debounced into one request
         // rather than one request per character.

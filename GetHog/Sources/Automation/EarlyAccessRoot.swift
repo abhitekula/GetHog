@@ -59,8 +59,8 @@ struct EarlyAccessRoot: View {
             .navigationTitle("Early access")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search features")
             .screenRefreshable { await load() }
+            .searchable(text: $search, prompt: "Search features")
             .task(id: model.projectID) { await load() }
     }
 

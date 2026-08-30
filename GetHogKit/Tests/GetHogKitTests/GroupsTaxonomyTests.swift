@@ -501,18 +501,17 @@ struct GroupScopingTests {
         #expect(items.contains { $0.name == "date_from" && $0.value == "-30d" })
     }
 
-    @Test("refuses to let an all-time window become no window at all")
-    func allTimeWindowFallsBack() {
-        // `.allTime` resolves to no `date_from`, which is *not* all time here —
-        // it is the endpoint's own three-day default. Ninety days is the widest
-        // honest reading of the request.
+    @Test("an all-time group recording request keeps the all-retention lower bound")
+    func allTimeWindowStaysAllTime() {
         let filter = PostHogAPI.groupRecordingFilter(
             groupTypeIndex: 0,
             groupKey: "acme",
             window: .allTime
         )
-        #expect(filter.dateWindow == .last90Days)
-        #expect(filter.queryItems.contains { $0.name == "date_from" && $0.value == "-90d" })
+        #expect(filter.dateWindow == .allTime)
+        #expect(filter.queryItems.contains {
+            $0.name == "date_from" && $0.value == "1970-01-01T00:00:00Z"
+        })
     }
 
     @Test("bills the group recordings list against the analytics budget")

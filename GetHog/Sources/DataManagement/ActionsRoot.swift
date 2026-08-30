@@ -66,8 +66,8 @@ struct ActionsRoot: View {
             .navigationTitle("Actions")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search actions")
             .screenRefreshable { await load() }
+            .searchable(text: $search, prompt: "Search actions")
             .task(id: model.projectID) { await load() }
             .navigationDestination(item: selection) { action in
                 ActionDetailView(action: action)

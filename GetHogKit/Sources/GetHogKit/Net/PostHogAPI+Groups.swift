@@ -339,16 +339,16 @@ public extension PostHogAPI {
     /// The filter behind `groupRecordings`, exposed so the recordings screen can
     /// be handed the same narrowing the group screen ran.
     ///
-    /// `.allTime` is deliberately not offered a free pass: it resolves to no
-    /// `date_from` at all, which is the three-day default described above. The
-    /// window falls back to 90 days rather than being dropped.
+    /// Every case, including `.allTime`, supplies a lower bound. Keeping the
+    /// requested window intact prevents this linked surface from silently
+    /// narrowing an all-retention request to 90 days.
     static func groupRecordingFilter(
         groupTypeIndex: Int,
         groupKey: String,
         window: SessionRecordingFilter.DateWindow = .last30Days
     ) -> SessionRecordingFilter {
         var filter = SessionRecordingFilter()
-        filter.dateWindow = window == .allTime ? .last90Days : window
+        filter.dateWindow = window
         filter.inheritedProperties = [
             SessionRecordingFilter.PropertyClause(
                 key: groupColumn(index: groupTypeIndex),

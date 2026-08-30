@@ -38,10 +38,10 @@ struct SessionSummariesRoot: View {
                 ToolbarItem(placement: .topBarTrailing) { filterMenu }
             }
             .projectSubtitle()
+            .screenRefreshable { await load() }
             #if !os(tvOS)
             .searchable(text: $search, prompt: "Search summaries")
             #endif
-            .screenRefreshable { await load() }
             .onChange(of: requestAuthority, initial: true) { _, authority in
                 store.prepare(authority: authority)
             }

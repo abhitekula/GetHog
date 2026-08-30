@@ -94,8 +94,8 @@ struct AnnotationsRoot: View {
                 composeButton
             }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search annotations")
             .screenRefreshable { await load() }
+            .searchable(text: $search, prompt: "Search annotations")
             .task(id: model.projectID) { await load() }
             .sheet(isPresented: $isComposing) { composerSheet }
             // A written annotation and a refused one must feel different without

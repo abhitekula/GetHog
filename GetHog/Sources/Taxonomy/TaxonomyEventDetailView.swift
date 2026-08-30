@@ -146,8 +146,8 @@ struct TaxonomyEventDetailView: View {
         .measuredPairs()
         .navigationTitle(event.name)
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, prompt: "Search properties")
         .refreshable { await load() }
+        .searchable(text: $search, prompt: "Search properties")
         .task(id: event.name) { await load() }
         .navigationDestination(item: openProperty) { target in
             TaxonomyPropertyDetailView(

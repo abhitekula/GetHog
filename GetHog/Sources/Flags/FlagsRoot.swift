@@ -210,10 +210,10 @@ struct FlagsRoot: View {
                 // Absent on tvOS for the reason `DashboardsRoot` records in
                 // full: the field takes initial focus there and raises the
                 // full-screen grid keyboard over the list it filters.
+                .screenRefreshable { await load() }
                 #if !os(tvOS)
                 .searchable(text: $search, prompt: "Search flag key or name")
                 #endif
-                .screenRefreshable { await load() }
                 .task(id: model.projectID) {
                     AppTips.refresh(from: model)
                     await load()

@@ -174,7 +174,6 @@ struct IngestionWarningsRoot: View {
             .navigationTitle("Ingestion")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .screenRefreshable { await load() }
             .task(id: requestAuthority) { await load() }
     }
 
@@ -182,9 +181,11 @@ struct IngestionWarningsRoot: View {
     private var searchOwnedContent: some View {
         @Bindable var store = store
         if store.resultState.ownsSearch {
-            content.searchable(text: $store.search, prompt: "Search warnings")
-        } else {
             content
+                .screenRefreshable { await load() }
+                .searchable(text: $store.search, prompt: "Search warnings")
+        } else {
+            content.screenRefreshable { await load() }
         }
     }
 

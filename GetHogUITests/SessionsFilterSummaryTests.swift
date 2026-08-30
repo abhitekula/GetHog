@@ -2,6 +2,28 @@ import XCTest
 
 @MainActor
 final class SessionsFilterSummaryTests: XCTestCase {
+    func testPullToRefreshKeepsSearchChromeAboveFirstSession() {
+        let app = DemoLaunch.launch(tab: "sessions")
+        defer { app.terminate() }
+
+        let search = app.searchFields["Search person email"]
+        let first = app.descendants(matching: .any)[
+            "gethog.session-card.\(DemoLaunch.replaySessionID)"
+        ]
+        let sessionsList = app.collectionViews["gethog.sessions-list"]
+        XCTAssertTrue(DemoLaunch.wait(for: search))
+        XCTAssertTrue(DemoLaunch.wait(for: first))
+        XCTAssertTrue(DemoLaunch.wait(for: sessionsList))
+
+        sessionsList.swipeDown(velocity: .slow)
+        XCTAssertTrue(DemoLaunch.wait(for: first), "The first session vanished after refresh.")
+        XCTAssertLessThanOrEqual(
+            search.frame.maxY,
+            first.frame.minY,
+            "Pull-to-refresh moved the native search drawer through the first session card."
+        )
+    }
+
     func testScrollingPastFirstPageLoadsMoreSessions() {
         let app = DemoLaunch.launch(
             tab: "sessions",

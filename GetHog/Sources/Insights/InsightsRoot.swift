@@ -223,10 +223,10 @@ struct InsightsRoot: View {
             // Absent on tvOS for the reason `DashboardsRoot` records in
             // full: the field takes initial focus there and raises the
             // full-screen grid keyboard over the list it filters.
+            .screenRefreshable { await load() }
             #if !os(tvOS)
             .searchable(text: $search, prompt: "Search insight names")
             #endif
-            .screenRefreshable { await load() }
             // One task covers project switches, typing and both filters.
             // Searching is server-side, so a burst of keystrokes is debounced
             // into one request rather than one request per character — the same

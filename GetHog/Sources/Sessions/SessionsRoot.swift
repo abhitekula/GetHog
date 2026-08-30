@@ -47,6 +47,10 @@ final class SessionsStore {
     private var activeScope: ProjectPreferenceScope?
 
     private var offset = 0
+    /// PostHog's stable continuation over a live, ordered recording table.
+    /// Older/self-hosted responses omit it, in which case `offset` remains the
+    /// compatibility fallback.
+    private var nextCursor: String?
     private let pageSize = 50
 
     /// Bumped on every fresh load so a page that was already in flight when the
@@ -95,6 +99,7 @@ final class SessionsStore {
         summariesBySessionID = [:]
         hasMore = false
         offset = 0
+        nextCursor = nil
         loadedAt = nil
         error = nil
         pagingError = nil
@@ -127,6 +132,7 @@ final class SessionsStore {
         summariesBySessionID = [:]
         hasMore = false
         offset = 0
+        nextCursor = nil
         loadedAt = nil
         error = nil
         pagingError = nil
@@ -164,6 +170,7 @@ final class SessionsStore {
             error = nil
             loadedAt = nil
             hasMore = false
+            nextCursor = nil
         }
         isLoading = true
         defer {
@@ -177,7 +184,7 @@ final class SessionsStore {
         do {
             let list: RecordingList = try await client.send(
                 PostHogAPI.sessionRecordings(
-                    projectID: projectID, limit: pageSize, offset: 0, filter: filter
+                    projectID: projectID, limit: pageSize, filter: filter
                 )
             )
             guard token == generation,
@@ -187,6 +194,7 @@ final class SessionsStore {
             recordings = list.results
             hasMore = list.hasNext
             offset = list.results.count
+            nextCursor = list.nextCursor
             loadedAt = Date()
             error = nil
             pagingError = nil
@@ -217,6 +225,7 @@ final class SessionsStore {
                 summariesBySessionID = [:]
                 hasMore = false
                 offset = 0
+                nextCursor = nil
                 loadedAt = nil
             }
             pagingError = nil
@@ -243,6 +252,8 @@ final class SessionsStore {
         let token = generation
         pagingError = nil
         isLoadingMore = true
+        let requestedCursor = nextCursor
+        let requestedOffset = offset
         defer {
             if token == generation,
                preparedAuthority == authority,
@@ -254,7 +265,11 @@ final class SessionsStore {
         do {
             let list: RecordingList = try await client.send(
                 PostHogAPI.sessionRecordings(
-                    projectID: projectID, limit: pageSize, offset: offset, filter: filter
+                    projectID: projectID,
+                    limit: pageSize,
+                    offset: requestedCursor == nil ? requestedOffset : nil,
+                    after: requestedCursor,
+                    filter: filter
                 )
             )
             guard token == generation,
@@ -268,11 +283,18 @@ final class SessionsStore {
             // when a new recording lands between pages.
             let known = Set(recordings.map(\.id))
             let appended = list.results.filter { !known.contains($0.id) }
+            let continuationDidNotAdvance = list.hasNext && (
+                requestedCursor.map { list.nextCursor == $0 }
+                    ?? list.results.isEmpty
+            )
             recordings.append(contentsOf: appended)
             hasMore = list.hasNext
             offset += list.results.count
+            nextCursor = list.nextCursor
             loadedAt = Date()
-            pagingError = nil
+            pagingError = continuationDidNotAdvance
+                ? "PostHog did not advance session pagination. Try again."
+                : nil
             await enrichSummaries(
                 client: client,
                 projectID: projectID,
@@ -579,6 +601,7 @@ struct SessionsRoot: View {
                 // Absent on tvOS for the reason `DashboardsRoot` records in
                 // full: the field takes initial focus there and raises the
                 // full-screen grid keyboard over the list it filters.
+                .screenRefreshable { await load() }
                 #if !os(tvOS)
                 .searchable(
                     text: Binding(
@@ -589,7 +612,6 @@ struct SessionsRoot: View {
                     prompt: "Search person email"
                 )
                 #endif
-                .screenRefreshable { await load() }
                 .onChange(of: requestAuthority, initial: true) { _, authority in
                     visiblePaginationTailID = nil
                     store.prepare(authority: authority)

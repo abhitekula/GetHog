@@ -160,20 +160,25 @@ public enum PostHogAPI {
     /// is a `GET` rather than a `RecordingsQuery` through `/query/`. The short
     /// version: the `GET` hydrates `person`, `/query/` returns it as `null`.
     ///
-    /// An untouched filter contributes no query items, so the unfiltered call
-    /// is the same request it always was.
+    /// The filter always contributes a date lower bound so "Any time" cannot
+    /// fall through to PostHog's three-day default.
     public static func sessionRecordings(
         projectID: Int,
         limit: Int = 50,
-        offset: Int = 0,
+        offset: Int? = nil,
+        after: String? = nil,
         filter: SessionRecordingFilter = SessionRecordingFilter()
     ) -> Endpoint {
-        Endpoint(
+        var pagination = [URLQueryItem(name: "limit", value: String(limit))]
+        if let offset {
+            pagination.append(URLQueryItem(name: "offset", value: String(offset)))
+        }
+        if let after {
+            pagination.append(URLQueryItem(name: "after", value: after))
+        }
+        return Endpoint(
             path: "/api/projects/\(projectID)/session_recordings/",
-            query: [
-                URLQueryItem(name: "limit", value: String(limit)),
-                URLQueryItem(name: "offset", value: String(offset)),
-            ] + filter.queryItems,
+            query: pagination + filter.queryItems,
             category: .analytics
         )
     }

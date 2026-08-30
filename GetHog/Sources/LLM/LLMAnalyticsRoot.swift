@@ -127,16 +127,17 @@ struct LLMAnalyticsRoot: View {
             .navigationTitle("LLM")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .screenRefreshable { await load() }
             .task(id: LoadKey(authority: requestAuthority, range: range)) { await load() }
     }
 
     @ViewBuilder
     private var searchOwnedContent: some View {
         if model.isAvailable(.events) && store.resultState.ownsSearch {
-            content.searchable(text: $search, prompt: "Search traces")
-        } else {
             content
+                .screenRefreshable { await load() }
+                .searchable(text: $search, prompt: "Search traces")
+        } else {
+            content.screenRefreshable { await load() }
         }
     }
 

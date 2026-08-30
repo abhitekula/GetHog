@@ -436,7 +436,6 @@ struct LogsRoot: View {
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
             .onSubmit(of: .search) { Task { await load() } }
-            .screenRefreshable { await load() }
             .onChange(of: requestAuthority, initial: true) { _, _ in store.invalidate() }
             .task(id: requestAuthority) { await load() }
     }
@@ -445,9 +444,11 @@ struct LogsRoot: View {
     private var searchOwnedContent: some View {
         @Bindable var store = store
         if model.isAvailable(.events) && store.ownsSearch {
-            content.searchable(text: $store.search, prompt: "Search log messages")
-        } else {
             content
+                .screenRefreshable { await load() }
+                .searchable(text: $store.search, prompt: "Search log messages")
+        } else {
+            content.screenRefreshable { await load() }
         }
     }
 

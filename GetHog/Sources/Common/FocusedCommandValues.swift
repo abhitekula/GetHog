@@ -105,6 +105,11 @@ extension View {
     /// The publication is inert on iOS, where nothing reads the key. That is
     /// the shared-key design recorded above, and it is why there is no `#if`
     /// at any of the call sites.
+    ///
+    /// Apply this before `.searchable`. Pull-to-refresh belongs to the scrolling
+    /// content; wrapping the search modifier makes the refresh transform own
+    /// navigation search chrome too, and its overscroll transition can briefly
+    /// overlap that chrome with the first row.
     func screenRefreshable(_ action: @escaping @Sendable () async -> Void) -> some View {
         refreshable { await action() }
             .focusedSceneValue(\.screenRefresh, ScreenRefreshAction { await action() })

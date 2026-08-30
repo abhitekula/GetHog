@@ -19,8 +19,8 @@ struct InboxRoot: View {
             .navigationTitle("Inbox")
             .toolbar { ProjectSwitcher() }
             .projectSubtitle()
-            .searchable(text: $search, prompt: "Search tasks")
             .screenRefreshable { await load() }
+            .searchable(text: $search, prompt: "Search tasks")
             .task(id: model.projectID) { await load() }
     }
 

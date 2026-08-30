@@ -206,8 +206,8 @@ struct TaxonomyRoot: View {
         .navigationTitle("Taxonomy")
         .toolbar { ProjectSwitcher() }
         .projectSubtitle()
-        .searchable(text: $search, prompt: scope.searchPrompt)
         .screenRefreshable { await refresh() }
+        .searchable(text: $search, prompt: scope.searchPrompt)
         .task(id: model.projectID) { await load() }
         // Fires on the first switch to Properties and on a project change while
         // that half is showing. Switching back and forth does not re-request.

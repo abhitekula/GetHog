@@ -10,13 +10,14 @@ import Foundation
 ///     POST /api/projects/:id/query/  {"kind":"RecordingsQuery"}
 ///
 /// The GET form is used because it hydrates the person row, participates in the
-/// analytics request budget, and pages using the list's existing offset model.
+/// analytics request budget, and pages cursor-first (`next_cursor` to `after`)
+/// with offset as a compatibility fallback for older/self-hosted responses.
 ///
 /// Fields represented by the model:
 ///
 ///     date_from, date_to, events, actions, properties, console_log_filters,
 ///     having_predicates, filter_test_accounts, operand, session_ids,
-///     person_uuid, distinct_ids, limit, offset, order, order_direction,
+///     person_uuid, distinct_ids, limit, offset, after, order, order_direction,
 ///     user_modified_filters, modifiers, response, tags, version
 ///
 /// `order` is an enum of exactly: `duration`, `recording_duration`,
@@ -135,9 +136,11 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
         }
     }
 
-    /// Relative windows, resolved server-side. Sending `-7d` and letting
-    /// PostHog resolve it avoids the client and the server disagreeing about
-    /// the project's timezone.
+    /// Date windows resolved server-side. Relative choices stay relative so
+    /// the client and server cannot disagree about the project's timezone.
+    /// "Any time" is explicit too: omitting `date_from` asks PostHog for its
+    /// three-day default, which is not what that label promises. An epoch lower
+    /// bound means every recording the project's retention policy still holds.
     public enum DateWindow: String, Sendable, Hashable, CaseIterable, Codable, Identifiable {
         case allTime
         case last24Hours
@@ -150,7 +153,7 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
 
         public var relativeDate: String? {
             switch self {
-            case .allTime: nil
+            case .allTime: "1970-01-01T00:00:00Z"
             case .last24Hours: "-24h"
             case .last3Days: "-3d"
             case .last7Days: "-7d"
@@ -248,9 +251,8 @@ public struct SessionRecordingFilter: Sendable, Hashable, Equatable {
 
     // MARK: - Encoding
 
-    /// The filter as query items. Empty for an untouched filter, so the
-    /// unfiltered request is byte-identical to the one this screen sent before
-    /// filtering existed.
+    /// The filter as query items. The date is always present because PostHog's
+    /// absent value means three days rather than all retained recordings.
     public var queryItems: [URLQueryItem] {
         var items: [URLQueryItem] = []
 
