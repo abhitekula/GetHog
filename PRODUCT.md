@@ -4,13 +4,14 @@
 
 ## Platform
 
-ios, macos
+ios, macos, visionos, tvos, watchos
 
 ## Users
 
 PostHog users — product engineers, PMs, founders — with a question that cannot
 wait: is the dashboard moving, what did this session do, is the flag on. They
-arrive briefly, often mid-context, on iPhone, iPad, or Mac, and they already
+arrive briefly, often mid-context, on iPhone, iPad, Mac, Vision Pro, Apple TV,
+or Apple Watch, and they already
 know PostHog's concepts; the app never has to teach analytics, only answer
 fast.
 
@@ -26,10 +27,14 @@ trusted, and closed.
 Mac is a first-class adaptive client, not an iPad port: its native source-list
 shell adapts its detail content to the available window width, while Settings,
 commands, menu-bar presence, and tear-off windows follow desktop conventions.
+Vision is a spatial catalog over the same shared screens, TV is a curated
+read-mostly shell for the living room, and Watch is a glanceable metrics,
+flags, health, and activity client with its own query budget.
 
 GetHog is publicly available for iPhone and iPad on the
 [App Store](https://apps.apple.com/us/app/gethog/id6798921061) as an open-source,
-unaffiliated community project. The design bar is that a stranger assumes a
+unaffiliated community project. The Mac, Vision, TV, and Watch shells build
+from the same source but are not App Store listed. The design bar is that a stranger assumes a
 design team shipped it. Open source is a delivery constraint, not just a
 licence: every committed asset — illustrations, marks, icons — ships in a
 public repository and must be original work the project can licence.

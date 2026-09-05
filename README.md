@@ -9,8 +9,8 @@ it got a little out of hand.
   <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download GetHog on the App Store" height="52">
 </a>
 
-Available now for iPhone and iPad. You can also build every platform shell from
-source.
+Available now for iPhone and iPad. The Mac, Vision, TV, and Watch shells build
+from the same source; see DEVELOPMENT.md for their schemes and destinations.
 
 > GetHog is an independent community project. It is not affiliated with,
 > endorsed by, or maintained by PostHog.
@@ -30,7 +30,8 @@ and the dangerous thought, “replay parsing can’t be *that* much work.”
 
 ## What it can do
 
-GetHog is a native SwiftUI app for iPhone and iPad. Right now it can:
+GetHog is a native SwiftUI app for iPhone and iPad, with Mac, Vision, TV, and
+Watch shells in the same repository. Right now it can:
 
 - Browse saved dashboards and their supported insights.
 - Inspect events, people, and sessions, including web-session replay.
@@ -65,7 +66,12 @@ tests, demo mode, and credential handling.
 ```text
 GetHogKit/          UI-free Swift package: auth, networking, API models,
                     insight rendering, and replay parsing
+GetHogUI/           Cross-platform presentation primitives (theme, charts)
 GetHog/Sources/     SwiftUI application, organized by product surface
+GetHogMac/          Native Mac shell over the shared screens
+GetHogVision/       Spatial catalog over the shared screens
+GetHogTV/           Curated read-mostly shell for the living room
+GetHogWatch/        Glanceable metrics, flags, health, and activity client
 GetHogWidgets/      WidgetKit extension using the shared cache only
 GetHog/Resources/   Deterministic demo resources and bundled replay player
 ```
