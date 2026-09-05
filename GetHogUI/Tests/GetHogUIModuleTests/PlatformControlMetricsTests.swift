@@ -50,9 +50,7 @@ struct PlatformControlMetricsTests {
         #expect(scan.sourceFileCount > 100, "only scanned \(scan.sourceFileCount) source files")
         #expect(
             scan.literals == approved,
-            "Touch-floor literals require an explicit noninteractive or documentation allowlist; "
-                + "interactive controls use PlatformControlMetrics. Drift: "
-                + "\(scan.literals.symmetricDifference(approved))"
+            "Touch-floor literals require an explicit noninteractive or documentation allowlist; interactive controls use PlatformControlMetrics. Drift: \(scan.literals.symmetricDifference(approved))"
         )
     }
 
