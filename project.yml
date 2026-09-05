@@ -1,4 +1,11 @@
 name: GetHog
+# Local OAuth directory override (see Config/OAuth.xcconfig). Project-level
+# base configuration so every target resolves $(GETHOG_OAUTH_DOMAIN) the same
+# way; unset locally it is empty and OAuth sign-in stays hidden. `xcodebuild
+# GETHOG_OAUTH_DOMAIN=…` still wins over the file, for CLI/CI.
+configFiles:
+  Debug: Config/OAuth.xcconfig
+  Release: Config/OAuth.xcconfig
 options:
   bundleIdPrefix: app.gethog
   deploymentTarget:

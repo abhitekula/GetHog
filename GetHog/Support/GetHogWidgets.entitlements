@@ -10,5 +10,13 @@
 	<array>
 		<string>$(AppIdentifierPrefix)app.gethog.shared</string>
 	</array>
+	<!-- Mirrored from the app target, not used by the extension: the kit
+	     pins the two files byte-identical, and an extension that never
+	     handles links simply never fires the association. See
+	     GetHog/Support/GetHog.entitlements. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(GETHOG_OAUTH_DOMAIN)</string>
+	</array>
 </dict>
 </plist>

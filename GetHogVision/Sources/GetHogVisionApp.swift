@@ -105,6 +105,11 @@ struct GetHogVisionApp: App {
                 // before `bootstrap()` has found a project to resolve the link
                 // against, so the shell takes it once it is ready.
                 .onOpenURL { LinkInbox.deliver($0) }
+                // PostHog Cloud OAuth callback — same arrangement as the iOS
+                // shell (see GetHogApp). Unconsumed activities fall through.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    _ = OAuthActivityRouter.route(activity, directory: OAuthDirectory.resolve())
+                }
                 // The inbound half of Handoff. A phone publishing the console
                 // URL for the screen it is on is continued here, and lands on
                 // that object's own screen — see `HandoffModifier`.

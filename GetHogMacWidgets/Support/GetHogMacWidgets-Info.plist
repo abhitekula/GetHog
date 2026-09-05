@@ -14,6 +14,12 @@
 	     both. Empty on teamless builds, which the kit reads as "no prefix". -->
 	<key>GetHogTeamIDPrefix</key>
 	<string>$(TeamIdentifierPrefix)</string>
+	<!-- The same key the host app publishes (GetHogMac-Info.plist), for the
+	     same reason as GetHogTeamIDPrefix above: the extension reads its own
+	     bundle, and its refresh path must resolve the same OAuth directory.
+	     Empty by default, as in the app. -->
+	<key>GetHogOAuthDomain</key>
+	<string>$(GETHOG_OAUTH_DOMAIN)</string>
 	<!-- WidgetKit requires this nested inside NSExtension — the same shape and
 	     the same extension point as the iOS twin (GetHogWidgets-Info.plist);
 	     INFOPLIST_KEY_* build settings only write top-level keys. -->

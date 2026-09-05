@@ -234,9 +234,23 @@ enum WidgetSnapshotRefresh {
                 ? previous?.quickToggleFlags.map(\.id) ?? []
                 : []
         )
-        let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region)
-        )
+        // An OAuth grant renews silently here through its refresh token — the
+        // extension cannot present a browser, but renewal needs none. Without
+        // a configured directory (or a dead grant) the refresh fails stale
+        // rather than signing anything out; the app owns recovery.
+        let auth: any AuthProvider
+        if credential.isOAuth, let directory = OAuthDirectory.resolve() {
+            auth = OAuthAuthProvider(
+                credential: credential,
+                directory: directory,
+                store: KeychainTokenStore()
+            )
+        } else if credential.isOAuth {
+            return .failed(.unauthorized, retained: store.loadOrNil())
+        } else {
+            auth = PersonalKeyAuthProvider(key: credential.key, region: credential.region)
+        }
+        let client = PostHogClient(auth: auth)
         return await SnapshotRefreshCoordinator(store: store).refresh(
             trigger: trigger,
             client: client,

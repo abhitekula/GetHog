@@ -32,6 +32,11 @@ xcuserdata/
 secrets.json
 .netrc
 
+# Local OAuth directory override (see Config/OAuth.local.xcconfig.example).
+# Carries a real domain, so it stays out of the public tree by construction;
+# the publication gate scans only tracked files and never sees it.
+Config/OAuth.local.xcconfig
+
 # Local probes and generated screenshots
 .probes/
 probes/

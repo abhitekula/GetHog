@@ -17,7 +17,16 @@
 		<string>app.gethog.browsing</string>
 	</array>
 
-	<!-- The inbound half of `AppModel.webURL(path:)`.
+ 	<!-- PostHog Cloud OAuth directory host, injected per-developer through
+ 	     Config/OAuth.xcconfig (`GETHOG_OAUTH_DOMAIN`). Empty in the public
+ 	     tree, in which case `OAuthDirectory` is nil and every OAuth entry
+ 	     point stays hidden — the app is PAT-only exactly as before. The
+ 	     client_id, redirect URI, and logo URI are all derived from this one
+ 	     host in code, so no other file names a domain. -->
+ 	<key>GetHogOAuthDomain</key>
+ 	<string>$(GETHOG_OAUTH_DOMAIN)</string>
+
+ 	<!-- The inbound half of `AppModel.webURL(path:)`.
 
 	     A custom scheme rather than a universal link, and not by preference: a
 	     universal link needs an `apple-app-site-association` file at the root of

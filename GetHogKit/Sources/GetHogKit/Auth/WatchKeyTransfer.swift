@@ -71,6 +71,10 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
 
     /// What this build writes. A receiver reading a higher number is looking at
     /// a payload from a newer phone and may say so; it is not an error.
+    ///
+    /// Unchanged by the OAuth fields below: they are optional and decode as
+    /// absent on older builds, which is exactly the tolerance the version
+    /// field exists to avoid needing for structural breaks.
     public static let currentVersion = 2
 
     /// The `WCSession` dictionary key both ends use.
@@ -96,6 +100,12 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
     public let version: Int
     public let key: String
     public let region: PostHogRegion
+    /// OAuth grant fields. Nil for personal-key transfers and for payloads
+    /// written before OAuth existed; when present the wrist holds the same
+    /// renewable grant as the phone rather than a bare bearer.
+    public let refreshToken: String?
+    public let accessTokenExpiry: Date?
+    public let grantedScopes: [String]?
     /// The organization whose project selection follows. Optional for v1
     /// compatibility and for independent watch entry, which has no selection.
     public let organizationID: String?
@@ -113,7 +123,10 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         organizationName: String? = nil,
         projectID: Int? = nil,
         projectName: String? = nil,
-        headlineMetricID: String? = nil
+        headlineMetricID: String? = nil,
+        refreshToken: String? = nil,
+        accessTokenExpiry: Date? = nil,
+        grantedScopes: [String]? = nil
     ) {
         self.version = version
         self.key = key
@@ -123,6 +136,9 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         self.projectID = projectID
         self.projectName = projectName
         self.headlineMetricID = headlineMetricID
+        self.refreshToken = refreshToken
+        self.accessTokenExpiry = accessTokenExpiry
+        self.grantedScopes = grantedScopes
     }
 
     // MARK: - Wire form
@@ -155,6 +171,7 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         case version, key, region
         case organizationID, organizationName
         case projectID, projectName, headlineMetricID
+        case refreshToken, accessTokenExpiry, grantedScopes
     }
 
     public init(from decoder: any Decoder) throws {
@@ -174,6 +191,9 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         projectID = try c.decodeIfPresent(Int.self, forKey: .projectID)
         projectName = try c.decodeIfPresent(String.self, forKey: .projectName)
         headlineMetricID = try c.decodeIfPresent(String.self, forKey: .headlineMetricID)
+        refreshToken = try c.decodeIfPresent(String.self, forKey: .refreshToken)
+        accessTokenExpiry = try c.decodeIfPresent(Date.self, forKey: .accessTokenExpiry)
+        grantedScopes = try c.decodeIfPresent([String].self, forKey: .grantedScopes)
     }
 
     // MARK: - Ingestion
@@ -192,7 +212,14 @@ public struct WatchKeyTransfer: Codable, Sendable, Equatable {
         guard !trimmed.isEmpty else { throw Failure.emptyKey }
 
         try store.save(
-            StoredCredential(key: trimmed, region: region, projectID: projectID)
+            StoredCredential(
+                key: trimmed,
+                region: region,
+                projectID: projectID,
+                refreshToken: refreshToken,
+                accessTokenExpiry: accessTokenExpiry,
+                grantedScopes: grantedScopes
+            )
         )
 
         return Selection(

@@ -89,6 +89,12 @@ public actor PostHogClient {
     public nonisolated var region: PostHogRegion { auth.region }
     public nonisolated var host: URL { auth.region.host }
 
+    /// Whether this client authenticates through PostHog Cloud OAuth rather
+    /// than a personal key. Write-denial copy branches on it: a declined
+    /// OAuth scope is granted in Settings, a missing key scope is added to
+    /// the key — pointing at the wrong remedy wastes the user's time.
+    public nonisolated var authenticatesWithOAuth: Bool { auth is OAuthAuthProvider }
+
     /// Performs a request and decodes the response.
     public func send<T: Decodable & Sendable>(_ endpoint: Endpoint) async throws -> T {
         let data = try await data(for: endpoint)

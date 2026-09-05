@@ -126,7 +126,7 @@ final class ErrorTriageController {
         } catch {
             statusOverrides[issue.id] = previous
             failureCount += 1
-            message = failureMessage(for: error, issue: issue, action: verb(for: desired))
+            message = failureMessage(for: error, issue: issue, action: verb(for: desired), remedy: writeRemedy(for: client))
         }
     }
 
@@ -160,7 +160,8 @@ final class ErrorTriageController {
             message = failureMessage(
                 for: error,
                 issue: issue,
-                action: assignee == nil ? "unassign" : "assign"
+                action: assignee == nil ? "unassign" : "assign",
+                remedy: writeRemedy(for: client)
             )
         }
     }
@@ -189,7 +190,8 @@ final class ErrorTriageController {
     private func failureMessage(
         for error: any Error,
         issue: ErrorIssue,
-        action: String
+        action: String,
+        remedy: WriteRemedy = .personalKey
     ) -> ErrorTriageMessage {
         var text = "Couldn't \(action) \(issue.name). \(error.localizedDescription)"
 
@@ -217,10 +219,13 @@ final class ErrorTriageController {
                     for: posthogError,
                     object: issue.name,
                     action: action,
-                    writeScope: requiredWriteScope
+                    writeScope: requiredWriteScope,
+                    remedy: remedy
                 ).text
             case .unauthorized:
-                text = "Couldn't \(action) \(issue.name): your API key was rejected. Reconnect in Settings."
+                text = remedy == .oauthCloud
+                    ? "Couldn't \(action) \(issue.name): PostHog Cloud sign-in expired. Reconnect in Settings."
+                    : "Couldn't \(action) \(issue.name): your API key was rejected. Reconnect in Settings."
             default:
                 text = "Couldn't \(action) \(issue.name). \(posthogError.localizedDescription)"
             }

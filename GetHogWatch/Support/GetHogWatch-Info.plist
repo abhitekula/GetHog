@@ -13,5 +13,12 @@
 	<string>app.gethog.GetHog</string>
 	<key>WKRunsIndependentlyOfCompanionApp</key>
 	<true/>
+	<!-- The same key the phone app publishes (GetHog-Info.plist): the watch
+	     holds its own copy of the OAuth grant and must resolve the same
+	     directory to renew it silently. Empty by default, as in the app —
+	     without it an OAuth grant on the wrist fails closed to needing a
+	     hand-off rather than authenticating against nothing. -->
+	<key>GetHogOAuthDomain</key>
+	<string>$(GETHOG_OAUTH_DOMAIN)</string>
 </dict>
 </plist>

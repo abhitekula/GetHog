@@ -45,8 +45,14 @@
 	<key>GetHogTeamIDPrefix</key>
 	<string>$(TeamIdentifierPrefix)</string>
 
-	<!-- The inbound half of `AppModel.webURL(path:)` — same custom scheme as
-	     iOS, same rationale (see GetHog-Info.plist). -->
+ 	<!-- PostHog Cloud OAuth directory host — same arrangement as the iOS
+ 	     app (see GetHog/Support/GetHog-Info.plist). Empty by default; a real
+ 	     domain arrives per-developer through Config/OAuth.local.xcconfig. -->
+ 	<key>GetHogOAuthDomain</key>
+ 	<string>$(GETHOG_OAUTH_DOMAIN)</string>
+
+ 	<!-- The inbound half of `AppModel.webURL(path:)` — same custom scheme as
+ 	     iOS, same rationale (see GetHog-Info.plist). -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -1,0 +1,14 @@
+// Local OAuth directory override. NOT tracked (see .gitignore) — copy this
+// file to Config/OAuth.local.xcconfig and put the domain that hosts the
+// PostHog OAuth client metadata document and the universal-link callback:
+//
+//   GETHOG_OAUTH_DOMAIN_LOCAL = oauth.example.com
+//
+// That domain must serve, over HTTPS:
+//   /.well-known/apple-app-site-association  (application/json, appID
+//       <TeamID>.app.gethog.GetHog, path /oauth/callback)
+//   /posthog-client                          (the CIMD document; this URL is
+//       the OAuth client_id)
+//   /oauth/callback                          (fallback page; the app intercepts
+//       the link before it renders)
+GETHOG_OAUTH_DOMAIN_LOCAL = oauth.example.com

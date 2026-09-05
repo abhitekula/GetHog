@@ -65,6 +65,12 @@ struct GetHogApp: App {
                 // this fires before `bootstrap()` has found a project to resolve
                 // the link against, so `RootView` takes it once it is ready.
                 .onOpenURL { LinkInbox.deliver($0) }
+                // PostHog Cloud OAuth callback, when this build configures
+                // one. A different activity type from Handoff, so the two
+                // never compete; an unconsumed activity simply falls through.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    _ = OAuthActivityRouter.route(activity, directory: OAuthDirectory.resolve())
+                }
                 // The inbound half of Handoff, and the reason
                 // `NSUserActivityTypes` in the Info.plist is not a one-way
                 // claim. `HandoffModifier` publishes the console URL for the

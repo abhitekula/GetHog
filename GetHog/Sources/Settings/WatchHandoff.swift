@@ -282,7 +282,10 @@ final class WatchHandoffController {
             organizationName: organization.name,
             projectID: project.id,
             projectName: project.name,
-            headlineMetricID: headlineMetricID
+            headlineMetricID: headlineMetricID,
+            refreshToken: credential.refreshToken,
+            accessTokenExpiry: credential.accessTokenExpiry,
+            grantedScopes: credential.grantedScopes
         )
         guard let data = try? transfer.encoded() else {
             status = .failed("Couldn't package the key for transfer.")

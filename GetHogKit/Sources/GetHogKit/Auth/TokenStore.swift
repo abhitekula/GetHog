@@ -2,6 +2,9 @@ import Foundation
 import Security
 
 public struct StoredCredential: Sendable, Codable, Equatable {
+    /// The bearer: a personal API key, or the current OAuth access token.
+    /// One field for both so every existing reader — widget refresh, masked
+    /// display, hand-off — keeps working without branching on auth kind.
     public let key: String
     public let region: PostHogRegion
     public var projectID: Int?
@@ -9,17 +12,36 @@ public struct StoredCredential: Sendable, Codable, Equatable {
     /// credential. Optional for payloads written by older app versions; the app
     /// migrates those only after the key has authenticated successfully.
     public let authSessionID: UUID?
+    /// OAuth only. Nil for personal API keys, and for payloads written before
+    /// OAuth existed — every field here is optional so those decode unchanged.
+    public let refreshToken: String?
+    /// When the access token in `key` stops working. Nil for personal keys,
+    /// which do not expire.
+    public let accessTokenExpiry: Date?
+    /// The scope string the grant carries, as issued. Advisory (drives
+    /// "re-authorize" wording); enforcement stays server-side.
+    public let grantedScopes: [String]?
+
+    /// Whether this credential authenticates through PostHog Cloud OAuth
+    /// rather than a pasted personal API key.
+    public var isOAuth: Bool { refreshToken != nil }
 
     public init(
         key: String,
         region: PostHogRegion,
         projectID: Int? = nil,
-        authSessionID: UUID? = nil
+        authSessionID: UUID? = nil,
+        refreshToken: String? = nil,
+        accessTokenExpiry: Date? = nil,
+        grantedScopes: [String]? = nil
     ) {
         self.key = key
         self.region = region
         self.projectID = projectID
         self.authSessionID = authSessionID
+        self.refreshToken = refreshToken
+        self.accessTokenExpiry = accessTokenExpiry
+        self.grantedScopes = grantedScopes
     }
 }
 

@@ -53,6 +53,10 @@ final class AppModel {
     private(set) var capabilities: CapabilityReport?
     private(set) var connectionError: String?
     private(set) var storedCredentialRecovery: StoredCredentialRecovery?
+    /// The OAuth directory this session authenticated through. Nil for
+    /// personal-key sessions — and always nil in builds without a configured
+    /// `GetHogOAuthDomain`, where OAuth entry points stay hidden.
+    private(set) var oauthDirectory: OAuthDirectory?
 
     var projects: [Project] = []
     var selectedProject: Project? {
@@ -225,11 +229,37 @@ final class AppModel {
             return
         }
         let credential = credentialWithAuthenticationEpoch(storedCredential)
+        if credential.isOAuth, OAuthDirectory.resolve() == nil {
+            // An OAuth grant with no configured directory cannot refresh:
+            // the build holding it was replaced by one naming no callback
+            // host. The secret leaves with the session rather than lingering
+            // in the Keychain behind an entry point that no longer exists.
+            connectionError = "This build isn't set up for PostHog Cloud sign-in."
+            storedCredentialRecovery = .replaceCredential(credential.region)
+            try? store.clear()
+            clearPublishedProjectData()
+            phase = .onboarding
+            return
+        }
         do {
-            try await activate(
-                credential: credential,
-                persistAfterAuthentication: storedCredential.authSessionID == nil
-            )
+            if credential.isOAuth, let directory = OAuthDirectory.resolve() {
+                try await activate(
+                    credential: credential,
+                    auth: OAuthAuthProvider(
+                        credential: credential,
+                        directory: directory,
+                        store: store,
+                        transport: transport
+                    ),
+                    persistAfterAuthentication: storedCredential.authSessionID == nil
+                )
+                oauthDirectory = directory
+            } else {
+                try await activate(
+                    credential: credential,
+                    persistAfterAuthentication: storedCredential.authSessionID == nil
+                )
+            }
         } catch {
             let postHogError = error as? PostHogError
             connectionError = postHogError?.localizedDescription ?? error.localizedDescription
@@ -267,6 +297,68 @@ final class AppModel {
         try await activate(credential: credential, persistAfterAuthentication: true)
     }
 
+    /// Completes a PostHog Cloud OAuth round trip: exchanges the browser's
+    /// code, resolves which Cloud region the grant belongs to, and becomes
+    /// the active session exactly the way `connect` does.
+    func connectWithOAuth(directory: OAuthDirectory, code: String, verifier: String) async throws {
+        let tokens = try await OAuthTokenClient(directory: directory, transport: transport)
+            .exchange(code: code, verifier: verifier)
+        guard let refreshToken = tokens.refreshToken, !refreshToken.isEmpty else {
+            // An authorization-code grant without a refresh token cannot
+            // survive an access-token expiry — the session would die within
+            // the hour with no recovery but another browser round trip.
+            throw PostHogError.transport("PostHog's sign-in response carried no refresh token.")
+        }
+        let region = try await resolveCloudRegion(tokens: tokens, accessToken: tokens.accessToken)
+        let credential = StoredCredential(
+            key: tokens.accessToken,
+            region: region,
+            authSessionID: UUID(),
+            refreshToken: refreshToken,
+            accessTokenExpiry: Date().addingTimeInterval(tokens.expiresIn ?? 3600),
+            grantedScopes: tokens.scope.map { $0.split(separator: " ").map(String.init) }
+        )
+        try await activate(
+            credential: credential,
+            auth: OAuthAuthProvider(credential: credential, directory: directory, store: store, transport: transport),
+            persistAfterAuthentication: true
+        )
+        oauthDirectory = directory
+    }
+
+    /// Which Cloud region honors this grant. The token response usually says
+    /// so outright (`posthog_region` / `posthog_base_url`); only when it does
+    /// not, this probes instead: a bearer unknown to a region 401s there,
+    /// which is exactly the signal. Only a 401 moves to the next candidate —
+    /// any other failure (network, rate limit, undecodable) is about the
+    /// attempt, not the region, and throws immediately. Both candidates 401ing
+    /// means the grant is dead, which is the same `.unauthorized` teardown a
+    /// rejected personal key gets.
+    ///
+    /// The probe authenticates as a personal key on purpose: same `Bearer`
+    /// wire format, but no refresh side effects and nothing persisted — the
+    /// real provider (with its store writes) is built once, for the winner.
+    private func resolveCloudRegion(tokens: OAuthTokenResponse, accessToken: String) async throws -> PostHogRegion {
+        if let region = tokens.resolvedRegion {
+            return region
+        }
+        for candidate in [PostHogRegion.usCloud, .euCloud] {
+            let probe = PostHogClient(
+                auth: PersonalKeyAuthProvider(key: accessToken, region: candidate),
+                transport: transport,
+                governor: governor
+            )
+            do {
+                let me: MeResponse = try await probe.send(PostHogAPI.me())
+                _ = me
+                return candidate
+            } catch PostHogError.unauthorized {
+                continue
+            }
+        }
+        throw PostHogError.unauthorized
+    }
+
     /// Becomes a demo session: the bundled fixtures for a transport, the
     /// literal string "demo" for a credential, and nothing persisted anywhere —
     /// `activate` alone, never `connect`, so the keychain is not touched and
@@ -298,7 +390,10 @@ final class AppModel {
             key: credential.key,
             region: credential.region,
             projectID: credential.projectID,
-            authSessionID: UUID()
+            authSessionID: UUID(),
+            refreshToken: credential.refreshToken,
+            accessTokenExpiry: credential.accessTokenExpiry,
+            grantedScopes: credential.grantedScopes
         )
     }
 
@@ -306,8 +401,20 @@ final class AppModel {
         credential: StoredCredential,
         persistAfterAuthentication: Bool = false
     ) async throws {
-        let client = PostHogClient(
+        try await activate(
+            credential: credential,
             auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region),
+            persistAfterAuthentication: persistAfterAuthentication
+        )
+    }
+
+    private func activate(
+        credential: StoredCredential,
+        auth: any AuthProvider,
+        persistAfterAuthentication: Bool = false
+    ) async throws {
+        let client = PostHogClient(
+            auth: auth,
             transport: transport,
             governor: governor,
             responseCache: cache,
@@ -723,8 +830,24 @@ final class AppModel {
         // session behind for the next foreground launch to inherit. It shares
         // this model's governor, so background traffic counts against the same
         // budget and shows up in the Settings meter like everything else.
+        // Silent refresh only: an expired OAuth grant renews through its
+        // refresh token, and a dead one simply fails this wake — there is no
+        // browser to re-authorize with out here.
+        let auth: any AuthProvider
+        if credential.isOAuth, let directory = OAuthDirectory.resolve() {
+            auth = OAuthAuthProvider(
+                credential: credential,
+                directory: directory,
+                store: store,
+                transport: transport
+            )
+        } else if credential.isOAuth {
+            return false
+        } else {
+            auth = PersonalKeyAuthProvider(key: credential.key, region: credential.region)
+        }
         let client = PostHogClient(
-            auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region),
+            auth: auth,
             transport: transport,
             governor: governor
         )
@@ -844,8 +967,26 @@ final class AppModel {
             )
         } catch {
             if let posthog = error as? PostHogError,
-               case .forbidden(missingScope: nil, detail: let detail) = posthog {
+               case .forbidden(let missingScope, let detail) = posthog {
+                if oauthDirectory != nil, let missingScope {
+                    return .failed(
+                        "PostHog refused the flag change: PostHog Cloud sign-in didn't include the \(missingScope) scope. Grant it in Settings, then try again."
+                    )
+                }
+                guard missingScope == nil else {
+                    return .failed(error.localizedDescription)
+                }
                 let said = detail.map { " PostHog said: \($0)" } ?? ""
+                if oauthDirectory != nil {
+                    return .failed(
+                        """
+                        PostHog refused the flag change and didn't say which permission was missing.\
+                        \(said) If PostHog Cloud sign-in is missing the \(Self.requiredFlagWriteScope) \
+                        scope, grant it in Settings; otherwise ask an organization admin to check \
+                        your role.
+                        """
+                    )
+                }
                 return .failed(
                     """
                     PostHog refused the flag change and didn't say which permission was missing.\
@@ -865,9 +1006,26 @@ final class AppModel {
         _ = await signOut(ifCurrentAuthSessionID: expectedAuthSessionID)
     }
 
+    /// Tells PostHog the OAuth grant is over, when this session has one.
+    /// Personal-key sessions have nothing to revoke: the key itself is deleted
+    /// from the Keychain by the teardown below.
+    private func revokeOAuthGrant() async {
+        guard let directory = oauthDirectory,
+              let refreshToken = (try? store.load())?.refreshToken
+        else { return }
+        try? await OAuthTokenClient(directory: directory, transport: transport)
+            .revoke(refreshToken)
+    }
+
     @discardableResult
     private func signOut(ifCurrentAuthSessionID expectedAuthSessionID: UUID?) async -> Bool {
         guard authSessionID == expectedAuthSessionID else { return false }
+
+        // Best-effort and first: once the Keychain entry below is gone there
+        // is nothing left to revoke with. Failure changes nothing about the
+        // local teardown that follows — the grant dies with the refresh token
+        // either way from this device's point of view.
+        await revokeOAuthGrant()
 
         requiredResponseCachePublicationGeneration =
             (requiredResponseCachePublicationGeneration ?? 0) &+ 1
@@ -930,6 +1088,7 @@ final class AppModel {
         }
         client = nil
         activeRegion = nil
+        oauthDirectory = nil
         authSessionID = nil
         me = nil
         capabilities = nil

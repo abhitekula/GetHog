@@ -354,7 +354,7 @@ final class FlagToggleController {
             guard generation == projectGeneration else { return }
             guard authorizationIsCurrent() else { return }
             apply(previous, to: flag)
-            record(error, flag: flag, action: desired ? "enable" : "disable")
+            record(error, flag: flag, action: desired ? "enable" : "disable", remedy: writeRemedy(for: client))
         }
     }
 
@@ -531,7 +531,7 @@ final class FlagToggleController {
             guard generation == projectGeneration else { return }
             guard authorizationIsCurrent() else { return }
             rolloutOverrides[flag.id]?[index] = previous
-            record(error, flag: flag, action: "change the rollout for")
+            record(error, flag: flag, action: "change the rollout for", remedy: writeRemedy(for: client))
         }
     }
 
@@ -570,12 +570,13 @@ final class FlagToggleController {
     /// **Source-derived, never observed.** No 409 has been received from a live
     /// deployment; provoking one needs an approval policy *and* a write, and the
     /// key here is read-only.
-    private func record(_ error: any Error, flag: FeatureFlag, action: String) {
+    private func record(_ error: any Error, flag: FeatureFlag, action: String, remedy: WriteRemedy = .personalKey) {
         let outcome = WriteFailure.message(
             for: error,
             object: flag.key,
             action: action,
-            writeScope: requiredWriteScope
+            writeScope: requiredWriteScope,
+            remedy: remedy
         )
         if outcome.kind == .filed { filedCount += 1 } else { failureCount += 1 }
         message = outcome

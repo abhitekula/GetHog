@@ -138,7 +138,8 @@ final class AlertWriteController {
             record(
                 error,
                 object: alert.displayTitle,
-                action: snooze == nil ? "wake" : "snooze"
+                action: snooze == nil ? "wake" : "snooze",
+                remedy: writeRemedy(for: client)
             )
         }
     }
@@ -197,7 +198,8 @@ final class AlertWriteController {
             record(
                 error,
                 object: alert.displayTitle,
-                action: enabled ? "start" : "pause"
+                action: enabled ? "start" : "pause",
+                remedy: writeRemedy(for: client)
             )
         }
     }
@@ -260,7 +262,7 @@ final class AlertWriteController {
             )
             return false
         } catch {
-            record(error, object: "an alert on \(insightTitle)", action: "set")
+            record(error, object: "an alert on \(insightTitle)", action: "set", remedy: writeRemedy(for: client))
             return false
         }
     }
@@ -288,12 +290,13 @@ final class AlertWriteController {
     /// Delegates to `WriteFailure`, which is where this app's 403/409 reasoning
     /// lives — including the one case that is not a failure at all, a change
     /// request filed under an organisation approval policy.
-    private func record(_ error: any Error, object: String, action: String) {
+    private func record(_ error: any Error, object: String, action: String, remedy: WriteRemedy = .personalKey) {
         let outcome = WriteFailure.message(
             for: error,
             object: object,
             action: action,
-            writeScope: requiredWriteScope
+            writeScope: requiredWriteScope,
+            remedy: remedy
         )
         if outcome.kind == .filed { filedCount += 1 } else { failureCount += 1 }
         message = outcome

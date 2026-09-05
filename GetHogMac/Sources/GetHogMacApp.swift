@@ -141,6 +141,11 @@ struct GetHogMacApp: App {
                 }
                 #endif
                 .onOpenURL { LinkInbox.deliver($0) }
+                // PostHog Cloud OAuth callback — same arrangement as the iOS
+                // shell (see GetHogApp). Unconsumed activities fall through.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    _ = OAuthActivityRouter.route(activity, directory: OAuthDirectory.resolve())
+                }
                 // The inbound half of Handoff. An iPhone publishing the console
                 // URL for the screen it is on is continued here, and lands on
                 // that object's own screen — see `HandoffModifier`.

@@ -29,5 +29,15 @@
 	<array>
 		<string>$(AppIdentifierPrefix)app.gethog.shared</string>
 	</array>
+	<!-- PostHog Cloud OAuth callback — same arrangement as the iOS app (see
+	     GetHog/Support/GetHog.entitlements). Release only: this entitlement
+	     requires a development certificate, and Debug is the configuration a
+	     teamless clone builds (see the split rationale at the top of
+	     GetHogMac.entitlements). A real domain arrives per-developer through
+	     Config/OAuth.local.xcconfig; empty by default. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(GETHOG_OAUTH_DOMAIN)</string>
+	</array>
 </dict>
 </plist>

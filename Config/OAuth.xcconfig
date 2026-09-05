@@ -1,0 +1,17 @@
+// Shared OAuth directory configuration. Tracked and generic: the only
+// hostname-bearing value a build can see arrives through the optional local
+// override below, so the public tree never names a real domain.
+//
+// Precedence for GETHOG_OAUTH_DOMAIN (highest wins):
+//   1. `xcodebuild GETHOG_OAUTH_DOMAIN=…` (CLI / CI — beats everything,
+//      including this file).
+//   2. Config/OAuth.local.xcconfig (gitignored; Xcode GUI builds, which cannot
+//      see shell environment).
+//   3. Empty below — OAuth sign-in UI stays hidden and the app is PAT-only,
+//      which is what a fresh clone builds.
+//
+// `.env.local` feeds path 1 via `set -a; source .env.local; set +a` before the
+// build; it is never read by the build itself and never ships in the bundle.
+#include? "OAuth.local.xcconfig"
+
+GETHOG_OAUTH_DOMAIN = $(GETHOG_OAUTH_DOMAIN_LOCAL)

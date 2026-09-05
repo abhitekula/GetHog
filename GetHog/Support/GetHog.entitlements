@@ -10,5 +10,15 @@
 	<array>
 		<string>$(AppIdentifierPrefix)app.gethog.shared</string>
 	</array>
+	<!-- PostHog Cloud OAuth callback, claimed only when a local OAuth
+	     directory is configured (see Config/OAuth.xcconfig). Empty by
+	     default in the public tree, in which case the entitlement names no
+	     domain, the OAuth entry points stay hidden, and nothing changes.
+	     A real domain is a per-developer value — it lives in the gitignored
+	     Config/OAuth.local.xcconfig, never here. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(GETHOG_OAUTH_DOMAIN)</string>
+	</array>
 </dict>
 </plist>

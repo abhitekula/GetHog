@@ -279,7 +279,8 @@ final class ExperimentLifecycleController {
                 for: error,
                 object: experiment.name,
                 action: action,
-                writeScope: requiredWriteScope
+                writeScope: requiredWriteScope,
+                remedy: writeRemedy(for: client)
             )
             if outcome.kind == .filed { filedCount += 1 } else { failureCount += 1 }
             message = outcome

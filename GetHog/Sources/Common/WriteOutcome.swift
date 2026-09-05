@@ -56,6 +56,23 @@ struct WriteOutcomeMessage: Identifiable, Equatable {
 /// tests are not renamed by a change that is about approval handling.
 typealias FlagToggleMessage = WriteOutcomeMessage
 
+/// Which credential family a write denial should prescribe for.
+///
+/// A declined OAuth scope and a missing key scope fail identically (403) but
+/// are fixed in opposite places: one is granted in Settings, the other is
+/// added to the key in PostHog. Naming the wrong one sends the user to edit
+/// something that was never the problem.
+enum WriteRemedy: Sendable, Equatable {
+    case personalKey
+    case oauthCloud
+}
+
+/// Maps a client's auth family to the remedy its write denials prescribe.
+/// One spelling so the six write paths cannot disagree about the mapping.
+func writeRemedy(for client: PostHogClient) -> WriteRemedy {
+    client.authenticatesWithOAuth ? .oauthCloud : .personalKey
+}
+
 /// Inline outcome of the last write attempt, drawn where the control was.
 ///
 /// One view rather than the two near-identical private ones the flag and triage
@@ -129,7 +146,8 @@ enum WriteFailure {
         for error: any Error,
         object: String,
         action: String,
-        writeScope: String
+        writeScope: String,
+        remedy: WriteRemedy = .personalKey
     ) -> WriteOutcomeMessage {
         guard let posthog = error as? PostHogError else {
             return WriteOutcomeMessage(
@@ -215,6 +233,15 @@ enum WriteFailure {
             case .missingScope(let scope) where named != nil:
                 // PostHog named the scope itself, so this is the one branch
                 // entitled to assert one.
+                if remedy == .oauthCloud {
+                    return WriteOutcomeMessage(
+                        kind: .failure,
+                        text: """
+                            \(opener): PostHog Cloud sign-in didn't include the \(scope) \
+                            scope. Grant it in Settings, then try again.
+                            """
+                    )
+                }
                 return WriteOutcomeMessage(
                     kind: .failure,
                     text: """
@@ -234,6 +261,17 @@ enum WriteFailure {
                 // hidden behind "edit your key". **Unverified**: safely producing
                 // that permission combination is outside deterministic unit tests.
                 let said = detail.map { " PostHog said: \($0)" } ?? ""
+                if remedy == .oauthCloud {
+                    return WriteOutcomeMessage(
+                        kind: .failure,
+                        text: """
+                            \(opener): PostHog refused the change and didn't say which permission \
+                            was missing.\(said) If PostHog Cloud sign-in is missing the \
+                            \(writeScope) scope, grant it in Settings; otherwise ask an \
+                            organization admin to check your role.
+                            """
+                    )
+                }
                 return WriteOutcomeMessage(
                     kind: .failure,
                     text: """
@@ -247,7 +285,9 @@ enum WriteFailure {
         case .unauthorized:
             return WriteOutcomeMessage(
                 kind: .failure,
-                text: "Couldn't \(action) \(object): your API key was rejected. Reconnect in Settings."
+                text: remedy == .oauthCloud
+                    ? "Couldn't \(action) \(object): PostHog Cloud sign-in expired. Reconnect in Settings."
+                    : "Couldn't \(action) \(object): your API key was rejected. Reconnect in Settings."
             )
         default:
             return WriteOutcomeMessage(

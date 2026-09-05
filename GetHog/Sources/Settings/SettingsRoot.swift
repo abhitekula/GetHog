@@ -43,6 +43,9 @@ struct SettingsRoot: View {
             #endif
             SettingsPermissionsSection()
             SettingsAPIKeySection()
+            if model.oauthDirectory != nil {
+                SettingsOAuthAccessSection()
+            }
             #if os(iOS)
             // Sends the key the section above describes. iOS only:
             // WatchConnectivity exists on iPhone and watchOS, nowhere else this compiles.
@@ -302,6 +305,15 @@ struct SettingsAPIKeySection: View {
     static let keyStorageFooter = "The key is stored in this device's Keychain, marked device-only, and never synced or uploaded. Revealing it asks for Face ID, Touch ID, or your passcode, and it re-hides itself after 30 seconds."
     #endif
 
+    static let oauthStorageFooter = "Signed in with PostHog Cloud. Tokens renew automatically and live in this device's Keychain, marked device-only, and never synced or uploaded. Signing out revokes the grant."
+
+    /// Whether the saved credential is an OAuth grant rather than a pasted
+    /// key. Evaluated on every render from the store: the section must follow
+    /// a sign-in that happened without this view reloading.
+    private var isOAuthSession: Bool {
+        (try? model.store.load()?.isOAuth) == true
+    }
+
     /// A revealed key re-masks itself rather than sitting on a screen the user
     /// walked away from.
     private static let revealTimeout: Duration = .seconds(30)
@@ -309,18 +321,27 @@ struct SettingsAPIKeySection: View {
     var body: some View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Personal API key")
+                Text(isOAuthSession ? "PostHog Cloud" : "Personal API key")
                     .font(.caption)
                     .foregroundStyle(Theme.Ink.secondary)
-                Text(revealedKey ?? maskedKey)
-                    .font(.callout.monospaced())
-                    .textSelection(.enabled)
-                    .accessibilityLabel(
-                        revealedKey == nil
-                            // Bullets are read out one by one by VoiceOver.
-                            ? "API key hidden, ending in \(maskedKey.suffix(4))"
-                            : "API key revealed"
-                    )
+                if isOAuthSession {
+                    // An access token rotates under this text; showing a
+                    // masked bearer would present a dying secret as an
+                    // identity. The region names the connection instead.
+                    Text(model.client?.region.displayName ?? "Connected")
+                        .font(.callout)
+                        .accessibilityLabel("Signed in with PostHog Cloud")
+                } else {
+                    Text(revealedKey ?? maskedKey)
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                        .accessibilityLabel(
+                            revealedKey == nil
+                                // Bullets are read out one by one by VoiceOver.
+                                ? "API key hidden, ending in \(maskedKey.suffix(4))"
+                                : "API key revealed"
+                        )
+                }
             }
             // These four sat on the whole `List` while this section was a
             // property of it. On the row they behave the same and reach further:
@@ -354,28 +375,37 @@ struct SettingsAPIKeySection: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in.")
+                Text(
+                    isOAuthSession
+                        ? "Your PostHog Cloud grant is revoked and the cached data is cleared. You'll sign in with PostHog again to reconnect."
+                        : "Your API key is deleted from this device's Keychain and the cached data is cleared. You'll need the key again to sign back in."
+                )
             }
 
             #if !os(tvOS)
-            // Revealing is gated on device-owner authentication, and tvOS has
-            // none to offer — `LAContext`'s policies are unavailable there. A
-            // Reveal button that skipped the gate would put a live credential
-            // on a screen in a shared room with nothing asked of anybody, so
-            // the affordance is absent rather than unguarded. The footer below
-            // says so in words.
-            if revealedKey == nil {
-                Button {
-                    Task { await reveal() }
-                } label: {
-                    Label("Reveal key", systemImage: "eye")
-                }
-                .disabled(maskedKey.isEmpty)
-            } else {
-                Button {
-                    revealedKey = nil
-                } label: {
-                    Label("Hide key", systemImage: "eye.slash")
+            // An OAuth grant has no pasted secret to reveal — and its bearer
+            // rotates, so displaying it would only invite copying a dying
+            // token. The gate and its rows exist for personal keys alone.
+            if !isOAuthSession {
+                // Revealing is gated on device-owner authentication, and tvOS has
+                // none to offer — `LAContext`'s policies are unavailable there. A
+                // Reveal button that skipped the gate would put a live credential
+                // on a screen in a shared room with nothing asked of anybody, so
+                // the affordance is absent rather than unguarded. The footer below
+                // says so in words.
+                if revealedKey == nil {
+                    Button {
+                        Task { await reveal() }
+                    } label: {
+                        Label("Reveal key", systemImage: "eye")
+                    }
+                    .disabled(maskedKey.isEmpty)
+                } else {
+                    Button {
+                        revealedKey = nil
+                    } label: {
+                        Label("Hide key", systemImage: "eye.slash")
+                    }
                 }
             }
             #endif
@@ -387,10 +417,10 @@ struct SettingsAPIKeySection: View {
             }
 
             #if !os(tvOS)
-            // Nowhere to open it. The tvOS footer below already names the one
-            // route that exists on this platform — sign out and enter a new
-            // key — rather than offering a row that leads nowhere.
-            if let url = model.client?.region.apiKeySettingsURL {
+            // The key-management console is where personal keys are made;
+            // an OAuth grant is managed through PostHog's authorization
+            // screen instead, so the row would lead nowhere useful.
+            if !isOAuthSession, let url = model.client?.region.apiKeySettingsURL {
                 Link(destination: url) {
                     Label("Manage keys in PostHog", systemImage: "arrow.up.forward.square")
                 }
@@ -405,7 +435,7 @@ struct SettingsAPIKeySection: View {
         } header: {
             SectionLabel(text: "API key", systemImage: "lock")
         } footer: {
-            Text(Self.keyStorageFooter)
+            Text(isOAuthSession ? Self.oauthStorageFooter : Self.keyStorageFooter)
         }
     }
 

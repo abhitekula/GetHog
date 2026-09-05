@@ -1027,4 +1027,51 @@ struct WriteForbiddenMessageTests {
                 .hasPrefix("Couldn't pause Signup flag")
         )
     }
+
+    /// A declined OAuth scope fails identically to a missing key scope but is
+    /// fixed in the opposite place. Prescribing key editing would send the
+    /// user to a control that cannot help — the grant is widened in Settings.
+    @Test("an OAuth denial prescribes Settings, not key editing")
+    func oauthDenialPrescribesSettings() {
+        let text = WriteFailure.message(
+            for: PostHogError.forbidden(
+                missingScope: "feature_flag:write",
+                detail: "You do not have the feature_flag:write scope."
+            ),
+            object: "Signup flag",
+            action: "pause",
+            writeScope: "feature_flag:write",
+            remedy: .oauthCloud
+        ).text
+        #expect(text.contains("feature_flag:write"))
+        #expect(text.contains("Settings"))
+        #expect(!text.contains("API key"))
+    }
+
+    @Test("an OAuth bare 403 guesses the scope with a Settings remedy")
+    func oauthBareRefusalGuessesWithSettingsRemedy() {
+        let text = WriteFailure.message(
+            for: PostHogError.forbidden(missingScope: nil, detail: nil),
+            object: "Signup flag",
+            action: "pause",
+            writeScope: "feature_flag:write",
+            remedy: .oauthCloud
+        ).text
+        #expect(text.contains("feature_flag:write"))
+        #expect(text.contains("Settings"))
+        #expect(!text.contains("API key"))
+    }
+
+    @Test("an OAuth rejection names sign-in expiry")
+    func oauthRejectionNamesExpiry() {
+        let text = WriteFailure.message(
+            for: PostHogError.unauthorized,
+            object: "Signup flag",
+            action: "pause",
+            writeScope: "feature_flag:write",
+            remedy: .oauthCloud
+        ).text
+        #expect(text.contains("sign-in expired"))
+        #expect(!text.contains("API key"))
+    }
 }

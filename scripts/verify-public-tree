@@ -164,6 +164,21 @@ scan_text_file() {
         record_violation "security-reporting-route" "$relative_path"
     fi
 
+    # A vendor OAuth directory host must never be baked into the public tree:
+    # the callback domain is a per-developer value injected through
+    # Config/OAuth.local.xcconfig. The one published contact address stays
+    # exempt; test trees and prose keep their own existing rules.
+    case "$relative_path" in
+        *Tests/*|GetHogUITests/*|*.md) ;;
+        *.swift|*.plist|*.entitlements|project.yml|*.xcconfig|*.toml|*.sh|*.json|*.jsonl)
+            vendor_domain_pattern="auto""morphism\.app"
+            if LC_ALL=C grep -Ei "$vendor_domain_pattern" "$full_path" \
+                | LC_ALL=C grep -Ev "support@auto""morphism\.app" | grep -q .; then
+                record_violation "vendor-domain" "$relative_path"
+            fi
+            ;;
+    esac
+
     emails_file="$temporary_root/emails"
     : > "$emails_file"
     LC_ALL=C grep -Eo '[A-Za-z0-9.!#$%&*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
@@ -354,6 +369,7 @@ run_self_test() {
     printf '{not-json}\n' > "$self_root/GetHog/Resources/DemoData/broken.json"
     printf '{"ok":true}\n{not-json}\n' > "$self_root/GetHog/Resources/DemoData/broken.jsonl"
     printf 'name: GetHog\n    DEVELOPMENT_TEAM: ABC123\n' > "$self_root/project.yml"
+    printf '%s\n' "oauth@auto""morphism.app" > "$self_root/vendor.swift"
 
     self_list="$temporary_root/self-test-files"
     : > "$self_list"
@@ -366,7 +382,7 @@ run_self_test() {
 
     scan_list "$self_root" "$self_list"
 
-    expected_rules='unsafe-filename unsafe-file-type whitespace-error legacy-filename legacy-text private-key credential-token private-local-path non-reserved-email ci-config dependabot-config security-reporting-route internal-artifact binary-artifact image-metadata fixture-json fixture-jsonl signing-identity'
+    expected_rules='unsafe-filename unsafe-file-type whitespace-error legacy-filename legacy-text private-key credential-token private-local-path non-reserved-email ci-config dependabot-config security-reporting-route internal-artifact binary-artifact image-metadata fixture-json fixture-jsonl signing-identity vendor-domain'
     for rule_id in $expected_rules; do
         if ! awk -F '\t' -v wanted="$rule_id" '$1 == wanted { found = 1 } END { exit !found }' \
             "$violations_file"; then

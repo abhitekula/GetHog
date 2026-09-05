@@ -45,6 +45,8 @@ struct OnboardingView: View {
     @State private var apiKey = ""
     @State private var isConnecting = false
     @State private var error: String?
+    @State private var isAuthorizing = false
+    @State private var oauthError: String?
 
     private enum Step { case welcome, region, key }
 
@@ -320,6 +322,16 @@ struct OnboardingView: View {
                 .font(.title2.bold())
 
             VStack(spacing: 12) {
+                // PostHog Cloud sign-in, when this build can start one:
+                // configured directory plus a client half that can receive
+                // the universal link (see OAuthAvailability). Region-agnostic
+                // — the grant's region is resolved after authentication — so
+                // this sits above the per-region personal-key cards rather
+                // than inside them.
+                if OAuthAvailability.canBeginSignIn {
+                    cloudOption
+                }
+
                 regionOption(.usCloud, subtitle: "us.posthog.com")
                 regionOption(.euCloud, subtitle: "eu.posthog.com")
 
@@ -354,6 +366,67 @@ struct OnboardingView: View {
             // `Theme.inkOnAccent`.
             .foregroundStyle(Theme.inkOnAccent)
             .disabled(!selfHostedURL.isEmpty && normalizedSelfHostedURL() == nil)
+        }
+    }
+
+    /// PostHog Cloud sign-in through the browser. Reads are required; the six
+    /// writes are pre-checked but declinable on PostHog's screen, and a
+    /// declined write fails only its own action with a locked message — the
+    /// session and every read keep working.
+    private var cloudOption: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await signInWithCloud() }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("PostHog Cloud").font(.headline)
+                        Text("Sign in with PostHog — US & EU")
+                            .font(.caption)
+                            .foregroundStyle(Theme.Ink.secondary)
+                    }
+                    Spacer()
+                    if isAuthorizing {
+                        ProgressView()
+                    }
+                }
+                .padding()
+                .background(Theme.cardBackground, in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .disabled(isAuthorizing)
+
+            Text("Reads are required. Anything that changes PostHog — flags, alerts, annotations — is optional and can stay off.")
+                .font(.caption)
+                .foregroundStyle(Theme.Ink.secondary)
+
+            if let oauthError {
+                Label(oauthError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.Status.criticalInk)
+            }
+        }
+    }
+
+    private func signInWithCloud() async {
+        guard OAuthAvailability.canBeginSignIn,
+              let directory = OAuthDirectory.resolve() else { return }
+        isAuthorizing = true
+        oauthError = nil
+        defer { isAuthorizing = false }
+        do {
+            // Nil means the user dismissed the browser — no error, no retry
+            // prompt; the card is still here when they come back.
+            guard let result = try await OAuthSignInController(directory: directory).start() else {
+                return
+            }
+            try await model.connectWithOAuth(directory: directory, code: result.code, verifier: result.verifier)
+        } catch let signInError as OAuthSignInError {
+            oauthError = signInError.localizedDescription
+        } catch let posthogError as PostHogError {
+            oauthError = posthogError.localizedDescription
+        } catch {
+            oauthError = error.localizedDescription
         }
     }
 

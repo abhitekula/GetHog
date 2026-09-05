@@ -35,9 +35,9 @@ public enum ResourceAccessState: Sendable, Equatable {
     /// The endpoint refuses personal API keys as a category:
     /// `"This action does not support personal API key access"`.
     ///
-    /// No scope grant and no plan upgrade changes this — it needs OAuth, which
-    /// this app does not have. Distinguished so the screen can say so plainly
-    /// instead of sending someone to edit a key that was never the problem.
+    /// No scope grant and no plan upgrade changes this — it needs PostHog
+    /// Cloud sign-in. Distinguished so the screen can say so plainly instead
+    /// of sending someone to edit a key that was never the problem.
     case unsupportedForPersonalKeys
 
     case failed(String)
@@ -178,7 +178,7 @@ public extension ResourceAccessState {
         case .unsupportedForPersonalKeys:
             """
             This endpoint refuses personal API keys, so no key and no plan will open it. \
-            It needs OAuth, which GetHog doesn't have yet.
+            It needs PostHog Cloud sign-in.
             """
         case .failed(let message):
             message

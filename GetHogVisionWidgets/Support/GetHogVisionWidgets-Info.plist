@@ -4,6 +4,12 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>GetHog</string>
+	<!-- The same key the host app publishes (GetHogVision-Info.plist): this
+	     extension is a separate process reading its own bundle, and its
+	     background refresh must resolve the same OAuth directory to renew an
+	     expiring grant silently. Empty by default, as in the app. -->
+	<key>GetHogOAuthDomain</key>
+	<string>$(GETHOG_OAUTH_DOMAIN)</string>
 	<!-- WidgetKit requires this nested inside NSExtension. The
 	     INFOPLIST_KEY_* build settings only write top-level keys, which
 	     produces an extension the simulator refuses to install. -->

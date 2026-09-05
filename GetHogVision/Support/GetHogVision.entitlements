@@ -17,5 +17,12 @@
 	<array>
 		<string>$(AppIdentifierPrefix)app.gethog.shared</string>
 	</array>
+	<!-- PostHog Cloud OAuth callback — same arrangement as the iOS app (see
+	     GetHog/Support/GetHog.entitlements). Empty by default; a real domain
+	     arrives per-developer through Config/OAuth.local.xcconfig. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(GETHOG_OAUTH_DOMAIN)</string>
+	</array>
 </dict>
 </plist>

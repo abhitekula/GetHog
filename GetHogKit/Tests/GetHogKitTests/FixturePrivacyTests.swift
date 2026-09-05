@@ -160,7 +160,7 @@ enum FixturePrivacyScanner {
         "created_at", "updated_at", "last_seen_at", "timeOrigin",
     ]
     private static let canonicalReplayEpochSeconds = 1_767_225_600.0..<1_769_904_000.0
-    private static let publicPostHogHosts: Set<String> = ["us.posthog.com", "eu.posthog.com"]
+    private static let publicPostHogHosts: Set<String> = ["us.posthog.com", "eu.posthog.com", "oauth.posthog.com"]
     /// A loopback probe is served by the test process itself, so it names no
     /// tenant and reaches no external host. Signed-URL rules still apply: a
     /// credential-shaped query is a credential wherever it is pointed.

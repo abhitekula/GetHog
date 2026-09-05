@@ -686,12 +686,27 @@ final class WatchModel {
     private static func client(
         for credential: StoredCredential?, transport: any HTTPTransport
     ) -> PostHogClient? {
-        credential.map {
-            PostHogClient(
-                auth: PersonalKeyAuthProvider(key: $0.key, region: $0.region),
+        guard let credential else { return nil }
+        // The wrist holds the same grant as the phone and renews it the same
+        // way — silently, through the refresh token. A grant with no
+        // configured directory cannot renew, so it fails closed to needing a
+        // hand-off rather than spending a dying bearer.
+        if credential.isOAuth {
+            guard let directory = OAuthDirectory.resolve() else { return nil }
+            return PostHogClient(
+                auth: OAuthAuthProvider(
+                    credential: credential,
+                    directory: directory,
+                    store: KeychainTokenStore(),
+                    transport: transport
+                ),
                 transport: transport
             )
         }
+        return PostHogClient(
+            auth: PersonalKeyAuthProvider(key: credential.key, region: credential.region),
+            transport: transport
+        )
     }
 
     // MARK: - Adopting a hand-off that arrived mid-flight
