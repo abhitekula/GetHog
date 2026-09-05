@@ -5,7 +5,7 @@ let package = Package(
     name: "GetHogKit",
     platforms: [
         .iOS(.v26),
-        .macOS(.v15), // so `swift test` runs from the CLI without a simulator
+        .macOS(.v26),
         // The three platforms the app targets added. An xcodebuild destination
         // already floors a package build at the SDK's own minimum, so the kit
         // compiled for tvOS before these lines existed — they are here so the
